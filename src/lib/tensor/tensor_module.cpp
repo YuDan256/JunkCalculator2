@@ -136,6 +136,17 @@ METHOD(__ge__) {
 }
 METHOD(__getitem__) {
     GET_SELF;
+    if (argc == 2 && isTensor(jc2::Value(argv[1]))) {
+        auto idx_t = getTensor(jc2::Value(argv[1]));
+        if (idx_t->dtype() == jc::DType::Bool) {
+            return wrapTensor(jc::tensor_mask_get(*t1, *idx_t)).get_handle();
+        } else if (idx_t->dtype() == jc::DType::Int32 || idx_t->dtype() == jc::DType::Int64) {
+            return wrapTensor(jc::tensor_index_get(*t1, *idx_t)).get_handle();
+        } else {
+            jc2::throw_error("Tensor Error: Advanced indexing requires a Bool or Integer tensor.");
+        }
+    }
+
     jc::Tensor current = *t1;
     int dims_provided = argc - 1;
     if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
@@ -161,9 +172,23 @@ METHOD(__getitem__) {
 METHOD(__setitem__) {
     GET_SELF;
     if (argc < 2) jc2::throw_error("Tensor Error: __setitem__ requires at least one index and a value.");
-    int dims_provided = argc - 2;
     jc2::Value val(argv[argc - 1]);
 
+    if (argc == 3 && isTensor(jc2::Value(argv[1]))) {
+        auto idx_t = getTensor(jc2::Value(argv[1]));
+        if (idx_t->dtype() == jc::DType::Bool) {
+            if (isTensor(val)) jc::tensor_mask_set(*t1, *idx_t, *getTensor(val));
+            else jc::tensor_mask_set(*t1, *idx_t, val.as_double());
+        } else if (idx_t->dtype() == jc::DType::Int32 || idx_t->dtype() == jc::DType::Int64) {
+            if (isTensor(val)) jc::tensor_index_set(*t1, *idx_t, *getTensor(val));
+            else jc::tensor_index_set(*t1, *idx_t, val.as_double());
+        } else {
+            jc2::throw_error("Tensor Error: Advanced indexing requires a Bool or Integer tensor.");
+        }
+        return jc2::Value().get_handle();
+    }
+
+    int dims_provided = argc - 2;
     jc::Tensor current = *t1;
     if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
 

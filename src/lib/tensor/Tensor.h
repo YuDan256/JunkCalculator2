@@ -25,7 +25,8 @@ namespace jc {
         Float32,
         Float64,
         Int32,
-        Int64
+        Int64,
+        Bool
     };
 
     inline std::string dtypeToString(DType d) {
@@ -34,6 +35,7 @@ namespace jc {
             case DType::Float64: return "float64";
             case DType::Int32:   return "int32";
             case DType::Int64:   return "int64";
+            case DType::Bool:    return "bool";
         }
         return "unknown";
     }
@@ -43,6 +45,7 @@ namespace jc {
         if (s == "float64" || s == "f64" || s == "double") return DType::Float64;
         if (s == "int32" || s == "i32") return DType::Int32;
         if (s == "int64" || s == "i64") return DType::Int64;
+        if (s == "bool") return DType::Bool;
         throw std::runtime_error("Tensor Error: Unknown dtype string '" + s + "'.");
     }
 
@@ -72,6 +75,7 @@ namespace jc {
             else if constexpr (std::is_same_v<T, double>) return DType::Float64;
             else if constexpr (std::is_same_v<T, int32_t>) return DType::Int32;
             else if constexpr (std::is_same_v<T, int64_t>) return DType::Int64;
+            else if constexpr (std::is_same_v<T, uint8_t>) return DType::Bool;
             else throw std::runtime_error("Tensor Error: Unsupported DType.");
         }
 
@@ -163,6 +167,7 @@ namespace jc {
                 case DType::Float32: impl->storage = std::make_shared<TensorStorage<float>>(total_elements); break;
                 case DType::Int32:   impl->storage = std::make_shared<TensorStorage<int32_t>>(total_elements); break;
                 case DType::Int64:   impl->storage = std::make_shared<TensorStorage<int64_t>>(total_elements); break;
+                case DType::Bool:    impl->storage = std::make_shared<TensorStorage<uint8_t>>(total_elements); break;
             }
         }
 
@@ -215,6 +220,7 @@ namespace jc {
                 case DType::Float32: return static_cast<double>(static_cast<const float*>(impl->storage->data_ptr())[idx]);
                 case DType::Int32:   return static_cast<double>(static_cast<const int32_t*>(impl->storage->data_ptr())[idx]);
                 case DType::Int64:   return static_cast<double>(static_cast<const int64_t*>(impl->storage->data_ptr())[idx]);
+                case DType::Bool:    return static_cast<double>(static_cast<const uint8_t*>(impl->storage->data_ptr())[idx]);
             }
             return 0.0;
         }
@@ -225,6 +231,7 @@ namespace jc {
                 case DType::Float32: static_cast<float*>(impl->storage->data_ptr())[idx] = static_cast<float>(val); break;
                 case DType::Int32:   static_cast<int32_t*>(impl->storage->data_ptr())[idx] = static_cast<int32_t>(val); break;
                 case DType::Int64:   static_cast<int64_t*>(impl->storage->data_ptr())[idx] = static_cast<int64_t>(val); break;
+                case DType::Bool:    static_cast<uint8_t*>(impl->storage->data_ptr())[idx] = (val != 0.0 ? 1 : 0); break;
             }
         }
 
@@ -1026,6 +1033,54 @@ namespace jc {
         }
     };
 
+    // ---- MaskGetBackward ----
+    struct MaskGetBackward : public BackwardNode {
+        Tensor a, mask;
+        WeakTensor out;
+        MaskGetBackward(Tensor a, Tensor mask, Tensor out) : a(std::move(a)), mask(std::move(mask)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
+        void apply() override {
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
+            size_t out_idx = 0;
+            for (size_t i = 0; i < a.numel(); ++i) {
+                if (mask.getFlat(i) != 0.0) {
+                    da.setFlat(i, out_locked.impl->grad->getFlat(out_idx++));
+                }
+            }
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+        }
+    };
+
+    // ---- IndexGetBackward ----
+    struct IndexGetBackward : public BackwardNode {
+        Tensor a, indices;
+        WeakTensor out;
+        IndexGetBackward(Tensor a, Tensor indices, Tensor out) : a(std::move(a)), indices(std::move(indices)), out(std::move(out)) {}
+        std::vector<Tensor> get_dependencies() const override { return {a}; }
+        void apply() override {
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
+            size_t inner_size = 1;
+            for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
+            
+            for (size_t i = 0; i < indices.numel(); ++i) {
+                int idx = static_cast<int>(indices.getFlat(i));
+                if (idx < 0) idx += a.shape[0];
+                if (idx >= 0 && idx < a.shape[0]) {
+                    for (size_t j = 0; j < inner_size; ++j) {
+                        da.setFlat(idx * inner_size + j, da.getFlat(idx * inner_size + j) + out_locked.impl->grad->getFlat(i * inner_size + j));
+                    }
+                }
+            }
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+        }
+    };
+
     // ========================================================================
     // 7. 前向算子 (Forward Operators)
     // ========================================================================
@@ -1073,6 +1128,7 @@ namespace jc {
             case DType::Float32: apply_binary_impl<float>(a, b, out, op); break;
             case DType::Int32:   apply_binary_impl<int32_t>(a, b, out, op); break;
             case DType::Int64:   apply_binary_impl<int64_t>(a, b, out, op); break;
+            case DType::Bool:    apply_binary_impl<uint8_t>(a, b, out, op); break;
         }
     }
 
@@ -1110,6 +1166,7 @@ namespace jc {
             case DType::Float32: apply_unary_impl<float>(a, out, op); break;
             case DType::Int32:   apply_unary_impl<int32_t>(a, out, op); break;
             case DType::Int64:   apply_unary_impl<int64_t>(a, out, op); break;
+            case DType::Bool:    apply_unary_impl<uint8_t>(a, out, op); break;
         }
     }
 
@@ -1370,6 +1427,55 @@ namespace jc {
         }
     }
 
+    // ---- 比较运算核心 (强制返回 Bool 张量) ----
+    template <typename T, typename Op>
+    inline void apply_compare_impl(const Tensor& a, const Tensor& b, Tensor& out, Op op) {
+        const T* pa = static_cast<const T*>(a.impl->storage->data_ptr()) + a.offset;
+        const T* pb = static_cast<const T*>(b.impl->storage->data_ptr()) + b.offset;
+        uint8_t* po = static_cast<uint8_t*>(out.impl->storage->data_ptr());
+        size_t total = out.numel();
+
+        if (a.shape == b.shape && a.is_contiguous() && b.is_contiguous()) {
+            for (size_t i = 0; i < total; ++i) po[i] = op(pa[i], pb[i]) ? 1 : 0;
+            return;
+        }
+        auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out.shape);
+        auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out.shape);
+        int ndim = out.dim();
+        std::vector<size_t> coord(ndim, 0);
+        size_t idxA = 0, idxB = 0;
+        for (size_t i = 0; i < total; ++i) {
+            po[i] = op(pa[idxA], pb[idxB]) ? 1 : 0;
+            for (int d = ndim - 1; d >= 0; --d) {
+                coord[d]++;
+                if (coord[d] < static_cast<size_t>(out.shape[d])) {
+                    idxA += stridesA[d];
+                    idxB += stridesB[d];
+                    break;
+                }
+                coord[d] = 0;
+                idxA -= stridesA[d] * (out.shape[d] - 1);
+                idxB -= stridesB[d] * (out.shape[d] - 1);
+            }
+        }
+    }
+
+    template <typename Op>
+    inline Tensor tensor_compare_op(const Tensor& a, const Tensor& b, Op op) {
+        if (a.dtype() != b.dtype()) throw std::runtime_error("Tensor Error: DType mismatch in comparison.");
+        std::vector<int> out_shape = Tensor::broadcastShapes(a.shape, b.shape);
+        Tensor out(out_shape, DType::Bool, false);
+        out.impl->is_leaf = false;
+        switch (a.dtype()) {
+            case DType::Float64: apply_compare_impl<double>(a, b, out, op); break;
+            case DType::Float32: apply_compare_impl<float>(a, b, out, op); break;
+            case DType::Int32:   apply_compare_impl<int32_t>(a, b, out, op); break;
+            case DType::Int64:   apply_compare_impl<int64_t>(a, b, out, op); break;
+            case DType::Bool:    apply_compare_impl<uint8_t>(a, b, out, op); break;
+        }
+        return out;
+    }
+
     // ---- 通用二元逐元素运算 ----
 
     template <typename Op>
@@ -1496,6 +1602,7 @@ namespace jc {
             case DType::Float32: matmul_impl<float>(a, b, out); break;
             case DType::Int32:   matmul_impl<int32_t>(a, b, out); break;
             case DType::Int64:   matmul_impl<int64_t>(a, b, out); break;
+            case DType::Bool:    matmul_impl<uint8_t>(a, b, out); break;
         }
 
         if (rg) {
@@ -1540,6 +1647,7 @@ namespace jc {
                 case DType::Float32: matmul_impl<float>(a_slice, b_slice, out_slice); break;
                 case DType::Int32:   matmul_impl<int32_t>(a_slice, b_slice, out_slice); break;
                 case DType::Int64:   matmul_impl<int64_t>(a_slice, b_slice, out_slice); break;
+                case DType::Bool:    matmul_impl<uint8_t>(a_slice, b_slice, out_slice); break;
             }
         }
 
@@ -1694,6 +1802,123 @@ namespace jc {
         return static_cast<int64_t>(best);
     }
 
+    // ---- 高级索引 (Advanced Indexing) ----
+    inline Tensor tensor_mask_get(const Tensor& a, const Tensor& mask) {
+        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        size_t count = 0;
+        for (size_t i = 0; i < mask.numel(); ++i) {
+            if (mask.getFlat(i) != 0.0) count++;
+        }
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out({static_cast<int>(count)}, a.dtype(), rg);
+        out.impl->is_leaf = false;
+        size_t out_idx = 0;
+        for (size_t i = 0; i < a.numel(); ++i) {
+            if (mask.getFlat(i) != 0.0) {
+                out.setFlat(out_idx++, a.getFlat(i));
+            }
+        }
+        if (rg) {
+            out.impl->grad_fn = std::make_shared<MaskGetBackward>(a, mask, out);
+        }
+        return out;
+    }
+
+    inline void tensor_mask_set(Tensor& a, const Tensor& mask, double val) {
+        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        for (size_t i = 0; i < a.numel(); ++i) {
+            if (mask.getFlat(i) != 0.0) {
+                a.setFlat(i, val);
+            }
+        }
+    }
+
+    inline void tensor_mask_set(Tensor& a, const Tensor& mask, const Tensor& vals) {
+        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        if (vals.numel() == 1) {
+            tensor_mask_set(a, mask, vals.item());
+            return;
+        }
+        size_t count = 0;
+        for (size_t i = 0; i < mask.numel(); ++i) {
+            if (mask.getFlat(i) != 0.0) count++;
+        }
+        if (vals.numel() != count) throw std::runtime_error("Tensor Error: Values tensor size must match number of true elements in mask.");
+        size_t val_idx = 0;
+        for (size_t i = 0; i < a.numel(); ++i) {
+            if (mask.getFlat(i) != 0.0) {
+                a.setFlat(i, vals.getFlat(val_idx++));
+            }
+        }
+    }
+
+    inline Tensor tensor_index_get(const Tensor& a, const Tensor& indices) {
+        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        std::vector<int> out_shape = indices.shape;
+        for (int i = 1; i < a.dim(); ++i) out_shape.push_back(a.shape[i]);
+        
+        bool rg = a.impl->requires_grad && grad_enabled();
+        Tensor out(out_shape, a.dtype(), rg);
+        out.impl->is_leaf = false;
+        size_t inner_size = 1;
+        for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
+        
+        for (size_t i = 0; i < indices.numel(); ++i) {
+            int idx = static_cast<int>(indices.getFlat(i));
+            if (idx < 0) idx += a.shape[0];
+            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            
+            for (size_t j = 0; j < inner_size; ++j) {
+                out.setFlat(i * inner_size + j, a.getFlat(idx * inner_size + j));
+            }
+        }
+        if (rg) {
+            out.impl->grad_fn = std::make_shared<IndexGetBackward>(a, indices, out);
+        }
+        return out;
+    }
+
+    inline void tensor_index_set(Tensor& a, const Tensor& indices, double val) {
+        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        size_t inner_size = 1;
+        for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
+        
+        for (size_t i = 0; i < indices.numel(); ++i) {
+            int idx = static_cast<int>(indices.getFlat(i));
+            if (idx < 0) idx += a.shape[0];
+            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            
+            for (size_t j = 0; j < inner_size; ++j) {
+                a.setFlat(idx * inner_size + j, val);
+            }
+        }
+    }
+
+    inline void tensor_index_set(Tensor& a, const Tensor& indices, const Tensor& vals) {
+        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        if (vals.numel() == 1) {
+            tensor_index_set(a, indices, vals.item());
+            return;
+        }
+        
+        std::vector<int> expected_shape = indices.shape;
+        for (int i = 1; i < a.dim(); ++i) expected_shape.push_back(a.shape[i]);
+        if (vals.shape != expected_shape) throw std::runtime_error("Tensor Error: Shape mismatch for index assignment.");
+        
+        size_t inner_size = 1;
+        for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
+        
+        for (size_t i = 0; i < indices.numel(); ++i) {
+            int idx = static_cast<int>(indices.getFlat(i));
+            if (idx < 0) idx += a.shape[0];
+            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            
+            for (size_t j = 0; j < inner_size; ++j) {
+                a.setFlat(idx * inner_size + j, vals.getFlat(i * inner_size + j));
+            }
+        }
+    }
+
     // ---- 逐元素一元函数 ----
     inline Tensor tensor_exp(const Tensor& a) {
         bool rg = a.impl->requires_grad && grad_enabled();
@@ -1764,22 +1989,22 @@ namespace jc {
 
     // ---- 比较运算（不带梯度）----
     inline Tensor tensor_eq(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x == y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x == y; });
     }
     inline Tensor tensor_neq(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x != y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x != y; });
     }
     inline Tensor tensor_lt(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x < y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x < y; });
     }
     inline Tensor tensor_gt(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x > y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x > y; });
     }
     inline Tensor tensor_le(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x <= y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x <= y; });
     }
     inline Tensor tensor_ge(const Tensor& a, const Tensor& b) {
-        return tensor_binary_op(a, b, [](auto x, auto y) { return x >= y ? 1 : 0; }, false);
+        return tensor_compare_op(a, b, [](auto x, auto y) { return x >= y; });
     }
 
     // ---- 工厂函数 ----

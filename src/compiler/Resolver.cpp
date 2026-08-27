@@ -94,7 +94,10 @@ ResolvedSym Resolver::resolveName(const std::string& name) {
             return sym;
         }
     }
-    return ResolvedSym{VarScope::Global, -1, -1, false};
+    ResolvedSym globalSym;
+    globalSym.scope = VarScope::Global;
+    globalSym.isConst = knownConstGlobals && knownConstGlobals->count(name);
+    return globalSym;
 }
 
 void Resolver::resolve(Expr* expr) {

@@ -42,6 +42,13 @@ struct CallFrame {
     uint64_t instructionCount = 0;
 };
 
+// 待绑定的 ref 实参：argIndex → upvalue（含 const 标记，用于报错）
+struct PendingRef {
+    int argIndex = 0;
+    ObjUpVal* upval = nullptr;
+    bool isConst = false;
+};
+
 // ============================================================================
 // 寄存器虚拟机核心引擎
 // ============================================================================
@@ -71,7 +78,7 @@ private:
     std::unordered_map<int, std::unordered_map<int, void*>> osrEntryPoints;
     void compileForOSR(int fnIdx, int loopHeaderIp);
 
-    std::vector<std::pair<int, ObjUpVal*>> pendingCallRefs;
+    std::vector<PendingRef> pendingCallRefs;
     std::vector<ObjClosure*> deferStack;
     void runDefersDownTo(int targetBase, Value* currentException = nullptr);
 
@@ -247,6 +254,9 @@ public:
 
     // 读全局变量，含 builtin 回退；不存在则抛 undefined（state standalone 定义时捕获用）
     Value getGlobalChecked(const std::string& name);
+
+    // ★ REPL 增量编译：暴露 const 全局名集合给 Resolver
+    const std::unordered_set<std::string>& getConstGlobals() const { return constGlobals; }
 
     void setGlobalSlot(uint32_t slot, const Value& val) {
         if (slot < globals.size()) globals[slot] = val;

@@ -267,6 +267,7 @@ void BytecodeSerializer::writeChunk(std::ostream& os, const Chunk& chunk, int st
             write8(os, ref.argIndex);
             write8(os, ref.sourceType);
             write32(os, ref.sourceRef);
+            write8(os, ref.isConst ? 1 : 0);
         }
     }
 }
@@ -341,6 +342,7 @@ void BytecodeSerializer::readChunk(std::istream& is, Chunk& chunk, int baseIdx) 
             chunk.callSignatures[i].refs[j].argIndex = read8(is);
             chunk.callSignatures[i].refs[j].sourceType = read8(is);
             chunk.callSignatures[i].refs[j].sourceRef = read32(is);
+            chunk.callSignatures[i].refs[j].isConst = read8(is) != 0;
         }
     }
 }

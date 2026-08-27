@@ -370,6 +370,7 @@ struct ArgSource {
     uint8_t sourceType;
     uint32_t sourceRef;
     uint32_t kwNameIdx = 0; // ★ 记录命名参数的键名常量池索引
+    bool isConst = false;   // ★ const 实参（传给 ref 参数时报错）
 };
 
 struct CallSignature {

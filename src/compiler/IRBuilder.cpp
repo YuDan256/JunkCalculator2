@@ -1421,15 +1421,17 @@ void IRBuilder::visitBinary(Binary* expr) {
         IRCallSignature sig;
         if (auto* var = dynamic_cast<Variable*>(expr->left.get())) {
             std::string name = var->name.lexeme;
+            auto argVarIt = exprSymbols->find(var);
+            ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
             if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({0, 4, name, -1, readVariable(name, rs), ""});
+                sig.refs.push_back({0, 4, name, -1, readVariable(name, rs), "", argSym.isConst});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({0, 2, name, -1, localNode, ""});
+                    sig.refs.push_back({0, 2, name, -1, localNode, "", argSym.isConst});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -1447,9 +1449,9 @@ void IRBuilder::visitBinary(Binary* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({0, 3, name, upvalIdx, nullptr, ""});
+                        sig.refs.push_back({0, 3, name, upvalIdx, nullptr, "", argSym.isConst});
                     } else {
-                        sig.refs.push_back({0, 1, name, -1, nullptr, ""});
+                        sig.refs.push_back({0, 1, name, -1, nullptr, "", argSym.isConst});
                     }
                 }
             }
@@ -1921,18 +1923,15 @@ void IRBuilder::visitCall(Call* expr) {
             std::string name = var->name.lexeme;
             auto argVarIt = exprSymbols->find(var);
             ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
-            if (argSym.isConst) {
-                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
-            }
-            else if (refParams.count(name)) {
+            if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName, argSym.isConst});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName, argSym.isConst});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -1950,9 +1949,9 @@ void IRBuilder::visitCall(Call* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName, argSym.isConst});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName, argSym.isConst});
                     }
                 }
             }
@@ -3343,18 +3342,15 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
             std::string name = var->name.lexeme;
             auto argVarIt = exprSymbols->find(var);
             ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
-            if (argSym.isConst) {
-                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
-            }
-            else if (refParams.count(name)) {
+            if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName, argSym.isConst});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName, argSym.isConst});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -3372,9 +3368,9 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName, argSym.isConst});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName, argSym.isConst});
                     }
                 }
             }
@@ -4260,18 +4256,15 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
             std::string name = var->name.lexeme;
             auto argVarIt = exprSymbols->find(var);
             ResolvedSym argSym = argVarIt != exprSymbols->end() ? argVarIt->second : ResolvedSym{};
-            if (argSym.isConst) {
-                // ★ const 实参传给 ref 参数：安全降级为按值传递，保护不可变性
-            }
-            else if (refParams.count(name)) {
+            if (refParams.count(name)) {
                 ResolvedSym rs; rs.scope = VarScope::RefParam;
-                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName});
+                sig.refs.push_back({static_cast<uint8_t>(i), 4, name, -1, readVariable(name, rs), kwName, argSym.isConst});
             } else {
                 IRNode* localNode = getLocalNode(name);
                 if (localNode) {
                     capturedLocals.insert(name);
                     capturedNodesToExtend.push_back(localNode);
-                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName});
+                    sig.refs.push_back({static_cast<uint8_t>(i), 2, name, -1, localNode, kwName, argSym.isConst});
                 } else {
                     int upvalIdx = -1;
                     if (currentFunction) {
@@ -4289,9 +4282,9 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                     }
                     
                     if (upvalIdx != -1) {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 3, name, upvalIdx, nullptr, kwName, argSym.isConst});
                     } else {
-                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName});
+                        sig.refs.push_back({static_cast<uint8_t>(i), 1, name, -1, nullptr, kwName, argSym.isConst});
                     }
                 }
             }

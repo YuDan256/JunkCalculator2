@@ -310,6 +310,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                             ArgSource src;
                             src.argIndex = ref.argIndex;
                             src.sourceType = ref.sourceType;
+                            src.isConst = ref.isConst;
                             if (ref.sourceType == 1) {
                                 src.sourceRef = chunk.addConstant(Value(ref.name));
                             } else if (ref.sourceType == 2) {

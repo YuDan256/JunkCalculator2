@@ -36,6 +36,9 @@ public:
 
     void resolve(Expr* expr);
 
+    // ★ REPL 增量编译：注入运行时已知的 const 全局名（跨语句的 const 声明）
+    void setKnownConstGlobals(const std::unordered_set<std::string>* s) { knownConstGlobals = s; }
+
     // --- ExprVisitor 接口 ---
     void visitBinary(Binary* expr) override;
     void visitUnary(Unary* expr) override;
@@ -99,6 +102,8 @@ public:
     void visitTypeAssertExpr(TypeAssertExpr* expr) override;
 
 private:
+    const std::unordered_set<std::string>* knownConstGlobals = nullptr;
+
     struct Scope {
         std::unordered_map<std::string, ResolvedSym> symbols;
         std::unordered_set<std::string> lexicalDecls;

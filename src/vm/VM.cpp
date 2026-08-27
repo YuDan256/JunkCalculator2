@@ -514,11 +514,18 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     for (int i = 0; i < fn->maxArity; ++i) {
         if (i < static_cast<int>(fn->paramIsRef.size()) && fn->paramIsRef[i]) {
             ObjUpVal* providedRef = nullptr;
+            bool providedIsConst = false;
             for (auto& pr : pendingCallRefs) {
-                if (pr.first == i) {
-                    providedRef = pr.second;
+                if (pr.argIndex == i) {
+                    providedRef = pr.upval;
+                    providedIsConst = pr.isConst;
                     break;
                 }
+            }
+            bool isConstRefParam = i < static_cast<int>(fn->paramIsConst.size()) && fn->paramIsConst[i];
+            if (providedIsConst && !isConstRefParam) {
+                std::string paramName = i < static_cast<int>(fn->paramNames.size()) ? fn->paramNames[i] : "?";
+                throw std::runtime_error("Runtime Error: Cannot pass const variable to ref parameter '" + paramName + "'.");
             }
             if (providedRef) {
                 registers[newFrame.refParamsBase + refIdx] = Value(providedRef);
@@ -819,7 +826,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int posArgc = argc - 2 * kwArgc;
             
             if (closure->isUFCS) {
-                for (auto& pr : pendingCallRefs) pr.first += 1;
+                for (auto& pr : pendingCallRefs) pr.argIndex += 1;
             }
 
             int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
@@ -1883,7 +1890,7 @@ invoke_method:
             registers[currentFrame->registerBase + a + 1] = obj;
             registers[currentFrame->registerBase + a] = fallbackVal;
             for (auto& pr : pendingCallRefs) {
-                pr.first += 1;
+                pr.argIndex += 1;
             }
             execCall(a, argc + 1, kwArgc, a, isTailCall);
             return;
@@ -1914,7 +1921,7 @@ invoke_method:
                 registers[currentFrame->registerBase + a + 1] = obj;
                 registers[currentFrame->registerBase + a] = globals[ic.cachedGlobalSlot];
                 for (auto& pr : pendingCallRefs) {
-                    pr.first += 1;
+                    pr.argIndex += 1;
                 }
                 execCall(a, argc + 1, kwArgc, a, isTailCall);
                 return;
@@ -1929,7 +1936,7 @@ invoke_method:
                 registers[currentFrame->registerBase + a + 1] = obj;
                 registers[currentFrame->registerBase + a] = globals[gIt->second];
                 for (auto& pr : pendingCallRefs) {
-                    pr.first += 1;
+                    pr.argIndex += 1;
                 }
                 execCall(a, argc + 1, kwArgc, a, isTailCall);
                 return;
@@ -1946,7 +1953,7 @@ invoke_method:
                 registers[currentFrame->registerBase + a + 1] = obj;
                 registers[currentFrame->registerBase + a] = closureVal;
                 for (auto& pr : pendingCallRefs) {
-                    pr.first += 1;
+                    pr.argIndex += 1;
                 }
                 execCall(a, argc + 1, kwArgc, a, isTailCall);
                 return;
@@ -3174,7 +3181,7 @@ VM::VM() {
         }
         
         for (auto& pr : pendingCallRefs) {
-            GcHeap::get().markObj(pr.second);
+            GcHeap::get().markObj(pr.upval);
         }
         
         for (auto* closure : deferStack) {
@@ -4504,7 +4511,7 @@ Value VM::run(int targetFrameDepth) {
                             break;
                         }
                     }
-                    if (upval) pendingCallRefs.push_back({ argIndex, upval });
+                    if (upval) pendingCallRefs.push_back({ argIndex, upval, ref.isConst });
                 }
                 break;
             }

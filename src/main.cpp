@@ -154,6 +154,7 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     size_t currentFnsSize = fns.size();
     
     jc::Resolver resolver;
+    resolver.setKnownConstGlobals(&vm.getConstGlobals());
     resolver.resolve(ast.get());
 
     jc::IRGraph graph;

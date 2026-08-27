@@ -118,6 +118,9 @@ namespace jc {
                         } while (match({ TokenType::COMMA }));
                     }
                     while (match({ TokenType::NEWLINE })) {}
+                    if (check(TokenType::SEMICOLON)) {
+                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
+                    }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after method arguments.");
 
                     bool isPartial = false;
@@ -862,6 +865,9 @@ namespace jc {
                         } while (match({ TokenType::COMMA }));
                     }
                     while (match({ TokenType::NEWLINE })) {}
+                    if (check(TokenType::SEMICOLON)) {
+                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
+                    }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after method arguments.");
 
                     // ★ 魔法糖 2：对象方法的自动柯里化
@@ -921,6 +927,9 @@ namespace jc {
                     } while (match({ TokenType::COMMA }));
                 }
                 while (match({ TokenType::NEWLINE })) {}
+                if (check(TokenType::SEMICOLON)) {
+                    throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
+                }
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after arguments.");
 
                 // ★ 魔法糖 1：普通函数的自动柯里化
@@ -1730,6 +1739,9 @@ namespace jc {
                                 args.push_back(assignment());
                             }
                         } while (match({ TokenType::COMMA }));
+                    }
+                    if (check(TokenType::SEMICOLON)) {
+                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
                 }

@@ -4,25 +4,25 @@
 
 static jc2::Class* g_tensorClass = nullptr;
 
-static std::shared_ptr<jc::Tensor> getTensor(const jc2::Value& val) {
+static jc::Tensor* getTensor(const jc2::Value& val) {
     if (!val.is_instance()) jc2::throw_error("TypeError: Expected a Tensor instance.");
-    auto ptr = val.get_native_data<std::shared_ptr<jc::Tensor>>();
+    auto ptr = val.get_native_data<jc::Tensor>();
     if (!ptr) jc2::throw_error("TypeError: Instance is not a Tensor.");
-    return *ptr;
+    return ptr;
 }
 
 static jc2::Value wrapTensor(const jc::Tensor& t) {
     jc2::Instance inst(*g_tensorClass);
-    auto data = new std::shared_ptr<jc::Tensor>(std::make_shared<jc::Tensor>(t));
+    auto data = new jc::Tensor(t);
     inst.set_native_data(data, [](void* ptr) {
-        delete static_cast<std::shared_ptr<jc::Tensor>*>(ptr);
+        delete static_cast<jc::Tensor*>(ptr);
     });
     return inst;
 }
 
 static bool isTensor(const jc2::Value& val) {
     if (!val.is_instance()) return false;
-    return val.get_native_data<std::shared_ptr<jc::Tensor>>() != nullptr;
+    return val.get_native_data<jc::Tensor>() != nullptr;
 }
 
 static std::vector<int> listToShape(const jc2::Value& val) {
@@ -232,11 +232,11 @@ METHOD(tanh) { GET_SELF; return wrapTensor(jc::tensor_tanh(*t1)).get_handle(); }
 METHOD(softmax) { GET_SELF; return wrapTensor(jc::tensor_softmax(*t1, -1)).get_handle(); }
 METHOD(matmul) { GET_SELF; return wrapTensor(jc::tensor_matmul(*t1, *getTensor(jc2::Value(argv[1])))).get_handle(); }
 METHOD(backward) { GET_SELF; t1->backward(); return jc2::Value().get_handle(); }
-METHOD(grad) { GET_SELF; if (!t1->grad) return jc2::Value().get_handle(); return wrapTensor(*t1->grad).get_handle(); }
-METHOD(requires_grad) { GET_SELF; return jc2::Value(t1->requires_grad ? true : false).get_handle(); }
+METHOD(grad) { GET_SELF; if (!t1->impl->grad) return jc2::Value().get_handle(); return wrapTensor(*t1->impl->grad).get_handle(); }
+METHOD(requires_grad) { GET_SELF; return jc2::Value(t1->impl->requires_grad ? true : false).get_handle(); }
 METHOD(detach) {
     GET_SELF; jc::Tensor t = t1->clone();
-    t.requires_grad = false; t.grad_fn = nullptr; t.grad = nullptr; t.is_leaf = true;
+    t.impl->requires_grad = false; t.impl->grad_fn = nullptr; t.impl->grad = nullptr; t.impl->is_leaf = true;
     return wrapTensor(t).get_handle();
 }
 METHOD(zero_grad) { GET_SELF; jc::tensor_zero_grad(*t1); return argv[0]; }

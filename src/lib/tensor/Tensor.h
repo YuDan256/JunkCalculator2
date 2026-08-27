@@ -94,49 +94,12 @@ namespace jc {
         virtual void apply() = 0;
     };
 
-    template <typename T>
-    class SharedValue {
-    public:
-        SharedValue() : value_(std::make_shared<T>()) {}
-        explicit SharedValue(T value) : value_(std::make_shared<T>(std::move(value))) {}
-
-        SharedValue& operator=(T value) {
-            *value_ = std::move(value);
-            return *this;
-        }
-
-        operator const T&() const { return *value_; }
-        operator T&() { return *value_; }
-
-    private:
-        std::shared_ptr<T> value_;
-    };
-
-    template <typename T>
-    class SharedValue<std::shared_ptr<T>> {
-    public:
-        SharedValue() : value_(std::make_shared<std::shared_ptr<T>>()) {}
-        explicit SharedValue(std::shared_ptr<T> value)
-            : value_(std::make_shared<std::shared_ptr<T>>(std::move(value))) {}
-
-        SharedValue& operator=(std::shared_ptr<T> value) {
-            *value_ = std::move(value);
-            return *this;
-        }
-
-        SharedValue& operator=(std::nullptr_t) {
-            value_->reset();
-            return *this;
-        }
-
-        explicit operator bool() const { return static_cast<bool>(*value_); }
-
-        T& operator*() const { return **value_; }
-        T* operator->() const { return value_->get(); }
-        std::shared_ptr<T> get() const { return *value_; }
-
-    private:
-        std::shared_ptr<std::shared_ptr<T>> value_;
+    struct TensorImpl {
+        std::shared_ptr<TensorStorageBase> storage;
+        bool requires_grad = false;
+        bool is_leaf = true;
+        std::shared_ptr<Tensor> grad;
+        std::shared_ptr<BackwardNode> grad_fn;
     };
 
     // ========================================================================
@@ -169,30 +132,25 @@ namespace jc {
     // ========================================================================
     class Tensor {
     public:
-        std::shared_ptr<TensorStorageBase> storage;
+        std::shared_ptr<TensorImpl> impl;
         size_t offset = 0;
         std::vector<int> shape;
         std::vector<int> strides;
-
-        // Autograd 字段
-        SharedValue<bool> requires_grad = SharedValue<bool>(false);
-        SharedValue<bool> is_leaf = SharedValue<bool>(true);
-        SharedValue<std::shared_ptr<Tensor>> grad;
-        SharedValue<std::shared_ptr<BackwardNode>> grad_fn;
 
         Tensor() = default;
 
         // 基础构造函数：创建全零张量
         Tensor(std::vector<int> s, DType type = DType::Float64, bool req_grad = false)
             : shape(std::move(s)) {
-            requires_grad = req_grad;
             strides = calcStrides(shape);
             size_t total_elements = numel();
+            impl = std::make_shared<TensorImpl>();
+            impl->requires_grad = req_grad;
             switch (type) {
-                case DType::Float64: storage = std::make_shared<TensorStorage<double>>(total_elements); break;
-                case DType::Float32: storage = std::make_shared<TensorStorage<float>>(total_elements); break;
-                case DType::Int32:   storage = std::make_shared<TensorStorage<int32_t>>(total_elements); break;
-                case DType::Int64:   storage = std::make_shared<TensorStorage<int64_t>>(total_elements); break;
+                case DType::Float64: impl->storage = std::make_shared<TensorStorage<double>>(total_elements); break;
+                case DType::Float32: impl->storage = std::make_shared<TensorStorage<float>>(total_elements); break;
+                case DType::Int32:   impl->storage = std::make_shared<TensorStorage<int32_t>>(total_elements); break;
+                case DType::Int64:   impl->storage = std::make_shared<TensorStorage<int64_t>>(total_elements); break;
             }
         }
 
@@ -200,7 +158,7 @@ namespace jc {
 
         size_t numel() const { return shapeToNumel(shape); }
 
-        DType dtype() const { return storage ? storage->dtype() : DType::Float64; }
+        DType dtype() const { return (impl && impl->storage) ? impl->storage->dtype() : DType::Float64; }
 
         bool is_contiguous() const {
             auto expected = calcStrides(shape);
@@ -240,21 +198,21 @@ namespace jc {
         }
 
         double getByAbsIdx(size_t idx) const {
-            switch (storage->dtype()) {
-                case DType::Float64: return static_cast<const double*>(storage->data_ptr())[idx];
-                case DType::Float32: return static_cast<double>(static_cast<const float*>(storage->data_ptr())[idx]);
-                case DType::Int32:   return static_cast<double>(static_cast<const int32_t*>(storage->data_ptr())[idx]);
-                case DType::Int64:   return static_cast<double>(static_cast<const int64_t*>(storage->data_ptr())[idx]);
+            switch (impl->storage->dtype()) {
+                case DType::Float64: return static_cast<const double*>(impl->storage->data_ptr())[idx];
+                case DType::Float32: return static_cast<double>(static_cast<const float*>(impl->storage->data_ptr())[idx]);
+                case DType::Int32:   return static_cast<double>(static_cast<const int32_t*>(impl->storage->data_ptr())[idx]);
+                case DType::Int64:   return static_cast<double>(static_cast<const int64_t*>(impl->storage->data_ptr())[idx]);
             }
             return 0.0;
         }
 
         void setByAbsIdx(size_t idx, double val) {
-            switch (storage->dtype()) {
-                case DType::Float64: static_cast<double*>(storage->data_ptr())[idx] = val; break;
-                case DType::Float32: static_cast<float*>(storage->data_ptr())[idx] = static_cast<float>(val); break;
-                case DType::Int32:   static_cast<int32_t*>(storage->data_ptr())[idx] = static_cast<int32_t>(val); break;
-                case DType::Int64:   static_cast<int64_t*>(storage->data_ptr())[idx] = static_cast<int64_t>(val); break;
+            switch (impl->storage->dtype()) {
+                case DType::Float64: static_cast<double*>(impl->storage->data_ptr())[idx] = val; break;
+                case DType::Float32: static_cast<float*>(impl->storage->data_ptr())[idx] = static_cast<float>(val); break;
+                case DType::Int32:   static_cast<int32_t*>(impl->storage->data_ptr())[idx] = static_cast<int32_t>(val); break;
+                case DType::Int64:   static_cast<int64_t*>(impl->storage->data_ptr())[idx] = static_cast<int64_t>(val); break;
             }
         }
 
@@ -270,18 +228,18 @@ namespace jc {
         // 深拷贝（解耦存储）
         // ====================================================================
         Tensor clone() const {
-            Tensor t(shape, dtype(), requires_grad);
+            Tensor t(shape, dtype(), impl->requires_grad);
             size_t n = numel();
             for (size_t i = 0; i < n; ++i) t.setFlat(i, getFlat(i));
-            t.is_leaf = true;
+            t.impl->is_leaf = true;
             return t;
         }
 
         Tensor to(DType target_dtype) const {
-            Tensor t(shape, target_dtype, requires_grad);
+            Tensor t(shape, target_dtype, impl->requires_grad);
             size_t n = numel();
             for (size_t i = 0; i < n; ++i) t.setFlat(i, getFlat(i));
-            t.is_leaf = true;
+            t.impl->is_leaf = true;
             return t;
         }
 
@@ -342,17 +300,25 @@ namespace jc {
         // ====================================================================
         // 零拷贝视图 (Zero-copy View)
         // ====================================================================
+        Tensor make_view() const {
+            Tensor t;
+            t.impl = std::make_shared<TensorImpl>();
+            t.impl->storage = impl->storage;
+            t.impl->requires_grad = impl->requires_grad;
+            t.impl->is_leaf = false;
+            t.offset = offset;
+            t.shape = shape;
+            t.strides = strides;
+            return t;
+        }
+
         Tensor view(const std::vector<int>& new_shape) const {
             if (!is_contiguous()) throw std::runtime_error("Tensor Error: view() requires a contiguous tensor.");
             size_t new_numel = shapeToNumel(new_shape);
             if (new_numel != numel()) throw std::runtime_error("Tensor Error: Shape mismatch in view().");
-            Tensor t;
-            t.storage = storage;
-            t.offset = offset;
+            Tensor t = make_view();
             t.shape = new_shape;
             t.strides = calcStrides(new_shape);
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
             return t;
         }
 
@@ -362,13 +328,7 @@ namespace jc {
         Tensor transpose(int dim0, int dim1) const {
             if (dim0 < 0 || dim0 >= dim() || dim1 < 0 || dim1 >= dim())
                 throw std::runtime_error("Tensor Error: transpose dimension out of range.");
-            Tensor t;
-            t.storage = storage;
-            t.offset = offset;
-            t.shape = shape;
-            t.strides = strides;
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
+            Tensor t = make_view();
             std::swap(t.shape[dim0], t.shape[dim1]);
             std::swap(t.strides[dim0], t.strides[dim1]);
             return t;
@@ -411,15 +371,10 @@ namespace jc {
                 if (en < st) count = (st - en - step - 1) / (-step);
             }
 
-            Tensor t;
-            t.storage = storage;
+            Tensor t = make_view();
             t.offset = offset + st * strides[dimension];
-            t.shape = shape;
-            t.strides = strides;
             t.shape[dimension] = count;
             t.strides[dimension] *= step;
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
             return t;
         }
 
@@ -429,17 +384,16 @@ namespace jc {
             if (index < 0) index += shape[dimension];
             if (index < 0 || index >= shape[dimension])
                 throw std::runtime_error("Tensor Error: select index out of range.");
-            Tensor t;
-            t.storage = storage;
+            Tensor t = make_view();
             t.offset = offset + index * strides[dimension];
+            t.shape.clear();
+            t.strides.clear();
             for (int i = 0; i < dim(); ++i) {
                 if (i != dimension) {
                     t.shape.push_back(shape[i]);
                     t.strides.push_back(strides[i]);
                 }
             }
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
             return t;
         }
 
@@ -450,25 +404,17 @@ namespace jc {
             if (dimension < 0) dimension += dim() + 1;
             if (dimension < 0 || dimension > dim())
                 throw std::runtime_error("Tensor Error: unsqueeze dimension out of range.");
-            Tensor t;
-            t.storage = storage;
-            t.offset = offset;
-            t.shape = shape;
-            t.strides = strides;
+            Tensor t = make_view();
             t.shape.insert(t.shape.begin() + dimension, 1);
             int stride_val = (dimension < static_cast<int>(strides.size())) ? strides[dimension] : 1;
             t.strides.insert(t.strides.begin() + dimension, stride_val);
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
             return t;
         }
 
         Tensor squeeze(int dimension = -1) const {
-            Tensor t;
-            t.storage = storage;
-            t.offset = offset;
-            t.requires_grad = requires_grad;
-            t.is_leaf = false;
+            Tensor t = make_view();
+            t.shape.clear();
+            t.strides.clear();
             if (dimension >= 0) {
                 if (dimension >= dim()) throw std::runtime_error("Tensor Error: squeeze dimension out of range.");
                 if (shape[dimension] == 1) {
@@ -498,24 +444,24 @@ namespace jc {
         // 触发反向传播
         // ====================================================================
         void backward() {
-            if (!requires_grad) throw std::runtime_error("Tensor Error: Tensor does not require grad.");
-            if (!grad) {
-                grad = std::make_shared<Tensor>(shape, dtype(), false);
-                grad->fill_(1.0);
+            if (!impl->requires_grad) throw std::runtime_error("Tensor Error: Tensor does not require grad.");
+            if (!impl->grad) {
+                impl->grad = std::make_shared<Tensor>(shape, dtype(), false);
+                impl->grad->fill_(1.0);
             }
             // 拓扑排序（反向 BFS）
             std::vector<Tensor*> topo;
             std::unordered_set<BackwardNode*> visited;
             std::function<void(Tensor*)> build_topo = [&](Tensor* t) {
-                if (!t->grad_fn) return;
-                if (visited.count(t->grad_fn.get().get())) return;
-                visited.insert(t->grad_fn.get().get());
+                if (!t->impl->grad_fn) return;
+                if (visited.count(t->impl->grad_fn.get())) return;
+                visited.insert(t->impl->grad_fn.get());
                 topo.push_back(t);
             };
             build_topo(this);
             // 简化版：逐节点反向传播
             for (auto* t : topo) {
-                if (t->grad_fn) t->grad_fn->apply();
+                if (t->impl->grad_fn) t->impl->grad_fn->apply();
             }
         }
 
@@ -532,7 +478,7 @@ namespace jc {
                 if (i + 1 < shape.size()) oss << ", ";
             }
             oss << "], dtype=" << dtypeToString(dtype());
-            if (static_cast<bool>(requires_grad)) oss << ", requires_grad=true";
+            if (impl && impl->requires_grad) oss << ", requires_grad=true";
             oss << ")";
             return oss.str();
         }
@@ -562,6 +508,26 @@ namespace jc {
     // ========================================================================
     // 6. Autograd 节点 (Backward Nodes)
     // ========================================================================
+
+    class WeakTensor {
+    public:
+        std::weak_ptr<TensorImpl> impl;
+        size_t offset = 0;
+        std::vector<int> shape;
+        std::vector<int> strides;
+
+        WeakTensor() = default;
+        WeakTensor(const Tensor& t) : impl(t.impl), offset(t.offset), shape(t.shape), strides(t.strides) {}
+
+        Tensor lock() const {
+            Tensor t;
+            t.impl = impl.lock();
+            t.offset = offset;
+            t.shape = shape;
+            t.strides = strides;
+            return t;
+        }
+    };
 
     // ---- 辅助：将梯度从 broadcast 形状 reduce 回原始形状 ----
     inline Tensor reduce_grad_for_broadcast(const Tensor& grad_out, const std::vector<int>& orig_shape) {
@@ -667,349 +633,382 @@ namespace jc {
 
     // ---- AddBackward ----
     struct AddBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, b, out;
-        AddBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+        Tensor a, b;
+        WeakTensor out;
+        AddBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
 
         void apply() override {
-            if (!out->grad) return;
-            if (a->requires_grad) {
-                Tensor g = reduce_grad_for_broadcast(*out->grad, a->shape);
-                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-                tensor_accumulate_grad(*a->grad, g);
-                if (a->grad_fn) a->grad_fn->apply();
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad) return;
+            if (a.impl->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, a.shape);
+                if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+                tensor_accumulate_grad(*a.impl->grad, g);
+                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
-            if (b->requires_grad) {
-                Tensor g = reduce_grad_for_broadcast(*out->grad, b->shape);
-                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
-                tensor_accumulate_grad(*b->grad, g);
-                if (b->grad_fn) b->grad_fn->apply();
+            if (b.impl->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, b.shape);
+                if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
+                tensor_accumulate_grad(*b.impl->grad, g);
+                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
 
     // ---- SubBackward ----
     struct SubBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, b, out;
-        SubBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+        Tensor a, b;
+        WeakTensor out;
+        SubBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
 
         void apply() override {
-            if (!out->grad) return;
-            if (a->requires_grad) {
-                Tensor g = reduce_grad_for_broadcast(*out->grad, a->shape);
-                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-                tensor_accumulate_grad(*a->grad, g);
-                if (a->grad_fn) a->grad_fn->apply();
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad) return;
+            if (a.impl->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, a.shape);
+                if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+                tensor_accumulate_grad(*a.impl->grad, g);
+                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
-            if (b->requires_grad) {
-                Tensor g = reduce_grad_for_broadcast(*out->grad, b->shape);
+            if (b.impl->requires_grad) {
+                Tensor g = reduce_grad_for_broadcast(*out_locked.impl->grad, b.shape);
                 // negate
                 Tensor neg_g(g.shape, g.dtype(), false);
                 for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -g.getFlat(i));
-                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
-                tensor_accumulate_grad(*b->grad, neg_g);
-                if (b->grad_fn) b->grad_fn->apply();
+                if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
+                tensor_accumulate_grad(*b.impl->grad, neg_g);
+                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
 
     // ---- MulBackward (element-wise) ----
     struct MulBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, b, out;
-        MulBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+        Tensor a, b;
+        WeakTensor out;
+        MulBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
 
         void apply() override {
-            if (!out->grad) return;
-            if (a->requires_grad) {
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad) return;
+            if (a.impl->requires_grad) {
                 // da = grad_out * b
-                Tensor da(out->grad->shape, out->grad->dtype(), false);
-                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                Tensor da(out_locked.impl->grad->shape, out_locked.impl->grad->dtype(), false);
+                auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out_locked.impl->grad->shape);
                 for (size_t i = 0; i < da.numel(); ++i) {
-                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
-                    da.setFlat(i, out->grad->getFlat(i) * b->getByAbsIdx(b->offset + idxB));
+                    size_t idxB = Tensor::getFlatIndex(i, out_locked.impl->grad->shape, stridesB);
+                    da.setFlat(i, out_locked.impl->grad->getFlat(i) * b.getByAbsIdx(b.offset + idxB));
                 }
-                Tensor g = reduce_grad_for_broadcast(da, a->shape);
-                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-                tensor_accumulate_grad(*a->grad, g);
-                if (a->grad_fn) a->grad_fn->apply();
+                Tensor g = reduce_grad_for_broadcast(da, a.shape);
+                if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+                tensor_accumulate_grad(*a.impl->grad, g);
+                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
-            if (b->requires_grad) {
+            if (b.impl->requires_grad) {
                 // db = grad_out * a
-                Tensor db(out->grad->shape, out->grad->dtype(), false);
-                auto stridesA = Tensor::broadcastStrides(a->shape, a->strides, out->grad->shape);
+                Tensor db(out_locked.impl->grad->shape, out_locked.impl->grad->dtype(), false);
+                auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out_locked.impl->grad->shape);
                 for (size_t i = 0; i < db.numel(); ++i) {
-                    size_t idxA = Tensor::getFlatIndex(i, out->grad->shape, stridesA);
-                    db.setFlat(i, out->grad->getFlat(i) * a->getByAbsIdx(a->offset + idxA));
+                    size_t idxA = Tensor::getFlatIndex(i, out_locked.impl->grad->shape, stridesA);
+                    db.setFlat(i, out_locked.impl->grad->getFlat(i) * a.getByAbsIdx(a.offset + idxA));
                 }
-                Tensor g = reduce_grad_for_broadcast(db, b->shape);
-                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
-                tensor_accumulate_grad(*b->grad, g);
-                if (b->grad_fn) b->grad_fn->apply();
+                Tensor g = reduce_grad_for_broadcast(db, b.shape);
+                if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
+                tensor_accumulate_grad(*b.impl->grad, g);
+                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
 
     // ---- DivBackward (element-wise a/b) ----
     struct DivBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, b, out;
-        DivBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+        Tensor a, b;
+        WeakTensor out;
+        DivBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
 
         void apply() override {
-            if (!out->grad) return;
-            if (a->requires_grad) {
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad) return;
+            if (a.impl->requires_grad) {
                 // da = grad / b
-                Tensor da(out->grad->shape, out->grad->dtype(), false);
-                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                Tensor da(out_locked.impl->grad->shape, out_locked.impl->grad->dtype(), false);
+                auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out_locked.impl->grad->shape);
                 for (size_t i = 0; i < da.numel(); ++i) {
-                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
-                    da.setFlat(i, out->grad->getFlat(i) / b->getByAbsIdx(b->offset + idxB));
+                    size_t idxB = Tensor::getFlatIndex(i, out_locked.impl->grad->shape, stridesB);
+                    da.setFlat(i, out_locked.impl->grad->getFlat(i) / b.getByAbsIdx(b.offset + idxB));
                 }
-                Tensor g = reduce_grad_for_broadcast(da, a->shape);
-                if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-                tensor_accumulate_grad(*a->grad, g);
-                if (a->grad_fn) a->grad_fn->apply();
+                Tensor g = reduce_grad_for_broadcast(da, a.shape);
+                if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+                tensor_accumulate_grad(*a.impl->grad, g);
+                if (a.impl->grad_fn) a.impl->grad_fn->apply();
             }
-            if (b->requires_grad) {
+            if (b.impl->requires_grad) {
                 // db = -grad * a / b^2
-                Tensor db(out->grad->shape, out->grad->dtype(), false);
-                auto stridesA = Tensor::broadcastStrides(a->shape, a->strides, out->grad->shape);
-                auto stridesB = Tensor::broadcastStrides(b->shape, b->strides, out->grad->shape);
+                Tensor db(out_locked.impl->grad->shape, out_locked.impl->grad->dtype(), false);
+                auto stridesA = Tensor::broadcastStrides(a.shape, a.strides, out_locked.impl->grad->shape);
+                auto stridesB = Tensor::broadcastStrides(b.shape, b.strides, out_locked.impl->grad->shape);
                 for (size_t i = 0; i < db.numel(); ++i) {
-                    size_t idxA = Tensor::getFlatIndex(i, out->grad->shape, stridesA);
-                    size_t idxB = Tensor::getFlatIndex(i, out->grad->shape, stridesB);
-                    double bv = b->getByAbsIdx(b->offset + idxB);
-                    double av = a->getByAbsIdx(a->offset + idxA);
-                    db.setFlat(i, -out->grad->getFlat(i) * av / (bv * bv));
+                    size_t idxA = Tensor::getFlatIndex(i, out_locked.impl->grad->shape, stridesA);
+                    size_t idxB = Tensor::getFlatIndex(i, out_locked.impl->grad->shape, stridesB);
+                    double bv = b.getByAbsIdx(b.offset + idxB);
+                    double av = a.getByAbsIdx(a.offset + idxA);
+                    db.setFlat(i, -out_locked.impl->grad->getFlat(i) * av / (bv * bv));
                 }
-                Tensor g = reduce_grad_for_broadcast(db, b->shape);
-                if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
-                tensor_accumulate_grad(*b->grad, g);
-                if (b->grad_fn) b->grad_fn->apply();
+                Tensor g = reduce_grad_for_broadcast(db, b.shape);
+                if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
+                tensor_accumulate_grad(*b.impl->grad, g);
+                if (b.impl->grad_fn) b.impl->grad_fn->apply();
             }
         }
     };
 
     // ---- NegBackward ----
     struct NegBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        NegBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        NegBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor neg_g(out->grad->shape, out->grad->dtype(), false);
-            for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -out->grad->getFlat(i));
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, neg_g);
-            if (a->grad_fn) a->grad_fn->apply();
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor neg_g(out_locked.impl->grad->shape, out_locked.impl->grad->dtype(), false);
+            for (size_t i = 0; i < neg_g.numel(); ++i) neg_g.setFlat(i, -out_locked.impl->grad->getFlat(i));
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, neg_g);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
-    // ---- PowBackward (element-wise a^exponent, exponent is scalar) ----
+    // ---- PowScalarBackward (element-wise a^exponent, exponent is scalar) ----
     struct PowScalarBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
+        Tensor a;
+        WeakTensor out;
         double exponent;
-        PowScalarBackward(std::shared_ptr<Tensor> a, double exp, std::shared_ptr<Tensor> out)
+        PowScalarBackward(Tensor a, double exp, Tensor out)
             : a(std::move(a)), out(std::move(out)), exponent(exp) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                da.setFlat(i, out->grad->getFlat(i) * exponent * std::pow(a->getFlat(i), exponent - 1.0));
+                da.setFlat(i, out_locked.impl->grad->getFlat(i) * exponent * std::pow(a.getFlat(i), exponent - 1.0));
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- ExpBackward ----
     struct ExpBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        ExpBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        ExpBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                da.setFlat(i, out->grad->getFlat(i) * out->getFlat(i)); // d(exp(x))/dx = exp(x)
+                da.setFlat(i, out_locked.impl->grad->getFlat(i) * out_locked.getFlat(i)); // d(exp(x))/dx = exp(x)
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- LogBackward ----
     struct LogBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        LogBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        LogBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                da.setFlat(i, out->grad->getFlat(i) / a->getFlat(i));
+                da.setFlat(i, out_locked.impl->grad->getFlat(i) / a.getFlat(i));
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- SumBackward ----
     struct SumBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        SumBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        SumBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            double g = out->grad->getFlat(0); // scalar grad
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            double g = out_locked.impl->grad->getFlat(0); // scalar grad
+            Tensor da(a.shape, a.dtype(), false);
             da.fill_(g);
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- MeanBackward ----
     struct MeanBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        MeanBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        MeanBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            double g = out->grad->getFlat(0) / static_cast<double>(a->numel());
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            double g = out_locked.impl->grad->getFlat(0) / static_cast<double>(a.numel());
+            Tensor da(a.shape, a.dtype(), false);
             da.fill_(g);
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- SumAxisBackward（沿 axis 规约，梯度广播回 axis 维）----
     struct SumAxisBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
+        Tensor a;
+        WeakTensor out;
         int axis;
-        SumAxisBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out, int axis)
+        SumAxisBackward(Tensor a, Tensor out, int axis)
             : a(std::move(a)), out(std::move(out)), axis(axis) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
-            int axis_size = a->shape[axis];
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
+            int axis_size = a.shape[axis];
             size_t outer = 1, inner = 1;
-            for (int d = 0; d < axis; ++d) outer *= a->shape[d];
-            for (int d = axis + 1; d < a->dim(); ++d) inner *= a->shape[d];
+            for (int d = 0; d < axis; ++d) outer *= a.shape[d];
+            for (int d = axis + 1; d < a.dim(); ++d) inner *= a.shape[d];
             for (size_t o = 0; o < outer; ++o) {
                 for (size_t in = 0; in < inner; ++in) {
-                    double g = out->grad->getFlat(o * inner + in);
+                    double g = out_locked.impl->grad->getFlat(o * inner + in);
                     for (int k = 0; k < axis_size; ++k) da.setFlat((o * axis_size + k) * inner + in, g);
                 }
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- MeanAxisBackward ----
     struct MeanAxisBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
+        Tensor a;
+        WeakTensor out;
         int axis;
-        MeanAxisBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out, int axis)
+        MeanAxisBackward(Tensor a, Tensor out, int axis)
             : a(std::move(a)), out(std::move(out)), axis(axis) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
-            int axis_size = a->shape[axis];
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
+            int axis_size = a.shape[axis];
             size_t outer = 1, inner = 1;
-            for (int d = 0; d < axis; ++d) outer *= a->shape[d];
-            for (int d = axis + 1; d < a->dim(); ++d) inner *= a->shape[d];
+            for (int d = 0; d < axis; ++d) outer *= a.shape[d];
+            for (int d = axis + 1; d < a.dim(); ++d) inner *= a.shape[d];
             for (size_t o = 0; o < outer; ++o) {
                 for (size_t in = 0; in < inner; ++in) {
-                    double g = out->grad->getFlat(o * inner + in) / static_cast<double>(axis_size);
+                    double g = out_locked.impl->grad->getFlat(o * inner + in) / static_cast<double>(axis_size);
                     for (int k = 0; k < axis_size; ++k) da.setFlat((o * axis_size + k) * inner + in, g);
                 }
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- ClampBackward（梯度仅在 [min, max] 区间内传播）----
     struct ClampBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
+        Tensor a;
+        WeakTensor out;
         double min_val, max_val;
-        ClampBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out, double min_val, double max_val)
+        ClampBackward(Tensor a, Tensor out, double min_val, double max_val)
             : a(std::move(a)), out(std::move(out)), min_val(min_val), max_val(max_val) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                double x = a->getFlat(i);
-                da.setFlat(i, (x >= min_val && x <= max_val) ? out->grad->getFlat(i) : 0.0);
+                double x = a.getFlat(i);
+                da.setFlat(i, (x >= min_val && x <= max_val) ? out_locked.impl->grad->getFlat(i) : 0.0);
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- MatMulBackward ----
     struct MatMulBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, b, out;
-        MatMulBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> b, std::shared_ptr<Tensor> out)
+        Tensor a, b;
+        WeakTensor out;
+        MatMulBackward(Tensor a, Tensor b, Tensor out)
             : a(std::move(a)), b(std::move(b)), out(std::move(out)) {}
         void apply() override;  // 定义在 matmul 之后
     };
 
     // ---- ReluBackward ----
     struct ReluBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        ReluBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        ReluBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                da.setFlat(i, a->getFlat(i) > 0.0 ? out->grad->getFlat(i) : 0.0);
+                da.setFlat(i, a.getFlat(i) > 0.0 ? out_locked.impl->grad->getFlat(i) : 0.0);
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- SigmoidBackward ----
     struct SigmoidBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        SigmoidBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        SigmoidBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                double s = out->getFlat(i); // sigmoid value
-                da.setFlat(i, out->grad->getFlat(i) * s * (1.0 - s));
+                double s = out_locked.getFlat(i); // sigmoid value
+                da.setFlat(i, out_locked.impl->grad->getFlat(i) * s * (1.0 - s));
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
     // ---- TanhBackward ----
     struct TanhBackward : public BackwardNode {
-        std::shared_ptr<Tensor> a, out;
-        TanhBackward(std::shared_ptr<Tensor> a, std::shared_ptr<Tensor> out) : a(std::move(a)), out(std::move(out)) {}
+        Tensor a;
+        WeakTensor out;
+        TanhBackward(Tensor a, Tensor out) : a(std::move(a)), out(std::move(out)) {}
         void apply() override {
-            if (!out->grad || !a->requires_grad) return;
-            Tensor da(a->shape, a->dtype(), false);
+            Tensor out_locked = out.lock();
+            if (!out_locked.impl || !out_locked.impl->grad || !a.impl->requires_grad) return;
+            Tensor da(a.shape, a.dtype(), false);
             for (size_t i = 0; i < da.numel(); ++i) {
-                double t = out->getFlat(i);
-                da.setFlat(i, out->grad->getFlat(i) * (1.0 - t * t));
+                double t = out_locked.getFlat(i);
+                da.setFlat(i, out_locked.impl->grad->getFlat(i) * (1.0 - t * t));
             }
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
     };
 
@@ -1022,9 +1021,9 @@ namespace jc {
     // 二元逐元素：模板化 + dtype 分派
     template <typename T, typename Op>
     inline void apply_binary_impl(const Tensor& a, const Tensor& b, Tensor& out, Op op) {
-        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
-        const T* pb = static_cast<const T*>(b.storage->data_ptr()) + b.offset;
-        T* po = static_cast<T*>(out.storage->data_ptr());
+        const T* pa = static_cast<const T*>(a.impl->storage->data_ptr()) + a.offset;
+        const T* pb = static_cast<const T*>(b.impl->storage->data_ptr()) + b.offset;
+        T* po = static_cast<T*>(out.impl->storage->data_ptr());
         size_t total = out.numel();
 
         if (a.shape == b.shape && a.is_contiguous() && b.is_contiguous()) {
@@ -1066,8 +1065,8 @@ namespace jc {
     // 一元逐元素：模板化 + dtype 分派
     template <typename T, typename Op>
     inline void apply_unary_impl(const Tensor& a, Tensor& out, Op op) {
-        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
-        T* po = static_cast<T*>(out.storage->data_ptr());
+        const T* pa = static_cast<const T*>(a.impl->storage->data_ptr()) + a.offset;
+        T* po = static_cast<T*>(out.impl->storage->data_ptr());
         size_t total = out.numel();
         if (a.is_contiguous()) {
             for (size_t i = 0; i < total; ++i) po[i] = static_cast<T>(op(static_cast<double>(pa[i])));
@@ -1265,9 +1264,9 @@ namespace jc {
     // matmul：智能分派 (Strassen vs Cache Blocking)
     template <typename T>
     inline void matmul_impl(const Tensor& a, const Tensor& b, Tensor& out) {
-        const T* pa = static_cast<const T*>(a.storage->data_ptr()) + a.offset;
-        const T* pb = static_cast<const T*>(b.storage->data_ptr()) + b.offset;
-        T* po = static_cast<T*>(out.storage->data_ptr()) + out.offset;
+        const T* pa = static_cast<const T*>(a.impl->storage->data_ptr()) + a.offset;
+        const T* pb = static_cast<const T*>(b.impl->storage->data_ptr()) + b.offset;
+        T* po = static_cast<T*>(out.impl->storage->data_ptr()) + out.offset;
         int M = a.shape[0], K = a.shape[1], N = b.shape[1];
         int sa0 = a.strides[0], sa1 = a.strides[1];
         int sb0 = b.strides[0], sb1 = b.strides[1];
@@ -1353,88 +1352,72 @@ namespace jc {
 
         std::vector<int> out_shape = Tensor::broadcastShapes(a.shape, b.shape);
         Tensor out(out_shape, a.dtype(), req_grad);
-        out.is_leaf = false;
+        out.impl->is_leaf = false;
 
         dispatch_binary(a, b, out, op);
 
-        if (req_grad && grad_fn_node) out.grad_fn = grad_fn_node;
+        if (req_grad && grad_fn_node) out.impl->grad_fn = grad_fn_node;
         return out;
     }
 
     // ---- 加法 ----
     inline Tensor tensor_add(const Tensor& a, const Tensor& b) {
-        bool rg = a.requires_grad || b.requires_grad;
-        auto pa = std::make_shared<Tensor>(a);
-        auto pb = std::make_shared<Tensor>(b);
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x + y; }, rg);
         if (rg) {
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<AddBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<AddBackward>(a, b, out);
         }
         return out;
     }
 
     // ---- 减法 ----
     inline Tensor tensor_sub(const Tensor& a, const Tensor& b) {
-        bool rg = a.requires_grad || b.requires_grad;
-        auto pa = std::make_shared<Tensor>(a);
-        auto pb = std::make_shared<Tensor>(b);
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x - y; }, rg);
         if (rg) {
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<SubBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<SubBackward>(a, b, out);
         }
         return out;
     }
 
     // ---- 逐元素乘法 ----
     inline Tensor tensor_mul(const Tensor& a, const Tensor& b) {
-        bool rg = a.requires_grad || b.requires_grad;
-        auto pa = std::make_shared<Tensor>(a);
-        auto pb = std::make_shared<Tensor>(b);
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x * y; }, rg);
         if (rg) {
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<MulBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<MulBackward>(a, b, out);
         }
         return out;
     }
 
     // ---- 逐元素除法 ----
     inline Tensor tensor_div(const Tensor& a, const Tensor& b) {
-        bool rg = a.requires_grad || b.requires_grad;
-        auto pa = std::make_shared<Tensor>(a);
-        auto pb = std::make_shared<Tensor>(b);
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out = tensor_binary_op(a, b, [](double x, double y) { return x / y; }, rg);
         if (rg) {
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<DivBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<DivBackward>(a, b, out);
         }
         return out;
     }
 
     // ---- 取负 ----
     inline Tensor tensor_neg(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return -x; });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<NegBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<NegBackward>(a, out);
         }
         return out;
     }
 
     // ---- 逐元素乘方（标量指数）----
     inline Tensor tensor_pow_scalar(const Tensor& a, double exponent) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [exponent](double x) { return std::pow(x, exponent); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<PowScalarBackward>(pa, exponent, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<PowScalarBackward>(a, exponent, out);
         }
         return out;
     }
@@ -1474,9 +1457,9 @@ namespace jc {
         if (K != K2) throw std::runtime_error("Tensor Error: matmul shape mismatch (" +
             std::to_string(K) + " vs " + std::to_string(K2) + ").");
 
-        bool rg = a.requires_grad || b.requires_grad;
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out({M, N}, a.dtype(), rg);
-        out.is_leaf = false;
+        out.impl->is_leaf = false;
 
         switch (a.dtype()) {
             case DType::Float64: matmul_impl<double>(a, b, out); break;
@@ -1486,10 +1469,7 @@ namespace jc {
         }
 
         if (rg) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pb = std::make_shared<Tensor>(b);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<MatMulBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<MatMulBackward>(a, b, out);
         }
         return out;
     }
@@ -1508,9 +1488,9 @@ namespace jc {
         out_shape.push_back(m);
         out_shape.push_back(p);
 
-        bool rg = a.requires_grad || b.requires_grad;
+        bool rg = a.impl->requires_grad || b.impl->requires_grad;
         Tensor out(out_shape, a.dtype(), rg);
-        out.is_leaf = false;
+        out.impl->is_leaf = false;
 
         size_t num_batch = shapeToNumel(batchOut);
         for (size_t bi = 0; bi < num_batch; ++bi) {
@@ -1534,48 +1514,44 @@ namespace jc {
         }
 
         if (rg) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pb = std::make_shared<Tensor>(b);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<MatMulBackward>(pa, pb, pout);
+            out.impl->grad_fn = std::make_shared<MatMulBackward>(a, b, out);
         }
         return out;
     }
 
     // MatMulBackward::apply 实现
     inline void MatMulBackward::apply() {
-        if (!out->grad) return;
+        Tensor out_locked = out.lock();
+        if (!out_locked.impl || !out_locked.impl->grad) return;
         // C = A @ B → dA = dC @ B^T, dB = A^T @ dC
-        if (a->requires_grad) {
-            Tensor bT = b->T().contiguous();
-            Tensor da = tensor_matmul(*out->grad, bT);
-            da.requires_grad = false;
-            if (!a->grad) a->grad = std::make_shared<Tensor>(a->shape, a->dtype(), false);
-            tensor_accumulate_grad(*a->grad, da);
-            if (a->grad_fn) a->grad_fn->apply();
+        if (a.impl->requires_grad) {
+            Tensor bT = b.T().contiguous();
+            Tensor da = tensor_matmul(*out_locked.impl->grad, bT);
+            da.impl->requires_grad = false;
+            if (!a.impl->grad) a.impl->grad = std::make_shared<Tensor>(a.shape, a.dtype(), false);
+            tensor_accumulate_grad(*a.impl->grad, da);
+            if (a.impl->grad_fn) a.impl->grad_fn->apply();
         }
-        if (b->requires_grad) {
-            Tensor aT = a->T().contiguous();
-            Tensor db = tensor_matmul(aT, *out->grad);
-            db.requires_grad = false;
-            if (!b->grad) b->grad = std::make_shared<Tensor>(b->shape, b->dtype(), false);
-            tensor_accumulate_grad(*b->grad, db);
-            if (b->grad_fn) b->grad_fn->apply();
+        if (b.impl->requires_grad) {
+            Tensor aT = a.T().contiguous();
+            Tensor db = tensor_matmul(aT, *out_locked.impl->grad);
+            db.impl->requires_grad = false;
+            if (!b.impl->grad) b.impl->grad = std::make_shared<Tensor>(b.shape, b.dtype(), false);
+            tensor_accumulate_grad(*b.impl->grad, db);
+            if (b.impl->grad_fn) b.impl->grad_fn->apply();
         }
     }
 
     // ---- sum (全局规约) ----
     inline Tensor tensor_sum(const Tensor& a, int axis, bool keepdim) {
         if (axis < 0) {
-            Tensor out({1}, a.dtype(), a.requires_grad);
-            out.is_leaf = false;
+            Tensor out({1}, a.dtype(), a.impl->requires_grad);
+            out.impl->is_leaf = false;
             double s = 0.0;
             for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
             out.setFlat(0, s);
-            if (a.requires_grad) {
-                auto pa = std::make_shared<Tensor>(a);
-                auto pout = std::make_shared<Tensor>(out);
-                out.grad_fn = std::make_shared<SumBackward>(pa, pout);
+            if (a.impl->requires_grad) {
+                out.impl->grad_fn = std::make_shared<SumBackward>(a, out);
             }
             return out;
         }
@@ -1585,8 +1561,8 @@ namespace jc {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
             else out_shape.push_back(a.shape[d]);
         }
-        Tensor out(out_shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(out_shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         int axis_size = a.shape[axis];
         size_t outer = 1, inner = 1;
         for (int d = 0; d < axis; ++d) outer *= a.shape[d];
@@ -1598,10 +1574,8 @@ namespace jc {
                 out.setFlat(o * inner + in, s);
             }
         }
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<SumAxisBackward>(pa, pout, axis);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<SumAxisBackward>(a, out, axis);
         }
         return out;
     }
@@ -1609,15 +1583,13 @@ namespace jc {
     // ---- mean (全局或沿 axis) ----
     inline Tensor tensor_mean(const Tensor& a, int axis = -1, bool keepdim = false) {
         if (axis < 0) {
-            Tensor out({1}, a.dtype(), a.requires_grad);
-            out.is_leaf = false;
+            Tensor out({1}, a.dtype(), a.impl->requires_grad);
+            out.impl->is_leaf = false;
             double s = 0.0;
             for (size_t i = 0; i < a.numel(); ++i) s += a.getFlat(i);
             out.setFlat(0, s / static_cast<double>(a.numel()));
-            if (a.requires_grad) {
-                auto pa = std::make_shared<Tensor>(a);
-                auto pout = std::make_shared<Tensor>(out);
-                out.grad_fn = std::make_shared<MeanBackward>(pa, pout);
+            if (a.impl->requires_grad) {
+                out.impl->grad_fn = std::make_shared<MeanBackward>(a, out);
             }
             return out;
         }
@@ -1627,8 +1599,8 @@ namespace jc {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
             else out_shape.push_back(a.shape[d]);
         }
-        Tensor out(out_shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(out_shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         int axis_size = a.shape[axis];
         size_t outer = 1, inner = 1;
         for (int d = 0; d < axis; ++d) outer *= a.shape[d];
@@ -1640,10 +1612,8 @@ namespace jc {
                 out.setFlat(o * inner + in, s / static_cast<double>(axis_size));
             }
         }
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<MeanAxisBackward>(pa, pout, axis);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<MeanAxisBackward>(a, out, axis);
         }
         return out;
     }
@@ -1667,13 +1637,11 @@ namespace jc {
 
     // ---- clamp：裁剪到 [min, max]（带梯度）----
     inline Tensor tensor_clamp(const Tensor& a, double min_val, double max_val) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [min_val, max_val](double x) { return x < min_val ? min_val : (x > max_val ? max_val : x); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<ClampBackward>(pa, pout, min_val, max_val);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<ClampBackward>(a, out, min_val, max_val);
         }
         return out;
     }
@@ -1697,25 +1665,21 @@ namespace jc {
 
     // ---- 逐元素一元函数 ----
     inline Tensor tensor_exp(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::exp(x); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<ExpBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<ExpBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_log(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::log(x); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<LogBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<LogBackward>(a, out);
         }
         return out;
     }
@@ -1726,44 +1690,38 @@ namespace jc {
 
     inline Tensor tensor_abs(const Tensor& a) {
         Tensor out(a.shape, a.dtype(), false); // abs 的梯度在 0 处不可微，简化处理
-        out.is_leaf = false;
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::abs(x); });
         return out;
     }
 
     // ---- 激活函数 ----
     inline Tensor tensor_relu(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double v) { return v > 0.0 ? v : 0.0; });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<ReluBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<ReluBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_sigmoid(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return 1.0 / (1.0 + std::exp(-x)); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<SigmoidBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<SigmoidBackward>(a, out);
         }
         return out;
     }
 
     inline Tensor tensor_tanh(const Tensor& a) {
-        Tensor out(a.shape, a.dtype(), a.requires_grad);
-        out.is_leaf = false;
+        Tensor out(a.shape, a.dtype(), a.impl->requires_grad);
+        out.impl->is_leaf = false;
         dispatch_unary(a, out, [](double x) { return std::tanh(x); });
-        if (a.requires_grad) {
-            auto pa = std::make_shared<Tensor>(a);
-            auto pout = std::make_shared<Tensor>(out);
-            out.grad_fn = std::make_shared<TanhBackward>(pa, pout);
+        if (a.impl->requires_grad) {
+            out.impl->grad_fn = std::make_shared<TanhBackward>(a, out);
         }
         return out;
     }
@@ -2023,8 +1981,8 @@ namespace jc {
         if (axis < 0) axis += a.dim();
 
         Tensor out = a.clone();
-        out.requires_grad = false;
-        out.is_leaf = true;
+        out.impl->requires_grad = false;
+        out.impl->is_leaf = true;
 
         // 沿 axis 做 softmax
         size_t outer = 1, inner = 1, axis_size = a.shape[axis];
@@ -2069,14 +2027,14 @@ namespace jc {
 
     // ---- Zero gradients ----
     inline void tensor_zero_grad(Tensor& t) {
-        if (t.grad) t.grad->fill_(0.0);
+        if (t.impl->grad) t.impl->grad->fill_(0.0);
     }
 
     // ---- SGD step (in-place) ----
     inline void tensor_sgd_step(Tensor& param, double lr) {
-        if (!param.grad) return;
+        if (!param.impl->grad) return;
         for (size_t i = 0; i < param.numel(); ++i) {
-            param.setFlat(i, param.getFlat(i) - lr * param.grad->getFlat(i));
+            param.setFlat(i, param.getFlat(i) - lr * param.impl->grad->getFlat(i));
         }
     }
 

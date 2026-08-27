@@ -38,6 +38,7 @@ namespace jc {
         {"quote",    TokenType::QUOTE},        // ★
         {"defer",    TokenType::DEFER},        // ★
         {"class",    TokenType::CLASS},
+        {"extends",  TokenType::EXTENDS},
         {"namespace",TokenType::NAMESPACE},
         {"enum",     TokenType::ENUM},
         {"super",    TokenType::SUPER},

@@ -72,6 +72,7 @@ namespace jc {
         TRUE_KW,             // ★ 新增
         FALSE_KW,            // ★ 新增
         NONE_KW,             // ★ 新增
+        EXTENDS,             // ★ 新增：class 继承
 
         // --- 逻辑运算符 ---
         AND_AND,        // &&
@@ -169,6 +170,7 @@ namespace jc {
         case TokenType::TRUE_KW:       return "TRUE";
         case TokenType::FALSE_KW:      return "FALSE";
         case TokenType::NONE_KW:       return "NONE";
+        case TokenType::EXTENDS:        return "EXTENDS";
         case TokenType::IF:            return "IF";               // ★
         case TokenType::ELSE:          return "ELSE";             // ★
         case TokenType::WHILE:         return "WHILE";            // ★
@@ -272,6 +274,7 @@ namespace jc {
         if (s == "TRUE") return TokenType::TRUE_KW;
         if (s == "FALSE") return TokenType::FALSE_KW;
         if (s == "NONE") return TokenType::NONE_KW;
+        if (s == "EXTENDS") return TokenType::EXTENDS;
         if (s == "IF") return TokenType::IF;
         if (s == "ELSE") return TokenType::ELSE;
         if (s == "WHILE") return TokenType::WHILE;

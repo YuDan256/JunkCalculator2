@@ -1350,7 +1350,7 @@ namespace jc {
                 t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::QUOTE ||
                 t == TokenType::SUPER || t == TokenType::CLASS || t == TokenType::SELF ||
                 t == TokenType::TRUE_KW || t == TokenType::FALSE_KW || t == TokenType::NONE_KW ||
-                t == TokenType::NAMESPACE || t == TokenType::ENUM; // ★ 新增
+                t == TokenType::NAMESPACE || t == TokenType::ENUM || t == TokenType::EXTENDS; // ★ 新增
             };
         if (isKeyword(peek().type) && current + 1 < static_cast<int>(tokens.size())
             && tokens[current + 1].type == TokenType::ASSIGN) {
@@ -1380,7 +1380,7 @@ namespace jc {
         if (match({ TokenType::SUPER }))    return std::make_unique<SuperExpr>();
         if (match({ TokenType::SELF }))     return std::make_unique<SelfExpr>();
         if (match({ TokenType::CLASS })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::EXTENDS)) {
                 return classDefExpr();
             }
             return std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous());
@@ -3251,7 +3251,7 @@ namespace jc {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             isNamed = true;
-        } else if (check(TokenType::IDENTIFIER) && peek().lexeme != "extends") {
+        } else if (check(TokenType::IDENTIFIER)) {
             name = advance();
             isNamed = true;
         }
@@ -3261,7 +3261,7 @@ namespace jc {
         }
 
         std::unique_ptr<Expr> superClassExpr = nullptr;
-        if (check(TokenType::IDENTIFIER) && peek().lexeme == "extends") {
+        if (check(TokenType::EXTENDS)) {
             advance();
             superClassExpr = expression();
         }

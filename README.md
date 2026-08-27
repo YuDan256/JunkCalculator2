@@ -37,7 +37,7 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Error Handling**: `try/catch/throw` constructs with structured `Exception` objects and stack tracebacks.
 - **Metaprogramming**: AST-based compile-time macro system (`macro`) with code quoting (`quote`), unquoting (`$`), and hygienic macros (`gensym`) for code generation.
 - **Execution Control**: Robust `Ctrl+C` interrupt mechanism to safely halt infinite loops or heavy CAS computations without crashing the VM. Pressing `Ctrl+C` three times consecutively triggers an immediate hard exit.
-- **Functions**: Closures, lambdas `(x) => expr`, default parameters, keyword arguments (`f(a=1, b=2)`), keyword-only params (`f(a; b=0)`), kwargs collection (`f(; ...kw)`), variadic arguments (`...args`), and `ref` parameter binding.
+- **Functions**: Closures, lambdas `(x) => expr`, default parameters, keyword arguments (`f(a=1, b=2)`), keyword-only params (`f(a; b=0)`), kwargs collection (`f(; ...kw)`), variadic arguments (`...args`), argument unpacking (`f(...args)`), and `ref` parameter binding.
 - **Generic Container API**: Array manipulation methods (`push`, `slice`, `map`, `filter`, `reduce`, `sort`, `join`, `zip`, etc.) are attached to the prototypes of `List`, `Matrix`, `String`, `Dict`, and `Set`, enabling UFCS-style pipelines (`data |> .sort() |> .unique()`). Heterogeneous literals use `@[...]`.
 - **Set Algebra**: `Set` type (with `@{...}` literal syntax) providing O(1) membership testing (`in`). Supports operators for union (`|`), intersection (`&`), difference (`-`), and Cartesian product (`*`). Includes powerset generation (`powerSet`) and relation predicates.
 
@@ -52,13 +52,14 @@ Developed by Yu Liangyang, Tsinghua University.
 ### Native Modules & Standard Library
 Native C++ extensions exposed to the execution context:
 - `image`: OOP-based BMP generation, drawing primitives with SDF (Signed Distance Field) sub-pixel anti-aliasing, and ASCII font rendering.
+- `io`: File stream class with zero-copy binary I/O, an RFC 4180 CSV engine, and filesystem operations with UTF-8 path handling.
 - `prob`: OOP-based statistical distributions (PDF, CDF, Quantile via Newton iteration) and hypothesis tests.
 - `json`: JSON serialization and deserialization.
 - `socket`: Low-level TCP/IP networking stack (WinSock2/POSIX bindings).
-- `bytes`: Memory buffering and low-level binary I/O operations.
+- `bytes`: Native memory buffer with Hex/Base64 encode/decode, zero-copy view/slice, and chained typed read/write methods.
 - `window`: Native GUI window rendering engine. Supports Mouse-Look pointer capturing and independent IME toggling (Win32).
 - `latex`: Bi-directional LaTeX engine. Serializes JC2 objects to LaTeX, and parses raw LaTeX formulas into executable closures.
-- `ffi`: Zero-dependency Foreign Function Interface (Windows x64 only). Supports dynamic loading of shared libraries (DLL), direct C ABI function invocation, and raw memory/pointer manipulation.
+- `ffi`: Zero-dependency Foreign Function Interface (cross-platform: Windows/Linux/macOS). Supports dynamic loading of shared libraries, direct C ABI invocation, zero-copy multi-dimensional array views, and nested struct support.
 - `regex`: High-performance native regular expression engine (bytecode VM with full-state memoization).
 - `tensor`: N-dimensional tensor engine with autograd.
 - `decimal`: Arbitrary-precision decimal arithmetic.
@@ -69,7 +70,6 @@ JC2 standard libraries loaded via `import`:
 - `engine`: Game framework abstraction over the `window` module for render loops and event state management.
 - `net`: OOP wrapper for TCP streams (`TcpSocket` and `TcpServer`).
 - `http`: HTTP/1.1 client supporting URL parsing and GET/POST requests.
-- `buffer`: Binary manipulation API with cursor support.
 
 ---
 

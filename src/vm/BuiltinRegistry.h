@@ -2,6 +2,7 @@
 #define JC2_BUILTIN_REGISTRY_H
 
 #include "../memory/Value.h"
+#include "../frontend/Utf8.h"
 #include <any>
 #include <functional>
 #include <map>
@@ -188,6 +189,52 @@ namespace helpers {
         while (c) {
             if (c->properties.count(name)) return true;
             c = c->parent;
+        }
+        return false;
+    }
+
+    // ★ 展开成位置参数（list/set/matrix/string + 带 __unpack__ 的实例）
+    //   返回 false 表示不是可展开类型（由调用方报错）
+    inline bool spreadPositional(const Value& iterable, std::vector<Value>& out) {
+        if (iterable.isObjType(ObjType::LIST)) {
+            for (auto& e : static_cast<ObjList*>(iterable.asObj())->vec) out.push_back(e);
+            return true;
+        }
+        if (iterable.isObjType(ObjType::SET)) {
+            for (auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) out.push_back(e);
+            return true;
+        }
+        if (iterable.isObjType(ObjType::REAL_MATRIX)) {
+            auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
+            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: positional spread expects a 1D vector.");
+            for (auto& d : m.rawData()) out.push_back(Value(d));
+            return true;
+        }
+        if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto& m = static_cast<ObjComplexMatrix*>(iterable.asObj())->mat;
+            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: positional spread expects a 1D vector.");
+            for (auto& d : m.rawData()) out.push_back(Value(d));
+            return true;
+        }
+        if (iterable.isString()) {
+            ObjString* objStr = iterable.asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char ch : str) out.push_back(Value(std::string(1, ch)));
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t ci = 0; ci < len; ++ci) out.push_back(Value(utf8::substring(str, ci, 1, false)));
+            }
+            return true;
+        }
+        if (iterable.isInstance() && hasDunder(iterable, "__unpack__")) {
+            auto [found, unpacked] = invokeDunder(iterable.asInstance(), "__unpack__");
+            if (found) {
+                GcValueGuard guard(unpacked);
+                if (!unpacked.isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: __unpack__() must return a list.");
+                for (auto& e : static_cast<ObjList*>(unpacked.asObj())->vec) out.push_back(e);
+                return true;
+            }
         }
         return false;
     }

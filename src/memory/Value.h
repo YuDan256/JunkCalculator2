@@ -368,6 +368,7 @@ namespace jc {
         bool isSymbolic() const { return isObjType(ObjType::SYMBOLIC); }
         bool isType() const { return isObjType(ObjType::TYPE_DEF); }
         bool isSlice() const { return isObjType(ObjType::SLICE); }
+        bool isSpread() const { return isObjType(ObjType::SPREAD); }
 
         SymExpr asSymbolic() const;
 
@@ -733,6 +734,14 @@ namespace jc {
     struct ObjSym : public Obj {
         SymExpr sym;
         ObjSym(SymExpr s) : sym(std::move(s)) { type = ObjType::SYMBOLIC; }
+    };
+
+    // ★ 解包标记（调用侧 `...expr` 展开用的内部标记，不暴露给用户）
+    struct ObjSpread : public Obj {
+        Value value;      // list（位置解包）或 dict（关键字解包）
+        bool isKeyword = false; // true = 关键字解包
+        ObjSpread() { type = ObjType::SPREAD; }
+        void clear() override { value = Value::none(); }
     };
 
     struct ObjSlice : public Obj {
@@ -3141,6 +3150,10 @@ inline void GcHeap::markObj(Obj* obj) {
                     markObj(std::get<ObjClass*>(t));
                 }
             }
+            break;
+        }
+        case ObjType::SPREAD: {
+            markValue(static_cast<ObjSpread*>(obj)->value);
             break;
         }
         default: break;

@@ -4114,37 +4114,9 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjList* unpackedList = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(unpackedList);
         
-        Value iterable = argList;
-        if (helpers::iterateIterable(iterable, [&](const Value& nextVal) {
-            unpackedList->vec.push_back(nextVal);
-            return true;
-        })) {
-            return safeCallValue(f, unpackedList->vec);
-        }
-
-        if (iterable.isObjType(ObjType::LIST)) {
-            for (const auto& e : static_cast<ObjList*>(iterable.asObj())->vec) unpackedList->vec.push_back(e);
-        } else if (iterable.isObjType(ObjType::SET)) {
-            for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) unpackedList->vec.push_back(e);
-        } else if (iterable.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
-            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: apply() expects 1D vector.");
-            for (const auto& d : m.rawData()) unpackedList->vec.push_back(Value(d));
-        } else if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(iterable.asObj())->mat;
-            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: apply() expects 1D vector.");
-            for (const auto& d : m.rawData()) unpackedList->vec.push_back(Value(d));
-        } else if (iterable.isString()) {
-            ObjString* objStr = iterable.asObjString();
-            const std::string& str = objStr->str;
-            if (objStr->isAscii) {
-                for (char c : str) unpackedList->vec.push_back(Value(std::string(1, c)));
-            } else {
-                size_t len = objStr->charLength;
-                for (size_t i = 0; i < len; ++i) unpackedList->vec.push_back(Value(utf8::substring(str, i, 1, false)));
-            }
-        } else {
-            throw std::runtime_error("Type Error: apply() expects a function and an iterable argument list/vector.");
+        // ★ 与位置解包共用同一套展开协议（list/set/matrix/string + __unpack__），不再走 __iter__
+        if (!helpers::spreadPositional(argList, unpackedList->vec)) {
+            throw std::runtime_error("Type Error: apply() expects a list, set, matrix, string, or an instance with __unpack__().");
         }
         
         return safeCallValue(f, unpackedList->vec);

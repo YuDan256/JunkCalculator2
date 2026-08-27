@@ -95,6 +95,7 @@ public:
     void visitExprAssign(ExprAssign* expr) override;
     void visitDeferExpr(DeferExpr* expr) override;
     void visitKeywordArgExpr(KeywordArgExpr* expr) override;
+    void visitSpreadExpr(SpreadExpr* expr) override;
     void visitTypeAssertExpr(TypeAssertExpr* expr) override;
 
 private:

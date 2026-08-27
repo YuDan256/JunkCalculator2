@@ -1902,6 +1902,20 @@ void IRBuilder::visitCall(Call* expr) {
             argNodes.push_back(nameNode);
             kwArgc++;
         }
+        else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
+            if (spread->isKeyword) {
+                IRNode* noneNode = graph->createConstant(Value::none());
+                noneNode->setControl(currentControl);
+                IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
+                markNode->setControl(currentControl);
+                markNode->addData(noneNode);
+                markNode->payload1 = 1;
+                argNodes.push_back(markNode);
+                currentControl = markNode;
+                kwArgc++;
+                actualArg = spread->value.get();
+            }
+        }
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
@@ -3305,6 +3319,20 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
             argNodes.push_back(nameNode);
             kwArgc++;
         }
+        else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
+            if (spread->isKeyword) {
+                IRNode* noneNode = graph->createConstant(Value::none());
+                noneNode->setControl(currentControl);
+                IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
+                markNode->setControl(currentControl);
+                markNode->addData(noneNode);
+                markNode->payload1 = 1;
+                argNodes.push_back(markNode);
+                currentControl = markNode;
+                kwArgc++;
+                actualArg = spread->value.get();
+            }
+        }
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
@@ -4203,6 +4231,20 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
             argNodes.push_back(nameNode);
             kwArgc++;
         }
+        else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
+            if (spread->isKeyword) {
+                IRNode* noneNode = graph->createConstant(Value::none());
+                noneNode->setControl(currentControl);
+                IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
+                markNode->setControl(currentControl);
+                markNode->addData(noneNode);
+                markNode->payload1 = 1;
+                argNodes.push_back(markNode);
+                currentControl = markNode;
+                kwArgc++;
+                actualArg = spread->value.get();
+            }
+        }
         
         if (auto* var = dynamic_cast<Variable*>(actualArg)) {
             std::string name = var->name.lexeme;
@@ -4902,6 +4944,17 @@ void IRBuilder::visitExprAssign(ExprAssign*) {
 
 void IRBuilder::visitKeywordArgExpr(KeywordArgExpr* expr) {
     expr->value->accept(*this);
+}
+
+void IRBuilder::visitSpreadExpr(SpreadExpr* expr) {
+    expr->value->accept(*this);
+    IRNode* valNode = lastValue;
+    IRNode* spreadNode = graph->createValueNode(IROp::MakeSpread);
+    spreadNode->setControl(currentControl);
+    spreadNode->addData(valNode);
+    spreadNode->payload1 = expr->isKeyword ? 1 : 0;
+    currentControl = spreadNode;
+    lastValue = spreadNode;
 }
 
 void IRBuilder::visitDeferExpr(DeferExpr* expr) {

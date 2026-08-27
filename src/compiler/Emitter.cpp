@@ -515,6 +515,12 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), build.begin(), build.end());
                         break;
                     }
+                    case IROp::MakeSpread: {
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        auto build = buildInstABC(OpCode::MAKE_SPREAD, node->physicalReg, spillBase, node->payload1);
+                        inst.words.insert(inst.words.end(), build.begin(), build.end());
+                        break;
+                    }
                     case IROp::IterInit: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         auto w = buildInstABC(OpCode::ITER_INIT, node->physicalReg, b, node->payload1);

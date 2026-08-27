@@ -534,6 +534,63 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
 }
 
 std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf, const std::vector<bool>& kwargHasDefault) {
+    // ★ 展开解包（...list 位置解包、...dict 关键字解包）
+    std::vector<Value> expandedStorage;
+    {
+        std::vector<Value> spreadPos, spreadKwNames, spreadKwVals;
+        bool anySpread = false;
+        for (int i = 0; i < posArgc; ++i) {
+            if (argsBase[i].isSpread()) {
+                anySpread = true;
+                auto* sp = static_cast<ObjSpread*>(argsBase[i].asObj());
+                if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in positional position.");
+                if (!helpers::spreadPositional(sp->value, spreadPos)) {
+                    throw std::runtime_error("TypeError: positional spread expects a list, set, matrix, string, or an instance with __unpack__().");
+                }
+            } else {
+                spreadPos.push_back(argsBase[i]);
+            }
+        }
+        for (int i = 0; i < kwArgc; ++i) {
+            Value kwNameVal = argsBase[posArgc + i * 2];
+            Value kwVal = argsBase[posArgc + i * 2 + 1];
+            if (kwNameVal.isSpread()) {
+                anySpread = true;
+                auto* sp = static_cast<ObjSpread*>(kwNameVal.asObj());
+                if (!sp->isKeyword) throw std::runtime_error("TypeError: positional spread not allowed in keyword position.");
+                Value kwDictVal = kwVal;
+                std::unique_ptr<GcValueGuard> upGuard;
+                if (!kwDictVal.isObjType(ObjType::DICT)) {
+                    if (!kwDictVal.isInstance()) throw std::runtime_error("TypeError: keyword spread expects a dict or an instance with __mapping__().");
+                    auto [upMethod, upOwner] = findDunder(kwDictVal, "__mapping__");
+                    if (!upMethod) throw std::runtime_error("TypeError: keyword spread expects a dict or an instance with __mapping__().");
+                    kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
+                    if (!kwDictVal.isObjType(ObjType::DICT)) throw std::runtime_error("TypeError: __mapping__() must return a dict for keyword spread.");
+                    upGuard = std::make_unique<GcValueGuard>(kwDictVal);
+                }
+                for (auto& [k, v] : static_cast<ObjDict*>(kwDictVal.asObj())->elements) {
+                    if (!k.isString()) throw std::runtime_error("TypeError: keyword spread key must be a string.");
+                    spreadKwNames.push_back(k);
+                    spreadKwVals.push_back(v);
+                }
+            } else {
+                spreadKwNames.push_back(kwNameVal);
+                spreadKwVals.push_back(kwVal);
+            }
+        }
+        if (anySpread) {
+            expandedStorage.reserve(spreadPos.size() + spreadKwNames.size() * 2);
+            for (auto& v : spreadPos) expandedStorage.push_back(v);
+            for (size_t i = 0; i < spreadKwNames.size(); ++i) {
+                expandedStorage.push_back(spreadKwNames[i]);
+                expandedStorage.push_back(spreadKwVals[i]);
+            }
+            argsBase = expandedStorage.data();
+            posArgc = static_cast<int>(spreadPos.size());
+            kwArgc = static_cast<int>(spreadKwNames.size());
+        }
+    }
+    
     std::vector<Value> alignedArgs;
     int totalExpected = static_cast<int>(paramNames.size());
     
@@ -769,7 +826,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
             std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
-            
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
                     int expected = closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
@@ -1337,6 +1393,8 @@ static const std::string DUNDER_STR = "__str__";
 static const std::string DUNDER_BOOL = "__bool__";
 static const std::string DUNDER_CONTAINS = "__contains__";
 static const std::string DUNDER_SUBSET = "__subsets__";
+static const std::string DUNDER_UNPACK = "__unpack__";
+static const std::string DUNDER_MAPPING = "__mapping__";
 
 std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::string& name) {
     if (!val.isInstance()) return {nullptr, nullptr};
@@ -7467,6 +7525,15 @@ Value VM::run(int targetFrameDepth) {
                 } catch (...) {
                     throw std::runtime_error("VM Error: Dimension mismatch during matrix comprehension concatenation.");
                 }
+                break;
+            }
+            case OpCode::MAKE_SPREAD: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                ObjSpread* sp = GcHeap::get().allocate<ObjSpread>();
+                getReg(a) = Value(sp);
+                sp->value = getReg(b);
+                sp->isKeyword = (c != 0);
                 break;
             }
             case OpCode::BUILD_SLICE: {

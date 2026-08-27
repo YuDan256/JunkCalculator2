@@ -102,25 +102,47 @@ namespace jc {
                     while (match({ TokenType::NEWLINE })) {}
                     if (!check(TokenType::RPAREN)) {
                         bool hasKwArg = false;
-                        do {
+                        bool inKwOnly = false;
+                        while (true) {
                             while (match({ TokenType::NEWLINE })) {}
-                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                inKwOnly = true;
+                                if (check(TokenType::RPAREN)) break;
+                                continue;
+                            }
+                            if (match({ TokenType::ELLIPSIS })) {
+                                auto val = assignment();
+                                if (inKwOnly) {
+                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), true));
+                                    hasKwArg = true;
+                                } else {
+                                    if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), false));
+                                }
+                            } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
                                 Token kwName = advance();
                                 advance(); // consume '='
                                 auto val = assignment();
                                 args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
                                 hasKwArg = true;
                             } else {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
                                 if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
                                 args.push_back(assignment());
                             }
                             while (match({ TokenType::NEWLINE })) {}
-                        } while (match({ TokenType::COMMA }));
+                            if (match({ TokenType::COMMA })) continue;
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                inKwOnly = true;
+                                if (check(TokenType::RPAREN)) break;
+                                continue;
+                            }
+                            break;
+                        }
                     }
                     while (match({ TokenType::NEWLINE })) {}
-                    if (check(TokenType::SEMICOLON)) {
-                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
-                    }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after method arguments.");
 
                     bool isPartial = false;
@@ -849,25 +871,47 @@ namespace jc {
                     while (match({ TokenType::NEWLINE })) {}
                     if (!check(TokenType::RPAREN)) {
                         bool hasKwArg = false;
-                        do {
+                        bool inKwOnly = false;
+                        while (true) {
                             while (match({ TokenType::NEWLINE })) {}
-                            if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                inKwOnly = true;
+                                if (check(TokenType::RPAREN)) break;
+                                continue;
+                            }
+                            if (match({ TokenType::ELLIPSIS })) {
+                                auto val = assignment();
+                                if (inKwOnly) {
+                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), true));
+                                    hasKwArg = true;
+                                } else {
+                                    if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), false));
+                                }
+                            } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
                                 Token kwName = advance();
                                 advance(); // consume '='
                                 auto val = assignment();
                                 args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
                                 hasKwArg = true;
                             } else {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
                                 if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
                                 args.push_back(assignment()); // ★ 降级调用，保护函数参数的逗号
                             }
                             while (match({ TokenType::NEWLINE })) {}
-                        } while (match({ TokenType::COMMA }));
+                            if (match({ TokenType::COMMA })) continue;
+                            if (match({ TokenType::SEMICOLON })) {
+                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                inKwOnly = true;
+                                if (check(TokenType::RPAREN)) break;
+                                continue;
+                            }
+                            break;
+                        }
                     }
                     while (match({ TokenType::NEWLINE })) {}
-                    if (check(TokenType::SEMICOLON)) {
-                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
-                    }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after method arguments.");
 
                     // ★ 魔法糖 2：对象方法的自动柯里化
@@ -911,25 +955,47 @@ namespace jc {
                 while (match({ TokenType::NEWLINE })) {}
                 if (!check(TokenType::RPAREN)) {
                     bool hasKwArg = false;
-                    do {
+                    bool inKwOnly = false;
+                    while (true) {
                         while (match({ TokenType::NEWLINE })) {}
-                        if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                            inKwOnly = true;
+                            if (check(TokenType::RPAREN)) break;
+                            continue;
+                        }
+                        if (match({ TokenType::ELLIPSIS })) {
+                            auto val = assignment();
+                            if (inKwOnly) {
+                                args.push_back(std::make_unique<SpreadExpr>(std::move(val), true));
+                                hasKwArg = true;
+                            } else {
+                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                args.push_back(std::make_unique<SpreadExpr>(std::move(val), false));
+                            }
+                        } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
                             Token kwName = advance();
                             advance(); // consume '='
                             auto val = assignment();
                             args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
                             hasKwArg = true;
                         } else {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
                             if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
                             args.push_back(assignment());
                         }
                         while (match({ TokenType::NEWLINE })) {}
-                    } while (match({ TokenType::COMMA }));
+                        if (match({ TokenType::COMMA })) continue;
+                        if (match({ TokenType::SEMICOLON })) {
+                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                            inKwOnly = true;
+                            if (check(TokenType::RPAREN)) break;
+                            continue;
+                        }
+                        break;
+                    }
                 }
                 while (match({ TokenType::NEWLINE })) {}
-                if (check(TokenType::SEMICOLON)) {
-                    throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
-                }
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after arguments.");
 
                 // ★ 魔法糖 1：普通函数的自动柯里化
@@ -1741,7 +1807,7 @@ namespace jc {
                         } while (match({ TokenType::COMMA }));
                     }
                     if (check(TokenType::SEMICOLON)) {
-                        throw std::runtime_error("Parser Error: ';' (keyword-only separator) is only allowed in function definitions, not in calls.");
+                        throw std::runtime_error("Parser Error: Spread and ';' separator are not supported in macro calls yet.");
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
                 }

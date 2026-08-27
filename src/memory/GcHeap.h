@@ -18,7 +18,7 @@ namespace jc {
         REAL_MATRIX, COMPLEX_MATRIX, SYM_MATRIX,
         LIST, DICT, SET,
         CLOSURE, CLASS, INSTANCE, SUPER_PROXY, SYMBOLIC, NAMESPACE,
-        UPVALUE, TYPE_DEF, SLICE
+        UPVALUE, TYPE_DEF, SLICE, SPREAD
     };
 
     enum class BuiltinType : int8_t {

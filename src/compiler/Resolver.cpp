@@ -681,6 +681,10 @@ void Resolver::visitKeywordArgExpr(KeywordArgExpr* expr) {
     resolve(expr->value.get());
 }
 
+void Resolver::visitSpreadExpr(SpreadExpr* expr) {
+    resolve(expr->value.get());
+}
+
 void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod, bool globalConst, bool skipRedecl) {
     if (!pat) return;
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {

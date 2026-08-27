@@ -123,6 +123,7 @@ enum class OpCode : uint8_t {
     INDEX_GET,      // R(A) := R(B)[R(B+1)...R(B+C)] [Ext A, B, C]
     INDEX_SET,      // R(A)[R(A+1)...R(A+C)] := R(A+C+1) [Ext A, C]
     BUILD_SLICE,    // R(A) := slice(start=R(B), end=R(B+1), step=R(B+2)) [Ext B]
+    MAKE_SPREAD,    // R(A) := ObjSpread(R(B), isKeyword = C) [Ext B]
 
     // 字符串操作
     STRINGIFY,      // R(A) := str(R(B))
@@ -250,6 +251,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::INDEX_GET: return "INDEX_GET";
         case OpCode::INDEX_SET: return "INDEX_SET";
         case OpCode::BUILD_SLICE: return "BUILD_SLICE";
+        case OpCode::MAKE_SPREAD: return "MAKE_SPREAD";
         case OpCode::STRINGIFY: return "STRINGIFY";
         case OpCode::CONCAT_STRINGS: return "CONCAT_STRINGS";
         case OpCode::FORMAT_STRING: return "FORMAT_STRING";
@@ -481,6 +483,7 @@ public:
             case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
             case OpCode::INDEX_GET: case OpCode::INDEX_SET: 
             case OpCode::BUILD_SLICE:
+            case OpCode::MAKE_SPREAD:
             case OpCode::ITER_INIT: case OpCode::IN: case OpCode::MATCH_SHAPE:
             case OpCode::DICT_APPEND:
                 std::cout << "R(" << a << ") " << b << " " << c;

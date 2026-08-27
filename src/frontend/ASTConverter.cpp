@@ -689,6 +689,14 @@ public:
         });
     }
 
+    void visitSpreadExpr(SpreadExpr* expr) override {
+        expr->value->accept(*this); Value val = result;
+        result = makeASTNode("SpreadExpr", 0, {
+            {"value", val},
+            {"isKeyword", Value(expr->isKeyword)}
+        });
+    }
+
     void visitTypeAssertExpr(TypeAssertExpr* expr) override {
         expr->value->accept(*this); Value val = result;
         expr->typeHint->accept(*this); Value hint = result;
@@ -1316,6 +1324,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<KeywordArgExpr>(
             Token(TokenType::IDENTIFIER, getProp("name").asString(), line),
             toAST(getProp("value"))
+        );
+    } else if (type == "SpreadExpr") {
+        return std::make_unique<SpreadExpr>(
+            toAST(getProp("value")),
+            getProp("isKeyword").truthy()
         );
     }
 

@@ -97,9 +97,9 @@
       "",
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
-      "    if  else  while  for  in  is  as  break  continue  return  switch  case  match  defer",
-      "    class  extends  super  self  namespace  enum  ref  state  const  static  delete",
-      "    try  catch  throw  import  true  false  none  macro  quote",
+      "    if  else  while  for  in  is  as  break  continue  return  switch  case  match  default  defer",
+      "    class  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
+      "    try  catch  throw  import  true  false  none  macro  syntax  quote",
       "",
       "  Native Libraries (require `import` before use, use `/help <library>` for details)",
       "  ────────────────────────────────────────────────────────────────────",
@@ -6298,6 +6298,21 @@
         "    clone() = class(self.x, self.y)  // Self-reference",
         "}",
         "p = Point(3, 4); p2 = p.clone()"
+      ]
+    },
+    "enum": {
+      "signature": "enum Name { A, B, C }  |  enum { A, B, C }",
+      "desc": [
+        "Defines a zero-overhead, compile-time enumeration.",
+        "• Compiles directly into a frozen namespace of named constants.",
+        "• First member defaults to 0, subsequent members auto-increment.",
+        "• Explicit values must be compile-time constants.",
+        "• Supports scope modifiers: `local enum`, `const enum`.",
+        "See also: /help enum (topic) for full details"
+      ],
+      "examples": [
+        "enum State { IDLE, RUNNING, ERROR }",
+        "State.IDLE == 0; State.ERROR == 2"
       ]
     },
     "extends": {

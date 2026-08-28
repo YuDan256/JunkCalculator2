@@ -314,16 +314,17 @@ namespace jc {
             // ★ 智能换行符：当不在 () 或 [] 内部、且上一个 token 不是续行符时发射
             if ((bracketStack.empty() || bracketStack.back() == '{') && !tokens.empty()) {
                 TokenType lastType = TokenType::ERROR;
-                bool foundCodeToken = false;
-                // ★ 穿透注释：往前找真正的代码 Token 来判断是否续行
+                bool isOwnLineComment = true;  // ★ 注释是否独占一行
+                // ★ 穿透注释：往前找真正的代码 Token 判断续行；遇到换行或文件开头则视为纯注释行
                 for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
+                    if (it->type == TokenType::NEWLINE) break;
                     if (it->type != TokenType::COMMENT) {
                         lastType = it->type;
-                        foundCodeToken = true;
+                        isOwnLineComment = false;
                         break;
                     }
                 }
-                if (foundCodeToken && !isContinuationToken(lastType)) {
+                if (isOwnLineComment || !isContinuationToken(lastType)) {
                     tokens.emplace_back(TokenType::NEWLINE, "\\n", current - 1, line - 1);
                 }
             }

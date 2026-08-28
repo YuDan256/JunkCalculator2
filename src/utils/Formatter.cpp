@@ -379,7 +379,16 @@ public:
         }
         for (auto& a : e->arguments) if (a) a->accept(*this);
     }
-    void visitQuoteExpr(QuoteExpr* e) override { if (e->body) e->body->accept(*this); }
+    void visitQuoteExpr(QuoteExpr* e) override {
+        // quote { ... } 的 { ... } 是 AST 构造 DSL，原样保留（同宏调用 body）
+        for (const auto& tok : tokens) {
+            if (tok.position >= e->startPos && tok.position < e->endPos && tok.type == TokenType::LBRACE) {
+                preserveRanges.push_back({ tok.position, e->endPos });
+                break;
+            }
+        }
+        if (e->body) e->body->accept(*this);
+    }
     void visitUnquoteExpr(UnquoteExpr* e) override { if (e->expr) e->expr->accept(*this); }
     void visitExprAssign(ExprAssign* e) override { if (e->target) e->target->accept(*this); if (e->value) e->value->accept(*this); }
     void visitDeferExpr(DeferExpr* e) override { if (e->body) e->body->accept(*this); }

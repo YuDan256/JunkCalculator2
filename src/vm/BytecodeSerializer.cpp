@@ -72,6 +72,7 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         return;
     }
     if (val.isNone()) { write8(os, static_cast<uint8_t>(ConstTag::NONE)); return; }
+    if (val.isUninit()) { write8(os, static_cast<uint8_t>(ConstTag::UNINIT)); return; }
     if (val.isBool()) { write8(os, static_cast<uint8_t>(val.asBool() ? ConstTag::BOOL_TRUE : ConstTag::BOOL_FALSE)); return; }
     if (val.isInt32()) { write8(os, static_cast<uint8_t>(ConstTag::INT32)); write32(os, val.asInt32()); return; }
     if (val.isDouble()) { write8(os, static_cast<uint8_t>(ConstTag::DOUBLE)); writeDouble(os, val.asDoubleRaw()); return; }
@@ -146,6 +147,7 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
     ConstTag tag = static_cast<ConstTag>(read8(is));
     switch (tag) {
         case ConstTag::NONE: return Value::none();
+        case ConstTag::UNINIT: return Value::uninit();
         case ConstTag::BOOL_FALSE: return Value(false);
         case ConstTag::BOOL_TRUE: return Value(true);
         case ConstTag::INT32: return Value(static_cast<int32_t>(read32(is)));

@@ -27,7 +27,7 @@ private:
         NONE = 0, BOOL_FALSE, BOOL_TRUE, INT32, DOUBLE, STRING,
         BIGINT, FRACTION, COMPLEX,
         REAL_MATRIX, COMPLEX_MATRIX,
-        NAMESPACE, FNIDX
+        NAMESPACE, FNIDX, UNINIT
     };
 
     static void write8(std::ostream& os, uint8_t v);

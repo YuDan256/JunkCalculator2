@@ -2191,6 +2191,7 @@ namespace jc {
         defineMacro(name.lexeme, Value(dummyMacro));
 
         auto body = parseStatementOrBlock();
+        int endPos = body->endPos;
         
         std::vector<bool> paramIsRef(params.size(), false);
         std::vector<bool> paramIsConst(params.size(), false);
@@ -2232,7 +2233,6 @@ namespace jc {
 
         defineMacro(name.lexeme, macroVal);
 
-        int endPos = body->endPos;
         return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
     }
 
@@ -2966,6 +2966,10 @@ namespace jc {
         auto body = assignment();
         quoteDepth--;
         int endPos = body->endPos;
+        // 宏展开禁用（如 formatter）时保留 QuoteExpr，让 formatter 能原样保留 quote { ... } 块
+        if (disableMacroExpansion) {
+            return withPos(std::make_unique<QuoteExpr>(std::move(body)), startPos, endPos);
+        }
         return withPos(transformQuote(body.get()), startPos, endPos);
     }
 

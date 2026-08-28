@@ -241,16 +241,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                         else oss << val;
                         resVal = Value(oss.str());
                     }
-                    IRNode* constNode = graph->createConstant(resVal);
-                    constNode->setControl(node->controlInput);
-                    for (auto& userNodePtr : graph->getNodes()) {
-                        IRNode* user = userNodePtr.get();
-                        if (user->controlInput == node) user->controlInput = node->controlInput;
-                        for (auto& din : user->dataInputs) {
-                            if (din == node) din = constNode;
-                        }
-                    }
-                    node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
+                    node->constVal = resVal;
+                    node->op = IROp::Constant;
+                    node->dataInputs.clear();
+                    changed = true;
                 }
             } catch (...) {} // 忽略除零等运行时错误，留给 VM 抛出
         }
@@ -300,16 +294,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     else result = std::string(pad, ' ') + result;
                 }
                 
-                IRNode* constNode = graph->createConstant(Value(result));
-                constNode->setControl(node->controlInput);
-                for (auto& userNodePtr : graph->getNodes()) {
-                    IRNode* user = userNodePtr.get();
-                    if (user->controlInput == node) user->controlInput = node->controlInput;
-                    for (auto& din : user->dataInputs) {
-                        if (din == node) din = constNode;
-                    }
-                }
-                node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
+                node->constVal = Value(result);
+                node->op = IROp::Constant;
+                node->dataInputs.clear();
+                changed = true;
             }
         }
         // 字符串拼接折叠
@@ -334,16 +322,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     }
                 }
                 
-                IRNode* constNode = graph->createConstant(Value(res));
-                constNode->setControl(node->controlInput);
-                for (auto& userNodePtr : graph->getNodes()) {
-                    IRNode* user = userNodePtr.get();
-                    if (user->controlInput == node) user->controlInput = node->controlInput;
-                    for (auto& din : user->dataInputs) {
-                        if (din == node) din = constNode;
-                    }
-                }
-                node->op = IROp::Nop; node->dataInputs.clear(); node->controlInput = nullptr; changed = true;
+                node->constVal = Value(res);
+                node->op = IROp::Constant;
+                node->dataInputs.clear();
+                changed = true;
             }
         }
         // 二元运算折叠与代数化简

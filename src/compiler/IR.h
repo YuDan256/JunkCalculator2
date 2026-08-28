@@ -377,9 +377,8 @@ public:
     IRNode* createNode(IROp op) {
         auto node = std::make_unique<IRNode>(nextId++, op);
         node->line = currentLine;
-        IRNode* ptr = node.get();
         nodes.push_back(std::move(node));
-        return ptr;
+        return nodes.back().get();
     }
 
     // 创建带虚拟寄存器的节点 (产生值的节点)

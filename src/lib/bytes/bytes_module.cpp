@@ -69,7 +69,6 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
         return r;
     }
     jc2::throw_error("Type Error: " + f + "() requires a list or real matrix.");
-    return {};
 }
 
 struct BufWrapper {

@@ -115,7 +115,6 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
         return r;
     }
     jc2::throw_error(f + "() requires a matrix/vector.");
-    return {};
 }
 
 static void printTest(const jc::TestResult& r) {
@@ -172,7 +171,6 @@ FUNC(mean) {
         return jc2::Value(getDist(arg)->distMean()).get_handle();
     }
     jc2::throw_error("Type Error: prob.mean() expects a Distribution.");
-    return jc2::Value().get_handle();
 }
 FUNC(var) {
     (void)argc;
@@ -181,7 +179,6 @@ FUNC(var) {
         return jc2::Value(getDist(arg)->distVar()).get_handle();
     }
     jc2::throw_error("Type Error: prob.var() expects a Distribution.");
-    return jc2::Value().get_handle();
 }
 FUNC(std_dev) {
     (void)argc;
@@ -190,7 +187,6 @@ FUNC(std_dev) {
         return jc2::Value(std::sqrt(getDist(arg)->distVar())).get_handle();
     }
     jc2::throw_error("Type Error: prob.std() expects a Distribution.");
-    return jc2::Value().get_handle();
 }
 
 int jc2_init(jc2::Module& mod) {

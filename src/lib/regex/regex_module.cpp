@@ -642,12 +642,10 @@ static jc2::Class* g_reMatchClass = nullptr;
 static std::shared_ptr<RegexVM> getRegex(const jc2::Value& val) {
     if (!val.is_instance()) {
         jc2::throw_error("TypeError: Expected a Regex instance.");
-        return nullptr;
     }
     auto ptr = val.get_native_data<std::shared_ptr<RegexVM>>();
     if (!ptr) {
         jc2::throw_error("TypeError: Instance is not a Regex.");
-        return nullptr;
     }
     return *ptr;
 }
@@ -703,7 +701,6 @@ JC2_ValueHandle regex_init(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*
         return wrapRegex(vm, pat).get_handle();
     } catch (const std::exception& e) {
         jc2::throw_error(e.what());
-        return jc2::Value().get_handle();
     }
 }
 
@@ -866,7 +863,6 @@ JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv
         int steps = static_cast<int>(jc2::Value(argv[0]).as_double());
         if (steps < -1) {
             jc2::throw_error("ValueError: max_steps cannot be less than -1.");
-            return jc2::Value().get_handle();
         }
         g_max_steps = steps;
     }
@@ -880,7 +876,6 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
         return wrapRegex(vm, pat).get_handle();
     } catch (const std::exception& e) {
         jc2::throw_error(e.what());
-        return jc2::Value().get_handle();
     }
 }
 

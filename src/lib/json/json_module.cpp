@@ -212,7 +212,6 @@ struct JsonParser {
             try { return jc2::Value(std::stod(numStr)); }
             catch (...) { jc2::throw_error("JSON Parse Error: Number out of range."); }
         }
-        return jc2::Value();
     }
 
     jc2::Value parseArray() {
@@ -285,7 +284,6 @@ struct JsonParser {
         if (c == '-' || std::isdigit(static_cast<unsigned char>(c))) return parseNumber();
 
         jc2::throw_error(std::string("JSON Parse Error: Unrecognized token at position ") + std::to_string(pos));
-        return jc2::Value();
     }
 };
 

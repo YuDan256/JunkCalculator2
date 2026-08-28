@@ -158,7 +158,6 @@ public:
     Decimal div(const Decimal& other) const {
         if (other.mantissa.isZero()) {
             jc2::throw_error("DivisionByZero: Decimal division by zero.");
-            return *this;
         }
         if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
         
@@ -234,7 +233,6 @@ public:
         if (mantissa.isZero()) return *this;
         if (mantissa.isNegative()) {
             jc2::throw_error("MathError: sqrt of negative decimal.");
-            return *this;
         }
         Decimal half(jc::BigInt(5), -1);
         
@@ -380,7 +378,6 @@ public:
     Decimal ln_val() const {
         if (mantissa.isZero() || mantissa.isNegative()) {
             jc2::throw_error("MathError: ln of non-positive decimal.");
-            return *this;
         }
         int64_t L = mantissa.digitCount();
         double first_digit = (mantissa.abs() / pow10(L - 1)).toDouble();
@@ -444,7 +441,6 @@ public:
         Decimal one(jc::BigInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: asin domain error.");
-            return *this;
         }
         double d = std::stod(to_string());
         double guess = std::asin(d);
@@ -469,7 +465,6 @@ public:
         Decimal one(jc::BigInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: acos domain error.");
-            return *this;
         }
         double d = std::stod(to_string());
         double guess = std::acos(d);
@@ -546,7 +541,6 @@ static Decimal parseDecimalArg(const jc2::Value& val) {
         return Decimal::from_string(val.to_string());
     }
     jc2::throw_error("TypeError: Cannot convert to Decimal.");
-    return Decimal::from_string("0");
 }
 
 #define METHOD(name) JC2_ValueHandle decimal_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)

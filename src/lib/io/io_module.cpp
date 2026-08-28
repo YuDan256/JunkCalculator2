@@ -506,7 +506,6 @@ JC2_ValueHandle io_readFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, 
         return jc2::Value(decode_to_utf8(content, encoding)).get_handle();
     }
     jc2::throw_error("IO Error: Failed to read file.");
-    return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle io_writeFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {

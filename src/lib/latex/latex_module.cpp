@@ -188,7 +188,6 @@ class LatexParser {
         }
 
         jc2::throw_error("LaTeX Parse Error: Unexpected token at '" + src.substr(pos, 5) + "...'");
-        return "";
     }
 
     std::string parsePower() {

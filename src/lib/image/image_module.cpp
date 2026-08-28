@@ -7,7 +7,6 @@ using namespace jc2;
 jc::Color parseColor(const Value& v) {
     if (v.is_string()) return jc::Color::parse(v.as_string());
     throw_error("Type Error: Expected a color string.");
-    return jc::Color{0,0,0};
 }
 
 jc::Image* getImg(JC2_ValueHandle* argv) {

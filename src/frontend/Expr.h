@@ -131,6 +131,8 @@ namespace jc {
     struct DefaultPattern;   // ★ 新增
 
     struct Pattern {
+        int startPos = 0;
+        int endPos = 0;
         virtual ~Pattern() = default;
 
         static void* operator new(size_t size) {
@@ -276,6 +278,8 @@ namespace jc {
     };
 
     struct Expr {
+        int startPos = 0;
+        int endPos = 0;
         virtual ~Expr() = default;
         virtual void accept(ExprVisitor& visitor) = 0;
 

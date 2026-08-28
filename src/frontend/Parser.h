@@ -98,6 +98,24 @@ namespace jc {
             macroEnvStack.push_back({});
         }
         std::unique_ptr<Expr> parse();
+
+        template<typename T>
+        std::unique_ptr<T> withPos(std::unique_ptr<T> node, int start, int end) {
+            if (node) {
+                node->startPos = start;
+                node->endPos = end;
+            }
+            return node;
+        }
+
+        template<typename T>
+        std::unique_ptr<T> withPosPat(std::unique_ptr<T> node, int start, int end) {
+            if (node) {
+                node->startPos = start;
+                node->endPos = end;
+            }
+            return node;
+        }
     };
 
 } // namespace jc

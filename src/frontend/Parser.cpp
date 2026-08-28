@@ -65,13 +65,15 @@ namespace jc {
     std::unique_ptr<Expr> Parser::expression() {
         auto expr = assignment();
         if (match({ TokenType::COMMA })) {
+            int startPos = expr->startPos;
             std::vector<std::unique_ptr<Expr>> exprs;
             exprs.push_back(std::move(expr));
             do {
                 while (match({ TokenType::NEWLINE })) {}
                 exprs.push_back(assignment());
             } while (match({ TokenType::COMMA }));
-            return std::make_unique<SequenceExpr>(std::move(exprs));
+            int endPos = exprs.back()->endPos;
+            return withPos(std::make_unique<SequenceExpr>(std::move(exprs)), startPos, endPos);
         }
         return expr;
     }
@@ -79,6 +81,7 @@ namespace jc {
     std::unique_ptr<Expr> Parser::pipe() {
         auto expr = logicalOr();
         while (match({ TokenType::PIPE })) {
+            int startPos = expr->startPos;
             Token op = previous();
             while (match({ TokenType::NEWLINE })) {}
             
@@ -112,19 +115,22 @@ namespace jc {
                                 continue;
                             }
                             if (match({ TokenType::ELLIPSIS })) {
+                                int spreadStart = previous().position;
                                 auto val = assignment();
+                                int spreadEnd = val->endPos;
                                 if (inKwOnly) {
-                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), true));
+                                    args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd));
                                     hasKwArg = true;
                                 } else {
                                     if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
-                                    args.push_back(std::make_unique<SpreadExpr>(std::move(val), false));
+                                    args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd));
                                 }
                             } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
                                 Token kwName = advance();
                                 advance(); // consume '='
                                 auto val = assignment();
-                                args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                                int kwEnd = val->endPos;
+                                args.push_back(withPos(std::make_unique<KeywordArgExpr>(kwName, std::move(val)), kwName.position, kwEnd));
                                 hasKwArg = true;
                             } else {
                                 if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
@@ -156,29 +162,34 @@ namespace jc {
                                 Token phTok(TokenType::IDENTIFIER, "__ph_" + std::to_string(phCount++), var->name.line);
                                 phParams.push_back(phTok);
                                 phDefaults.push_back(nullptr);
-                                arg = std::make_unique<Variable>(phTok);
+                                arg = withPos(std::make_unique<Variable>(phTok), var->startPos, var->endPos);
                             }
                         }
                     }
                     std::unique_ptr<Expr> methodNode = std::make_unique<MethodCallExpr>(std::move(expr), field, std::move(args));
 
+                    int endPos = previous().position + previous().lexeme.length();
+                    std::unique_ptr<Expr> methodNode = withPos(std::make_unique<MethodCallExpr>(std::move(expr), field, std::move(args)), startPos, endPos);
+
                     if (isPartial) {
                         std::vector<bool> phIsRef(phParams.size(), false);
                         std::vector<bool> phIsConst(phParams.size(), false);
-                        expr = std::make_unique<LambdaExpr>(
+                        expr = withPos(std::make_unique<LambdaExpr>(
                             "<partial_method>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), "",
                             std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr,
                             "<partial_method>", std::shared_ptr<Expr>(methodNode.release())
-                        );
+                        ), startPos, endPos);
                     } else {
                         expr = std::move(methodNode);
                     }
                 } else {
-                    expr = std::make_unique<DotAccess>(std::move(expr), field);
+                    int endPos = field.position + field.lexeme.length();
+                    expr = withPos(std::make_unique<DotAccess>(std::move(expr), field), startPos, endPos);
                 }
             } else {
                 auto right = logicalOr();
-                expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+                int endPos = right->endPos;
+                expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
             }
         }
         return expr;
@@ -189,7 +200,9 @@ namespace jc {
         while (match({ TokenType::OR_OR })) {
             Token op = previous();
             auto right = logicalAnd();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -199,7 +212,9 @@ namespace jc {
         while (match({ TokenType::AND_AND })) {
             Token op = previous();
             auto right = comparison();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -210,7 +225,9 @@ namespace jc {
         while (match({ TokenType::BIT_OR })) {
             Token op = previous();
             auto right = bitwiseXor();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -221,7 +238,9 @@ namespace jc {
         while (match({ TokenType::BIT_XOR })) {
             Token op = previous();
             auto right = bitwiseAnd();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -232,7 +251,9 @@ namespace jc {
         while (match({ TokenType::BIT_AND })) {
             Token op = previous();
             auto right = shift();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -300,23 +321,26 @@ namespace jc {
         auto expr = pipe();  // ★
 
         if (match({ TokenType::QUESTION })) {
+            int startPos = expr->startPos;
             // cond ? thenExpr : elseExpr
             // 右结合：a ? b : c ? d : e  →  a ? b : (c ? d : e)
             auto thenBranch = ternary();    // 允许嵌套 ternary
             consume(TokenType::COLON, "Parser Error: Expect ':' in ternary expression.");
             auto elseBranch = ternary();    // 右结合递归
 
+            int endPos = elseBranch->endPos;
             // ★ 直接复用 IfExpr，零 Evaluator 改动
-            expr = std::make_unique<IfExpr>(
+            expr = withPos(std::make_unique<IfExpr>(
                 std::move(expr),
                 std::move(thenBranch),
-                std::move(elseBranch));
+                std::move(elseBranch)), startPos, endPos);
         }
 
         return expr;
     }
 
     std::unique_ptr<Expr> Parser::assignment() {
+        int startPos = peek().position;
         bool isLocal = false, isRef = false, isState = false, isConst = false;
         while (true) {
             if (match({ TokenType::LOCAL })) {
@@ -505,8 +529,10 @@ namespace jc {
                             }
 
                             if (isDestruct) {
-                                auto rhs = std::make_unique<Variable>(paramTok);
-                                destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
+                                int patStart = patNode->startPos;
+                                auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + paramTok.lexeme.length());
+                                int rhsEnd = rhs->endPos;
+                                destructStmts.push_back(withPos(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst), patStart, rhsEnd));
                             }
                             // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                             if (match({ TokenType::COMMA })) continue;
@@ -552,13 +578,14 @@ namespace jc {
                         finalBody = std::shared_ptr<Expr>(rawB.release());
                     }
 
-                    auto lambda = std::make_unique<LambdaExpr>(
+                    int endPos = finalBody->endPos;
+                    auto lambda = withPos(std::make_unique<LambdaExpr>(
                         funcName.lexeme, params, paramIsRef, paramIsConst, defaultExprs, restName,
                         paramTypes, retType, rawBodyStr, std::move(finalBody),
                         kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName
-                    );
+                    ), funcName.position, endPos);
 
-                    return std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal, isConst);
+                    return withPos(std::make_unique<Assign>(funcName, std::move(lambda), isRef, isState, isLocal, isConst), funcName.position, endPos);
                 }
             }
         }
@@ -578,9 +605,11 @@ namespace jc {
             if (destructPeekPos < static_cast<int>(tokens.size()) && tokens[destructPeekPos].type == TokenType::ASSIGN) {
                 // 确认是解构赋值，直接解析为纯正的 Pattern！
                 auto pat = parsePrimaryPattern();
+                int patStart = pat->startPos;
                 consume(TokenType::ASSIGN, "Parser Error: Expect '=' after destructuring pattern.");
                 auto value = assignment();
-                return std::make_unique<DestructAssign>(std::move(pat), std::move(value), isRef, isState, isLocal, isConst);
+                int valEnd = value->endPos;
+                return withPos(std::make_unique<DestructAssign>(std::move(pat), std::move(value), isRef, isState, isLocal, isConst), patStart, valEnd);
             }
         }
 
@@ -631,7 +660,8 @@ namespace jc {
                 throw std::runtime_error("Parser Error: 'local', 'ref' or 'state' can only be applied to variables.");
             }
 
-            return std::make_unique<CompoundAssign>(std::move(expr), baseOp, std::move(value), isRef, isState, isLocal);
+            int endPos = value->endPos;
+            return withPos(std::make_unique<CompoundAssign>(std::move(expr), baseOp, std::move(value), isRef, isState, isLocal), startPos, endPos);
         }
 
         // ── 处理标准赋值 (=) ──
@@ -642,9 +672,10 @@ namespace jc {
             Token equals = previous();
             auto value = assignment();  // ★ 直接读取右值即可，把上下两行记录 index 的删掉
 
+            int endPos = value->endPos;
             if (auto* dotExpr = dynamic_cast<DotAccess*>(expr.get())) {
                 if (isLocal || isRef || isState || isConst) throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' cannot be applied to object properties.");
-                return std::make_unique<DotAssign>(std::move(dotExpr->object), std::move(dotExpr->field), std::move(value), std::move(typeHint));
+                return withPos(std::make_unique<DotAssign>(std::move(dotExpr->object), std::move(dotExpr->field), std::move(value), std::move(typeHint)), startPos, endPos);
             }
 
             if (auto* indexExpr = dynamic_cast<IndexAccess*>(expr.get())) {
@@ -659,19 +690,19 @@ namespace jc {
                 std::reverse(chain.begin(), chain.end());
                 auto* varExpr = dynamic_cast<Variable*>(currentIA->object.get());
                 if (varExpr) {
-                    return std::make_unique<IndexAssign>(varExpr->name, std::move(chain), std::move(value), std::move(typeHint));
+                    return withPos(std::make_unique<IndexAssign>(varExpr->name, std::move(chain), std::move(value), std::move(typeHint)), startPos, endPos);
                 }
                 else {
-                    return std::make_unique<IndexAssign>(std::move(currentIA->object), std::move(chain), std::move(value), std::move(typeHint));
+                    return withPos(std::make_unique<IndexAssign>(std::move(currentIA->object), std::move(chain), std::move(value), std::move(typeHint)), startPos, endPos);
                 }
             }
 
             if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
-                return std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst, std::move(typeHint));
+                return withPos(std::make_unique<Assign>(varExpr->name, std::move(value), isRef, isState, isLocal, isConst, std::move(typeHint)), startPos, endPos);
             }
 
             if (dynamic_cast<UnquoteExpr*>(expr.get())) {
-                return std::make_unique<ExprAssign>(std::move(expr), std::move(value), isRef, isState, isLocal, isConst);
+                return withPos(std::make_unique<ExprAssign>(std::move(expr), std::move(value), isRef, isState, isLocal, isConst), startPos, endPos);
             }
 
             // ★ （旧的 Call 拦截已经被上面顶端安全取代，这里删去原来的 Call if 分支即可！）
@@ -680,11 +711,12 @@ namespace jc {
         }
 
         if (isLocal || isRef || isState || isConst) {
+            int endPos = typeHint ? typeHint->endPos : expr->endPos;
             if (auto* var = dynamic_cast<Variable*>(expr.get())) {
-                if (isLocal) expr = std::make_unique<LocalDecl>(var->name, isConst, std::move(typeHint));
-                else if (isRef) expr = std::make_unique<RefDecl>(var->name, isConst, std::move(typeHint));
-                else if (isState) expr = std::make_unique<StateDecl>(var->name, isConst, std::move(typeHint));
-                else if (isConst) expr = std::make_unique<ConstDecl>(var->name);
+                if (isLocal) expr = withPos(std::make_unique<LocalDecl>(var->name, isConst, std::move(typeHint)), startPos, endPos);
+                else if (isRef) expr = withPos(std::make_unique<RefDecl>(var->name, isConst, std::move(typeHint)), startPos, endPos);
+                else if (isState) expr = withPos(std::make_unique<StateDecl>(var->name, isConst, std::move(typeHint)), startPos, endPos);
+                else if (isConst) expr = withPos(std::make_unique<ConstDecl>(var->name), startPos, endPos);
             } else if (auto* assign = dynamic_cast<Assign*>(expr.get())) {
                 assign->isLocal = isLocal;
                 assign->isRef = isRef;
@@ -698,10 +730,12 @@ namespace jc {
             } else if (auto* un = dynamic_cast<Unary*>(expr.get())) {
                 if (un->op.type == TokenType::ELLIPSIS) {
                     if (auto* restVar = dynamic_cast<Variable*>(un->right.get())) {
-                        if (isLocal) un->right = std::make_unique<LocalDecl>(restVar->name, isConst);
-                        else if (isRef) un->right = std::make_unique<RefDecl>(restVar->name, isConst);
-                        else if (isState) un->right = std::make_unique<StateDecl>(restVar->name, isConst);
-                        else if (isConst) un->right = std::make_unique<ConstDecl>(restVar->name);
+                        int rStart = restVar->startPos;
+                        int rEnd = restVar->endPos;
+                        if (isLocal) un->right = withPos(std::make_unique<LocalDecl>(restVar->name, isConst), rStart, rEnd);
+                        else if (isRef) un->right = withPos(std::make_unique<RefDecl>(restVar->name, isConst), rStart, rEnd);
+                        else if (isState) un->right = withPos(std::make_unique<StateDecl>(restVar->name, isConst), rStart, rEnd);
+                        else if (isConst) un->right = withPos(std::make_unique<ConstDecl>(restVar->name), rStart, rEnd);
                     } else {
                         throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
                     }
@@ -740,8 +774,10 @@ namespace jc {
                 std::string tmpName = "<chain>_" + std::to_string(current) + "_" + std::to_string(chainIdx++);
                 Token tmpTok(TokenType::IDENTIFIER, tmpName, op.position, op.line);
                 
-                auto assign = std::make_unique<Assign>(tmpTok, std::move(right));
-                auto comp = std::make_unique<Binary>(std::move(expr), op, std::move(assign));
+                int startPos = expr->startPos;
+                int rightEndPos = right->endPos;
+                auto assign = withPos(std::make_unique<Assign>(tmpTok, std::move(right)), tmpTok.position, rightEndPos);
+                auto comp = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(assign)), startPos, rightEndPos);
                 
                 Token prevTmpTok = tmpTok;
 
@@ -760,25 +796,31 @@ namespace jc {
                         std::string nextTmpName = "<chain>_" + std::to_string(current) + "_" + std::to_string(chainIdx++);
                         Token nextTmpTok(TokenType::IDENTIFIER, nextTmpName, nextOp.position, nextOp.line);
 
-                        auto nextAssign = std::make_unique<Assign>(nextTmpTok, std::move(nextRight));
-                        auto leftVar = std::make_unique<Variable>(prevTmpTok);
-                        auto nextComp = std::make_unique<Binary>(std::move(leftVar), nextOp, std::move(nextAssign));
+                        int nextRightEndPos = nextRight->endPos;
+                        auto nextAssign = withPos(std::make_unique<Assign>(nextTmpTok, std::move(nextRight)), nextTmpTok.position, nextRightEndPos);
+                        auto leftVar = withPos(std::make_unique<Variable>(prevTmpTok), prevTmpTok.position, prevTmpTok.position + prevTmpTok.lexeme.length());
+                        auto nextComp = withPos(std::make_unique<Binary>(std::move(leftVar), nextOp, std::move(nextAssign)), prevTmpTok.position, nextRightEndPos);
                         
                         Token andOp(TokenType::AND_AND, "&&", nextOp.position, nextOp.line);
-                        comp = std::make_unique<Binary>(std::move(comp), andOp, std::move(nextComp));
+                        int compStartPos = comp->startPos;
+                        comp = withPos(std::make_unique<Binary>(std::move(comp), andOp, std::move(nextComp)), compStartPos, nextRightEndPos);
 
                         prevTmpTok = nextTmpTok;
                     } else {
-                        auto leftVar = std::make_unique<Variable>(prevTmpTok);
-                        auto nextComp = std::make_unique<Binary>(std::move(leftVar), nextOp, std::move(nextRight));
+                        int nextRightEndPos = nextRight->endPos;
+                        auto leftVar = withPos(std::make_unique<Variable>(prevTmpTok), prevTmpTok.position, prevTmpTok.position + prevTmpTok.lexeme.length());
+                        auto nextComp = withPos(std::make_unique<Binary>(std::move(leftVar), nextOp, std::move(nextRight)), prevTmpTok.position, nextRightEndPos);
                         
                         Token andOp(TokenType::AND_AND, "&&", nextOp.position, nextOp.line);
-                        comp = std::make_unique<Binary>(std::move(comp), andOp, std::move(nextComp));
+                        int compStartPos = comp->startPos;
+                        comp = withPos(std::make_unique<Binary>(std::move(comp), andOp, std::move(nextComp)), compStartPos, nextRightEndPos);
                     }
                 }
                 return comp;
             } else {
-                return std::make_unique<Binary>(std::move(expr), op, std::move(right));
+                int startPos = expr->startPos;
+                int endPos = right->endPos;
+                return withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
             }
         }
         return expr;
@@ -789,7 +831,9 @@ namespace jc {
         while (match({ TokenType::SHIFT_LEFT, TokenType::SHIFT_RIGHT })) {
             Token op = previous();
             auto right = addition();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -799,7 +843,9 @@ namespace jc {
         while (match({ TokenType::PLUS, TokenType::MINUS })) {
             Token op = previous();
             auto right = multiplication();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -809,7 +855,9 @@ namespace jc {
         while (match({ TokenType::STAR, TokenType::SLASH, TokenType::TILDE_SLASH, TokenType::PERCENT, TokenType::BACKSLASH })) {
             Token op = previous();
             auto right = unary();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -818,7 +866,9 @@ namespace jc {
         if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {
             Token op = previous();
             auto right = unary();
-            return std::make_unique<Unary>(op, std::move(right));
+            int startPos = op.position;
+            int endPos = right->endPos;
+            return withPos(std::make_unique<Unary>(op, std::move(right)), startPos, endPos);
         }
         return power();
     }
@@ -831,7 +881,9 @@ namespace jc {
             std::string nameStr = "";
             if (auto* var = dynamic_cast<Variable*>(expr.get())) nameStr = var->name.lexeme;
             Token nameTok(TokenType::IDENTIFIER, nameStr, asTok.position, asTok.line);
-            expr = std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint));
+            int startPos = expr->startPos;
+            int endPos = typeHint->endPos;
+            expr = withPos(std::make_unique<TypeAssertExpr>(std::move(nameTok), std::move(expr), std::move(typeHint)), startPos, endPos);
         }
         return expr;
     }
@@ -841,7 +893,9 @@ namespace jc {
         if (match({ TokenType::CARET })) {
             Token op = previous();
             auto right = unary();
-            expr = std::make_unique<Binary>(std::move(expr), op, std::move(right));
+            int startPos = expr->startPos;
+            int endPos = right->endPos;
+            expr = withPos(std::make_unique<Binary>(std::move(expr), op, std::move(right)), startPos, endPos);
         }
         return expr;
     }
@@ -851,6 +905,7 @@ namespace jc {
         while (true) {
             // 1. 点属性/方法调用访问 (必须与对象在同一行，或被 () 整体包裹)
             if (match({ TokenType::DOT })) {
+                int startPos = expr->startPos;
                 Token field(TokenType::ERROR, "");
                 if (match({ TokenType::DOLLAR })) {
                     Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
@@ -951,6 +1006,7 @@ namespace jc {
             }
             // 2. 普通函数调用
             else if (match({ TokenType::LPAREN })) {
+                int startPos = expr->startPos;
                 std::vector<std::unique_ptr<Expr>> args;
                 while (match({ TokenType::NEWLINE })) {}
                 if (!check(TokenType::RPAREN)) {
@@ -965,19 +1021,22 @@ namespace jc {
                             continue;
                         }
                         if (match({ TokenType::ELLIPSIS })) {
+                            int spreadStart = previous().position;
                             auto val = assignment();
+                            int spreadEnd = val->endPos;
                             if (inKwOnly) {
-                                args.push_back(std::make_unique<SpreadExpr>(std::move(val), true));
+                                args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd));
                                 hasKwArg = true;
                             } else {
                                 if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
-                                args.push_back(std::make_unique<SpreadExpr>(std::move(val), false));
+                                args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd));
                             }
                         } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
                             Token kwName = advance();
                             advance(); // consume '='
                             auto val = assignment();
-                            args.push_back(std::make_unique<KeywordArgExpr>(kwName, std::move(val)));
+                            int kwEnd = val->endPos;
+                            args.push_back(withPos(std::make_unique<KeywordArgExpr>(kwName, std::move(val)), kwName.position, kwEnd));
                             hasKwArg = true;
                         } else {
                             if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
@@ -1010,25 +1069,26 @@ namespace jc {
                             Token phTok(TokenType::IDENTIFIER, "__ph_" + std::to_string(phCount++), var->name.line);
                             phParams.push_back(phTok);
                             phDefaults.push_back(nullptr);
-                            arg = std::make_unique<Variable>(phTok);
+                            arg = withPos(std::make_unique<Variable>(phTok), var->startPos, var->endPos);
                         }
                     }
                 }
+                int endPos = previous().position + previous().lexeme.length();
                 std::unique_ptr<Expr> callNode;
                 if (auto* varExpr = dynamic_cast<Variable*>(expr.get())) {
-                    callNode = std::make_unique<Call>(varExpr->name, std::move(args));
+                    callNode = withPos(std::make_unique<Call>(varExpr->name, std::move(args)), startPos, endPos);
                 }
                 else {
-                    callNode = std::make_unique<InvokeExpr>(std::move(expr), std::move(args));
+                    callNode = withPos(std::make_unique<InvokeExpr>(std::move(expr), std::move(args)), startPos, endPos);
                 }
                 if (isPartial) {
                     std::vector<bool> phIsRef(phParams.size(), false);
                     std::vector<bool> phIsConst(phParams.size(), false);
-                    expr = std::make_unique<LambdaExpr>(
+                    expr = withPos(std::make_unique<LambdaExpr>(
                         "<partial_apply>", std::move(phParams), std::move(phIsRef), std::move(phIsConst), std::move(phDefaults), "",
                         std::vector<std::shared_ptr<Expr>>(phParams.size(), nullptr), nullptr, // ★★★ 补上: 空参数类型数组，空返回类型
                         "<partial_apply>", std::shared_ptr<Expr>(callNode.release())
-                    );
+                    ), startPos, endPos);
                 }
                 else {
                     expr = std::move(callNode);
@@ -1036,6 +1096,7 @@ namespace jc {
             }
             // 3. 数组/矩阵索引访问
             else if (match({ TokenType::LBRACKET })) {
+                int startPos = expr->startPos;
                 std::vector<std::unique_ptr<Expr>> indices;
                 auto parseSliceArg = [this]() -> std::unique_ptr<Expr> {
                     if (check(TokenType::COMMA) || check(TokenType::RBRACKET)) {
@@ -1061,7 +1122,11 @@ namespace jc {
                             }
                         }
                     }
-                    if (isSl) return std::make_unique<SliceExpr>(std::move(st), std::move(en), std::move(sp));
+                    if (isSl) {
+                        int slStart = st ? st->startPos : previous().position;
+                        int slEnd = sp ? sp->endPos : (en ? en->endPos : previous().position + previous().lexeme.length());
+                        return withPos(std::make_unique<SliceExpr>(std::move(st), std::move(en), std::move(sp)), slStart, slEnd);
+                    }
                     return st;
                     };
 
@@ -1075,7 +1140,8 @@ namespace jc {
                 }
                 while (match({ TokenType::NEWLINE })) {}
                 consume(TokenType::RBRACKET, "Parser Error: Expect ']' after index.");
-                expr = std::make_unique<IndexAccess>(std::move(expr), std::move(indices));
+                int endPos = previous().position + previous().lexeme.length();
+                expr = withPos(std::make_unique<IndexAccess>(std::move(expr), std::move(indices)), startPos, endPos);
             }
             else {
                 break; // 如果既不是 . 也不是 ( 也不是 [，说明后缀访问结束，跳出循环
@@ -1089,6 +1155,7 @@ namespace jc {
     // =================================================================
     std::unique_ptr<Expr> Parser::parseBlock() {
         while (match({ TokenType::NEWLINE })) {}  // ★ 跳过 { 前的换行
+        int startPos = peek().position;
         consume(TokenType::LBRACE, "Parser Error: Expect '{'.");
         MacroScopeGuard guard(this);
         std::vector<std::unique_ptr<Expr>> stmts;
@@ -1109,7 +1176,8 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after block.");
-        return std::make_unique<Block>(std::move(stmts));
+        int endPos = previous().position + previous().lexeme.length();
+        return withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos);
     }
 
     bool Parser::isDictLiteralLookahead(int startPos) {
@@ -1232,15 +1300,18 @@ namespace jc {
 
         // 走到这里说明它没有大括号，是单行语句
         // 统统包装为安全的单句 Block 以封锁词法作用域
+        int startPos = peek().position;
         std::vector<std::unique_ptr<Expr>> stmts;
         {
             MacroScopeGuard guard(this);
             stmts.push_back(assignment());
         }
-        return std::make_unique<Block>(std::move(stmts));
+        int endPos = stmts.back()->endPos;
+        return withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::ifExpr() {
+        int startPos = previous().position;
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'if'.");
         auto condition = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after if condition.");
@@ -1265,23 +1336,27 @@ namespace jc {
             current = savedPos; // 回退，把换行符还给外部上下文
         }
         
-        return std::make_unique<IfExpr>(std::move(condition), std::move(thenBranch), std::move(elseBranch));
+        int endPos = elseBranch ? elseBranch->endPos : thenBranch->endPos;
+        return withPos(std::make_unique<IfExpr>(std::move(condition), std::move(thenBranch), std::move(elseBranch)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::whileExpr() {
+        int startPos = previous().position;
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'while'.");
         auto condition = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after while condition.");
 
         auto body = parseStatementOrBlock(); // ★ 修改处
 
-        return std::make_unique<WhileExpr>(std::move(condition), std::move(body));
+        int endPos = body->endPos;
+        return withPos(std::make_unique<WhileExpr>(std::move(condition), std::move(body)), startPos, endPos);
     }
 
     // =================================================================
     // ★ 新增：for (init; cond; update) { ... }
     // =================================================================
     std::unique_ptr<Expr> Parser::forExpr() {
+        int startPos = previous().position;
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for'.");
 
         int savedPos = current;
@@ -1306,7 +1381,8 @@ namespace jc {
                 auto iterable = expression();
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
                 auto body = parseStatementOrBlock();
-                return std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst);
+                int endPos = body->endPos;
+                return withPos(std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst), startPos, endPos);
             }
         } catch (...) {
             // Fall through to normal for loop parsing
@@ -1323,7 +1399,8 @@ namespace jc {
         auto update = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-clauses.");
         auto body = parseStatementOrBlock();
-        return std::make_unique<ForExpr>(std::move(init), std::move(cond), std::move(update), std::move(body));
+        int endPos = body->endPos;
+        return withPos(std::make_unique<ForExpr>(std::move(init), std::move(cond), std::move(update), std::move(body)), startPos, endPos);
     }
 
     // =================================================================
@@ -1359,37 +1436,66 @@ namespace jc {
         }
 
         if (match({ TokenType::DOLLAR })) {
+            int startPos = previous().position;
             auto right = primary();
-            return std::make_unique<UnquoteExpr>(std::move(right));
+            int endPos = right->endPos;
+            return withPos(std::make_unique<UnquoteExpr>(std::move(right)), startPos, endPos);
         }
 
-        if (match({ TokenType::NUMBER }))     return std::make_unique<Literal>(previous().lexeme);
+        auto makeLit = [&](std::unique_ptr<Literal> lit) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::move(lit), startPos, endPos);
+        };
+
+        if (match({ TokenType::NUMBER }))     return makeLit(std::make_unique<Literal>(previous().lexeme));
         if (match({ TokenType::IMAGINARY })) {  // ★
             std::string numStr = previous().lexeme;
             numStr.pop_back();  // 去掉尾部 'i'
-            return std::make_unique<Literal>(numStr, false, true);
+            return makeLit(std::make_unique<Literal>(numStr, false, true));
         }
-        if (match({ TokenType::FSTRING }))    return parseFString(previous().lexeme);  // ★
-        if (match({ TokenType::RSTRING })) return std::make_unique<Literal>(previous().lexeme, true);  // ★
-        if (match({ TokenType::STRING }))     return std::make_unique<Literal>(previous().lexeme, true);
-        if (match({ TokenType::IDENTIFIER })) return std::make_unique<Variable>(previous());
+        if (match({ TokenType::FSTRING })) {
+            int startPos = previous().position;
+            auto fstr = parseFString(previous().lexeme);
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::move(fstr), startPos, endPos);
+        }
+        if (match({ TokenType::RSTRING })) return makeLit(std::make_unique<Literal>(previous().lexeme, true));  // ★
+        if (match({ TokenType::STRING }))     return makeLit(std::make_unique<Literal>(previous().lexeme, true));
+        if (match({ TokenType::IDENTIFIER })) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<Variable>(previous()), startPos, endPos);
+        }
         // ★ 控制流关键字
-        if (match({ TokenType::TRUE_KW }))  return std::make_unique<Literal>("true", false, false, true);
-        if (match({ TokenType::FALSE_KW })) return std::make_unique<Literal>("false", false, false, true);
-        if (match({ TokenType::NONE_KW }))  return std::make_unique<Literal>("none", false, false, true);
-        if (match({ TokenType::SUPER }))    return std::make_unique<SuperExpr>();
-        if (match({ TokenType::SELF }))     return std::make_unique<SelfExpr>();
+        if (match({ TokenType::TRUE_KW }))  return makeLit(std::make_unique<Literal>("true", false, false, true));
+        if (match({ TokenType::FALSE_KW })) return makeLit(std::make_unique<Literal>("false", false, false, true));
+        if (match({ TokenType::NONE_KW }))  return makeLit(std::make_unique<Literal>("none", false, false, true));
+        if (match({ TokenType::SUPER })) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<SuperExpr>(), startPos, endPos);
+        }
+        if (match({ TokenType::SELF })) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<SelfExpr>(), startPos, endPos);
+        }
         if (match({ TokenType::CLASS })) {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::EXTENDS)) {
                 return classDefExpr();
             }
-            return std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous());
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
         }
         if (match({ TokenType::NAMESPACE })) {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
                 return namespaceExpr();
             }
-            return std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Namespace, previous());
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Namespace, previous()), startPos, endPos);
         }
         if (match({ TokenType::ENUM })) {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
@@ -1400,8 +1506,16 @@ namespace jc {
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
         if (match({ TokenType::FOR }))      return forExpr();
-        if (match({ TokenType::BREAK }))    return std::make_unique<BreakExpr>(previous());
-        if (match({ TokenType::CONTINUE })) return std::make_unique<ContinueExpr>(previous());
+        if (match({ TokenType::BREAK })) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<BreakExpr>(previous()), startPos, endPos);
+        }
+        if (match({ TokenType::CONTINUE })) {
+            int startPos = previous().position;
+            int endPos = startPos + previous().lexeme.length();
+            return withPos(std::make_unique<ContinueExpr>(previous()), startPos, endPos);
+        }
         if (match({ TokenType::RETURN })) {
             Token retTok = previous();
             std::unique_ptr<Expr> value = nullptr;
@@ -1411,12 +1525,14 @@ namespace jc {
                 !check(TokenType::END_OF_FILE)) {
                 value = assignment();  // ★ 降级：防止逗号被误吞
             }
-            return std::make_unique<ReturnExpr>(retTok, std::move(value));
+            int endPos = value ? value->endPos : retTok.position + retTok.lexeme.length();
+            return withPos(std::make_unique<ReturnExpr>(retTok, std::move(value)), retTok.position, endPos);
         }
         if (match({ TokenType::THROW })) {
             Token throwTok = previous();
             auto value = assignment();  // ★ 降级：防止逗号被误吞
-            return std::make_unique<ThrowExpr>(throwTok, std::move(value));
+            int endPos = value->endPos;
+            return withPos(std::make_unique<ThrowExpr>(throwTok, std::move(value)), throwTok.position, endPos);
         }
         if (match({ TokenType::TRY })) {
             Token tryTok = previous();
@@ -1428,16 +1544,18 @@ namespace jc {
                 auto catchPattern = parsePrimaryPattern();
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
                 auto catchBody = parseStatementOrBlock();
-                return std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody));
+                int endPos = catchBody->endPos;
+                return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody)), tryTok.position, endPos);
             }
             // ★ try 无 catch：回退换行（保留语句分隔符），静默吞下错误，失败返回 none
             current = saved;
             Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
             auto catchPattern = std::make_unique<VariablePattern>(underscore);
-            auto catchBody = std::make_unique<Literal>("none", false, false, true);
-            return std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody));
+            auto catchBody = withPos(std::make_unique<Literal>("none", false, false, true), tryBody->endPos, tryBody->endPos);
+            return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody)), tryTok.position, catchBody->endPos);
         }
         if (match({ TokenType::IMPORT })) {
+            int startPos = previous().position;
             bool isComptime = match({ TokenType::AT });
             
             if (check(TokenType::IDENTIFIER)) {
@@ -1445,9 +1563,10 @@ namespace jc {
                 if (isComptime) {
                     VM::activeVM->execCompileTimeImport(nameTok.lexeme);
                 }
-                auto pathExpr = std::make_unique<Literal>(nameTok.lexeme, true);
-                auto importExpr = std::make_unique<ImportExpr>(std::move(pathExpr));
-                return std::make_unique<Assign>(nameTok, std::move(importExpr));
+                int endPos = nameTok.position + nameTok.lexeme.length();
+                auto pathExpr = withPos(std::make_unique<Literal>(nameTok.lexeme, true), nameTok.position, endPos);
+                auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)), startPos, endPos);
+                return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr)), startPos, endPos);
             } else {
                 auto path = assignment();  // ★ 降级：防止逗号被误吞
                 if (isComptime) {
@@ -1457,7 +1576,8 @@ namespace jc {
                         throw std::runtime_error("Parser Error: Compile-time import (@) requires a static string or identifier.");
                     }
                 }
-                return std::make_unique<ImportExpr>(std::move(path));
+                int endPos = path->endPos;
+                return withPos(std::make_unique<ImportExpr>(std::move(path)), startPos, endPos);
             }
         }
         if (match({ TokenType::SWITCH })) return switchExpr();
@@ -1467,12 +1587,14 @@ namespace jc {
         if (match({ TokenType::QUOTE })) return quoteExpr();
         if (match({ TokenType::DEFER })) return deferExpr();
         if (match({ TokenType::DELETE })) {
+            int startPos = previous().position;
             if (match({ TokenType::AT })) {
                 Token macroName = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name after '@'.");
                 if (!deleteMacro(macroName.lexeme)) {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' not found.");
                 }
-                return std::make_unique<Literal>("none", false, false, true);
+                int endPos = macroName.position + macroName.lexeme.length();
+                return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
             }
             std::vector<Token> names;
             auto parseDelName = [&]() {
@@ -1494,7 +1616,8 @@ namespace jc {
                     break; // 智能探测：后面不是变量名，把逗号留给外层
                 }
             }
-            return std::make_unique<DeleteExpr>(std::move(names));
+            int endPos = names.back().position + names.back().lexeme.length();
+            return withPos(std::make_unique<DeleteExpr>(std::move(names)), startPos, endPos);
         }
 
         // ★ 裸块 { ... } 或字典字面量 { key: value, ... }
@@ -1656,8 +1779,10 @@ namespace jc {
                         }
 
                         if (isDestruct) {
-                            auto rhs = std::make_unique<Variable>(paramTok);
-                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst));
+                            int patStart = patNode->startPos;
+                            auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + paramTok.lexeme.length());
+                            int rhsEnd = rhs->endPos;
+                            destructStmts.push_back(withPos(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isConst), patStart, rhsEnd));
                         }
                         // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                         if (match({ TokenType::COMMA })) continue;
@@ -1702,7 +1827,8 @@ namespace jc {
                     finalBody = std::shared_ptr<Expr>(body.release());
                 }
 
-                return std::make_unique<LambdaExpr>(
+                int endPos = finalBody->endPos;
+                return withPos(std::make_unique<LambdaExpr>(
                     "<lambda>",
                     std::move(lambdaParams),
                     std::move(lambdaParamIsRef),
@@ -1712,7 +1838,7 @@ namespace jc {
                     paramTypes, retType,  // ★
                     rawBody,
                     std::move(finalBody),
-                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName);
+                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName), savedPos, endPos);
             }
             else {
                 current = savedPos;
@@ -1720,7 +1846,8 @@ namespace jc {
                 auto expr = expression();
                 while (match({ TokenType::NEWLINE })) {}
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after expression.");
-                return std::make_unique<GroupingExpr>(std::move(expr));
+                int endPos = previous().position + previous().lexeme.length();
+                return withPos(std::make_unique<GroupingExpr>(std::move(expr)), savedPos, endPos);
             }
         }
 
@@ -1844,11 +1971,17 @@ namespace jc {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (!macroFn->restName.empty() ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
                 }
                 
+                int endPos = previous().position + previous().lexeme.length();
                 if (quoteDepth > 0) {
-                    return std::make_unique<MacroCallExpr>(macroName, std::move(args));
+                    return withPos(std::make_unique<MacroCallExpr>(macroName, std::move(args)), macroName.position - 1, endPos);
                 }
                 
-                return expandMacro(macroName.lexeme, args);
+                auto expanded = expandMacro(macroName.lexeme, args);
+                if (expanded) {
+                    expanded->startPos = macroName.position - 1;
+                    expanded->endPos = endPos;
+                }
+                return expanded;
             }
             if (!check(TokenType::LBRACKET)) {
                 throw std::runtime_error("Parser Error: Expect '[', '{', or identifier after '@'.");
@@ -1857,12 +1990,17 @@ namespace jc {
         }
 
         if (match({ TokenType::LBRACKET })) {
+            int startPos = previous().position;
+            if (forceList) startPos = tokens[current - 2].position; // '@' position
             std::vector<std::vector<std::unique_ptr<Expr>>> matrixElements;
             std::vector<std::unique_ptr<Expr>> currentRow;
 
             auto parseListElement = [&]() -> std::unique_ptr<Expr> {
                 if (forceList && match({ TokenType::ELLIPSIS })) {
-                    return std::make_unique<SpreadExpr>(assignment(), false);
+                    int spreadStart = previous().position;
+                    auto val = assignment();
+                    int spreadEnd = val->endPos;
+                    return withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd);
                 }
                 return assignment();
             };
@@ -1874,7 +2012,10 @@ namespace jc {
                 // ★ 检测推导式：[expr for x in ...] 或 @[expr for x in ...]
                 if (check(TokenType::FOR)) {
                     auto valueExpr = std::move(currentRow[0]);
-                    return parseComp(std::move(valueExpr), forceList);
+                    auto comp = parseComp(std::move(valueExpr), forceList);
+                    comp->startPos = startPos;
+                    comp->endPos = previous().position + previous().lexeme.length();
+                    return comp;
                 }
 
                 // ★ 非推导式 → 继续解析矩阵
@@ -1907,10 +2048,11 @@ namespace jc {
 
             while (match({ TokenType::NEWLINE })) {}
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after matrix structure.");
+            int endPos = previous().position + previous().lexeme.length();
             if (forceList) {
-                return std::make_unique<ListNode>(std::move(matrixElements));
+                return withPos(std::make_unique<ListNode>(std::move(matrixElements)), startPos, endPos);
             }
-            return std::make_unique<MatrixNode>(std::move(matrixElements));
+            return withPos(std::make_unique<MatrixNode>(std::move(matrixElements)), startPos, endPos);
         }
         throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
     }
@@ -1957,6 +2099,7 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::macroDefExpr(bool isTokenMacro) {
+        int startPos = previous().position;
         Token name(TokenType::ERROR, "");
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
@@ -2053,7 +2196,8 @@ namespace jc {
 
         defineMacro(name.lexeme, macroVal);
 
-        return std::make_unique<Literal>("none", false, false, true);
+        int endPos = body->endPos;
+        return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::transformQuote(Expr* expr) {
@@ -2780,20 +2924,25 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::quoteExpr() {
+        int startPos = previous().position;
         while (match({ TokenType::NEWLINE })) {}
         quoteDepth++;
         auto body = assignment();
         quoteDepth--;
-        return transformQuote(body.get());
+        int endPos = body->endPos;
+        return withPos(transformQuote(body.get()), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::deferExpr() {
+        int startPos = previous().position;
         while (match({ TokenType::NEWLINE })) {}
         auto body = assignment();
-        return std::make_unique<DeferExpr>(std::move(body));
+        int endPos = body->endPos;
+        return withPos(std::make_unique<DeferExpr>(std::move(body)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::switchExpr() {
+        int startPos = previous().position;
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'switch'.");
         auto subject = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after switch expression.");
@@ -2818,6 +2967,7 @@ namespace jc {
                 consume(TokenType::COLON, "Parser Error: Expect ':' after case value(s).");
                 
                 // 持续吸收语句，直到遇到下一个 case, default 或 }
+                int blockStart = peek().position;
                 std::vector<std::unique_ptr<Expr>> stmts;
                 while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
@@ -2835,10 +2985,12 @@ namespace jc {
                     }
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                 }
-                cases.push_back({ std::move(values), std::make_unique<Block>(std::move(stmts)) });
+                int blockEnd = stmts.empty() ? previous().position + previous().lexeme.length() : stmts.back()->endPos;
+                cases.push_back({ std::move(values), withPos(std::make_unique<Block>(std::move(stmts)), blockStart, blockEnd) });
             }
             else if (match({ TokenType::DEFAULT })) {
                 consume(TokenType::COLON, "Parser Error: Expect ':' after 'default'.");
+                int blockStart = peek().position;
                 std::vector<std::unique_ptr<Expr>> stmts;
                 while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
@@ -2856,18 +3008,21 @@ namespace jc {
                     }
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                 }
-                defaultBody = std::make_unique<Block>(std::move(stmts));
+                int blockEnd = stmts.empty() ? previous().position + previous().lexeme.length() : stmts.back()->endPos;
+                defaultBody = withPos(std::make_unique<Block>(std::move(stmts)), blockStart, blockEnd);
             }
             else {
                 throw std::runtime_error("Parser Error: Expect 'case' or 'default' inside switch.");
             }
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' to close switch body.");
+        int endPos = previous().position + previous().lexeme.length();
 
-        return std::make_unique<SwitchExpr>(std::move(subject), std::move(cases), std::move(defaultBody));
+        return withPos(std::make_unique<SwitchExpr>(std::move(subject), std::move(cases), std::move(defaultBody)), startPos, endPos);
     }
 
     std::unique_ptr<Pattern> Parser::parsePrimaryPattern() {
+        int startPos = peek().position;
         ScopeModifier mod = ScopeModifier::None;
         bool hasMod = false;
         bool isConst = false;
@@ -2888,7 +3043,8 @@ namespace jc {
                 name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
             }
             auto typeHint = parseOptionalTypeHint();
-            return std::make_unique<RestPattern>(name, mod, isConst, std::move(typeHint));
+            int endPos = typeHint ? typeHint->endPos : name.position + name.lexeme.length();
+            return withPosPat(std::make_unique<RestPattern>(name, mod, isConst, std::move(typeHint)), startPos, endPos);
         }
         
         if (hasMod) {
@@ -2900,7 +3056,8 @@ namespace jc {
                 name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name after modifier.");
             }
             auto typeHint = parseOptionalTypeHint();
-            return std::make_unique<VariablePattern>(name, mod, isConst, std::move(typeHint));
+            int endPos = typeHint ? typeHint->endPos : name.position + name.lexeme.length();
+            return withPosPat(std::make_unique<VariablePattern>(name, mod, isConst, std::move(typeHint)), startPos, endPos);
         }
         if (match({TokenType::LBRACKET})) {
             std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
@@ -2989,11 +3146,12 @@ namespace jc {
             }
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after pattern.");
 
+            int endPos = previous().position + previous().lexeme.length();
             if (!isMatrix && rows.size() <= 1) {
                 auto elements = rows.empty() ? std::vector<std::unique_ptr<Pattern>>() : std::move(rows[0]);
-                return std::make_unique<ListPattern>(std::move(elements), std::move(restCol));
+                return withPosPat(std::make_unique<ListPattern>(std::move(elements), std::move(restCol)), startPos, endPos);
             } else {
-                return std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow));
+                return withPosPat(std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow)), startPos, endPos);
             }
         }
         if (match({TokenType::LBRACE})) {
@@ -3050,31 +3208,35 @@ namespace jc {
             }
             while (match({TokenType::NEWLINE})) {}
             consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict pattern.");
-            return std::make_unique<DictPattern>(std::move(entries), std::move(rest));
+            int endPos = previous().position + previous().lexeme.length();
+            return withPosPat(std::make_unique<DictPattern>(std::move(entries), std::move(rest)), startPos, endPos);
         }
         
         auto expr = call();
         if (auto* var = dynamic_cast<Variable*>(expr.get())) {
             auto typeHint = parseOptionalTypeHint();
-            return std::make_unique<VariablePattern>(var->name, mod, isConst, std::move(typeHint));
+            int endPos = typeHint ? typeHint->endPos : var->endPos;
+            return withPosPat(std::make_unique<VariablePattern>(var->name, mod, isConst, std::move(typeHint)), startPos, endPos);
         }
         if (auto* unq = dynamic_cast<UnquoteExpr*>(expr.get())) {
             if (auto* var = dynamic_cast<Variable*>(unq->expr.get())) {
                 Token nameTok(TokenType::IDENTIFIER, "$" + var->name.lexeme, var->name.position, var->name.line);
                 auto typeHint = parseOptionalTypeHint();
-                return std::make_unique<VariablePattern>(nameTok, mod, isConst, std::move(typeHint));
+                int endPos = typeHint ? typeHint->endPos : unq->endPos;
+                return withPosPat(std::make_unique<VariablePattern>(nameTok, mod, isConst, std::move(typeHint)), startPos, endPos);
             }
         }
+        int endPos = expr->endPos;
         if (dynamic_cast<IndexAccess*>(expr.get()) || dynamic_cast<DotAccess*>(expr.get())) {
-            return std::make_unique<ExprPattern>(std::move(expr));
+            return withPosPat(std::make_unique<ExprPattern>(std::move(expr)), startPos, endPos);
         }
         if (auto* group = dynamic_cast<GroupingExpr*>(expr.get())) {
-            return std::make_unique<DynamicAssertPattern>(std::move(group->expression));
+            return withPosPat(std::make_unique<DynamicAssertPattern>(std::move(group->expression)), startPos, endPos);
         }
         if (dynamic_cast<SetLiteral*>(expr.get())) {
-            return std::make_unique<DynamicAssertPattern>(std::move(expr));
+            return withPosPat(std::make_unique<DynamicAssertPattern>(std::move(expr)), startPos, endPos);
         }
-        return std::make_unique<LiteralPattern>(std::move(expr));
+        return withPosPat(std::make_unique<LiteralPattern>(std::move(expr)), startPos, endPos);
     }
 
     std::shared_ptr<Expr> Parser::parseOptionalTypeHint() {
@@ -3090,8 +3252,10 @@ namespace jc {
             if (dynamic_cast<RestPattern*>(pat.get())) {
                 throw std::runtime_error("Parser Error: Rest pattern '...' cannot have a default value.");
             }
+            int startPos = pat->startPos;
             auto defExpr = ternary();
-            return std::make_unique<DefaultPattern>(std::move(pat), std::move(defExpr));
+            int endPos = defExpr->endPos;
+            return withPosPat(std::make_unique<DefaultPattern>(std::move(pat), std::move(defExpr)), startPos, endPos);
         }
         return pat;
     }
@@ -3103,13 +3267,16 @@ namespace jc {
                 return parseBlock();
             }
         }
+        int startPos = peek().position;
         auto expr = assignment();
+        int endPos = expr->endPos;
         std::vector<std::unique_ptr<Expr>> stmts;
         stmts.push_back(std::move(expr));
-        return std::make_unique<Block>(std::move(stmts));
+        return withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::matchExpr() {
+        int startPos = previous().position;
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'match'.");
         auto subject = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after match subject.");
@@ -3144,11 +3311,13 @@ namespace jc {
             match({TokenType::COMMA});
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' to close match body.");
+        int endPos = previous().position + previous().lexeme.length();
 
-        return std::make_unique<MatchExpr>(std::move(subject), std::move(branches));
+        return withPos(std::make_unique<MatchExpr>(std::move(subject), std::move(branches)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::namespaceExpr() {
+        int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
 
@@ -3184,14 +3353,16 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after namespace body.");
-        auto nsExpr = std::make_unique<NamespaceDecl>(name, std::make_unique<Block>(std::move(stmts)));
+        int endPos = previous().position + previous().lexeme.length();
+        auto nsExpr = withPos(std::make_unique<NamespaceDecl>(name, withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos)), startPos, endPos);
         if (isNamed) {
-            return std::make_unique<Assign>(name, std::move(nsExpr), false, false, false, false);
+            return withPos(std::make_unique<Assign>(name, std::move(nsExpr), false, false, false, false), startPos, endPos);
         }
         return nsExpr;
     }
 
     std::unique_ptr<Expr> Parser::enumExpr() {
+        int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
 
@@ -3244,15 +3415,17 @@ namespace jc {
 
         while (match({ TokenType::NEWLINE })) {}
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after enum body.");
+        int endPos = previous().position + previous().lexeme.length();
 
-        auto enumExpr = std::make_unique<EnumDefExpr>(name, std::move(members));
+        auto enumExpr = withPos(std::make_unique<EnumDefExpr>(name, std::move(members)), startPos, endPos);
         if (isNamed) {
-            return std::make_unique<Assign>(name, std::move(enumExpr), false, false, false, false);
+            return withPos(std::make_unique<Assign>(name, std::move(enumExpr), false, false, false, false), startPos, endPos);
         }
         return enumExpr;
     }
 
     std::unique_ptr<Expr> Parser::classDefExpr() {
+        int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
 
@@ -3427,8 +3600,10 @@ namespace jc {
                         }
 
                         if (isDestruct) {
-                            auto rhs = std::make_unique<Variable>(paramTok);
-                            destructStmts.push_back(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst));
+                            int patStart = patNode->startPos;
+                            auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + paramTok.lexeme.length());
+                            int rhsEnd = rhs->endPos;
+                            destructStmts.push_back(withPos(std::make_unique<DestructAssign>(std::move(patNode), std::move(rhs), false, false, false, isParamConst), patStart, rhsEnd));
                         }
                         // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                         if (match({ TokenType::COMMA })) continue;
@@ -3500,9 +3675,10 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
-        auto classExpr = std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(staticProperties), std::move(instanceProperties));
+        int endPos = previous().position + previous().lexeme.length();
+        auto classExpr = withPos(std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(staticProperties), std::move(instanceProperties)), startPos, endPos);
         if (isNamed) {
-            return std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false);
+            return withPos(std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false), startPos, endPos);
         }
         return classExpr;
     }
@@ -3628,6 +3804,7 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::parseSetLiteral() {
+        int startPos = previous().position; // '@' position
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after '@'.");
 
         std::vector<std::unique_ptr<Expr>> elements;
@@ -3638,7 +3815,10 @@ namespace jc {
 
             std::unique_ptr<Expr> expr;
             if (match({ TokenType::ELLIPSIS })) {
-                expr = std::make_unique<SpreadExpr>(assignment(), false);
+                int spreadStart = previous().position;
+                auto val = assignment();
+                int spreadEnd = val->endPos;
+                expr = withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd);
             } else {
                 expr = assignment();
             }
@@ -3647,7 +3827,8 @@ namespace jc {
             if (elements.empty() && check(TokenType::FOR)) {
                 auto clauses = parseCompClauses();
                 consume(TokenType::RBRACE, "Parser Error: Expect '}' after set comprehension.");
-                return std::make_unique<SetCompExpr>(std::move(expr), std::move(clauses));
+                int endPos = previous().position + previous().lexeme.length();
+                return withPos(std::make_unique<SetCompExpr>(std::move(expr), std::move(clauses)), startPos, endPos);
             }
 
             elements.push_back(std::move(expr));
@@ -3662,10 +3843,12 @@ namespace jc {
 
         while (match({ TokenType::NEWLINE })) {}
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after set literal.");
-        return std::make_unique<SetLiteral>(std::move(elements));
+        int endPos = previous().position + previous().lexeme.length();
+        return withPos(std::make_unique<SetLiteral>(std::move(elements)), startPos, endPos);
     }
 
     std::unique_ptr<Expr> Parser::parseDictLiteral() {
+        int startPos = peek().position;
         consume(TokenType::LBRACE, "Parser Error: Expect '{'.");
 
         std::vector<std::pair<std::unique_ptr<Expr>, std::unique_ptr<Expr>>> entries;
@@ -3686,7 +3869,10 @@ namespace jc {
             if (match({TokenType::ELLIPSIS})) {
                 isRest = true;
                 key = nullptr;
-                value = std::make_unique<SpreadExpr>(assignment(), true);
+                int spreadStart = previous().position;
+                auto val = assignment();
+                int spreadEnd = val->endPos;
+                value = withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd);
             } else {
                 if (isSimpleId) {
                     advance(); // 吞掉这个标识符
@@ -3718,7 +3904,7 @@ namespace jc {
                 // ★ 它是标准的 "key: value" 模式
                 if (isSimpleId) {
                     // 把刚才吞掉的标识符转为字符串常数作为 key
-                    key = std::make_unique<Literal>(maybeIdTok.lexeme, true);
+                    key = withPos(std::make_unique<Literal>(maybeIdTok.lexeme, true), maybeIdTok.position, maybeIdTok.position + maybeIdTok.lexeme.length());
                 }
                 value = assignment();
             }
@@ -3726,8 +3912,8 @@ namespace jc {
                 // ★ 它是简写的 "{ name }" 模式（没遇到冒号！）
                 // 1. 把它名字作为字符串当 Key
                 // 2. 把它作为一个对同名局域变量的读取当 Value
-                key = std::make_unique<Literal>(maybeIdTok.lexeme, true);
-                value = std::make_unique<Variable>(maybeIdTok);
+                key = withPos(std::make_unique<Literal>(maybeIdTok.lexeme, true), maybeIdTok.position, maybeIdTok.position + maybeIdTok.lexeme.length());
+                value = withPos(std::make_unique<Variable>(maybeIdTok), maybeIdTok.position, maybeIdTok.position + maybeIdTok.lexeme.length());
             }
             else {
                 throw std::runtime_error("Parser Error: Expect ':' after dict key.");
@@ -3740,11 +3926,12 @@ namespace jc {
                 }
                 if (isSimpleId) {
                     // 在推导式中，标识符键应作为变量表达式求值，而不是字符串字面量
-                    key = std::make_unique<Variable>(maybeIdTok);
+                    key = withPos(std::make_unique<Variable>(maybeIdTok), maybeIdTok.position, maybeIdTok.position + maybeIdTok.lexeme.length());
                 }
                 auto clauses = parseCompClauses();
                 consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict comprehension.");
-                return std::make_unique<DictCompExpr>(std::move(key), std::move(value), std::move(clauses));
+                int endPos = previous().position + previous().lexeme.length();
+                return withPos(std::make_unique<DictCompExpr>(std::move(key), std::move(value), std::move(clauses)), startPos, endPos);
             }
 
             // 保存这一对 entry
@@ -3761,7 +3948,8 @@ namespace jc {
 
         while (match({ TokenType::NEWLINE })) {}  // ★ 最终 } 前的换行
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict literal.");
-        return std::make_unique<DictLiteral>(std::move(entries));
+        int endPos = previous().position + previous().lexeme.length();
+        return withPos(std::make_unique<DictLiteral>(std::move(entries)), startPos, endPos);
     }
 
     // ---- 辅助函数 (不变) ----

@@ -27,6 +27,7 @@ namespace jc {
         int quoteDepth = 0;
 
     public:
+        bool disableMacroExpansion = false;
         std::unique_ptr<Expr> expandMacro(const std::string& name, std::vector<std::unique_ptr<Expr>>& args);
         // --- 文法规则 (优先级从低到高) ---
         std::unique_ptr<Expr> expression();

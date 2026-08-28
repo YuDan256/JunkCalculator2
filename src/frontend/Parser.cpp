@@ -1563,7 +1563,7 @@ namespace jc {
             
             if (check(TokenType::IDENTIFIER)) {
                 Token nameTok = advance();
-                if (isComptime) {
+                if (isComptime && !disableMacroExpansion) {
                     VM::activeVM->execCompileTimeImport(nameTok.lexeme);
                 }
                 int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
@@ -1572,7 +1572,7 @@ namespace jc {
                 return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr)), startPos, endPos);
             } else {
                 auto path = assignment();  // ★ 降级：防止逗号被误吞
-                if (isComptime) {
+                if (isComptime && !disableMacroExpansion) {
                     if (auto* lit = dynamic_cast<Literal*>(path.get())) {
                         VM::activeVM->execCompileTimeImport(lit->value);
                     } else {
@@ -1593,8 +1593,10 @@ namespace jc {
             int startPos = previous().position;
             if (match({ TokenType::AT })) {
                 Token macroName = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name after '@'.");
-                if (!deleteMacro(macroName.lexeme)) {
-                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' not found.");
+                if (!disableMacroExpansion) {
+                    if (!deleteMacro(macroName.lexeme)) {
+                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' not found.");
+                    }
                 }
                 int endPos = macroName.position + static_cast<int>(macroName.lexeme.length());
                 return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
@@ -1863,6 +1865,31 @@ namespace jc {
             if (check(TokenType::IDENTIFIER)) {
                 Token macroName = advance();
             
+                if (disableMacroExpansion) {
+                    if (match({ TokenType::LPAREN })) {
+                        int depth = 1;
+                        while (depth > 0 && !isAtEnd()) {
+                            if (check(TokenType::LPAREN)) depth++;
+                            else if (check(TokenType::RPAREN)) depth--;
+                            advance();
+                        }
+                    }
+                    int savedPos = current;
+                    while (match({ TokenType::NEWLINE })) {}
+                    if (check(TokenType::LBRACE)) {
+                        int depth = 0;
+                        do {
+                            if (check(TokenType::LBRACE)) depth++;
+                            else if (check(TokenType::RBRACE)) depth--;
+                            advance();
+                        } while (depth > 0 && !isAtEnd());
+                    } else {
+                        current = savedPos;
+                    }
+                    int endPos = previous().position + static_cast<int>(previous().lexeme.length());
+                    return withPos(std::make_unique<MacroCallExpr>(macroName, std::vector<std::unique_ptr<Expr>>()), macroName.position - 1, endPos);
+                }
+
                 Value macroVal = resolveMacro(macroName.lexeme);
                 if (macroVal.isNone() || !macroVal.isFunctionClosure()) {
                     throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' is not defined or not a function.");
@@ -2144,6 +2171,12 @@ namespace jc {
 
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
         
+        if (disableMacroExpansion) {
+            auto body = parseStatementOrBlock();
+            int endPos = body->endPos;
+            return withPos(std::make_unique<MacroDefExpr>(name, params, restName, isTokenMacro, std::move(body)), startPos, endPos);
+        }
+
         // ★ 注册占位符宏，允许递归调用
         ObjClosure* dummyMacro = GcHeap::get().allocate<ObjClosure>(
             std::vector<std::string>{}, std::vector<bool>{}, name.lexeme, nullptr

@@ -3215,6 +3215,116 @@ inline ObjString* internString(const std::string& str) {
     return obj;
 }
 
+// ★ 格式说明符（Python 对齐）：[[fill]align][sign][#][0][width][grouping][.precision][type]
+// 供 f-string 运行时、常量折叠、format() 三处复用。
+inline std::string applyFormatSpec(const Value& val, const std::string& spec) {
+    size_t si = 0;
+    auto isAlign = [](char c) { return c == '<' || c == '>' || c == '^' || c == '='; };
+
+    char fill = ' ';
+    char align = '\0';
+    if (si + 1 < spec.size() && isAlign(spec[si + 1])) { fill = spec[si]; align = spec[si + 1]; si += 2; }
+    else if (si < spec.size() && isAlign(spec[si])) { align = spec[si]; si++; }
+
+    char sign = '\0';
+    if (si < spec.size() && (spec[si] == '+' || spec[si] == '-' || spec[si] == ' ')) { sign = spec[si]; si++; }
+
+    bool alt = false;
+    if (si < spec.size() && spec[si] == '#') { alt = true; si++; }
+
+    bool zeroPad = false;
+    if (si < spec.size() && spec[si] == '0') { zeroPad = true; si++; }
+
+    int width = 0;
+    while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9') width = width * 10 + (spec[si++] - '0');
+
+    char grouping = '\0';
+    if (si < spec.size() && (spec[si] == ',' || spec[si] == '_')) { grouping = spec[si]; si++; }
+
+    int precision = -1;
+    if (si < spec.size() && spec[si] == '.') {
+        si++; precision = 0;
+        while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9') precision = precision * 10 + (spec[si++] - '0');
+    }
+
+    char type = '\0';
+    if (si < spec.size()) type = spec[si++];
+
+    std::string body;
+    bool isNeg = false;
+    bool isNumber = val.isNumber() || val.isObjType(ObjType::BIGINT) || val.isObjType(ObjType::FRACTION);
+
+    if (isNumber) {
+        if (type == 'b' || type == 'o' || type == 'x' || type == 'X' || type == 'd' || type == 'n' || type == 'c') {
+            int64_t iv = static_cast<int64_t>(std::round(val.asDouble()));
+            if (iv < 0) { isNeg = true; iv = -iv; }
+            if (type == 'b') { if (iv == 0) body = "0"; else { std::string s; for (int64_t t = iv; t > 0; t >>= 1) s += (t & 1) ? '1' : '0'; std::reverse(s.begin(), s.end()); body = s; } }
+            else if (type == 'o') { std::ostringstream oss; oss << std::oct << iv; body = oss.str(); }
+            else if (type == 'x') { std::ostringstream oss; oss << std::hex << iv; body = oss.str(); }
+            else if (type == 'X') { std::ostringstream oss; oss << std::hex << std::uppercase << iv; body = oss.str(); }
+            else if (type == 'c') body = std::string(1, static_cast<char>(iv));
+            else body = std::to_string(iv);
+        } else {
+            double dv = val.asDouble();
+            if (dv < 0) { isNeg = true; dv = -dv; }
+            std::ostringstream oss;
+            if (type == 'e' || type == 'E') { if (precision >= 0) oss << std::scientific << std::setprecision(precision); else oss << std::scientific; oss << dv; }
+            else if (type == 'f' || type == 'F') { if (precision >= 0) oss << std::fixed << std::setprecision(precision); oss << dv; }
+            else if (type == '%') { double p = dv * 100.0; if (precision >= 0) oss << std::fixed << std::setprecision(precision); oss << p; body = oss.str() + "%"; }
+            else { if (precision >= 0) oss << std::setprecision(precision); oss << dv; }
+            if (type != '%') body = oss.str();
+            if (type == 'E' || type == 'G' || type == 'F') { for (auto& ch : body) ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch))); }
+            if (alt && (type == 'f' || type == 'F' || type == 'g' || type == 'G' || type == '\0') && body.find('.') == std::string::npos) body += '.';
+        }
+    } else if (val.isString()) {
+        body = val.asString();
+        if (precision >= 0 && static_cast<int>(body.size()) > precision) body = body.substr(0, precision);
+    } else {
+        std::ostringstream oss; oss << val;
+        body = oss.str();
+    }
+
+    std::string prefix;
+    if (isNeg) prefix = "-";
+    else if (sign == '+') prefix = "+";
+    else if (sign == ' ') prefix = " ";
+    if (alt && (type == 'b' || type == 'o' || type == 'x' || type == 'X')) {
+        prefix += (type == 'b') ? "0b" : (type == 'o') ? "0o" : (type == 'X') ? "0X" : "0x";
+    }
+
+    if (grouping) {
+        std::string grouped;
+        int cnt = 0;
+        for (int j = static_cast<int>(body.size()) - 1; j >= 0; --j) {
+            grouped += body[j];
+            if (++cnt % 3 == 0 && j > 0 && std::isdigit(static_cast<unsigned char>(body[j - 1]))) grouped += grouping;
+        }
+        std::reverse(grouped.begin(), grouped.end());
+        body = grouped;
+    }
+
+    std::string full = prefix + body;
+    int total = static_cast<int>(full.size());
+    if (width > total) {
+        int pad = width - total;
+        if (zeroPad && align == '\0' && (isNeg || sign != '\0')) {
+            full = prefix + std::string(pad, '0') + body;
+        } else if (zeroPad && align == '\0') {
+            full = std::string(pad, '0') + full;
+        } else if (align == '<') {
+            full = full + std::string(pad, fill);
+        } else if (align == '^') {
+            int l = pad / 2, r = pad - l;
+            full = std::string(l, fill) + full + std::string(r, fill);
+        } else if (align == '=') {
+            full = prefix + std::string(pad, fill) + body;
+        } else {
+            full = std::string(pad, fill) + full;
+        }
+    }
+    return full;
+}
+
 } // namespace jc
 
 #ifdef _MSC_VER

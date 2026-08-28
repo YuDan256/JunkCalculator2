@@ -5427,44 +5427,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 const std::string& spec = chunk->constants.data()[c].asString();
                 Value val = getReg(b);
-
-                char align = '\0';
-                int width = 0;
-                int precision = -1;
-                char type = '\0';
-                size_t si = 0;
-                if (si < spec.size() && (spec[si] == '<' || spec[si] == '>' || spec[si] == '^'))
-                    align = spec[si++];
-                while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
-                    width = width * 10 + (spec[si++] - '0');
-                if (si < spec.size() && spec[si] == '.') {
-                    si++; precision = 0;
-                    while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
-                        precision = precision * 10 + (spec[si++] - '0');
-                }
-                if (si < spec.size()) type = spec[si++];
-
-                std::ostringstream oss;
-                if (type == 'f' || type == 'e') {
-                    if (precision >= 0) oss << std::fixed << std::setprecision(precision);
-                    if (type == 'e') oss << std::scientific;
-                    oss << val.asDouble();
-                }
-                else if (type == 'd') { oss << static_cast<int64_t>(std::round(val.asDouble())); }
-                else if (type == 'x') { oss << std::hex << static_cast<int64_t>(std::round(val.asDouble())); }
-                else { oss << val; }
-
-                std::string result = oss.str();
-                if (width > 0 && static_cast<int>(result.size()) < width) {
-                    int pad = width - static_cast<int>(result.size());
-                    if (align == '<') result += std::string(pad, ' ');
-                    else if (align == '^') {
-                        int l = pad / 2, r = pad - l;
-                        result = std::string(l, ' ') + result + std::string(r, ' ');
-                    }
-                    else result = std::string(pad, ' ') + result;
-                }
-                getReg(a) = Value(result);
+                getReg(a) = Value(applyFormatSpec(val, spec));
                 break;
             }
             case OpCode::INDEX_GET: {

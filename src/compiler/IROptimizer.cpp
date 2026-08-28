@@ -219,12 +219,29 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
         }
     }
 
+    // ★ 折叠为常量：原地改节点 + 从控制链移除（下游 controlInput 指向上游控制节点）
+    //   Stringify/ConcatStrings/FormatString 是控制骨架节点，折叠成 Constant 后不再是骨架，
+    //   必须把下游的 controlInput 改指到上游，否则 CFG 断裂、寄存器分配会错误复用寄存器。
+    auto foldToConstant = [&](IRNode* node, Value val) {
+        IRNode* upstream = node->controlInput;
+        node->constVal = val;
+        node->op = IROp::Constant;
+        node->dataInputs.clear();
+        for (auto& otherPtr : graph->getNodes()) {
+            IRNode* other = otherPtr.get();
+            if (other->controlInput == node) other->controlInput = upstream;
+        }
+        node->controlInput = nullptr;
+        changed = true;
+    };
+
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         if (node->op == IROp::Nop || node->op == IROp::Constant) continue;
 
-        // 一元运算折叠
-        if (node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant && !capturedNodes.count(node->dataInputs[0])) {
+        // 一元运算折叠（显式限定 op，避免误拦截 ConcatStrings 等其它单输入节点）
+        if ((node->op == IROp::Neg || node->op == IROp::Not || node->op == IROp::BitNot || node->op == IROp::ToBool || node->op == IROp::Stringify) &&
+            node->dataInputs.size() == 1 && node->dataInputs[0] && node->dataInputs[0]->op == IROp::Constant && !capturedNodes.count(node->dataInputs[0])) {
             Value val = node->dataInputs[0]->constVal;
             try {
                 if (node->op == IROp::Neg) { node->constVal = -val; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
@@ -241,10 +258,7 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                         else oss << val;
                         resVal = Value(oss.str());
                     }
-                    node->constVal = resVal;
-                    node->op = IROp::Constant;
-                    node->dataInputs.clear();
-                    changed = true;
+                    foldToConstant(node, resVal);
                 }
             } catch (...) {} // 忽略除零等运行时错误，留给 VM 抛出
         }
@@ -257,47 +271,9 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 Value val = valNode->constVal;
                 const std::string& spec = specNode->constVal.asString();
                 
-                char align = '\0';
-                int width = 0;
-                int precision = -1;
-                char type = '\0';
-                size_t si = 0;
-                if (si < spec.size() && (spec[si] == '<' || spec[si] == '>' || spec[si] == '^'))
-                    align = spec[si++];
-                while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
-                    width = width * 10 + (spec[si++] - '0');
-                if (si < spec.size() && spec[si] == '.') {
-                    si++; precision = 0;
-                    while (si < spec.size() && spec[si] >= '0' && spec[si] <= '9')
-                        precision = precision * 10 + (spec[si++] - '0');
-                }
-                if (si < spec.size()) type = spec[si++];
-
-                std::ostringstream oss;
-                if (type == 'f' || type == 'e') {
-                    if (precision >= 0) oss << std::fixed << std::setprecision(precision);
-                    if (type == 'e') oss << std::scientific;
-                    try { oss << val.asDouble(); } catch (...) { oss << val; }
-                }
-                else if (type == 'd') { try { oss << static_cast<int64_t>(std::round(val.asDouble())); } catch (...) { oss << val; } }
-                else if (type == 'x') { try { oss << std::hex << static_cast<int64_t>(std::round(val.asDouble())); } catch (...) { oss << val; } }
-                else { oss << val; }
-
-                std::string result = oss.str();
-                if (width > 0 && static_cast<int>(result.size()) < width) {
-                    int pad = width - static_cast<int>(result.size());
-                    if (align == '<') result += std::string(pad, ' ');
-                    else if (align == '^') {
-                        int l = pad / 2, r = pad - l;
-                        result = std::string(l, ' ') + result + std::string(r, ' ');
-                    }
-                    else result = std::string(pad, ' ') + result;
-                }
-                
-                node->constVal = Value(result);
-                node->op = IROp::Constant;
-                node->dataInputs.clear();
-                changed = true;
+                std::string result;
+                try { result = applyFormatSpec(val, spec); } catch (...) { std::ostringstream oss; oss << val; result = oss.str(); }
+                foldToConstant(node, Value(result));
             }
         }
         // 字符串拼接折叠
@@ -322,10 +298,7 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     }
                 }
                 
-                node->constVal = Value(res);
-                node->op = IROp::Constant;
-                node->dataInputs.clear();
-                changed = true;
+                foldToConstant(node, Value(res));
             }
         }
         // 二元运算折叠与代数化简

@@ -20,8 +20,7 @@ namespace jc {
 
         int start = 0;              // 当前正在扫描的单词的起始位置
         int current = 0;            // 当前扫描到的字符位置
-        int parenBracketDepth = 0;
-        int braceDepth = 0;          // ★ {} 深度（block 里的换行要恢复发射）
+        std::vector<char> bracketStack;  // ★ 未闭合括号栈（换行发射：栈顶 {} 或空则发射，() [] 则抑制）
         int line = 1;
 
         std::string sourceFile;

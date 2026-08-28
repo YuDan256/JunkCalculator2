@@ -227,6 +227,9 @@ namespace jc {
             if (match('/')) {
                 // 单行注释
                 while (!isAtEnd() && peek() != '\n') advance();
+                if (keepComments) {
+                    addToken(TokenType::COMMENT);
+                }
             }
             else if (match('*')) {
                 // 多行注释
@@ -310,8 +313,17 @@ namespace jc {
             line++;
             // ★ 智能换行符：当不在 () 或 [] 内部、且上一个 token 不是续行符时发射
             if ((bracketStack.empty() || bracketStack.back() == '{') && !tokens.empty()) {
-                TokenType lastType = tokens.back().type;
-                if (!isContinuationToken(lastType)) {
+                TokenType lastType = TokenType::ERROR;
+                bool foundCodeToken = false;
+                // ★ 穿透注释：往前找真正的代码 Token 来判断是否续行
+                for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
+                    if (it->type != TokenType::COMMENT) {
+                        lastType = it->type;
+                        foundCodeToken = true;
+                        break;
+                    }
+                }
+                if (foundCodeToken && !isContinuationToken(lastType)) {
                     tokens.emplace_back(TokenType::NEWLINE, "\\n", current - 1, line - 1);
                 }
             }
@@ -892,6 +904,9 @@ namespace jc {
         if (nesting > 0) {
             emitError("Unterminated multiline comment.");
             return;
+        }
+        if (keepComments) {
+            addToken(TokenType::COMMENT);
         }
     }
 } // namespace jc

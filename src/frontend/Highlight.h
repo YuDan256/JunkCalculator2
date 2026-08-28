@@ -99,6 +99,7 @@ namespace jc {
         std::vector<Token> tokens;
         try {
             Lexer lexer(code);
+            lexer.keepComments = true; // ★ 开启注释保留，使 REPL 支持注释高亮
             tokens = lexer.tokenize();
         }
         catch (...) {
@@ -229,6 +230,11 @@ namespace jc {
             case TokenType::LBRACKET: case TokenType::RBRACKET:
             case TokenType::LBRACE: case TokenType::RBRACE:
                 result += col(Ansi::CYAN) + srcText + col(Ansi::RESET);
+                break;
+
+                // 注释
+            case TokenType::COMMENT:
+                result += col(Ansi::GRAY) + srcText + col(Ansi::RESET);
                 break;
 
             default:

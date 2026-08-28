@@ -46,6 +46,8 @@
       "    jc2 compile in.jc2 [out.jcb]       Compile script to bytecode",
       "    jc2 compile in.jc2 -m              Compile as a module (for 'import')",
       "    jc2 compile in.jc2 -s              Compile and strip debug info",
+      "    jc2 fmt [path]                     Format a script or directory of scripts",
+      "    jc2 fmt --check [path]             Check if scripts are formatted (returns 1 if not)",
       "    jc2 test [dir]                     Run test scripts in directory",
       "    jc2 eval \"expr\"                    Evaluate expression and exit",
       "    jc2 help [topic]                   Show help overview or specific topic",

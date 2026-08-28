@@ -12,6 +12,7 @@
 #include "memory/SipHash.h"
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
+#include "utils/Formatter.h"
 #include "vm/BuiltinRegistry.h"
 #include "compiler/Resolver.h"
 #include "compiler/IRBuilder.h"
@@ -546,6 +547,9 @@ int main(int argc, char* argv[]) {
     std::string compileOutput = "";
     bool stripDebug = false;
     bool compileAsModule = false;
+    bool fmtMode = false;
+    bool fmtCheck = false;
+    std::string fmtPath = "";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -567,13 +571,15 @@ int main(int argc, char* argv[]) {
         if (arg == "--test") { command = "test"; runTests = true; continue; }
         if (arg == "-e" || arg == "--eval") { command = "eval"; continue; }
         if (arg == "--run") { command = "run"; continue; }
+        if (arg == "fmt") { command = "fmt"; fmtMode = true; continue; }
 
         // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
         if (command.empty() && arg[0] != '-') {
-            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl") {
+            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl" || arg == "fmt") {
                 command = arg;
                 if (command == "compile") compileMode = true;
                 if (command == "test") runTests = true;
+                if (command == "fmt") fmtMode = true;
                 continue;
             } else {
                 // 智能 Fallback：默认作为 run 脚本处理
@@ -613,6 +619,11 @@ int main(int argc, char* argv[]) {
             if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
             else { std::cerr << "Unknown argument for run: " << arg << "\n"; return 1; }
         }
+        else if (command == "fmt") {
+            if (arg == "--check") fmtCheck = true;
+            else if (fmtPath.empty() && arg[0] != '-') fmtPath = arg;
+            else { std::cerr << "Unknown argument for fmt: " << arg << "\n"; return 1; }
+        }
         else if (command == "repl") {
             std::cerr << "Unknown argument for repl: " << arg << "\n"; return 1;
         }
@@ -626,6 +637,62 @@ int main(int argc, char* argv[]) {
     if (command == "version") { std::cout << "Junk Calculator 2.6.2.0\n"; return 0; }
     if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
     if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
+
+    // 如果有 fmt 参数，则执行格式化并退出
+    if (fmtMode) {
+        if (fmtPath.empty()) fmtPath = ".";
+        namespace fs = std::filesystem;
+        fs::path targetPath = jc::to_path(fmtPath);
+        if (!fs::exists(targetPath)) {
+            std::cerr << "Error: Path not found -> " << fmtPath << "\n";
+            return 1;
+        }
+
+        std::vector<fs::path> filesToFormat;
+        if (fs::is_directory(targetPath)) {
+            for (const auto& entry : fs::recursive_directory_iterator(targetPath)) {
+                if (entry.is_regular_file() && jc::from_path(entry.path().extension()) == ".jc2") {
+                    filesToFormat.push_back(entry.path());
+                }
+            }
+        } else {
+            filesToFormat.push_back(targetPath);
+        }
+
+        int unformattedCount = 0;
+        for (const auto& path : filesToFormat) {
+            std::ifstream file(path);
+            if (!file.is_open()) continue;
+            std::string code((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+            file.close();
+
+            std::string formatted = jc::Formatter::format(code);
+            if (code != formatted) {
+                unformattedCount++;
+                if (!fmtCheck) {
+                    std::ofstream out(path);
+                    out << formatted;
+                    out.close();
+                    std::cout << "Formatted: " << jc::from_path(path) << "\n";
+                } else {
+                    std::cout << "Needs formatting: " << jc::from_path(path) << "\n";
+                }
+            }
+        }
+
+        if (fmtCheck) {
+            if (unformattedCount > 0) {
+                std::cerr << unformattedCount << " file(s) need formatting.\n";
+                return 1;
+            } else {
+                std::cout << "All files are formatted correctly.\n";
+                return 0;
+            }
+        } else {
+            std::cout << "Formatting complete. " << unformattedCount << " file(s) changed.\n";
+            return 0;
+        }
+    }
 
     // 如果有 --compile 参数，则执行编译并退出
     if (compileMode) {

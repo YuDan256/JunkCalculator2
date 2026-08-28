@@ -65,6 +65,7 @@ namespace jc {
         QUOTE,               // ★ 新增
         DEFER,               // ★ 新增
         CLASS,
+        EXTENDS, 
         NAMESPACE,           // ★ 新增
         ENUM,                // ★ 新增
         SUPER,
@@ -72,7 +73,6 @@ namespace jc {
         TRUE_KW,             // ★ 新增
         FALSE_KW,            // ★ 新增
         NONE_KW,             // ★ 新增
-        EXTENDS,             // ★ 新增：class 继承
 
         // --- 逻辑运算符 ---
         AND_AND,        // &&
@@ -86,7 +86,7 @@ namespace jc {
 
 
         // --- 特殊标记 ---
-        NEWLINE, END_OF_FILE, ERROR
+        NEWLINE, END_OF_FILE, ERROR, COMMENT
     };
 
     struct Token {
@@ -199,6 +199,7 @@ namespace jc {
         case TokenType::NEWLINE:       return "NEWLINE";
         case TokenType::END_OF_FILE:   return "EOF";
         case TokenType::ERROR:         return "ERROR";
+        case TokenType::COMMENT:       return "COMMENT";
         case TokenType::THROW:         return "THROW";
         case TokenType::TRY:           return "TRY";
         case TokenType::CATCH:         return "CATCH";

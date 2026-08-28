@@ -54,6 +54,7 @@ namespace jc {
 
     public:
         std::vector<Directive> directives;  // 收集到的编译器/VM 指令（行首 # 开头）
+        bool keepComments = false;          // ★ 是否保留注释 Token (Formatter/LSP 使用)
 
         explicit Lexer(std::string source, std::string sourceFile = "");
 

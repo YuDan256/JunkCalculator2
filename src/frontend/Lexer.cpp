@@ -316,13 +316,15 @@ namespace jc {
                 TokenType lastType = TokenType::ERROR;
                 bool isOwnLineComment = true;  // ★ 注释是否独占一行
                 // ★ 穿透注释：往前找真正的代码 Token 判断续行；遇到换行或文件开头则视为纯注释行
+                bool sawComment = false;
                 for (auto it = tokens.rbegin(); it != tokens.rend(); ++it) {
                     if (it->type == TokenType::NEWLINE) break;
-                    if (it->type != TokenType::COMMENT) {
-                        lastType = it->type;
-                        isOwnLineComment = false;
-                        break;
-                    }
+                    if (it->type == TokenType::COMMENT) { sawComment = true; continue; }
+                    // 注释在语句边界（{ } ;）后独占一行 → 纯注释行，需换行分隔下一语句
+                    if (sawComment && (it->type == TokenType::LBRACE || it->type == TokenType::RBRACE || it->type == TokenType::SEMICOLON)) break;
+                    lastType = it->type;
+                    isOwnLineComment = false;
+                    break;
                 }
                 if (isOwnLineComment || !isContinuationToken(lastType)) {
                     tokens.emplace_back(TokenType::NEWLINE, "\\n", current - 1, line - 1);

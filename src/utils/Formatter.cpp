@@ -111,10 +111,12 @@ bool needSpaceBefore(TokenType cur, TokenType prev, int prevPos, const std::set<
         cur == TokenType::SEMICOLON || cur == TokenType::DOT ||
         cur == TokenType::COLON)
         return false;
-    // 开括号（：if/while/for/catch 后空格（if (），其余（f(、match(、switch(）无空格
-    if (cur == TokenType::LPAREN)
-        return prev == TokenType::IF || prev == TokenType::WHILE ||
-               prev == TokenType::FOR || prev == TokenType::CATCH;
+    // 开括号（：关键字后空格（if/while/for/catch/return/throw/import 等），
+    // 但 match/switch 是函数风格无空格（match(），函数名也无空格（f(）
+    if (cur == TokenType::LPAREN) {
+        if (prev == TokenType::MATCH || prev == TokenType::SWITCH) return false;
+        return isKeywordLike(prev);
+    }
     // 开括号 [：= / 运算符 / 关键字 后空格（= [），@ 后无空格（@[），标识符后无空格（a[）
     if (cur == TokenType::LBRACKET)
         return prev == TokenType::ASSIGN || isOperator(prev) || isKeywordLike(prev);
@@ -417,6 +419,59 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
         size_t lastNL = out.find_last_of('\n');
         return lastNL == std::string::npos ? out.size() : out.size() - lastNL - 1;
     };
+    // 引号包裹的 token（STRING/RSTRING/FSTRING）lexeme 不含引号，从 source 恢复原文
+    auto rawText = [&](const Token& tok) -> std::string {
+        // 反引号标识符 `...`：position 是内容开始（` 在 position-1），从 source 恢复含反引号的原文
+        if (tok.type == TokenType::IDENTIFIER && tok.position > 0 && source[tok.position - 1] == '`') {
+            int start = tok.position - 1;
+            int q = tok.position;
+            while (q < static_cast<int>(source.length()) && source[q] != '`' && source[q] != '\n') q++;
+            if (q < static_cast<int>(source.length()) && source[q] == '`') q++;
+            return source.substr(start, q - start);
+        }
+        if (tok.type != TokenType::STRING && tok.type != TokenType::FSTRING && tok.type != TokenType::RSTRING) {
+            return tok.lexeme;
+        }
+        int p = tok.position;
+        if (tok.type == TokenType::FSTRING || tok.type == TokenType::RSTRING) {
+            if (p < static_cast<int>(source.length()) && (source[p] == 'f' || source[p] == 'r')) p++;
+        }
+        if (p < static_cast<int>(source.length()) && (source[p] == '"' || source[p] == '\'')) {
+            char quote = source[p];
+            int q = p + 1;
+            // 自定义分隔符 raw string：r"TAG(content)TAG"
+            if (tok.type == TokenType::RSTRING) {
+                int tagEnd = q;
+                while (tagEnd < static_cast<int>(source.length()) && std::isalnum(static_cast<unsigned char>(source[tagEnd]))) tagEnd++;
+                if (tagEnd < static_cast<int>(source.length()) && source[tagEnd] == '(') {
+                    std::string delimiter = source.substr(q, tagEnd - q);
+                    std::string endMarker = ")" + delimiter + quote;
+                    int m = tagEnd + 1;
+                    while (m < static_cast<int>(source.length())) {
+                        if (source[m] == ')' && m + static_cast<int>(endMarker.length()) <= static_cast<int>(source.length()) &&
+                            source.substr(m, endMarker.length()) == endMarker) {
+                            m += static_cast<int>(endMarker.length());
+                            break;
+                        }
+                        m++;
+                    }
+                    return source.substr(tok.position, m - tok.position);
+                }
+            }
+            bool multi = (q + 1 < static_cast<int>(source.length()) && source[q] == quote && source[q + 1] == quote);
+            while (q < static_cast<int>(source.length())) {
+                if (tok.type != TokenType::RSTRING && source[q] == '\\') { q += 2; continue; }
+                if (multi) {
+                    if (q + 2 < static_cast<int>(source.length()) && source[q] == quote && source[q + 1] == quote && source[q + 2] == quote) { q += 3; break; }
+                } else {
+                    if (source[q] == quote) { q++; break; }
+                }
+                q++;
+            }
+            return source.substr(tok.position, q - tok.position);
+        }
+        return tok.lexeme;
+    };
 
     auto emitNewlines = [&](int count) {
         while (!out.empty() && out.back() == ' ') out.pop_back();
@@ -515,6 +570,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             out += t.lexeme;
             lineHasContent = true;
             setPrev(TokenType::COMMENT, t.position);
+            if (newlineAfter(t)) pendingNL = std::max(pendingNL, 1);
             break;
         }
 
@@ -663,7 +719,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
         default: {
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
             else if (lineHasContent && needSpaceBefore(t.type, prev, prevPos, unaryOpPos)) out += ' ';
-            out += t.lexeme;
+            out += rawText(t);
             lineHasContent = true;
             setPrev(t.type, t.position);
             break;

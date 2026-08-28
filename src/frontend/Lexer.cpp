@@ -127,8 +127,8 @@ namespace jc {
             if (parenBracketDepth > 0) parenBracketDepth--;
             addToken(TokenType::RBRACKET);
             break;
-        case '{': addToken(TokenType::LBRACE); break;    // ★ 新增
-        case '}': addToken(TokenType::RBRACE); break;    // ★ 新增
+        case '{': braceDepth++; addToken(TokenType::LBRACE); break;    // ★ 新增
+        case '}': if (braceDepth > 0) braceDepth--; addToken(TokenType::RBRACE); break;    // ★ 新增
         case '~': 
             if (match('/')) {
                 addToken(match('=') ? TokenType::TILDE_SLASH_ASSIGN : TokenType::TILDE_SLASH);
@@ -309,7 +309,7 @@ namespace jc {
         case '\n':
             line++;
             // ★ 智能换行符：当不在 () 或 [] 内部、且上一个 token 不是续行符时发射
-            if (parenBracketDepth == 0 && !tokens.empty()) {
+            if ((parenBracketDepth == 0 || braceDepth > 0) && !tokens.empty()) {
                 TokenType lastType = tokens.back().type;
                 if (!isContinuationToken(lastType)) {
                     tokens.emplace_back(TokenType::NEWLINE, "\\n", current - 1, line - 1);

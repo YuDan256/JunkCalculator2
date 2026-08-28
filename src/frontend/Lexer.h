@@ -21,6 +21,7 @@ namespace jc {
         int start = 0;              // 当前正在扫描的单词的起始位置
         int current = 0;            // 当前扫描到的字符位置
         int parenBracketDepth = 0;
+        int braceDepth = 0;          // ★ {} 深度（block 里的换行要恢复发射）
         int line = 1;
 
         std::string sourceFile;

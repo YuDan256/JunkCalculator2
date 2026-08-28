@@ -3432,6 +3432,13 @@
       "    `try`/`catch` is an expression. It natively returns the value of the ",
       "    `try` block if successful, or the value of the `catch` block if an error occurred.",
       "",
+      "    ★ Bare try (no catch):",
+      "    Omitting `catch` silently swallows any error and evaluates to `none`.",
+      "    Equivalent to `try { ... } catch (_) { none }`.",
+      "      x = try { readFile(\"maybe-missing.txt\") }   // missing → x = none",
+      "    Useful for best-effort operations. Caution: it hides errors — prefer an",
+      "    explicit `catch (e)` when you need to inspect or log the failure.",
+      "",
       "    ★ Catch Destructuring:",
       "    You can directly destructure the thrown error object in the catch clause.",
       "    If the pattern match fails, the error is automatically re-thrown!",
@@ -6535,17 +6542,20 @@
       ]
     },
     "try": {
-      "signature": "try { body } catch (pattern) { handler }",
+      "signature": "try { body } [catch (pattern) { handler }]",
       "desc": [
         "Error handling construct. Executes the body; if any error occurs,",
         "execution jumps to the catch block, matching the thrown value against `pattern`.",
         "try/catch is an expression — returns the value of whichever branch runs.",
+        "If `catch` is omitted, errors are silently swallowed and the expression",
+        "evaluates to `none` (equivalent to `catch (_) { none }`).",
         "Control flow signals (break, continue, return) pass through unaffected.",
         "See also: /help error"
       ],
       "examples": [
         "try { 1 / 0 } catch (e) { print(\"Error:\", e) }",
-        "result = try { riskyOp() } catch (e) { \"fallback\" }"
+        "result = try { riskyOp() } catch (e) { \"fallback\" }",
+        "x = try { riskyOp() }            // error → x = none"
       ]
     },
     "catch": {

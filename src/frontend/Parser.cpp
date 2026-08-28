@@ -1419,13 +1419,22 @@ namespace jc {
             return std::make_unique<ThrowExpr>(throwTok, std::move(value));
         }
         if (match({ TokenType::TRY })) {
+            Token tryTok = previous();
             auto tryBody = parseStatementOrBlock();
+            int saved = current;
             while (match({ TokenType::NEWLINE })) {}  // ★ 跳过 } 和 catch 之间的换行
-            consume(TokenType::CATCH, "Parser Error: Expect 'catch' after try block.");
-            consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'catch'.");
-            auto catchPattern = parsePrimaryPattern();
-            consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
-            auto catchBody = parseStatementOrBlock();
+            if (match({ TokenType::CATCH })) {
+                consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'catch'.");
+                auto catchPattern = parsePrimaryPattern();
+                consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
+                auto catchBody = parseStatementOrBlock();
+                return std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody));
+            }
+            // ★ try 无 catch：回退换行（保留语句分隔符），静默吞下错误，失败返回 none
+            current = saved;
+            Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
+            auto catchPattern = std::make_unique<VariablePattern>(underscore);
+            auto catchBody = std::make_unique<Literal>("none", false, false, true);
             return std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody));
         }
         if (match({ TokenType::IMPORT })) {

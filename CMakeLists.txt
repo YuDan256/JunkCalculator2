@@ -73,6 +73,7 @@ set(JC2_SOURCES
 )
 
 add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
+set_target_properties(JunkCalculator2 PROPERTIES OUTPUT_NAME "jc2")
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 
 # ★ 本地调试测试 (JIT 单测，源文件在 local/，不上传仓库)
@@ -211,10 +212,6 @@ endif()
 # ==============================================================================
 # Post-Build Resource Injection (Auto-Copying directories)
 # ==============================================================================
-# ★ Create shorthand wrapper scripts to save space (instead of copying the .exe)
-file(GENERATE OUTPUT "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" CONTENT "@echo off\n\"%~dp0JunkCalculator2.exe\" %*\n")
-file(GENERATE OUTPUT "$<TARGET_FILE_DIR:JunkCalculator2>/jc" CONTENT "#!/bin/sh\nexec \"$(dirname \"$0\")/JunkCalculator2\" \"$@\"\n")
-
 # ★ Use a custom target (ALL) to ensure directories are synced on EVERY build,
 # even if the C++ executable itself didn't need to be recompiled.
 # Using COMMAND directly inside add_custom_target guarantees execution across all generators.
@@ -255,11 +252,6 @@ install(TARGETS ${JC2_LIBS}
     RUNTIME DESTINATION bin/lib
     LIBRARY DESTINATION bin/lib
 )
-if(WIN32)
-    install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc.bat" DESTINATION bin)
-else()
-    install(PROGRAMS "$<TARGET_FILE_DIR:JunkCalculator2>/jc" DESTINATION bin)
-endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/data" DESTINATION bin PATTERN "Prime.bin" EXCLUDE)

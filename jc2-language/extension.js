@@ -11,7 +11,7 @@ function getExePath() {
     if (exePath && fs.existsSync(exePath)) return exePath;
 
     const isWin = process.platform === 'win32';
-    const name = isWin ? 'JunkCalculator2.exe' : 'JunkCalculator2';
+    const name = isWin ? 'jc2.exe' : 'jc2';
     const pathDirs = (process.env.PATH || '').split(isWin ? ';' : ':');
     for (const dir of pathDirs) {
         const full = path.join(dir, name);
@@ -375,7 +375,7 @@ function activate(context) {
             const result = await vscode.window.showOpenDialog({
                 canSelectFiles: true, canSelectFolders: false,
                 filters: { 'Executable': process.platform === 'win32' ? ['exe'] : ['*'] },
-                title: 'Select JunkCalculator2 executable'
+                title: 'Select jc2 executable'
             });
             if (result && result.length > 0) {
                 const config = vscode.workspace.getConfiguration('jc2');

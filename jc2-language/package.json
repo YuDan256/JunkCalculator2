@@ -109,7 +109,7 @@
                 "jc2.executablePath": {
                     "type": "string",
                     "default": "",
-                    "description": "Absolute path to JunkCalculator2.exe. If empty, tries PATH."
+                    "description": "Absolute path to jc2.exe. If empty, tries PATH."
                 }
             }
         }

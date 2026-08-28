@@ -25,8 +25,8 @@ BEGIN
             VALUE "CompanyName", "Yu Liangyang"
             // ↓ 把下面这句话换成你选中的彩蛋：
             VALUE "Comments", "Code is the ultimate shelter. Open and Free."
-            VALUE "OriginalFilename", "JunkCalculator2.exe"
-            VALUE "InternalName", "JunkCalculator2"
+            VALUE "OriginalFilename", "jc2.exe"
+            VALUE "InternalName", "jc2"
         END
     END
     BLOCK "VarFileInfo"

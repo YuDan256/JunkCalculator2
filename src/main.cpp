@@ -535,7 +535,8 @@ int main(int argc, char* argv[]) {
         return fs::weakly_canonical(fs::current_path() / p).string();
         };
 
-    // ★ 清洁版命令行参数解析
+    // ★ 清洁版命令行参数解析 (Subcommand 架构)
+    std::string command = "";
     std::string scriptPath = "";
     std::string evalStr = "";
     bool runTests = false;
@@ -548,96 +549,83 @@ int main(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--compile" || arg == "-c") {
-            compileMode = true;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                compileInput = argv[++i];
+
+        // 1. 全局修饰符 (Flags)
+        if (arg == "-q" || arg == "--quiet") { g_quiet = true; continue; }
+        if (arg == "-d") { g_showDisasm = true; continue; }
+        if (arg == "--ir") { g_showIR = true; continue; }
+        if (arg == "--hir") { g_showHIR = true; continue; }
+        if (arg == "--mc") { g_showMachineCode = true; continue; }
+        if (arg == "--debug") { g_autoDebug = true; continue; }
+        if (arg == "--profile") { g_profile = true; std::cout << "Profiler enabled.\n"; continue; }
+        if (arg == "--jit") { g_enableJit = true; continue; }
+
+        // 2. 兼容旧版横杠主命令 (转换为子命令)
+        if (arg == "--help" || arg == "-h") { command = "help"; continue; }
+        if (arg == "--version" || arg == "-v") { command = "version"; continue; }
+        if (arg == "--compile" || arg == "-c") { command = "compile"; compileMode = true; continue; }
+        if (arg == "--test") { command = "test"; runTests = true; continue; }
+        if (arg == "-e" || arg == "--eval") { command = "eval"; continue; }
+        if (arg == "--run") { command = "run"; continue; }
+
+        // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
+        if (command.empty() && arg[0] != '-') {
+            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl") {
+                command = arg;
+                if (command == "compile") compileMode = true;
+                if (command == "test") runTests = true;
+                continue;
             } else {
-                std::cerr << "Error: --compile requires an input file.\n";
-                return 1;
+                // 智能 Fallback：默认作为 run 脚本处理
+                command = "run";
+                scriptPath = arg;
+                continue;
             }
         }
-        else if (arg == "-o") {
-            if (i + 1 < argc) {
-                compileOutput = argv[++i];
-            } else {
-                std::cerr << "Error: -o requires an output file.\n";
-                return 1;
+
+        // 4. 处理子命令的特定参数
+        if (command == "compile") {
+            if (arg == "-o") {
+                if (i + 1 < argc) compileOutput = argv[++i];
+                else { std::cerr << "Error: -o requires an output file.\n"; return 1; }
+            }
+            else if (arg == "--strip" || arg == "-s") stripDebug = true;
+            else if (arg == "--module" || arg == "-m") compileAsModule = true;
+            else if (compileInput.empty() && arg[0] != '-') compileInput = arg;
+            else if (compileOutput.empty() && arg[0] != '-') compileOutput = arg;
+            else { std::cerr << "Unknown argument for compile: " << arg << "\n"; return 1; }
+        }
+        else if (command == "test") {
+            if (testPath.empty() && arg[0] != '-') testPath = arg;
+            else { std::cerr << "Unknown argument for test: " << arg << "\n"; return 1; }
+        }
+        else if (command == "eval") {
+            if (evalStr.empty()) evalStr = arg;
+            else { std::cerr << "Unknown argument for eval: " << arg << "\n"; return 1; }
+        }
+        else if (command == "help") {
+            if (arg[0] != '-') {
+                printHelpTopic(arg);
+                return 0;
             }
         }
-        else if (arg == "--strip" || arg == "-s") {
-            stripDebug = true;
+        else if (command == "run") {
+            if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
+            else { std::cerr << "Unknown argument for run: " << arg << "\n"; return 1; }
         }
-        else if (arg == "--module" || arg == "-m") {
-            compileAsModule = true;
-        }
-        else if (arg == "-e" || arg == "--eval") {
-            if (i + 1 < argc) {
-                evalStr = argv[++i];
-            }
-            else {
-                std::cerr << "Error: --eval requires an argument.\n";
-                return 1;
-            }
-        }
-        else if (arg == "-q" || arg == "--quiet") {
-            g_quiet = true;
-        }
-        else if (arg == "-d") {
-            g_showDisasm = true;
-        }
-        else if (arg == "--ir") {
-            g_showIR = true;
-        }
-        else if (arg == "--hir") {
-            g_showHIR = true;
-        }
-        else if (arg == "--mc") {
-            g_showMachineCode = true;
-        }
-        else if (arg == "--debug") {    // ★ 拦截 --debug 启动项
-            g_autoDebug = true;
-        }
-        else if (arg == "--run") {
-            continue; // 跳过 --run 标记
-        }
-        else if (arg == "--help" || arg == "-h") {
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                printHelpTopic(argv[i + 1]);
-                i++; // 消耗掉 topic 参数
-            }
-            else {
-                printHelp();
-            }
-            return 0;
-        }
-        else if (arg == "--version" || arg == "-v") {
-            std::cout << "Junk Calculator 2.6.2.0\n";
-            return 0;
-        }
-        else if (arg == "--profile") {
-            g_profile = true;
-            std::cout << "Profiler enabled.\n";
-        }
-        else if (arg == "--jit") {
-            g_enableJit = true;
-        }
-        else if (arg == "--test") {
-            runTests = true;
-            if (i + 1 < argc && argv[i + 1][0] != '-') {
-                testPath = argv[++i];
-            }
+        else if (command == "repl") {
+            std::cerr << "Unknown argument for repl: " << arg << "\n"; return 1;
         }
         else {
-            if (scriptPath.empty()) {
-                scriptPath = arg;
-            }
-            else {
-                std::cerr << "Unknown argument or multiple scripts provided: " << arg << std::endl;
-                return 1;
-            }
+            std::cerr << "Unknown argument: " << arg << "\n"; return 1;
         }
     }
+
+    // 5. 执行无参数的立即命令
+    if (command == "help") { printHelp(); return 0; }
+    if (command == "version") { std::cout << "Junk Calculator 2.6.2.0\n"; return 0; }
+    if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
+    if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
 
     // 如果有 --compile 参数，则执行编译并退出
     if (compileMode) {

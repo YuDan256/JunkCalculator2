@@ -1092,29 +1092,92 @@
     "__idiv__": {
       "signature": "__idiv__(other)"
     },
+    "__ldiv__": {
+      "signature": "__ldiv__(other)"
+    },
     "__mod__": {
       "signature": "__mod__(other)"
     },
     "__pow__": {
       "signature": "__pow__(other)"
     },
+    "__lshift__": {
+      "signature": "__lshift__(n)"
+    },
+    "__rshift__": {
+      "signature": "__rshift__(n)"
+    },
+    "__bitand__": {
+      "signature": "__bitand__(other)"
+    },
+    "__bitor__": {
+      "signature": "__bitor__(other)"
+    },
+    "__bitxor__": {
+      "signature": "__bitxor__(other)"
+    },
     "__radd__": {
       "signature": "__radd__(other)"
+    },
+    "__rsub__": {
+      "signature": "__rsub__(other)"
     },
     "__rmul__": {
       "signature": "__rmul__(other)"
     },
+    "__rdiv__": {
+      "signature": "__rdiv__(other)"
+    },
     "__ridiv__": {
       "signature": "__ridiv__(other)"
+    },
+    "__rldiv__": {
+      "signature": "__rldiv__(other)"
+    },
+    "__rmod__": {
+      "signature": "__rmod__(other)"
+    },
+    "__rpow__": {
+      "signature": "__rpow__(other)"
+    },
+    "__rlshift__": {
+      "signature": "__rlshift__(n)"
+    },
+    "__rrshift__": {
+      "signature": "__rrshift__(n)"
+    },
+    "__rbitand__": {
+      "signature": "__rbitand__(other)"
+    },
+    "__rbitor__": {
+      "signature": "__rbitor__(other)"
+    },
+    "__rbitxor__": {
+      "signature": "__rbitxor__(other)"
     },
     "__neg__": {
       "signature": "__neg__()"
     },
+    "__bitnot__": {
+      "signature": "__bitnot__()"
+    },
     "__eq__": {
       "signature": "__eq__(other)"
     },
+    "__neq__": {
+      "signature": "__neq__(other)"
+    },
     "__lt__": {
       "signature": "__lt__(other)"
+    },
+    "__le__": {
+      "signature": "__le__(other)"
+    },
+    "__gt__": {
+      "signature": "__gt__(other)"
+    },
+    "__ge__": {
+      "signature": "__ge__(other)"
     },
     "__contains__": {
       "signature": "__contains__(val)"
@@ -1130,6 +1193,9 @@
     },
     "__str__": {
       "signature": "__str__()"
+    },
+    "__repr__": {
+      "signature": "__repr__()"
     },
     "__len__": {
       "signature": "__len__()"
@@ -1160,6 +1226,12 @@
     },
     "__match__": {
       "signature": "__match__()"
+    },
+    "__unpack__": {
+      "signature": "__unpack__()"
+    },
+    "__mapping__": {
+      "signature": "__mapping__()"
     },
     "finalize": {
       "signature": "finalize()"
@@ -1256,6 +1328,9 @@
     "class": {
       "signature": "class [Name] [extends Parent] { ... }  |  class"
     },
+    "enum": {
+      "signature": "enum Name { A, B, C }  |  enum { A, B, C }"
+    },
     "extends": {
       "signature": "class Child extends Parent { ... }"
     },
@@ -1284,7 +1359,7 @@
       "signature": "delete variable"
     },
     "try": {
-      "signature": "try { body } catch (pattern) { handler }"
+      "signature": "try { body } [catch (pattern) { handler }]"
     },
     "catch": {
       "signature": "catch (pattern) { handler }"

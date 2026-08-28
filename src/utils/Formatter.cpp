@@ -89,8 +89,10 @@ bool isWordLike(TokenType t) {
            t == TokenType::NONE_KW || isKeywordLike(t);
 }
 
-// cur 前是否需要空格
-bool needSpaceBefore(TokenType cur, TokenType prev) {
+// cur 前是否需要空格（prevPos / unaryOpPos 由 AST Unary 节点提供一元运算符的权威信息）
+bool needSpaceBefore(TokenType cur, TokenType prev, int prevPos, const std::set<int>& unaryOpPos) {
+    // 一元前缀运算符后无空格：!x ~x -x $x @x ...x
+    if (unaryOpPos.count(prevPos)) return false;
     // 紧贴型：闭括号、逗号、分号、点、冒号前无空格
     if (cur == TokenType::RPAREN || cur == TokenType::RBRACKET ||
         cur == TokenType::RBRACE || cur == TokenType::COMMA ||
@@ -119,6 +121,7 @@ bool needSpaceBefore(TokenType cur, TokenType prev) {
 class BlockBraceCollector : public ExprVisitor {
 public:
     std::set<int> bracePos;
+    std::set<int> unaryOpPos;       // 一元运算符 position（后无空格，AST Unary 节点提供）
     std::set<int> caseColonPos;     // switch case 的 :（后换行）
     std::set<int> matchCommaPos;    // match 分支之间的 ,（后换行）
     std::set<int> caseKeywordPos;   // switch 内 case/default 关键字（前换行）
@@ -175,7 +178,7 @@ public:
     }
 
     void visitBinary(Binary* e) override { if (e->left) e->left->accept(*this); if (e->right) e->right->accept(*this); }
-    void visitUnary(Unary* e) override { if (e->right) e->right->accept(*this); }
+    void visitUnary(Unary* e) override { unaryOpPos.insert(e->op.position); if (e->right) e->right->accept(*this); }
     void visitLiteral(Literal*) override {}
     void visitVariable(Variable*) override {}
     void visitAssign(Assign* e) override { if (e->value) e->value->accept(*this); if (e->typeHint) e->typeHint->accept(*this); }
@@ -327,7 +330,7 @@ public:
 // TokenPrinter：遍历 token 流，排版
 // ============================================================================
 std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& bracePos,
-                        const std::set<int>& caseColonPos,
+                        const std::set<int>& unaryOpPos, const std::set<int>& caseColonPos,
                         const std::set<int>& matchCommaPos, const std::set<int>& caseKeywordPos) {
     std::string out;
     int indent = 0;
@@ -335,6 +338,8 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
     bool lineHasContent = false;
     bool inCaseBody = false;
     TokenType prev = TokenType::NEWLINE;
+    int prevPos = -1;
+    auto setPrev = [&](TokenType t, int p) { prev = t; prevPos = p; };
 
     auto emitNewlines = [&](int count) {
         while (!out.empty() && out.back() == ' ') out.pop_back();
@@ -355,7 +360,7 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
             else if (lineHasContent) out += ' ';
             out += t.lexeme;
             lineHasContent = true;
-            prev = TokenType::COMMENT;
+            setPrev(TokenType::COMMENT, t.position);
             break;
         }
 
@@ -363,10 +368,10 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
             if (bracePos.count(t.position)) {
                 // block {
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-                else if (lineHasContent && needSpaceBefore(TokenType::LBRACE, prev)) out += ' ';
+                else if (lineHasContent && needSpaceBefore(TokenType::LBRACE, prev, prevPos, unaryOpPos)) out += ' ';
                 out += '{';
                 lineHasContent = true;
-                prev = TokenType::LBRACE;
+                setPrev(TokenType::LBRACE, t.position);
                 // 空 block：下一个显著 token 是 }
                 bool emptyBlock = false;
                 for (size_t j = i + 1; j < tokens.size(); ++j) {
@@ -379,10 +384,10 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
             } else {
                 // dict/set {
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-                else if (lineHasContent && needSpaceBefore(TokenType::LBRACE, prev)) out += ' ';
+                else if (lineHasContent && needSpaceBefore(TokenType::LBRACE, prev, prevPos, unaryOpPos)) out += ' ';
                 out += '{';
                 lineHasContent = true;
-                prev = TokenType::LBRACE;
+                setPrev(TokenType::LBRACE, t.position);
             }
             break;
         }
@@ -397,13 +402,13 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
                 pendingNL = 0;
                 out += '}';
                 lineHasContent = true;
-                prev = TokenType::RBRACE;
+                setPrev(TokenType::RBRACE, t.position);
             } else {
                 // dict/set }
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += '}';
                 lineHasContent = true;
-                prev = TokenType::RBRACE;
+                setPrev(TokenType::RBRACE, t.position);
             }
             break;
         }
@@ -413,7 +418,7 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += ':';
                 lineHasContent = true;
-                prev = TokenType::COLON;
+                setPrev(TokenType::COLON, t.position);
                 pendingNL = std::max(pendingNL, 1);
                 indent++;
                 inCaseBody = true;
@@ -421,7 +426,7 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += ':';
                 lineHasContent = true;
-                prev = TokenType::COLON;
+                setPrev(TokenType::COLON, t.position);
             }
             break;
 
@@ -430,13 +435,13 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += ',';
                 lineHasContent = true;
-                prev = TokenType::COMMA;
+                setPrev(TokenType::COMMA, t.position);
                 pendingNL = std::max(pendingNL, 1);
             } else {
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += ',';
                 lineHasContent = true;
-                prev = TokenType::COMMA;
+                setPrev(TokenType::COMMA, t.position);
             }
             break;
 
@@ -447,18 +452,18 @@ std::string printTokens(const std::vector<Token>& tokens, const std::set<int>& b
                 pendingNL = std::max(pendingNL, 1);
             }
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-            else if (lineHasContent && needSpaceBefore(t.type, prev)) out += ' ';
+            else if (lineHasContent && needSpaceBefore(t.type, prev, prevPos, unaryOpPos)) out += ' ';
             out += t.lexeme;
             lineHasContent = true;
-            prev = t.type;
+            setPrev(t.type, t.position);
             break;
 
         default: {
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-            else if (lineHasContent && needSpaceBefore(t.type, prev)) out += ' ';
+            else if (lineHasContent && needSpaceBefore(t.type, prev, prevPos, unaryOpPos)) out += ' ';
             out += t.lexeme;
             lineHasContent = true;
-            prev = t.type;
+            setPrev(t.type, t.position);
             break;
         }
         }
@@ -485,16 +490,17 @@ std::string Formatter::format(const std::string& source) {
         BlockBraceCollector collector(tokens);
         ast->accept(collector);
 
-        std::string out = printTokens(tokens, collector.bracePos, collector.caseColonPos, collector.matchCommaPos, collector.caseKeywordPos);
+        std::string out = printTokens(tokens, collector.bracePos, collector.unaryOpPos, collector.caseColonPos, collector.matchCommaPos, collector.caseKeywordPos);
         if (!out.empty() && out.back() != '\n') out += '\n';
 
-        // ★ 保留 # 指令（shebang / pragma），原样输出在开头
+        // ★ 保留 # 指令：shebang 固定在最上行，其余 directive 随后
+        std::string shebangText;
         std::string directivesText;
         for (const auto& d : lexer.directives) {
-            if (d.name == "!") directivesText += "#!" + d.args + "\n";
+            if (d.name == "!") { if (shebangText.empty()) shebangText = "#!" + d.args + "\n"; }
             else directivesText += "#" + d.name + d.args + "\n";
         }
-        return directivesText + out;
+        return shebangText + directivesText + out;
     } catch (...) {
         return source;
     }

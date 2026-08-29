@@ -4,6 +4,7 @@
 #include <string>
 #include <iostream>
 #include "LspProtocol.h"
+#include "Workspace.h"
 
 namespace jc {
 namespace lsp {
@@ -36,8 +37,22 @@ namespace lsp {
         void handleRequest(const RequestMessage& req);
         void handleNotification(const NotificationMessage& notif);
 
+        // 文档同步处理
+        void handleDidOpen(const NotificationMessage& notif);
+        void handleDidChange(const NotificationMessage& notif);
+        void handleDidClose(const NotificationMessage& notif);
+
+        // 语法诊断推送
+        void publishDiagnostics(const std::string& uri, Document* doc);
+
+        // 语言特性处理
+        void handleHover(const RequestMessage& req);
+        void handleDefinition(const RequestMessage& req);
+        void handleCompletion(const RequestMessage& req);
+
         bool isRunning = false;
         ServerState state = ServerState::Uninitialized;
+        Workspace workspace;
     };
 
 } // namespace lsp

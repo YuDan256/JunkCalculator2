@@ -21,6 +21,7 @@
 #include "compiler/Emitter.h"
 #include "vm/VM.h"
 #include "vm/BytecodeSerializer.h"
+#include "utils/lsp/LspServer.h"
 #include <csignal>
 #include <atomic>
 #include <random>
@@ -550,6 +551,7 @@ int main(int argc, char* argv[]) {
     bool fmtMode = false;
     bool fmtCheck = false;
     std::string fmtPath = "";
+    bool lspMode = false;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -575,11 +577,12 @@ int main(int argc, char* argv[]) {
 
         // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
         if (command.empty() && arg[0] != '-') {
-            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl" || arg == "fmt") {
+            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl" || arg == "fmt" || arg == "lsp") {
                 command = arg;
                 if (command == "compile") compileMode = true;
                 if (command == "test") runTests = true;
                 if (command == "fmt") fmtMode = true;
+                if (command == "lsp") lspMode = true;
                 continue;
             } else {
                 // 智能 Fallback：默认作为 run 脚本处理
@@ -637,6 +640,13 @@ int main(int argc, char* argv[]) {
     if (command == "version") { std::cout << "Junk Calculator 2.6.2.0\n"; return 0; }
     if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
     if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
+
+    // 如果有 lsp 参数，则启动 LSP 服务器并退出
+    if (lspMode) {
+        jc::lsp::LspServer server;
+        server.run();
+        return 0;
+    }
 
     // 如果有 fmt 参数，则执行格式化并退出
     if (fmtMode) {

@@ -256,6 +256,32 @@ namespace jc {
         return expr;
     }
 
+    void Parser::synchronize() {
+        advance();
+        while (!isAtEnd()) {
+            if (previous().type == TokenType::SEMICOLON || previous().type == TokenType::NEWLINE) return;
+            switch (peek().type) {
+                case TokenType::CLASS:
+                case TokenType::NAMESPACE:
+                case TokenType::ENUM:
+                case TokenType::IF:
+                case TokenType::WHILE:
+                case TokenType::FOR:
+                case TokenType::RETURN:
+                case TokenType::MATCH:
+                case TokenType::SWITCH:
+                case TokenType::TRY:
+                case TokenType::THROW:
+                case TokenType::MACRO:
+                case TokenType::SYNTAX:
+                    return;
+                default:
+                    break;
+            }
+            advance();
+        }
+    }
+
     std::unique_ptr<Expr> Parser::parse() {
         if (VM::activeVM) VM::activeVM->parsingDepth++;
         try {
@@ -264,18 +290,28 @@ namespace jc {
                 while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
                 if (isAtEnd()) break;
                 
-                auto expr = expression();
-                if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-                    for (auto& e : seq->expressions) stmts.push_back(std::move(e));
-                } else {
-                    stmts.push_back(std::move(expr));
-                }
-                
-                if (!isAtEnd() && check(TokenType::ERROR)) {
-                    advance();  // 触发 "Lexer Error"（如 Unexpected character）
-                }
-                if (!isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                    throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                try {
+                    auto expr = expression();
+                    if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                        for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+                    } else {
+                        stmts.push_back(std::move(expr));
+                    }
+                    
+                    if (!isAtEnd() && check(TokenType::ERROR)) {
+                        advance();  // 触发 "Lexer Error"（如 Unexpected character）
+                    }
+                    if (!isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
+                        throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                    }
+                } catch (const std::exception& e) {
+                    if (isLspMode) {
+                        int errPos = isAtEnd() ? previous().position : peek().position;
+                        diagnostics.push_back({e.what(), errPos, errPos + 1});
+                        synchronize();
+                    } else {
+                        throw;
+                    }
                 }
                 while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
             }
@@ -1166,15 +1202,25 @@ namespace jc {
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
             if (check(TokenType::RBRACE)) break;
             
-            auto expr = expression();
-            if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-                for (auto& e : seq->expressions) stmts.push_back(std::move(e));
-            } else {
-                stmts.push_back(std::move(expr));
-            }
-            
-            if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+            try {
+                auto expr = expression();
+                if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
+                    for (auto& e : seq->expressions) stmts.push_back(std::move(e));
+                } else {
+                    stmts.push_back(std::move(expr));
+                }
+                
+                if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
+                    throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                }
+            } catch (const std::exception& e) {
+                if (isLspMode) {
+                    int errPos = isAtEnd() ? previous().position : peek().position;
+                    diagnostics.push_back({e.what(), errPos, errPos + 1});
+                    synchronize();
+                } else {
+                    throw;
+                }
             }
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}  // ★
         }
@@ -1307,9 +1353,19 @@ namespace jc {
         std::vector<std::unique_ptr<Expr>> stmts;
         {
             MacroScopeGuard guard(this);
-            stmts.push_back(assignment());
+            try {
+                stmts.push_back(assignment());
+            } catch (const std::exception& e) {
+                if (isLspMode) {
+                    int errPos = isAtEnd() ? previous().position : peek().position;
+                    diagnostics.push_back({e.what(), errPos, errPos + 1});
+                    synchronize();
+                } else {
+                    throw;
+                }
+            }
         }
-        int endPos = stmts.back()->endPos;
+        int endPos = stmts.empty() ? startPos : stmts.back()->endPos;
         return withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos);
     }
 

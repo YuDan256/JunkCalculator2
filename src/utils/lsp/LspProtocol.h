@@ -7,10 +7,10 @@
 #include <stdexcept>
 #include <optional>
 
+#include "../json/Json.h"
+
 namespace jc {
 namespace lsp {
-
-    #include "../json/Json.h"
 
     // ========================================================================
     // 2. LSP 基础数据结构 (Base Types)

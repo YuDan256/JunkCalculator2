@@ -407,6 +407,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
                         const std::vector<std::pair<int, int>>& forceBraceRanges) {
     std::string out;
     int indent = 0;
+    int wrapIndent = 0;      // 折行（80 字符换行）的额外缩进层数
     int pendingNL = 0;          // 0 无换行 / 1 单换行 / 2 空一行
     bool lineHasContent = false;
     bool inCaseBody = false;
@@ -419,6 +420,14 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
     auto newlineAfter = [&](const Token& tok) {
         int end = tok.position + static_cast<int>(tok.lexeme.length());
         for (int p = end; p < static_cast<int>(source.length()); ++p) {
+            if (source[p] == '\n') return true;
+            if (source[p] != ' ' && source[p] != '\t' && source[p] != '\r') return false;
+        }
+        return false;
+    };
+    // token 之前、上一个非空白字符之前是否有换行符（多行括号收尾的判断）
+    auto newlineBefore = [&](const Token& tok) {
+        for (int p = tok.position - 1; p >= 0; --p) {
             if (source[p] == '\n') return true;
             if (source[p] != ' ' && source[p] != '\t' && source[p] != '\r') return false;
         }
@@ -485,7 +494,8 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
     auto emitNewlines = [&](int count) {
         while (!out.empty() && out.back() == ' ') out.pop_back();
         for (int k = 0; k < count; ++k) out += '\n';
-        for (int k = 0; k < indent; ++k) out += "    ";
+        for (int k = 0; k < indent + wrapIndent; ++k) out += "    ";
+        wrapIndent = 0;  // 折行缩进只作用于下一次换行
         lineHasContent = false;
     };
 
@@ -579,7 +589,10 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             out += t.lexeme;
             lineHasContent = true;
             setPrev(TokenType::COMMENT, t.position);
-            if (newlineAfter(t)) pendingNL = std::max(pendingNL, 1);
+            // 只有 Lexer 未发射 NEWLINE（如 ()/[] 内的行尾注释）时才主动换行，避免与 NEWLINE token 双重计数
+            if (newlineAfter(t) && !(i + 1 < tokens.size() && tokens[i + 1].type == TokenType::NEWLINE)) {
+                pendingNL = std::max(pendingNL, 1);
+            }
             break;
         }
 
@@ -626,7 +639,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
                 setPrev(TokenType::RBRACE, t.position);
             } else {
                 // dict/set }
-                if (!indentStack.empty()) { indent -= indentStack.back(); indentStack.pop_back(); pendingNL = std::max(pendingNL, 1); }
+                if (newlineBefore(t) && !indentStack.empty()) { indent -= indentStack.back(); indentStack.pop_back(); pendingNL = std::max(pendingNL, 1); }
                 if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
                 out += '}';
                 lineHasContent = true;
@@ -676,6 +689,24 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             if (newlineAfter(t)) pendingNL = std::max(pendingNL, 1);
             break;
 
+        case TokenType::LPAREN:
+            if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
+            else if (lineHasContent && needSpaceBefore(TokenType::LPAREN, prev, prevPos, unaryOpPos)) out += ' ';
+            out += '(';
+            lineHasContent = true;
+            setPrev(TokenType::LPAREN, t.position);
+            if (newlineAfter(t)) { pendingNL = std::max(pendingNL, 1); indent++; indentStack.push_back(1); }
+            break;
+
+        case TokenType::RPAREN:
+            // `)` 前有换行（多行括号的收尾）才弹出缩进，避免单行 f(x) 误弹外层缩进
+            if (newlineBefore(t) && !indentStack.empty()) { indent -= indentStack.back(); indentStack.pop_back(); pendingNL = std::max(pendingNL, 1); }
+            if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
+            out += ')';
+            lineHasContent = true;
+            setPrev(TokenType::RPAREN, t.position);
+            break;
+
         case TokenType::LBRACKET:
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
             else if (lineHasContent && needSpaceBefore(TokenType::LBRACKET, prev, prevPos, unaryOpPos)) out += ' ';
@@ -686,7 +717,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             break;
 
         case TokenType::RBRACKET:
-            if (!indentStack.empty()) { indent -= indentStack.back(); indentStack.pop_back(); pendingNL = std::max(pendingNL, 1); }
+            if (newlineBefore(t) && !indentStack.empty()) { indent -= indentStack.back(); indentStack.pop_back(); pendingNL = std::max(pendingNL, 1); }
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
             out += ']';
             lineHasContent = true;
@@ -700,7 +731,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             out += t.lexeme;
             lineHasContent = true;
             setPrev(t.type, t.position);
-            if (currentLineLength() >= 80) pendingNL = std::max(pendingNL, 1);
+            if (currentLineLength() >= 80) { pendingNL = std::max(pendingNL, 1); wrapIndent = 1; }
             break;
 
         case TokenType::PIPE:
@@ -709,7 +740,7 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             out += "|>";
             lineHasContent = true;
             setPrev(TokenType::PIPE, t.position);
-            if (newlineAfter(t) || currentLineLength() >= 80) pendingNL = std::max(pendingNL, 1);
+            if (newlineAfter(t) || currentLineLength() >= 80) { pendingNL = std::max(pendingNL, 1); wrapIndent = 1; }
             break;
 
         case TokenType::CASE:

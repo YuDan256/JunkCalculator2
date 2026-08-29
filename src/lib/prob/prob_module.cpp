@@ -273,7 +273,6 @@ int jc2_init(jc2::Module& mod) {
         "    prob.ttest2(X, Y)          Welch two-sample:   H0: μ_X = μ_Y\n"
         "    prob.ttestP(X, Y)          Paired t-test:      H0: mean(X-Y) = 0\n"
         "    prob.chi2test(obs, exp)    Chi-squared goodness-of-fit\n\n"
-        "    Significance levels: *** (p<0.001)  ** (p<0.01)  * (p<0.05)  n.s.\n\n"
         "  Example\n"
         "  ──────────────────────\n"
         "    import prob\n"

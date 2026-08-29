@@ -147,18 +147,11 @@ int jc2_init(Module& mod) {
         "  ──────────────────────\n"
         "    im.axes(xMin, xMax, yMin, yMax [, color])\n"
         "        Draws cartesian coordinate axes mapped to the specified range.\n"
-        "    im.scatter(x_matrix, y_matrix, xMin, xMax, yMin, yMax [, color])\n"
-        "        Projects data points from two matrices onto the image canvas.\n"
-        "    imgPlot(im, f, xMin, xMax, yMin, yMax, color [, thick=2])\n"
-        "        Plot a function f(x) onto the image canvas.\n"
         "\n"
         "  I/O & Network Streaming\n"
         "  ──────────────────────\n"
         "    im.save(\"filepath.bmp\")\n"
         "        Encodes the memory surface and flushes it to a valid Windows BMP file.\n"
-        "    \n"
-        "    data = imgReadBytes(\"filepath.bmp\")\n"
-        "        (Global) Reads a binary file's EXACT byte sequence into a String buffer.\n"
     );
 
     g_imageClass = new Class("Image");

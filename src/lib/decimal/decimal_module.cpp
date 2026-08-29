@@ -474,36 +474,44 @@ public:
         int saved_prec = g_prec;
         g_prec = saved_prec + 8;
 
-        Decimal a(jc::BigInt(1), 0);
-        Decimal b = Decimal(jc::BigInt(5), -1).sqrt(); // sqrt(0.5)
-        Decimal t(jc::BigInt(25), -2); // 0.25
-        Decimal p(jc::BigInt(1), 0);
-        Decimal half(jc::BigInt(5), -1);
-        Decimal two(jc::BigInt(2), 0);
+        // Chudnovsky 算法每项提供约 14.18 位十进制精度
+        int64_t N = g_prec / 14 + 2;
+
+        // 二分分裂法 (Binary Splitting) 纯整数树状合并
+        struct BS {
+            struct PQR { jc::BigInt P, Q, R; };
+            static PQR compute(int64_t a, int64_t b) {
+                if (b - a == 1) {
+                    if (a == 0) {
+                        return {jc::BigInt(1), jc::BigInt(1), jc::BigInt(13591409)};
+                    } else {
+                        jc::BigInt P = jc::BigInt(-(6 * a - 5)) * jc::BigInt(2 * a - 1) * jc::BigInt(6 * a - 1);
+                        jc::BigInt a3 = jc::BigInt(a) * jc::BigInt(a) * jc::BigInt(a);
+                        jc::BigInt Q = jc::BigInt(10939058860032000LL) * a3;
+                        jc::BigInt R = P * (jc::BigInt(545140134LL) * jc::BigInt(a) + jc::BigInt(13591409LL));
+                        return {P, Q, R};
+                    }
+                }
+                int64_t m = (a + b) / 2;
+                PQR left = compute(a, m);
+                PQR right = compute(m, b);
+                return {
+                    left.P * right.P,
+                    left.Q * right.Q,
+                    left.R * right.Q + left.P * right.R
+                };
+            }
+        };
+
+        BS::PQR res = BS::compute(0, N);
+
+        // 仅在最后一步进行唯一的一次大数开方与除法
+        Decimal sqrt_10005 = Decimal(jc::BigInt(10005), 0).sqrt();
+        jc::BigInt num = res.Q * jc::BigInt(426880);
+        Decimal num_dec = Decimal(num, 0);
+        Decimal den_dec = Decimal(res.R, 0);
         
-        int digits = 2;
-        int iters = 0;
-        while (digits < g_prec) {
-            digits *= 2;
-            iters++;
-        }
-        iters += 2;
-        
-        for (int i = 0; i < iters; ++i) {
-            Decimal a_next = a.add(b).mul(half).truncate(g_prec);
-            Decimal b_next = a.mul(b).sqrt().truncate(g_prec);
-            Decimal a_diff = a.sub(a_next);
-            Decimal t_next = t.sub(p.mul(a_diff).mul(a_diff)).truncate(g_prec);
-            Decimal p_next = p.mul(two);
-            
-            a = a_next;
-            b = b_next;
-            t = t_next;
-            p = p_next;
-        }
-        
-        Decimal sum = a.add(b);
-        Decimal pi_val = sum.mul(sum).div(t.mul(Decimal(jc::BigInt(4), 0))).truncate(saved_prec);
+        Decimal pi_val = num_dec.mul(sqrt_10005).div(den_dec).truncate(saved_prec);
         
         g_prec = saved_prec;
         cached_prec = g_prec;

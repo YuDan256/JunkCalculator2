@@ -226,6 +226,7 @@ namespace lsp {
     std::string SemanticAnalyzer::inferType(Expr* expr) {
         if (!expr) return "";
         if (auto* ta = dynamic_cast<TypeAssertExpr*>(expr)) return exprToString(ta->typeHint.get());
+        if (auto* ea = dynamic_cast<ExprAssign*>(expr)) return inferType(ea->value.get());
         if (auto* v = dynamic_cast<Variable*>(expr)) {
             auto sym = resolveSymbolAt(v->name.lexeme, doc->offsetToPosition(v->startPos));
             if (sym) {
@@ -234,6 +235,89 @@ namespace lsp {
                 if (sym->kind == SymbolKind::Class) return v->name.lexeme; // Class itself
             }
             return "";
+        }
+        if (auto* b = dynamic_cast<Binary*>(expr)) {
+            std::string op = b->op.lexeme;
+            if (op == "==" || op == "!=" || op == "<" || op == "<=" || op == ">" || op == ">=" || op == "in" || op == "is" || op == "<:" || op == "&&" || op == "||") {
+                return "bool";
+            }
+            
+            std::string lt = inferType(b->left.get());
+            std::string rt = inferType(b->right.get());
+            
+            if (lt.empty() && !rt.empty()) lt = rt;
+            if (rt.empty() && !lt.empty()) rt = lt;
+            if (lt.empty() && rt.empty()) return "";
+
+            if (op == "|") {
+                if (lt == "type" || rt == "type" || lt == "class_type" || rt == "class_type") return "type";
+                if (lt == "set" || rt == "set") return "set";
+                if (lt == "int" && rt == "int") return "int";
+                return "";
+            }
+            if (op == "&" || op == "^^") {
+                if (lt == "set" || rt == "set") return "set";
+                if (lt == "int" && rt == "int") return "int";
+                return "";
+            }
+            if (op == "<<" || op == ">>") {
+                if (lt == "int" && rt == "int") return "int";
+                return "";
+            }
+
+            if (op == "+") {
+                if (lt == "string" || rt == "string") return "string";
+                if (lt == "list" || rt == "list") return "list";
+                if (lt == "dict" || rt == "dict") return "dict";
+            }
+            if (op == "-") {
+                if (lt == "dict") return "dict";
+                if (lt == "set" && rt == "set") return "set";
+            }
+            if (op == "*") {
+                if (lt == "string" || rt == "string") return "string";
+                if (lt == "set" && rt == "set") return "set";
+            }
+            if (op == "/") {
+                if (lt == "int" && rt == "int") return "fraction";
+            }
+            if (op == "~/") {
+                if (lt == "int" && rt == "int") return "int";
+                if (lt == "double" || rt == "double") return "double";
+            }
+            if (op == "%") {
+                if (lt == "int" && rt == "int") return "int";
+                if (lt == "double" || rt == "double") return "double";
+            }
+            if (op == "^") {
+                if (lt == "int" && rt == "int") return "int";
+            }
+
+            bool lMat = (lt == "realmatrix" || lt == "complexmatrix" || lt == "symmatrix" || lt == "matrix");
+            bool rMat = (rt == "realmatrix" || rt == "complexmatrix" || rt == "symmatrix" || rt == "matrix");
+            if (lMat || rMat) {
+                if (lt == "symmatrix" || rt == "symmatrix" || lt == "symbolic" || rt == "symbolic") return "symmatrix";
+                if (lt == "complexmatrix" || rt == "complexmatrix" || lt == "complex" || rt == "complex") return "complexmatrix";
+                if (lt == "realmatrix" || rt == "realmatrix") return "realmatrix";
+                return "matrix";
+            }
+
+            if (lt == "symbolic" || rt == "symbolic") return "symbolic";
+            if (lt == "complex" || rt == "complex") return "complex";
+            if (lt == "double" || rt == "double") return "double";
+            if (lt == "fraction" || rt == "fraction") return "fraction";
+            if (lt == "int" && rt == "int") return "int";
+
+            return lt;
+        }
+        if (auto* u = dynamic_cast<Unary*>(expr)) {
+            if (u->op.lexeme == "!") return "bool";
+            if (u->op.lexeme == "~") {
+                std::string rt = inferType(u->right.get());
+                if (rt == "int") return "int";
+                return "";
+            }
+            return inferType(u->right.get());
         }
         if (dynamic_cast<MatrixNode*>(expr)) return "matrix";
         if (dynamic_cast<ListNode*>(expr) || dynamic_cast<ListCompExpr*>(expr)) return "list";

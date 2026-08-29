@@ -95,6 +95,11 @@ public:
         return jc::BigInt::getPow10(static_cast<int>(n));
     }
 
+    static int guard_digits(int prec) {
+        if (prec <= 0) return 8;
+        return 8 + static_cast<int>(std::log2(prec));
+    }
+
     Decimal truncate(int prec) const {
         if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
         int current_digits = mantissa.digitCount();
@@ -106,13 +111,65 @@ public:
             bool neg = false;
             if (s[0] == '-') { neg = true; s = s.substr(1); }
             if (drop >= s.length()) return Decimal(jc::BigInt(0), 0);
+            
+            char next_digit = s[s.length() - drop];
+            bool exact_half = (next_digit == '5');
+            if (exact_half) {
+                for (size_t i = s.length() - drop + 1; i < s.length(); ++i) {
+                    if (s[i] != '0') {
+                        exact_half = false;
+                        break;
+                    }
+                }
+            }
+            
             s = s.substr(0, s.length() - drop);
-            if (s.empty()) return Decimal(jc::BigInt(0), 0);
-            if (neg) s = "-" + s;
-            return Decimal(jc::BigInt(s), exp + drop);
+            if (s.empty()) s = "0";
+            
+            bool round_up = false;
+            if (next_digit > '5') {
+                round_up = true;
+            } else if (next_digit == '5') {
+                if (!exact_half) {
+                    round_up = true;
+                } else {
+                    if ((s.back() - '0') % 2 != 0) {
+                        round_up = true;
+                    }
+                }
+            }
+            
+            jc::BigInt new_m(s);
+            if (round_up) {
+                new_m = new_m + jc::BigInt(1);
+            }
+            if (neg && !new_m.isZero()) new_m = -new_m;
+            return Decimal(new_m, exp + drop);
         }
         
-        jc::BigInt new_m = mantissa / pow10(drop);
+        jc::BigInt p10 = pow10(drop);
+        jc::BigInt new_m = mantissa / p10;
+        jc::BigInt rem = mantissa % p10;
+        jc::BigInt abs_rem = rem.abs();
+        jc::BigInt rem2 = abs_rem * jc::BigInt(2);
+        
+        bool round_up = false;
+        if (rem2 > p10) {
+            round_up = true;
+        } else if (rem2 == p10) {
+            if ((new_m % jc::BigInt(2)).abs() == jc::BigInt(1)) {
+                round_up = true;
+            }
+        }
+        
+        if (round_up) {
+            if (mantissa.isNegative()) {
+                new_m = new_m - jc::BigInt(1);
+            } else {
+                new_m = new_m + jc::BigInt(1);
+            }
+        }
+        
         return Decimal(new_m, exp + drop);
     }
 
@@ -131,8 +188,9 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (mag1 - mag2 > g_prec + 8) return this->truncate(g_prec);
-        if (mag2 - mag1 > g_prec + 8) return other.truncate(g_prec);
+        int guard = guard_digits(g_prec);
+        if (mag1 - mag2 > g_prec + guard) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + guard) return other.truncate(g_prec);
         
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
@@ -150,8 +208,9 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (mag1 - mag2 > g_prec + 8) return this->truncate(g_prec);
-        if (mag2 - mag1 > g_prec + 8) {
+        int guard = guard_digits(g_prec);
+        if (mag1 - mag2 > g_prec + guard) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + guard) {
             return Decimal(-other.mantissa, other.exp).truncate(g_prec);
         }
         
@@ -193,7 +252,7 @@ public:
         y.exp -= E;
         
         Decimal two(jc::BigInt(2), 0);
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -220,7 +279,7 @@ public:
         if (other.mantissa.getRawData().size() <= 2) {
             int64_t len1 = mantissa.digitCount();
             int64_t len2 = other.mantissa.digitCount();
-            int64_t extra_zeros = g_prec + 8 - len1 + len2;
+            int64_t extra_zeros = g_prec + guard_digits(g_prec) - len1 + len2;
             if (extra_zeros < 0) extra_zeros = 0;
             jc::BigInt m1_shifted = mantissa * pow10(extra_zeros);
             jc::BigInt q = m1_shifted / other.mantissa;
@@ -236,7 +295,7 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (std::abs(mag1 - mag2) > g_prec + 8) return false;
+        if (std::abs(mag1 - mag2) > g_prec + guard_digits(g_prec)) return false;
         
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
@@ -258,7 +317,7 @@ public:
         if (neg1 && !neg2) return true;
         if (!neg1 && neg2) return false;
         
-        if (std::abs(mag1 - mag2) > g_prec + 8) {
+        if (std::abs(mag1 - mag2) > g_prec + guard_digits(g_prec)) {
             if (neg1) return mag1 > mag2;
             return mag1 < mag2;
         }
@@ -325,7 +384,7 @@ public:
         Decimal three(jc::BigInt(3), 0);
         Decimal half(jc::BigInt(5), -1);
         
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -347,7 +406,7 @@ public:
 
     Decimal exp_val() const {
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
         
         Decimal x = *this;
         int squares = 0;
@@ -398,7 +457,7 @@ public:
 
     void sincos_val(Decimal& s_out, Decimal& c_out) const {
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
         
         Decimal x = this->mod_2pi();
         int squares = 0;
@@ -472,7 +531,7 @@ public:
         }
 
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
 
         // Chudnovsky 算法每项提供约 14.18 位十进制精度
         int64_t N = g_prec / 14 + 2;
@@ -546,7 +605,7 @@ public:
         Decimal y = Decimal::from_string(buf);
         Decimal two(jc::BigInt(2), 0);
         
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -596,7 +655,7 @@ public:
         for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -641,7 +700,7 @@ public:
         for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -685,7 +744,7 @@ public:
         for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 8;
+        int target_prec = g_prec + guard_digits(g_prec);
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -707,7 +766,7 @@ public:
 
     Decimal sinh_val() const {
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
         Decimal ex = this->exp_val();
         Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
         Decimal res = ex.sub(emx).div(Decimal(jc::BigInt(2), 0));
@@ -717,7 +776,7 @@ public:
 
     Decimal cosh_val() const {
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
         Decimal ex = this->exp_val();
         Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
         Decimal res = ex.add(emx).div(Decimal(jc::BigInt(2), 0));
@@ -727,7 +786,7 @@ public:
 
     Decimal tanh_val() const {
         int saved_prec = g_prec;
-        g_prec = saved_prec + 8;
+        g_prec = saved_prec + guard_digits(saved_prec);
         Decimal ex = this->exp_val();
         Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
         Decimal num = ex.sub(emx);

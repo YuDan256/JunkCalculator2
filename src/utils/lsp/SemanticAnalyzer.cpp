@@ -1,6 +1,7 @@
 #include "SemanticAnalyzer.h"
 #include "../../vm/HelpRouter.h"
 #include <unordered_set>
+#include <sstream>
 
 namespace jc {
 namespace lsp {
@@ -10,6 +11,29 @@ namespace lsp {
         if (pos.line == range.start.line && pos.character < range.start.character) return false;
         if (pos.line == range.end.line && pos.character >= range.end.character) return false;
         return true;
+    }
+
+    static bool isTypeCompatible(const std::string& inferred, const std::string& hint) {
+        if (inferred.empty() || hint.empty() || hint == "any") return true;
+        if (inferred == hint) return true;
+
+        auto trim = [](std::string s) {
+            size_t start = s.find_first_not_of(" \t");
+            size_t end = s.find_last_not_of(" \t");
+            return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+        };
+
+        std::stringstream ss(hint);
+        std::string part;
+        while (std::getline(ss, part, '|')) {
+            std::string t = trim(part);
+            if (t == inferred) return true;
+            if (t == "matrix" && (inferred == "realmatrix" || inferred == "complexmatrix" || inferred == "symmatrix")) return true;
+            if (t == "real" && (inferred == "int" || inferred == "double" || inferred == "fraction" || inferred == "bool")) return true;
+            if (t == "number" && (inferred == "int" || inferred == "double" || inferred == "fraction" || inferred == "complex" || inferred == "bool")) return true;
+            if (t == "exact" && (inferred == "int" || inferred == "fraction" || inferred == "bool" || inferred == "symbolic")) return true;
+        }
+        return false;
     }
 
     SemanticAnalyzer::SemanticAnalyzer(Document* doc, const std::vector<Token>& tokens)
@@ -97,12 +121,14 @@ namespace lsp {
         if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
             if (vp->name.lexeme != "_") {
                 bool effLocal = isLocal || vp->modifier == ScopeModifier::Local || vp->modifier == ScopeModifier::State;
-                declareSymbol(vp->name.lexeme, SymbolKind::Variable, vp->name.position, vp->name.position + static_cast<int>(vp->name.lexeme.length()), "", effLocal);
+                std::string hint = exprToString(vp->typeHint.get());
+                declareSymbol(vp->name.lexeme, SymbolKind::Variable, vp->name.position, vp->name.position + static_cast<int>(vp->name.lexeme.length()), hint, effLocal);
             }
         } else if (auto* rp = dynamic_cast<RestPattern*>(pat)) {
             if (rp->name.lexeme != "_") {
                 bool effLocal = isLocal || rp->modifier == ScopeModifier::Local || rp->modifier == ScopeModifier::State;
-                declareSymbol(rp->name.lexeme, SymbolKind::Variable, rp->name.position, rp->name.position + static_cast<int>(rp->name.lexeme.length()), "", effLocal);
+                std::string hint = exprToString(rp->typeHint.get());
+                declareSymbol(rp->name.lexeme, SymbolKind::Variable, rp->name.position, rp->name.position + static_cast<int>(rp->name.lexeme.length()), hint, effLocal);
             }
         } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
             for (auto& e : lp->elements) declarePattern(e.get(), isLocal, isConst);
@@ -127,25 +153,32 @@ namespace lsp {
         for (auto& stmt : expr->statements) {
             if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
                 bool isLoc = assign->isLocal || assign->isState || assign->isConst;
-                declareSymbol(assign->name.lexeme, SymbolKind::Variable, assign->name.position, assign->name.position + static_cast<int>(assign->name.lexeme.length()), "", isLoc);
+                std::string hint = exprToString(assign->typeHint.get());
+                std::string inferred = inferType(assign->value.get());
+                declareSymbol(assign->name.lexeme, SymbolKind::Variable, assign->name.position, assign->name.position + static_cast<int>(assign->name.lexeme.length()), hint, isLoc, inferred);
             } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
-                declareSymbol(locDecl->name.lexeme, SymbolKind::Variable, locDecl->name.position, locDecl->name.position + static_cast<int>(locDecl->name.lexeme.length()), "", true);
+                std::string hint = exprToString(locDecl->typeHint.get());
+                declareSymbol(locDecl->name.lexeme, SymbolKind::Variable, locDecl->name.position, locDecl->name.position + static_cast<int>(locDecl->name.lexeme.length()), hint, true);
             } else if (auto* stateDecl = dynamic_cast<StateDecl*>(stmt.get())) {
-                declareSymbol(stateDecl->name.lexeme, SymbolKind::Variable, stateDecl->name.position, stateDecl->name.position + static_cast<int>(stateDecl->name.lexeme.length()), "", true);
+                std::string hint = exprToString(stateDecl->typeHint.get());
+                declareSymbol(stateDecl->name.lexeme, SymbolKind::Variable, stateDecl->name.position, stateDecl->name.position + static_cast<int>(stateDecl->name.lexeme.length()), hint, true);
             } else if (auto* refDecl = dynamic_cast<RefDecl*>(stmt.get())) {
-                declareSymbol(refDecl->name.lexeme, SymbolKind::Variable, refDecl->name.position, refDecl->name.position + static_cast<int>(refDecl->name.lexeme.length()), "", true);
+                std::string hint = exprToString(refDecl->typeHint.get());
+                declareSymbol(refDecl->name.lexeme, SymbolKind::Variable, refDecl->name.position, refDecl->name.position + static_cast<int>(refDecl->name.lexeme.length()), hint, true);
             } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
                 declareSymbol(constDecl->name.lexeme, SymbolKind::Variable, constDecl->name.position, constDecl->name.position + static_cast<int>(constDecl->name.lexeme.length()), "", true);
             } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
                 declarePattern(destAssign->pattern.get(), destAssign->isLocal || destAssign->isState || destAssign->isConst, destAssign->isConst);
             } else if (auto* cls = dynamic_cast<ClassDefExpr*>(stmt.get())) {
                 if (!cls->name.lexeme.empty() && cls->name.lexeme.find("<") != 0) {
-                    declareSymbol(cls->name.lexeme, SymbolKind::Class, cls->name.position, cls->name.position + static_cast<int>(cls->name.lexeme.length()), "", true);
+                    declareSymbol(cls->name.lexeme, SymbolKind::Class, cls->name.position, cls->name.position + static_cast<int>(cls->name.lexeme.length()), "", true, "class_type");
                 }
             } else if (auto* ns = dynamic_cast<NamespaceDecl*>(stmt.get())) {
                 if (!ns->name.lexeme.empty() && ns->name.lexeme.find("<") != 0) {
-                    declareSymbol(ns->name.lexeme, SymbolKind::Namespace, ns->name.position, ns->name.position + static_cast<int>(ns->name.lexeme.length()), "", true);
+                    declareSymbol(ns->name.lexeme, SymbolKind::Namespace, ns->name.position, ns->name.position + static_cast<int>(ns->name.lexeme.length()), "", true, "namespace_type");
                 }
+            } else if (auto* mac = dynamic_cast<MacroDefExpr*>(stmt.get())) {
+                declareSymbol(mac->name.lexeme, SymbolKind::Function, mac->name.position, mac->name.position + static_cast<int>(mac->name.lexeme.length()), "", true, "macro");
             }
         }
     }
@@ -177,14 +210,39 @@ namespace lsp {
         return nullptr;
     }
 
+    std::string SemanticAnalyzer::exprToString(Expr* expr) {
+        if (!expr) return "";
+        if (auto* v = dynamic_cast<Variable*>(expr)) return v->name.lexeme;
+        if (auto* b = dynamic_cast<Binary*>(expr)) {
+            if (b->op.lexeme == "|" || b->op.lexeme == "&") {
+                return exprToString(b->left.get()) + " " + b->op.lexeme + " " + exprToString(b->right.get());
+            }
+        }
+        if (auto* g = dynamic_cast<GroupingExpr*>(expr)) return "(" + exprToString(g->expression.get()) + ")";
+        if (auto* d = dynamic_cast<DotAccess*>(expr)) return exprToString(d->object.get()) + "." + d->field.lexeme;
+        return "";
+    }
+
     std::string SemanticAnalyzer::inferType(Expr* expr) {
         if (!expr) return "";
+        if (auto* ta = dynamic_cast<TypeAssertExpr*>(expr)) return exprToString(ta->typeHint.get());
+        if (auto* v = dynamic_cast<Variable*>(expr)) {
+            auto sym = resolveSymbolAt(v->name.lexeme, doc->offsetToPosition(v->startPos));
+            if (sym) {
+                if (!sym->typeHint.empty()) return sym->typeHint;
+                if (!sym->inferredType.empty()) return sym->inferredType;
+                if (sym->kind == SymbolKind::Class) return v->name.lexeme; // Class itself
+            }
+            return "";
+        }
         if (dynamic_cast<MatrixNode*>(expr)) return "matrix";
         if (dynamic_cast<ListNode*>(expr) || dynamic_cast<ListCompExpr*>(expr)) return "list";
         if (dynamic_cast<DictLiteral*>(expr) || dynamic_cast<DictCompExpr*>(expr)) return "dict";
         if (dynamic_cast<SetLiteral*>(expr) || dynamic_cast<SetCompExpr*>(expr)) return "set";
         if (dynamic_cast<LambdaExpr*>(expr)) return "function";
-        if (dynamic_cast<ClassDefExpr*>(expr)) return "class";
+        if (dynamic_cast<MacroDefExpr*>(expr)) return "macro";
+        if (dynamic_cast<ClassDefExpr*>(expr)) return "class_type";
+        if (dynamic_cast<NamespaceDecl*>(expr)) return "namespace_type";
         if (auto* lit = dynamic_cast<Literal*>(expr)) {
             if (lit->isString) return "string";
             if (lit->isImaginary) return "complex";
@@ -196,14 +254,20 @@ namespace lsp {
             return "int";
         }
         if (auto* call = dynamic_cast<Call*>(expr)) {
-            // 简单的构造函数推导
-            if (call->callee.lexeme == "matrix" || call->callee.lexeme == "symmatrix" || call->callee.lexeme == "ones" || call->callee.lexeme == "zeros" || call->callee.lexeme == "id") return "matrix";
-            if (call->callee.lexeme == "list") return "list";
-            if (call->callee.lexeme == "dict") return "dict";
-            if (call->callee.lexeme == "set") return "set";
-            if (call->callee.lexeme == "complex") return "complex";
-            if (call->callee.lexeme == "frac" || call->callee.lexeme == "toFrac") return "fraction";
-            if (call->callee.lexeme == "string" || call->callee.lexeme == "str") return "string";
+            std::string calleeName = call->callee.lexeme;
+            if (calleeName == "matrix" || calleeName == "symmatrix" || calleeName == "ones" || calleeName == "zeros" || calleeName == "id") return "matrix";
+            if (calleeName == "list") return "list";
+            if (calleeName == "dict") return "dict";
+            if (calleeName == "set") return "set";
+            if (calleeName == "complex") return "complex";
+            if (calleeName == "frac" || calleeName == "toFrac") return "fraction";
+            if (calleeName == "string" || calleeName == "str") return "string";
+            
+            // 检查是否是类实例化
+            auto sym = resolveSymbolAt(calleeName, doc->offsetToPosition(call->startPos));
+            if (sym && sym->kind == SymbolKind::Class) {
+                return calleeName; // 推导为该类的实例
+            }
         }
         return "";
     }
@@ -359,7 +423,11 @@ namespace lsp {
         }
         
         std::string inferred = inferType(expr->value.get());
-        std::string hint = expr->typeHint ? "any" : ""; // 简化处理，实际应提取 typeHint 的文本
+        std::string hint = exprToString(expr->typeHint.get());
+        
+        if (!isTypeCompatible(inferred, hint)) {
+            diagnostics.push_back({"Warning: Type mismatch. Expected '" + hint + "', but inferred '" + inferred + "'.", expr->value->startPos, expr->value->endPos, 2});
+        }
         
         declareSymbol(expr->name.lexeme, kind, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), hint, expr->isLocal || expr->isState || expr->isConst, inferred);
     }
@@ -378,7 +446,7 @@ namespace lsp {
     void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* expr) {
         // 声明函数本身
         if (!expr->name.empty() && expr->name.find("<") != 0) {
-            declareSymbol(expr->name, SymbolKind::Function, expr->startPos, expr->startPos + static_cast<int>(expr->name.length()));
+            declareSymbol(expr->name, SymbolKind::Function, expr->startPos, expr->startPos + static_cast<int>(expr->name.length()), "", true, "function");
         }
         
         Range range;
@@ -388,17 +456,19 @@ namespace lsp {
         enterScope(range, ScopeKind::Function);
         
         // 声明参数
-        for (const auto& param : expr->params) {
-            declareSymbol(param.lexeme, SymbolKind::Parameter, param.position, param.position + static_cast<int>(param.lexeme.length()));
+        for (size_t i = 0; i < expr->params.size(); ++i) {
+            std::string hint = i < expr->paramTypes.size() ? exprToString(expr->paramTypes[i].get()) : "";
+            declareSymbol(expr->params[i].lexeme, SymbolKind::Parameter, expr->params[i].position, expr->params[i].position + static_cast<int>(expr->params[i].lexeme.length()), hint);
         }
-        for (const auto& param : expr->kwargParams) {
-            declareSymbol(param.lexeme, SymbolKind::Parameter, param.position, param.position + static_cast<int>(param.lexeme.length()));
+        for (size_t i = 0; i < expr->kwargParams.size(); ++i) {
+            std::string hint = i < expr->kwargTypes.size() ? exprToString(expr->kwargTypes[i].get()) : "";
+            declareSymbol(expr->kwargParams[i].lexeme, SymbolKind::Parameter, expr->kwargParams[i].position, expr->kwargParams[i].position + static_cast<int>(expr->kwargParams[i].lexeme.length()), hint);
         }
         if (!expr->restName.empty()) {
-            declareSymbol(expr->restName, SymbolKind::Parameter, expr->startPos, expr->startPos); // 简化位置
+            declareSymbol(expr->restName, SymbolKind::Parameter, expr->startPos, expr->startPos, "list"); // 简化位置
         }
         if (!expr->kwargsName.empty()) {
-            declareSymbol(expr->kwargsName, SymbolKind::Parameter, expr->startPos, expr->startPos);
+            declareSymbol(expr->kwargsName, SymbolKind::Parameter, expr->startPos, expr->startPos, "dict");
         }
         
         if (expr->body) {
@@ -410,7 +480,7 @@ namespace lsp {
 
     void SemanticAnalyzer::visitClassDefExpr(ClassDefExpr* expr) {
         if (!expr->name.lexeme.empty() && expr->name.lexeme.find("<") != 0) {
-            declareSymbol(expr->name.lexeme, SymbolKind::Class, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()));
+            declareSymbol(expr->name.lexeme, SymbolKind::Class, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true, "class_type");
         }
         
         Range range;
@@ -487,15 +557,26 @@ namespace lsp {
             for (auto& idx : chain) if (idx) idx->accept(*this);
         }
         if (expr->value) expr->value->accept(*this);
+        
+        if (expr->typeHint) {
+            std::string inferred = inferType(expr->value.get());
+            std::string hint = exprToString(expr->typeHint.get());
+            if (!isTypeCompatible(inferred, hint)) {
+                diagnostics.push_back({"Warning: Type mismatch. Expected '" + hint + "', but inferred '" + inferred + "'.", expr->value->startPos, expr->value->endPos, 2});
+            }
+        }
     }
     void SemanticAnalyzer::visitLocalDecl(LocalDecl* expr) {
-        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true);
+        std::string hint = exprToString(expr->typeHint.get());
+        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), hint, true);
     }
     void SemanticAnalyzer::visitRefDecl(RefDecl* expr) {
-        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true);
+        std::string hint = exprToString(expr->typeHint.get());
+        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), hint, true);
     }
     void SemanticAnalyzer::visitStateDecl(StateDecl* expr) {
-        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true);
+        std::string hint = exprToString(expr->typeHint.get());
+        declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), hint, true);
     }
     void SemanticAnalyzer::visitConstDecl(ConstDecl* expr) {
         declareSymbol(expr->name.lexeme, SymbolKind::Variable, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true);
@@ -540,8 +621,29 @@ namespace lsp {
         if (expr->defaultBody) expr->defaultBody->accept(*this);
     }
     void SemanticAnalyzer::visitNamespaceDecl(NamespaceDecl* expr) {
-        declareSymbol(expr->name.lexeme, SymbolKind::Namespace, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true);
+        declareSymbol(expr->name.lexeme, SymbolKind::Namespace, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true, "namespace_type");
+        Range range;
+        range.start = doc->offsetToPosition(expr->startPos);
+        range.end = doc->offsetToPosition(expr->endPos);
+        enterScope(range, ScopeKind::Namespace);
         if (expr->body) expr->body->accept(*this);
+        leaveScope();
+    }
+
+    void SemanticAnalyzer::visitMacroDefExpr(MacroDefExpr* expr) {
+        declareSymbol(expr->name.lexeme, SymbolKind::Function, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", true, "macro");
+        Range range;
+        range.start = doc->offsetToPosition(expr->startPos);
+        range.end = doc->offsetToPosition(expr->endPos);
+        enterScope(range, ScopeKind::Function);
+        for (const auto& param : expr->params) {
+            declareSymbol(param.lexeme, SymbolKind::Parameter, param.position, param.position + static_cast<int>(param.lexeme.length()), "ASTNode");
+        }
+        if (!expr->restName.empty()) {
+            declareSymbol(expr->restName, SymbolKind::Parameter, expr->startPos, expr->startPos, "list");
+        }
+        if (expr->body) expr->body->accept(*this);
+        leaveScope();
     }
     void SemanticAnalyzer::visitDotAccess(DotAccess* expr) {
         if (expr->object) expr->object->accept(*this);
@@ -549,6 +651,14 @@ namespace lsp {
     void SemanticAnalyzer::visitDotAssign(DotAssign* expr) {
         if (expr->object) expr->object->accept(*this);
         if (expr->value) expr->value->accept(*this);
+        
+        if (expr->typeHint) {
+            std::string inferred = inferType(expr->value.get());
+            std::string hint = exprToString(expr->typeHint.get());
+            if (!isTypeCompatible(inferred, hint)) {
+                diagnostics.push_back({"Warning: Type mismatch. Expected '" + hint + "', but inferred '" + inferred + "'.", expr->value->startPos, expr->value->endPos, 2});
+            }
+        }
     }
     void SemanticAnalyzer::visitMethodCallExpr(MethodCallExpr* expr) {
         if (expr->object) expr->object->accept(*this);
@@ -663,6 +773,12 @@ namespace lsp {
     void SemanticAnalyzer::visitTypeAssertExpr(TypeAssertExpr* expr) {
         if (expr->value) expr->value->accept(*this);
         if (expr->typeHint) expr->typeHint->accept(*this);
+        
+        std::string inferred = inferType(expr->value.get());
+        std::string hint = exprToString(expr->typeHint.get());
+        if (!isTypeCompatible(inferred, hint)) {
+            diagnostics.push_back({"Warning: Type assertion may fail. Inferred type '" + inferred + "' does not match '" + hint + "'.", expr->startPos, expr->endPos, 2});
+        }
     }
 
 } // namespace lsp

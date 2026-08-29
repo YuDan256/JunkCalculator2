@@ -93,6 +93,7 @@ namespace lsp {
         void hoistBlock(Block* expr);
         
         std::string inferType(Expr* expr); // ★ 新增：类型推导
+        std::string exprToString(Expr* expr); // ★ 新增：将 AST 节点转为字符串
 
         // 提取文档注释
         std::string extractDocstring(int nodeStartPos);
@@ -151,7 +152,7 @@ namespace lsp {
         void visitSequenceExpr(SequenceExpr* expr) override;
         void visitMatchExpr(MatchExpr* expr) override;
         void visitGroupingExpr(GroupingExpr* expr) override;
-        void visitMacroDefExpr(MacroDefExpr* /*expr*/) override {}
+        void visitMacroDefExpr(MacroDefExpr* expr) override;
         void visitMacroCallExpr(MacroCallExpr* /*expr*/) override {}
         void visitQuoteExpr(QuoteExpr* /*expr*/) override {}
         void visitUnquoteExpr(UnquoteExpr* /*expr*/) override {}

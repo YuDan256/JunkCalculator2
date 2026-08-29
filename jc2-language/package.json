@@ -17,7 +17,7 @@
     "activationEvents": [
         "onLanguage:jc2"
     ],
-    "main": "./extension.js",
+    "main": "./dist/extension.js",
     "contributes": {
         "languages": [
             {
@@ -125,7 +125,8 @@
         }
     },
     "scripts": {
-        "vscode:prepublish": "node build-doc.js",
+        "vscode:prepublish": "node build-doc.js && npm run build",
+        "build": "esbuild ./extension.js --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --minify",
         "test": "echo \"Error: no test specified\" && exit 1"
     },
     "dependencies": {
@@ -133,7 +134,8 @@
     },
     "devDependencies": {
         "@types/vscode": "^1.80.0",
-        "@types/node": "^18.0.0"
+        "@types/node": "^18.0.0",
+        "esbuild": "^0.23.0"
     },
     "keywords": [],
     "author": "Yu Liangyang",

@@ -11,12 +11,12 @@ try {
     
     // 1. 提取所有内置函数和别名，自动更新语法高亮文件 (Single Source of Truth)
     const builtinFunctions = new Set();
-    if (doc.functions) {
-        for (const key in doc.functions) {
+    if (doc.global_functions) {
+        for (const key in doc.global_functions) {
             if (key.startsWith('__') && key.endsWith('__')) continue; // 忽略 dunder 魔术方法
             builtinFunctions.add(key);
-            if (doc.functions[key].aliases) {
-                for (const alias of doc.functions[key].aliases) {
+            if (doc.global_functions[key].aliases) {
+                for (const alias of doc.global_functions[key].aliases) {
                     builtinFunctions.add(alias);
                 }
             }
@@ -38,23 +38,30 @@ try {
     if (doc.topics) delete doc.topics;
     
     // 剔除描述与示例以精简体积，并将别名提升为独立的函数条目
-    if (doc.functions) {
-        const aliasesToAdd = {};
-        for (const key in doc.functions) {
-            const func = doc.functions[key];
-            if (func.aliases) {
-                for (const alias of func.aliases) {
-                    // 将签名中的原函数名替换为别名 (例如 log(x) -> ln(x))
-                    aliasesToAdd[alias] = {
-                        signature: func.signature ? func.signature.split(key).join(alias) : alias
-                    };
+    const categoriesToMinify = [
+        "global_functions", "matrix_methods", "list_methods", 
+        "string_methods", "dict_methods", "set_methods",
+        "sys_methods", "math_methods", "cas_methods", "random_methods"
+    ];
+    
+    for (const cat of categoriesToMinify) {
+        if (doc[cat]) {
+            const aliasesToAdd = {};
+            for (const key in doc[cat]) {
+                const func = doc[cat][key];
+                if (func.aliases) {
+                    for (const alias of func.aliases) {
+                        aliasesToAdd[alias] = {
+                            signature: func.signature ? func.signature.split(key).join(alias) : alias
+                        };
+                    }
+                    delete func.aliases;
                 }
-                delete func.aliases;
+                delete func.desc;
+                delete func.examples;
             }
-            delete func.desc;
-            delete func.examples;
+            Object.assign(doc[cat], aliasesToAdd);
         }
-        Object.assign(doc.functions, aliasesToAdd);
     }
     
     // 同样剔除关键字的描述与示例

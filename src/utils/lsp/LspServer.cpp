@@ -262,6 +262,7 @@ namespace lsp {
                         
                         std::string md = "```jc2\n(" + kindStr + ") " + sym->name;
                         if (!sym->typeHint.empty()) md += ": " + sym->typeHint;
+                        else if (!sym->inferredType.empty()) md += ": " + sym->inferredType;
                         md += "\n```";
                         
                         if (!sym->docstring.empty()) {
@@ -291,10 +292,22 @@ namespace lsp {
                             if (helpAst.isObject()) {
                                 Json targetData;
                                 std::string kindStr;
-                                if (helpAst.has("functions") && helpAst["functions"].has(word)) {
-                                    targetData = helpAst["functions"][word];
-                                    kindStr = "built-in function";
-                                } else if (helpAst.has("keywords") && helpAst["keywords"].has(word)) {
+                                
+                                std::vector<std::string> categories = {
+                                    "global_functions", "matrix_methods", "list_methods", 
+                                    "string_methods", "dict_methods", "set_methods",
+                                    "sys_methods", "math_methods", "cas_methods", "random_methods"
+                                };
+                                
+                                for (const auto& cat : categories) {
+                                    if (helpAst.has(cat) && helpAst[cat].has(word)) {
+                                        targetData = helpAst[cat][word];
+                                        kindStr = (cat == "global_functions") ? "built-in function" : "built-in method";
+                                        break;
+                                    }
+                                }
+                                
+                                if (targetData.isNull() && helpAst.has("keywords") && helpAst["keywords"].has(word)) {
                                     targetData = helpAst["keywords"][word];
                                     kindStr = "keyword";
                                 }
@@ -464,46 +477,64 @@ namespace lsp {
                             }
                         }
                         
-                        // 根据推导出的类型，过滤内置方法
-                        if (helpAst.isObject() && helpAst.has("functions")) {
-                            const Json& funcs = helpAst["functions"];
-                            for (const auto& pair : funcs.objVal) {
-                                const std::string& funcName = pair.first;
-                                const Json& funcData = pair.second;
-                                
-                                if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") continue;
-                                
-                                bool matchType = false;
-                                if (funcData.has("signature")) {
-                                    std::string sig = funcData["signature"].strVal;
-                                    if (targetType == "matrix" && (sig.find("A.") == 0 || sig.find("M.") == 0 || sig.find("X.") == 0)) matchType = true;
-                                    else if ((targetType == "list" || targetType == "array") && (sig.find("v.") == 0 || sig.find("L.") == 0 || sig.find("X.") == 0)) matchType = true;
-                                    else if (targetType == "string" && sig.find("s.") == 0) matchType = true;
-                                    else if (targetType == "dict" && (sig.find("d.") == 0 || sig.find("d1.") == 0)) matchType = true;
-                                    else if (targetType == "set" && (sig.find("a.") == 0 || sig.find("s.") == 0)) matchType = true;
-                                    // 如果无法推导类型，或者类型是 any，则显示所有可能是方法的函数 (包含 '.')
-                                    else if (targetType.empty() && sig.find('.') != std::string::npos && sig.find('(') != std::string::npos && sig.find('.') < sig.find('(')) matchType = true;
-                                }
-                                
-                                if (matchType) {
-                                    Json item;
-                                    item.type = JsonType::Object;
-                                    item["label"] = Json(funcName);
-                                    item["kind"] = Json(2); // Method
-                                    if (funcData.has("signature")) item["detail"] = Json(funcData["signature"].strVal);
-                                    if (funcData.has("desc")) {
-                                        Json docJson;
-                                        docJson.type = JsonType::Object;
-                                        docJson["kind"] = Json("markdown");
-                                        std::string descStr;
-                                        if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
-                                        else if (funcData["desc"].isArray()) {
-                                            for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
+                        // 根据推导出的类型，直接读取对应的内置方法分类
+                        if (helpAst.isObject()) {
+                            std::vector<std::string> targetCategories;
+                            if (targetType == "matrix" || targetType == "realmatrix" || targetType == "complexmatrix" || targetType == "symmatrix") {
+                                targetCategories.push_back("matrix_methods");
+                            } else if (targetType == "list") {
+                                targetCategories.push_back("list_methods");
+                            } else if (targetType == "string") {
+                                targetCategories.push_back("string_methods");
+                            } else if (targetType == "dict") {
+                                targetCategories.push_back("dict_methods");
+                            } else if (targetType == "set") {
+                                targetCategories.push_back("set_methods");
+                            } else if (objectName == "sys") {
+                                targetCategories.push_back("sys_methods");
+                            } else if (objectName == "math") {
+                                targetCategories.push_back("math_methods");
+                            } else if (objectName == "cas") {
+                                targetCategories.push_back("cas_methods");
+                            } else if (objectName == "random") {
+                                targetCategories.push_back("random_methods");
+                            } else if (targetType.empty() || targetType == "any") {
+                                targetCategories = {"matrix_methods", "list_methods", "string_methods", "dict_methods", "set_methods", "sys_methods", "math_methods", "cas_methods", "random_methods"};
+                            }
+                            
+                            for (const auto& cat : targetCategories) {
+                                if (helpAst.has(cat)) {
+                                    const Json& funcs = helpAst[cat];
+                                    for (const auto& pair : funcs.objVal) {
+                                        const std::string& funcName = pair.first;
+                                        const Json& funcData = pair.second;
+                                        
+                                        if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") continue;
+                                        
+                                        Json item;
+                                        item.type = JsonType::Object;
+                                        item["label"] = Json(funcName);
+                                        item["kind"] = Json(2); // Method
+                                        if (funcData.has("signature")) item["detail"] = Json(funcData["signature"].strVal);
+                                        if (funcData.has("desc")) {
+                                            Json docJson;
+                                            docJson.type = JsonType::Object;
+                                            docJson["kind"] = Json("markdown");
+                                            std::string descStr;
+                                            if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
+                                            else if (funcData["desc"].isArray()) {
+                                                for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
+                                            }
+                                            if (funcData.has("examples") && funcData["examples"].isArray()) {
+                                                descStr += "\n\n**Examples:**\n```jc2\n";
+                                                for (const auto& ex : funcData["examples"].arrVal) descStr += ex.strVal + "\n";
+                                                descStr += "```";
+                                            }
+                                            docJson["value"] = Json(descStr);
+                                            item["documentation"] = docJson;
                                         }
-                                        docJson["value"] = Json(descStr);
-                                        item["documentation"] = docJson;
+                                        items.push_back(item);
                                     }
-                                    items.push_back(item);
                                 }
                             }
                         }
@@ -556,8 +587,8 @@ namespace lsp {
                                 items.push_back(item);
                             }
                         }
-                        if (helpAst.isObject() && helpAst.has("functions")) {
-                            const Json& funcs = helpAst["functions"];
+                        if (helpAst.isObject() && helpAst.has("global_functions")) {
+                            const Json& funcs = helpAst["global_functions"];
                             for (const auto& pair : funcs.objVal) {
                                 const std::string& funcName = pair.first;
                                 const Json& funcData = pair.second;
@@ -571,16 +602,6 @@ namespace lsp {
                                 if (visibleNames.count(funcName)) {
                                     continue;
                                 }
-                                
-                                // 在普通补全中，过滤掉纯方法（签名以 "X." 开头的）以保持列表干净
-                                bool isPureMethod = false;
-                                if (funcData.has("signature")) {
-                                    std::string sig = funcData["signature"].strVal;
-                                    if (sig.find('.') != std::string::npos && sig.find('(') != std::string::npos && sig.find('.') < sig.find('(')) {
-                                        isPureMethod = true;
-                                    }
-                                }
-                                if (isPureMethod) continue;
                                 
                                 Json item;
                                 item.type = JsonType::Object;

@@ -3616,7 +3616,7 @@
       "      ensuring custom DSLs (Domain Specific Languages) are not destroyed."
     ]
   },
-  "functions": {
+  "global_functions": {
     "pi": {
       "signature": "pi()",
       "desc": "Returns the mathematical constant π (Pi) ≈ 3.14159265...",
@@ -4166,47 +4166,6 @@
         "M.hessian([\"x\", \"y\"])"
       ]
     },
-    "row": {
-      "signature": "A.row()",
-      "desc": "Returns the number of rows in a matrix.",
-      "aliases": [
-        "rows"
-      ],
-      "examples": [
-        "[1, 2; 3, 4].row()"
-      ]
-    },
-    "col": {
-      "signature": "A.col()",
-      "desc": "Returns the number of columns in a matrix.",
-      "aliases": [
-        "cols"
-      ],
-      "examples": [
-        "[1, 2; 3, 4].col()"
-      ]
-    },
-    "reshape": {
-      "signature": "A.reshape(r, c)",
-      "desc": "Reshapes a matrix to r rows and c columns. Total element count must match.",
-      "examples": [
-        "[1, 2, 3, 4].reshape(2, 2)"
-      ]
-    },
-    "hcat": {
-      "signature": "A.hcat(B)",
-      "desc": "Horizontally concatenates two matrices [A | B].",
-      "examples": [
-        "[1; 2].hcat([3; 4])"
-      ]
-    },
-    "vcat": {
-      "signature": "A.vcat(B)",
-      "desc": "Vertically concatenates two matrices [A ; B].",
-      "examples": [
-        "[1, 2].vcat([3, 4])"
-      ]
-    },
     "id": {
       "signature": "id(n)",
       "desc": "Returns an n x n identity matrix.",
@@ -4340,166 +4299,6 @@
         "[1; 2].isparallel([2; 4])"
       ]
     },
-    "solve": {
-      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0) / cas.solve(expr, var)",
-      "desc": "Finds all complex roots of a polynomial up to degree 4, numerically finds a root of f(x) = 0 near x0, or symbolically solves an equation expr = 0.",
-      "examples": [
-        "math.solve(1, 0, -1)",
-        "math.solve((x) => x^2 - 4, 3)",
-        "cas.solve(x^2 - 2, x)"
-      ]
-    },
-    "factorial": {
-      "signature": "math.factorial(n)",
-      "desc": "Returns the factorial of n (n!). Exact for ints.",
-      "examples": [
-        "math.factorial(100)"
-      ]
-    },
-    "fib": {
-      "signature": "math.fib(n)",
-      "desc": "Returns the n-th Fibonacci number.",
-      "examples": [
-        "math.fib(10)"
-      ]
-    },
-    "gcd": {
-      "signature": "math.gcd(a, b)",
-      "desc": "Returns the greatest common divisor of a and b.",
-      "examples": [
-        "math.gcd(48, 18)"
-      ]
-    },
-    "lcm": {
-      "signature": "math.lcm(a, b)",
-      "desc": "Returns the least common multiple of a and b.",
-      "examples": [
-        "math.lcm(4, 6)"
-      ]
-    },
-    "digits": {
-      "signature": "math.digits(n)",
-      "desc": "Returns the number of digits in an integer (base-10).",
-      "examples": [
-        "math.digits(math.factorial(100))",
-        "math.BaseNum(255, 16).digits()"
-      ]
-    },
-    "isPrime": {
-      "signature": "math.isPrime(n)",
-      "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
-      "aliases": [
-        "isprime"
-      ],
-      "examples": [
-        "math.isPrime(10^9 + 7)"
-      ]
-    },
-    "nextPrime": {
-      "signature": "math.nextPrime(n)",
-      "desc": "Returns the smallest prime number strictly greater than n.",
-      "examples": [
-        "math.nextPrime(100)"
-      ]
-    },
-    "nthPrime": {
-      "signature": "math.nthPrime(k)",
-      "desc": "Returns the k-th prime number. Uses a mounted Prime.bin database if available, otherwise computes dynamically.",
-      "examples": [
-        "math.nthPrime(1000)"
-      ]
-    },
-    "primePi": {
-      "signature": "math.primePi(n)",
-      "desc": "Returns the number of primes less than or equal to n (Prime Counting Function).",
-      "examples": [
-        "math.primePi(100)"
-      ]
-    },
-    "phi": {
-      "signature": "math.phi(n)",
-      "desc": "Returns Euler's totient function (number of integers up to n that are coprime to n).",
-      "examples": [
-        "math.phi(100)"
-      ]
-    },
-    "divisors": {
-      "signature": "math.divisors(n)",
-      "desc": "Returns the number of positive divisors of n.",
-      "examples": [
-        "math.divisors(12)"
-      ]
-    },
-    "sigma": {
-      "signature": "math.sigma(n, [k])",
-      "desc": "Returns the sum of the k-th powers of the positive divisors of n. k defaults to 1.",
-      "examples": [
-        "math.sigma(12)"
-      ]
-    },
-    "omega": {
-      "signature": "math.omega(n)",
-      "desc": "Returns the number of distinct prime factors of n.",
-      "examples": [
-        "math.omega(12)"
-      ]
-    },
-    "bigOmega": {
-      "signature": "math.bigOmega(n)",
-      "desc": "Returns the total number of prime factors of n (counted with multiplicity).",
-      "examples": [
-        "math.bigOmega(12)"
-      ]
-    },
-    "mobius": {
-      "signature": "math.mobius(n)",
-      "desc": "Returns the Möbius function of n: 0 if n has a squared prime factor, else (-1)^omega(n).",
-      "examples": [
-        "math.mobius(10)"
-      ]
-    },
-    "isPerfect": {
-      "signature": "math.isPerfect(n)",
-      "desc": "Returns true if n is a perfect number (sum of proper divisors equals n), false otherwise.",
-      "examples": [
-        "math.isPerfect(28)"
-      ]
-    },
-    "mod": {
-      "signature": "math.mod(a, b)",
-      "desc": "Returns the mathematical modulo of a w.r.t b. The result is always non-negative.",
-      "examples": [
-        "math.mod(-7, 3)"
-      ]
-    },
-    "modpow": {
-      "signature": "math.modpow(a, e, m)",
-      "desc": "Returns (a^e) mod m efficiently.",
-      "examples": [
-        "math.modpow(2, 10, 1000)"
-      ]
-    },
-    "C": {
-      "signature": "math.C(n, k)",
-      "desc": "Returns the binomial coefficient (n choose k).",
-      "examples": [
-        "math.C(5, 2)"
-      ]
-    },
-    "A": {
-      "signature": "math.A(n, k)",
-      "desc": "Returns the number of k-permutations of n.",
-      "examples": [
-        "math.A(5, 2)"
-      ]
-    },
-    "catalan": {
-      "signature": "math.catalan(n)",
-      "desc": "Returns the n-th Catalan number.",
-      "examples": [
-        "math.catalan(5)"
-      ]
-    },
     "mean": {
       "signature": "X.mean() / dist.mean()",
       "desc": "Returns the arithmetic mean of a dataset, or the theoretical mean of a Distribution.",
@@ -4608,57 +4407,6 @@
         "[1, 2, 3].regress([2, 4, 5])"
       ]
     },
-    "rand": {
-      "signature": "random.rand([min, max])",
-      "desc": "Returns a random continuous double. Defaults to [0, 1) if no arguments provided.",
-      "examples": [
-        "random.rand()",
-        "random.rand(10, 20)"
-      ]
-    },
-    "randint": {
-      "signature": "random.randint(min, max)",
-      "desc": "Returns a random discrete integer in the closed interval [min, max].",
-      "examples": [
-        "random.randint(1, 6)"
-      ]
-    },
-    "randc": {
-      "signature": "random.randc([min, max])",
-      "desc": "Returns a random complex number with real and imaginary parts in [min, max).",
-      "examples": [
-        "random.randc()"
-      ]
-    },
-    "randmat": {
-      "signature": "random.randmat(r, c, [min, max])",
-      "desc": "Returns an r x c matrix of random continuous doubles.",
-      "examples": [
-        "random.randmat(3, 3)",
-        "random.randmat(2, 2, -10, 10)"
-      ]
-    },
-    "randimat": {
-      "signature": "random.randimat(r, c, [min, max])",
-      "desc": "Returns an r x c matrix of random discrete integers. Defaults to [0, 10].",
-      "examples": [
-        "random.randimat(3, 3, 1, 100)"
-      ]
-    },
-    "randcmat": {
-      "signature": "random.randcmat(r, c, [min, max])",
-      "desc": "Returns an r x c matrix of random complex numbers.",
-      "examples": [
-        "random.randcmat(2, 2)"
-      ]
-    },
-    "magic": {
-      "signature": "random.magic(n)",
-      "desc": "Returns an n x n magic square matrix (n >= 3).",
-      "examples": [
-        "random.magic(3)"
-      ]
-    },
     "str": {
       "signature": "str(x)",
       "desc": "Converts any value to a string representation. Calls __str__ on instances if available.",
@@ -4678,20 +4426,6 @@
         "len(12345)"
       ]
     },
-    "substr": {
-      "signature": "s.substr(start, [length])",
-      "desc": "Returns a substring starting at 'start'. If 'length' is provided, extracts that many characters.",
-      "examples": [
-        "\"hello\".substr(1, 3)"
-      ]
-    },
-    "replace": {
-      "signature": "s.replace(old, new)",
-      "desc": "Replaces all occurrences of 'old' with 'new' in string 's'.",
-      "examples": [
-        "\"hello\".replace(\"l\", \"w\")"
-      ]
-    },
     "format": {
       "signature": "format(fmt, ...)",
       "desc": "Formats a string using Python-style placeholders {}.",
@@ -4705,20 +4439,6 @@
       "examples": [
         "type(42)",
         "type(\"hello\")"
-      ]
-    },
-    "split": {
-      "signature": "s.split(delim)",
-      "desc": "Splits a string into a list of substrings using the specified delimiter.",
-      "examples": [
-        "\"a,b,c\".split(\",\")"
-      ]
-    },
-    "join": {
-      "signature": "v.join(delim)",
-      "desc": "Joins elements of a list or array into a single string, separated by 'delim'.",
-      "examples": [
-        "[1, 2, 3].join(\"-\")"
       ]
     },
     "list": {
@@ -4742,86 +4462,6 @@
         "set(1, 2, 2, 3)"
       ]
     },
-    "push": {
-      "signature": "v.push(val)",
-      "desc": "Appends a value to the end of a list or array.",
-      "aliases": ["append"],
-      "examples": [
-        "[1, 2].push(3)"
-      ]
-    },
-    "pop": {
-      "signature": "v.pop()",
-      "desc": "Removes and returns the last element of a list (mutates) or array (returns last).",
-      "examples": [
-        "list(1, 2, 3).pop()"
-      ]
-    },
-    "map": {
-      "signature": "v.map(f)",
-      "desc": "Applies function f to each element of v.",
-      "examples": [
-        "[1, 2, 3].map((x) => x^2)"
-      ]
-    },
-    "filter": {
-      "signature": "v.filter(f)",
-      "desc": "Keeps elements of v for which function f returns a truthy value.",
-      "examples": [
-        "[-1, 0, 1].filter((x) => x > 0)"
-      ]
-    },
-    "reduce": {
-      "signature": "v.reduce(f, [init])",
-      "desc": "Reduces v to a single value using a left fold with function f.",
-      "examples": [
-        "[1, 2, 3].reduce((a, b) => a + b)"
-      ]
-    },
-    "sort": {
-      "signature": "v.sort([cmp])",
-      "desc": "Stably sorts a list or array using natural ordering. Optionally accepts a custom comparator function.",
-      "examples": [
-        "[3, 1, 2].sort()"
-      ]
-    },
-    "keys": {
-      "signature": "d.keys()",
-      "desc": "Returns a list of all keys in a dictionary.",
-      "aliases": ["getFields"],
-      "examples": [
-        "{a: 1, b: 2}.keys()"
-      ]
-    },
-    "values": {
-      "signature": "d.values()",
-      "desc": "Returns a list of all values in a dictionary.",
-      "examples": [
-        "{a: 1, b: 2}.values()"
-      ]
-    },
-    "hasKey": {
-      "signature": "d.hasKey(key)",
-      "desc": "Returns true if the dictionary contains the specified key, false otherwise.",
-      "aliases": ["has", "hasField"],
-      "examples": [
-        "{a: 1}.hasKey(\"a\")"
-      ]
-    },
-    "union": {
-      "signature": "a.union(b)",
-      "desc": "Returns a new set containing all elements from both sets.",
-      "examples": [
-        "@{1, 2}.union(@{2, 3})"
-      ]
-    },
-    "intersect": {
-      "signature": "a.intersect(b)",
-      "desc": "Returns a new set containing elements present in both sets.",
-      "examples": [
-        "@{1, 2}.intersect(@{2, 3})"
-      ]
-    },
     "print": {
       "signature": "print(...args; sep = \" \", end = \"\\n\")",
       "desc": "Prints arguments to the console, joined by `sep` (default space), terminated by `end` (default newline).",
@@ -4838,41 +4478,11 @@
         "assert(1 > 0, \"Math is broken\")"
       ]
     },
-    "gc": {
-      "signature": "sys.gc()",
-      "desc": "Forces a Garbage Collection cycle (clears 'ANS' first). Returns the number of freed objects.",
-      "examples": [
-        "sys.gc()"
-      ]
-    },
     "help": {
       "signature": "help([topic])",
       "desc": "Prints the main help overview or details for a specific topic.",
       "examples": [
         "help(\"matrix\")"
-      ]
-    },
-    "run": {
-      "signature": "sys.run(path)",
-      "desc": "Executes a .jc2 script file in the current environment.",
-      "examples": [
-        "sys.run(\"script.jc2\")"
-      ]
-    },
-    "compileFile": {
-      "signature": "sys.compileFile(path)",
-      "desc": "Compiles a .jc2 script file into bytecode and returns it as a callable function. Preserves relative path context.",
-      "examples": [
-        "logic = sys.compileFile(\"script.jc2\")",
-        "logic()"
-      ]
-    },
-    "compileCode": {
-      "signature": "sys.compileCode(code)",
-      "desc": "Compiles a string of JC2 code into bytecode and returns it as a callable function.",
-      "examples": [
-        "f = sys.compileCode(\"print(1+1)\")",
-        "f()"
       ]
     },
     "sym": {
@@ -4887,59 +4497,6 @@
       "desc": "Creates multiple symbolic variables from a space-separated string and returns them as a symbolic row vector.",
       "examples": [
         "[x, y, z] = symbolics(\"x y z\")"
-      ]
-    },
-    "diff": {
-      "signature": "cas.diff(expr, var) / math.diff(f, x0)",
-      "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",
-      "examples": [
-        "cas.diff(x^2, x)",
-        "math.diff((x) => x^2, 2)"
-      ]
-    },
-    "integ": {
-      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])",
-      "desc": "Computes the exact symbolic indefinite/definite integral, or the numerical definite integral of a function.",
-      "examples": [
-        "cas.integ(x^2, x)",
-        "math.integ((x) => x^2, 0, 1)"
-      ]
-    },
-    "limit": {
-      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])",
-      "desc": "Computes the exact symbolic limit of an expression, or the numerical limit of a function. dir can be \"+\" or \"-\".",
-      "examples": [
-        "cas.limit(sin(x)/x, x, 0)",
-        "math.limit((x) => 1/x, 0, \"+\")"
-      ]
-    },
-    "expand": {
-      "signature": "cas.expand(expr)",
-      "desc": "Expands a symbolic algebraic expression.",
-      "examples": [
-        "cas.expand((x + 1)^2)"
-      ]
-    },
-    "simplify": {
-      "signature": "cas.simplify(expr)",
-      "desc": "Simplifies a symbolic algebraic expression.",
-      "examples": [
-        "cas.simplify(x + x)"
-      ]
-    },
-    "subs": {
-      "signature": "cas.subs(expr, var, val)",
-      "desc": "Substitutes a variable with a value in a symbolic expression.",
-      "examples": [
-        "cas.subs(x^2, x, 3)"
-      ]
-    },
-    "evalf": {
-      "signature": "cas.evalf(expr)",
-      "desc": "Forces numerical floating-point evaluation of a symbolic expression.",
-      "examples": [
-        "cas.evalf(PI)",
-        "cas.evalf(sym(\"i\"))"
       ]
     },
     "clear": {
@@ -4975,145 +4532,15 @@
       "desc": "Parses and evaluates a string as JC2 code.",
       "examples": ["eval(\"1 + 2\")"]
     },
-    "charAt": {
-      "signature": "s.charAt(i)",
-      "desc": "Returns the character at index i.",
-      "examples": ["\"hello\".charAt(1)"]
-    },
-    "upper": {
-      "signature": "s.upper()",
-      "desc": "Converts a string to uppercase.",
-      "examples": ["\"hello\".upper()"]
-    },
-    "lower": {
-      "signature": "s.lower()",
-      "desc": "Converts a string to lowercase.",
-      "examples": ["\"HELLO\".lower()"]
-    },
-    "trim": {
-      "signature": "s.trim()",
-      "desc": "Removes leading and trailing whitespace from a string.",
-      "examples": ["\"  hello  \".trim()"]
-    },
-    "find": {
-      "signature": "s.find(sub, [pos]) / mat.find(val)",
-      "desc": "Returns the index of the first match of sub in string s, or the [row, col] of val in a matrix. Returns -1 if absent.",
-      "examples": ["\"hello\".find(\"l\")", "M.find(42)"]
-    },
-    "contains": {
-      "signature": "s.contains(sub)",
-      "desc": "Returns true if sub is found in s, false otherwise.",
-      "examples": ["\"hello\".contains(\"ell\")"]
-    },
-    "repeat": {
-      "signature": "s.repeat(n)",
-      "desc": "Repeats string s n times.",
-      "examples": ["\"ha\".repeat(3)"]
-    },
     "concat": {
       "signature": "concat(...)",
       "desc": "Concatenates arbitrary types into a single string.",
       "examples": ["concat(\"A\", 1, \"B\")"]
     },
-    "startsWith": {
-      "signature": "s.startsWith(prefix)",
-      "desc": "Returns true if string s starts with prefix.",
-      "examples": ["\"hello\".startsWith(\"he\")"]
-    },
-    "endsWith": {
-      "signature": "s.endsWith(suffix)",
-      "desc": "Returns true if string s ends with suffix.",
-      "examples": ["\"hello\".endsWith(\"lo\")"]
-    },
-    "ord": {
-      "signature": "s.ord()",
-      "desc": "Returns the ASCII code of the first character of s.",
-      "examples": ["\"A\".ord()"]
-    },
     "chr": {
       "signature": "chr(code)",
       "desc": "Converts an ASCII code to a string.",
       "examples": ["chr(65)"]
-    },
-    "parseNum": {
-      "signature": "s.parseNum()",
-      "desc": "Parses a string into a number (double or int).",
-      "examples": ["\"42.5\".parseNum()"]
-    },
-    "first": {
-      "signature": "v.first()",
-      "desc": "Returns the first element of a list or array.",
-      "examples": ["[1, 2, 3].first()"]
-    },
-    "last": {
-      "signature": "v.last()",
-      "desc": "Returns the last element of a list or array.",
-      "examples": ["[1, 2, 3].last()"]
-    },
-    "shift": {
-      "signature": "v.shift()",
-      "desc": "Removes and returns the first element of a list (mutates) or array (returns first).",
-      "examples": ["myList.shift()"]
-    },
-    "prepend": {
-      "signature": "v.prepend(val)",
-      "desc": "Inserts a value at the beginning of a list or array.",
-      "examples": ["[2, 3].prepend(1)"]
-    },
-    "insert": {
-      "signature": "v.insert(idx, val)",
-      "desc": "Inserts a value at the specified index.",
-      "examples": ["[1, 3].insert(1, 2)"]
-    },
-    "removeAt": {
-      "signature": "v.removeAt(idx)",
-      "desc": "Removes the element at the specified index.",
-      "examples": ["[1, 2, 3].removeAt(1)"]
-    },
-    "slice": {
-      "signature": "slice([start], [end], [step]) / v.slice(start, [end])",
-      "desc": "Constructs a first-class slice object, or extracts a slice of the container from start to end. Slice objects have .start, .end, and .step properties.",
-      "examples": ["slice(1, 5, 2)", "[1, 2, 3, 4].slice(1, 3)"]
-    },
-    "reverse": {
-      "signature": "v.reverse()",
-      "desc": "Returns a reversed copy of the container or string.",
-      "examples": ["[1, 2, 3].reverse()"]
-    },
-    "flatten": {
-      "signature": "v.flatten()",
-      "desc": "Recursively flattens nested containers into a 1D array or list.",
-      "examples": ["[[1, 2], [3, 4]].flatten()"]
-    },
-    "unique": {
-      "signature": "v.unique()",
-      "desc": "Removes duplicate elements from a list or array.",
-      "examples": ["[1, 2, 2, 3].unique()"]
-    },
-    "indexOf": {
-      "signature": "v.indexOf(val)",
-      "desc": "Returns the first index of val in v, or -1 if absent.",
-      "examples": ["[1, 2, 3].indexOf(2)"]
-    },
-    "count": {
-      "signature": "v.count(val)",
-      "desc": "Counts the occurrences of val in v.",
-      "examples": ["[1, 2, 2, 3].count(2)"]
-    },
-    "cumsum": {
-      "signature": "v.cumsum()",
-      "desc": "Returns the cumulative sum of the elements.",
-      "examples": ["[1, 2, 3].cumsum()"]
-    },
-    "cumprod": {
-      "signature": "v.cumprod()",
-      "desc": "Returns the cumulative product of the elements.",
-      "examples": ["[1, 2, 3].cumprod()"]
-    },
-    "diffs": {
-      "signature": "v.diffs()",
-      "desc": "Returns the adjacent differences of the elements.",
-      "examples": ["[1, 3, 6].diffs()"]
     },
     "range": {
       "signature": "range([start], end, [step])",
@@ -5129,16 +4556,6 @@
       "signature": "linspace(a, b, n)",
       "desc": "Generates n evenly-spaced points from a to b.",
       "examples": ["linspace(0, 1, 5)"]
-    },
-    "merge": {
-      "signature": "d1.merge(d2)",
-      "desc": "Merges d2 into d1, overwriting existing keys.",
-      "examples": ["d1.merge(d2)"]
-    },
-    "entries": {
-      "signature": "d.entries()",
-      "desc": "Returns a list of @[key, value] pairs from a dict.",
-      "examples": ["{a: 1}.entries()"]
     },
     "toList": {
       "signature": "toList(v)",
@@ -5165,16 +4582,6 @@
       "desc": "Concatenates multiple arrays or lists into one.",
       "examples": ["cat([1, 2], [3, 4])"]
     },
-    "enumerate": {
-      "signature": "v.enumerate([start=0])",
-      "desc": "Returns a list of @[index, value] pairs from an iterable.",
-      "examples": ["[\"a\", \"b\", \"c\"].enumerate()"]
-    },
-    "groupBy": {
-      "signature": "v.groupBy(f)",
-      "desc": "Groups elements of an iterable by the result of function f. Returns a dict where keys are f(x) and values are lists of elements.",
-      "examples": ["[1, 2, 3, 4].groupBy((x) => x % 2)"]
-    },
     "isinstance": {
       "signature": "isinstance(obj, [cls])",
       "desc": "Checks if obj is an instance of cls (or any class if cls is omitted).",
@@ -5189,184 +4596,6 @@
       "signature": "getParent(cls)",
       "desc": "Returns the parent class of a class definition.",
       "examples": ["getParent(Dog)"]
-    },
-    "difference": {
-      "signature": "a.difference(b)",
-      "desc": "Returns a set of elements in a but not in b.",
-      "examples": ["@{1, 2}.difference(@{2, 3})"]
-    },
-    "symDiff": {
-      "signature": "a.symDiff(b)",
-      "desc": "Returns a set of elements in exactly one of the sets. Equivalent to the ^^ operator.",
-      "examples": ["@{1, 2}.symDiff(@{2, 3})"]
-    },
-    "isSubset": {
-      "signature": "a.isSubset(b)",
-      "desc": "Returns true if a is a subset of b.",
-      "examples": ["@{1}.isSubset(@{1, 2})"]
-    },
-    "isSuperset": {
-      "signature": "a.isSuperset(b)",
-      "desc": "Returns true if a is a superset of b.",
-      "examples": ["@{1, 2}.isSuperset(@{1})"]
-    },
-    "isDisjoint": {
-      "signature": "a.isDisjoint(b)",
-      "desc": "Returns true if a and b share no elements.",
-      "examples": ["@{1}.isDisjoint(@{2})"]
-    },
-    "cartesian": {
-      "signature": "a.cartesian(b)",
-      "desc": "Returns the Cartesian product of two sets.",
-      "examples": ["@{1}.cartesian(@{\"a\"})"]
-    },
-    "powerSet": {
-      "signature": "s.powerSet()",
-      "desc": "Returns the powerset of s (set of all subsets).",
-      "examples": ["@{1, 2}.powerSet()"]
-    },
-    "RootOf": {
-      "signature": "cas.RootOf(poly, var, k)",
-      "desc": "Represents the k-th exact root of the polynomial.",
-      "examples": ["cas.RootOf(x^5 - x + 1, x, 1)"]
-    },
-    "RootSum": {
-      "signature": "cas.RootSum(expr, var, poly)",
-      "desc": "Represents the sum of expr evaluated over all roots of poly.",
-      "examples": ["cas.RootSum(x^2, x, x^3 - 2)"]
-    },
-    "contract": {
-      "signature": "cas.contract(expr)",
-      "desc": "Contracts logarithmic and trigonometric expressions.",
-      "examples": ["cas.contract(2*log(x) + log(y))"]
-    },
-    "trigsimp": {
-      "signature": "cas.trigsimp(expr)",
-      "desc": "Simplifies trigonometric expressions.",
-      "examples": ["cas.trigsimp(sin(x)^2 + cos(x)^2)"]
-    },
-    "toFunc": {
-      "signature": "cas.toFunc(expr, vars)",
-      "desc": "Compiles a symbolic AST to a blazing-fast VM closure.",
-      "examples": ["f = cas.toFunc(x^2 + y, [\"x\", \"y\"])"]
-    },
-    "evalv": {
-      "signature": "cas.evalv(expr)",
-      "desc": "Evaluates a symbolic expression preserving exact types (fraction/complex).",
-      "examples": ["cas.evalv(x + 1)"]
-    },
-    "replaceRule": {
-      "signature": "cas.replaceRule(expr, pat, tgt)",
-      "desc": "Pattern matching replacement in a symbolic expression.",
-      "examples": ["cas.replaceRule(sin(x)^2, sin(x)^2, 1 - cos(x)^2)"]
-    },
-    "polyDiv": {
-      "signature": "cas.polyDiv(A, B, var)",
-      "desc": "Polynomial division, returning @[quotient, remainder].",
-      "examples": ["cas.polyDiv(x^2 - 1, x - 1, x)"]
-    },
-    "polyGCD": {
-      "signature": "cas.polyGCD(A, B, var)",
-      "desc": "Polynomial greatest common divisor.",
-      "examples": ["cas.polyGCD(x^2 - 1, x^2 + 2*x + 1, x)"]
-    },
-    "resultant": {
-      "signature": "cas.resultant(A, B, var)",
-      "desc": "Sylvester resultant of two polynomials.",
-      "examples": ["cas.resultant(x^2 - 1, x^2 + 1, x)"]
-    },
-    "factor": {
-      "signature": "cas.factor(expr) / math.factor(n)",
-      "desc": "Factors a polynomial symbolically, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
-      "examples": ["cas.factor(x^4 - 1)", "math.factor(12)"]
-    },
-    "factorReal": {
-      "signature": "cas.factorReal(expr)",
-      "desc": "Factors a polynomial over the real numbers.",
-      "examples": ["cas.factorReal(x^2 + 1)"]
-    },
-    "taylor": {
-      "signature": "cas.taylor(expr, var, a, [order])",
-      "desc": "Computes the Taylor series expansion of expr around a.",
-      "examples": ["cas.taylor(sin(x), x, 0, 5)"]
-    },
-    "verifyInteg": {
-      "signature": "cas.verifyInteg(expr, var)",
-      "desc": "Verifies if the derivative of the integral matches the original expression.",
-      "examples": ["cas.verifyInteg(x^2, x)"]
-    },
-    "resetConst": {
-      "signature": "sys.resetConst()",
-      "desc": "Restores system constants PI, E, i, I.",
-      "examples": ["sys.resetConst()"]
-    },
-    "resetType": {
-      "signature": "sys.resetType()",
-      "desc": "Restores all built-in type objects (int, string, list, etc.) to the global scope.",
-      "examples": ["sys.resetType()"]
-    },
-    "setWorkspace": {
-      "signature": "sys.setWorkspace(path)",
-      "desc": "Changes the workspace directory.",
-      "examples": ["sys.setWorkspace(\"./my_project\")"]
-    },
-    "getWorkspace": {
-      "signature": "sys.getWorkspace()",
-      "desc": "Returns the current workspace path.",
-      "examples": ["sys.getWorkspace()"]
-    },
-    "pwd": {
-      "signature": "sys.pwd()",
-      "desc": "Prints the script directory and workspace directory.",
-      "examples": ["sys.pwd()"]
-    },
-    "cls": {
-      "signature": "sys.cls()",
-      "desc": "Clears the console screen.",
-      "examples": ["sys.cls()"]
-    },
-    "breakpoint": {
-      "signature": "sys.breakpoint()",
-      "desc": "Suspends VM execution and opens the interactive step-debugger.",
-      "aliases": ["debugger"],
-      "examples": ["sys.breakpoint()"]
-    },
-    "disassemble": {
-      "signature": "sys.disassemble(f)",
-      "desc": "Prints the bytecode disassembly of a function closure.",
-      "aliases": ["disasm"],
-      "examples": ["sys.disassemble(myFunc)"]
-    },
-    "buildIndex": {
-      "signature": "sys.buildIndex()",
-      "desc": "Builds an O(1) anchor tree in RAM for the prime database.",
-      "aliases": ["loadPrimes"],
-      "examples": ["sys.buildIndex()"]
-    },
-    "mountPrimes": {
-      "signature": "sys.mountPrimes(path)",
-      "desc": "Redirects the prime engine to a custom Prime.bin file.",
-      "examples": ["sys.mountPrimes(\"Prime.bin\")"]
-    },
-    "extendPrimes": {
-      "signature": "sys.extendPrimes(n)",
-      "desc": "Generates and appends n new primes to the currently mounted Prime.bin file.",
-      "examples": ["sys.extendPrimes(1000000)"]
-    },
-    "convertPrimes": {
-      "signature": "sys.convertPrimes(txtPath, binPath)",
-      "desc": "Converts a legacy plain-text prime table (one prime per line) into the highly compressed JCP1 binary format.",
-      "examples": ["sys.convertPrimes(\"Prime.txt\", \"Prime.bin\")"]
-    },
-    "verifyPrimes": {
-      "signature": "sys.verifyPrimes()",
-      "desc": "Verifies the integrity and mathematical accuracy of the currently mounted JCP1 prime table.",
-      "examples": ["sys.verifyPrimes()"]
-    },
-    "sysinfo": {
-      "signature": "sys.sysinfo()",
-      "desc": "Prints current system and prime database status.",
-      "examples": ["sys.sysinfo()"]
     },
     "freeze": {
       "signature": "freeze(obj)",
@@ -5387,16 +4616,6 @@
       "signature": "copy(obj, freeze = none)",
       "desc": "Returns a deep copy of the object. freeze controls the lock state: none preserves the source state (default), true forces frozen, false forces unfrozen.",
       "examples": ["copy(myDict)", "copy(myDict, true)", "copy(myDict, false)"]
-    },
-    "symconfig": {
-      "signature": "sys.symconfig([dict_or_default])",
-      "desc": "Gets or sets CAS limits. Pass \"default\" to reset.",
-      "examples": ["sys.symconfig(\"default\")"]
-    },
-    "setSymLimit": {
-      "signature": "sys.setSymLimit(key, val)",
-      "desc": "Sets a specific CAS limit.",
-      "examples": ["sys.setSymLimit(\"maxDepth\", 10)"]
     },
     "isalpha": {
       "signature": "isalpha(s)",
@@ -5767,56 +4986,6 @@
       "signature": "input([prompt])",
       "desc": "Reads a line of text from standard input.",
       "examples": ["input(\"Name: \")"]
-    },
-    "clock": {
-      "signature": "sys.clock()",
-      "desc": "Returns the high-resolution time in seconds since the epoch.",
-      "examples": ["sys.clock()"]
-    },
-    "sleep": {
-      "signature": "sys.sleep(seconds)",
-      "desc": "Pauses execution for the specified number of seconds.",
-      "examples": ["sys.sleep(1.5)"]
-    },
-    "highlight": {
-      "signature": "sys.highlight(code)",
-      "desc": "Returns a syntax-highlighted version of the JC2 code string.",
-      "examples": ["sys.highlight(\"x = 1\")"]
-    },
-    "color": {
-      "signature": "sys.color(state)",
-      "desc": "Enables (\"on\") or disables (\"off\") REPL syntax highlighting.",
-      "examples": ["sys.color(\"on\")"]
-    },
-    "imgPlot": {
-      "signature": "sys.imgPlot(inst, f, xMin, xMax, yMin, yMax, color, [thick])",
-      "desc": "Plots a function f(x) onto an image instance over the given x range.",
-      "examples": ["sys.imgPlot(im, f, 0, 10, -1, 1, \"red\")"]
-    },
-    "removeKey": {
-      "signature": "d.removeKey(key)",
-      "desc": "Removes a key from a Dictionary. Throws an error if absent.",
-      "examples": ["d.removeKey(\"a\")"]
-    },
-    "apply": {
-      "signature": "args.apply(f)",
-      "desc": "Calls function f with arguments unpacked from a list or array.",
-      "examples": ["[1, 2, 3].apply(print)"]
-    },
-    "any": {
-      "signature": "v.any(f)",
-      "desc": "Returns true if any element in v satisfies function f.",
-      "examples": ["[-1, 1].any((x) => x > 0)"]
-    },
-    "all": {
-      "signature": "v.all(f)",
-      "desc": "Returns true if all elements in v satisfy function f.",
-      "examples": ["[1, 2].all((x) => x > 0)"]
-    },
-    "countIf": {
-      "signature": "v.countIf(f)",
-      "desc": "Counts the number of elements in v that satisfy function f.",
-      "examples": ["[-1, 1, 2].countIf((x) => x > 0)"]
     },
     "table": {
       "signature": "table(f, ...)",
@@ -6755,6 +5924,854 @@
       "examples": [
         "defer print(\"Cleanup\")",
         "defer file.close()"
+      ]
+    }
+  },
+  "matrix_methods": {
+    "row": {
+      "signature": "A.row()",
+      "desc": "Returns the number of rows in a matrix.",
+      "aliases": [
+        "rows"
+      ],
+      "examples": [
+        "[1, 2; 3, 4].row()"
+      ]
+    },
+    "col": {
+      "signature": "A.col()",
+      "desc": "Returns the number of columns in a matrix.",
+      "aliases": [
+        "cols"
+      ],
+      "examples": [
+        "[1, 2; 3, 4].col()"
+      ]
+    },
+    "reshape": {
+      "signature": "A.reshape(r, c)",
+      "desc": "Reshapes a matrix to r rows and c columns. Total element count must match.",
+      "examples": [
+        "[1, 2, 3, 4].reshape(2, 2)"
+      ]
+    },
+    "hcat": {
+      "signature": "A.hcat(B)",
+      "desc": "Horizontally concatenates two matrices [A | B].",
+      "examples": [
+        "[1; 2].hcat([3; 4])"
+      ]
+    },
+    "vcat": {
+      "signature": "A.vcat(B)",
+      "desc": "Vertically concatenates two matrices [A ; B].",
+      "examples": [
+        "[1, 2].vcat([3, 4])"
+      ]
+    }
+  },
+  "list_methods": {
+    "join": {
+      "signature": "v.join(delim)",
+      "desc": "Joins elements of a list or array into a single string, separated by 'delim'.",
+      "examples": ["[1, 2, 3].join(\"-\")"]
+    },
+    "push": {
+      "signature": "v.push(val)",
+      "desc": "Appends a value to the end of a list or array.",
+      "aliases": ["append"],
+      "examples": ["[1, 2].push(3)"]
+    },
+    "pop": {
+      "signature": "v.pop()",
+      "desc": "Removes and returns the last element of a list (mutates) or array (returns last).",
+      "examples": ["list(1, 2, 3).pop()"]
+    },
+    "map": {
+      "signature": "v.map(f)",
+      "desc": "Applies function f to each element of v.",
+      "examples": ["[1, 2, 3].map((x) => x^2)"]
+    },
+    "filter": {
+      "signature": "v.filter(f)",
+      "desc": "Keeps elements of v for which function f returns a truthy value.",
+      "examples": ["[-1, 0, 1].filter((x) => x > 0)"]
+    },
+    "reduce": {
+      "signature": "v.reduce(f, [init])",
+      "desc": "Reduces v to a single value using a left fold with function f.",
+      "examples": ["[1, 2, 3].reduce((a, b) => a + b)"]
+    },
+    "sort": {
+      "signature": "v.sort([cmp])",
+      "desc": "Stably sorts a list or array using natural ordering. Optionally accepts a custom comparator function.",
+      "examples": ["[3, 1, 2].sort()"]
+    },
+    "first": {
+      "signature": "v.first()",
+      "desc": "Returns the first element of a list or array.",
+      "examples": ["[1, 2, 3].first()"]
+    },
+    "last": {
+      "signature": "v.last()",
+      "desc": "Returns the last element of a list or array.",
+      "examples": ["[1, 2, 3].last()"]
+    },
+    "shift": {
+      "signature": "v.shift()",
+      "desc": "Removes and returns the first element of a list (mutates) or array (returns first).",
+      "examples": ["myList.shift()"]
+    },
+    "prepend": {
+      "signature": "v.prepend(val)",
+      "desc": "Inserts a value at the beginning of a list or array.",
+      "examples": ["[2, 3].prepend(1)"]
+    },
+    "insert": {
+      "signature": "v.insert(idx, val)",
+      "desc": "Inserts a value at the specified index.",
+      "examples": ["[1, 3].insert(1, 2)"]
+    },
+    "removeAt": {
+      "signature": "v.removeAt(idx)",
+      "desc": "Removes the element at the specified index.",
+      "examples": ["[1, 2, 3].removeAt(1)"]
+    },
+    "slice": {
+      "signature": "slice([start], [end], [step]) / v.slice(start, [end])",
+      "desc": "Constructs a first-class slice object, or extracts a slice of the container from start to end. Slice objects have .start, .end, and .step properties.",
+      "examples": ["slice(1, 5, 2)", "[1, 2, 3, 4].slice(1, 3)"]
+    },
+    "reverse": {
+      "signature": "v.reverse()",
+      "desc": "Returns a reversed copy of the container or string.",
+      "examples": ["[1, 2, 3].reverse()"]
+    },
+    "flatten": {
+      "signature": "v.flatten()",
+      "desc": "Recursively flattens nested containers into a 1D array or list.",
+      "examples": ["[[1, 2], [3, 4]].flatten()"]
+    },
+    "unique": {
+      "signature": "v.unique()",
+      "desc": "Removes duplicate elements from a list or array.",
+      "examples": ["[1, 2, 2, 3].unique()"]
+    },
+    "indexOf": {
+      "signature": "v.indexOf(val)",
+      "desc": "Returns the first index of val in v, or -1 if absent.",
+      "examples": ["[1, 2, 3].indexOf(2)"]
+    },
+    "count": {
+      "signature": "v.count(val)",
+      "desc": "Counts the occurrences of val in v.",
+      "examples": ["[1, 2, 2, 3].count(2)"]
+    },
+    "cumsum": {
+      "signature": "v.cumsum()",
+      "desc": "Returns the cumulative sum of the elements.",
+      "examples": ["[1, 2, 3].cumsum()"]
+    },
+    "cumprod": {
+      "signature": "v.cumprod()",
+      "desc": "Returns the cumulative product of the elements.",
+      "examples": ["[1, 2, 3].cumprod()"]
+    },
+    "diffs": {
+      "signature": "v.diffs()",
+      "desc": "Returns the adjacent differences of the elements.",
+      "examples": ["[1, 3, 6].diffs()"]
+    },
+    "enumerate": {
+      "signature": "v.enumerate([start=0])",
+      "desc": "Returns a list of @[index, value] pairs from an iterable.",
+      "examples": ["[\"a\", \"b\", \"c\"].enumerate()"]
+    },
+    "groupBy": {
+      "signature": "v.groupBy(f)",
+      "desc": "Groups elements of an iterable by the result of function f. Returns a dict where keys are f(x) and values are lists of elements.",
+      "examples": ["[1, 2, 3, 4].groupBy((x) => x % 2)"]
+    },
+    "apply": {
+      "signature": "args.apply(f)",
+      "desc": "Calls function f with arguments unpacked from a list or array.",
+      "examples": ["[1, 2, 3].apply(print)"]
+    },
+    "any": {
+      "signature": "v.any(f)",
+      "desc": "Returns true if any element in v satisfies function f.",
+      "examples": ["[-1, 1].any((x) => x > 0)"]
+    },
+    "all": {
+      "signature": "v.all(f)",
+      "desc": "Returns true if all elements in v satisfy function f.",
+      "examples": ["[1, 2].all((x) => x > 0)"]
+    },
+    "countIf": {
+      "signature": "v.countIf(f)",
+      "desc": "Counts the number of elements in v that satisfy function f.",
+      "examples": ["[-1, 1, 2].countIf((x) => x > 0)"]
+    }
+  },
+  "string_methods": {
+    "substr": {
+      "signature": "s.substr(start, [length])",
+      "desc": "Returns a substring starting at 'start'. If 'length' is provided, extracts that many characters.",
+      "examples": ["\"hello\".substr(1, 3)"]
+    },
+    "replace": {
+      "signature": "s.replace(old, new)",
+      "desc": "Replaces all occurrences of 'old' with 'new' in string 's'.",
+      "examples": ["\"hello\".replace(\"l\", \"w\")"]
+    },
+    "split": {
+      "signature": "s.split(delim)",
+      "desc": "Splits a string into a list of substrings using the specified delimiter.",
+      "examples": ["\"a,b,c\".split(\",\")"]
+    },
+    "charAt": {
+      "signature": "s.charAt(i)",
+      "desc": "Returns the character at index i.",
+      "examples": ["\"hello\".charAt(1)"]
+    },
+    "upper": {
+      "signature": "s.upper()",
+      "desc": "Converts a string to uppercase.",
+      "examples": ["\"hello\".upper()"]
+    },
+    "lower": {
+      "signature": "s.lower()",
+      "desc": "Converts a string to lowercase.",
+      "examples": ["\"HELLO\".lower()"]
+    },
+    "trim": {
+      "signature": "s.trim()",
+      "desc": "Removes leading and trailing whitespace from a string.",
+      "examples": ["\"  hello  \".trim()"]
+    },
+    "find": {
+      "signature": "s.find(sub, [pos]) / mat.find(val)",
+      "desc": "Returns the index of the first match of sub in string s, or the [row, col] of val in a matrix. Returns -1 if absent.",
+      "examples": ["\"hello\".find(\"l\")", "M.find(42)"]
+    },
+    "contains": {
+      "signature": "s.contains(sub)",
+      "desc": "Returns true if sub is found in s, false otherwise.",
+      "examples": ["\"hello\".contains(\"ell\")"]
+    },
+    "repeat": {
+      "signature": "s.repeat(n)",
+      "desc": "Repeats string s n times.",
+      "examples": ["\"ha\".repeat(3)"]
+    },
+    "startsWith": {
+      "signature": "s.startsWith(prefix)",
+      "desc": "Returns true if string s starts with prefix.",
+      "examples": ["\"hello\".startsWith(\"he\")"]
+    },
+    "endsWith": {
+      "signature": "s.endsWith(suffix)",
+      "desc": "Returns true if string s ends with suffix.",
+      "examples": ["\"hello\".endsWith(\"lo\")"]
+    },
+    "ord": {
+      "signature": "s.ord()",
+      "desc": "Returns the ASCII code of the first character of s.",
+      "examples": ["\"A\".ord()"]
+    },
+    "parseNum": {
+      "signature": "s.parseNum()",
+      "desc": "Parses a string into a number (double or int).",
+      "examples": ["\"42.5\".parseNum()"]
+    }
+  },
+  "dict_methods": {
+    "keys": {
+      "signature": "d.keys()",
+      "desc": "Returns a list of all keys in a dictionary.",
+      "aliases": ["getFields"],
+      "examples": ["{a: 1, b: 2}.keys()"]
+    },
+    "values": {
+      "signature": "d.values()",
+      "desc": "Returns a list of all values in a dictionary.",
+      "examples": ["{a: 1, b: 2}.values()"]
+    },
+    "hasKey": {
+      "signature": "d.hasKey(key)",
+      "desc": "Returns true if the dictionary contains the specified key, false otherwise.",
+      "aliases": ["has", "hasField"],
+      "examples": ["{a: 1}.hasKey(\"a\")"]
+    },
+    "merge": {
+      "signature": "d1.merge(d2)",
+      "desc": "Merges d2 into d1, overwriting existing keys.",
+      "examples": ["d1.merge(d2)"]
+    },
+    "entries": {
+      "signature": "d.entries()",
+      "desc": "Returns a list of @[key, value] pairs from a dict.",
+      "examples": ["{a: 1}.entries()"]
+    },
+    "removeKey": {
+      "signature": "d.removeKey(key)",
+      "desc": "Removes a key from a Dictionary. Throws an error if absent.",
+      "examples": ["d.removeKey(\"a\")"]
+    }
+  },
+  "set_methods": {
+    "union": {
+      "signature": "a.union(b)",
+      "desc": "Returns a new set containing all elements from both sets.",
+      "examples": ["@{1, 2}.union(@{2, 3})"]
+    },
+    "intersect": {
+      "signature": "a.intersect(b)",
+      "desc": "Returns a new set containing elements present in both sets.",
+      "examples": ["@{1, 2}.intersect(@{2, 3})"]
+    },
+    "difference": {
+      "signature": "a.difference(b)",
+      "desc": "Returns a set of elements in a but not in b.",
+      "examples": ["@{1, 2}.difference(@{2, 3})"]
+    },
+    "symDiff": {
+      "signature": "a.symDiff(b)",
+      "desc": "Returns a set of elements in exactly one of the sets. Equivalent to the ^^ operator.",
+      "examples": ["@{1, 2}.symDiff(@{2, 3})"]
+    },
+    "isSubset": {
+      "signature": "a.isSubset(b)",
+      "desc": "Returns true if a is a subset of b.",
+      "examples": ["@{1}.isSubset(@{1, 2})"]
+    },
+    "isSuperset": {
+      "signature": "a.isSuperset(b)",
+      "desc": "Returns true if a is a superset of b.",
+      "examples": ["@{1, 2}.isSuperset(@{1})"]
+    },
+    "isDisjoint": {
+      "signature": "a.isDisjoint(b)",
+      "desc": "Returns true if a and b share no elements.",
+      "examples": ["@{1}.isDisjoint(@{2})"]
+    },
+    "cartesian": {
+      "signature": "a.cartesian(b)",
+      "desc": "Returns the Cartesian product of two sets.",
+      "examples": ["@{1}.cartesian(@{\"a\"})"]
+    },
+    "powerSet": {
+      "signature": "s.powerSet()",
+      "desc": "Returns the powerset of s (set of all subsets).",
+      "examples": ["@{1, 2}.powerSet()"]
+    }
+  },
+  "sys_methods": {
+    "gc": {
+      "signature": "sys.gc()",
+      "desc": "Forces a Garbage Collection cycle (clears 'ANS' first). Returns the number of freed objects.",
+      "examples": [
+        "sys.gc()"
+      ]
+    },
+    "run": {
+      "signature": "sys.run(path)",
+      "desc": "Executes a .jc2 script file in the current environment.",
+      "examples": [
+        "sys.run(\"script.jc2\")"
+      ]
+    },
+    "compileFile": {
+      "signature": "sys.compileFile(path)",
+      "desc": "Compiles a .jc2 script file into bytecode and returns it as a callable function. Preserves relative path context.",
+      "examples": [
+        "logic = sys.compileFile(\"script.jc2\")",
+        "logic()"
+      ]
+    },
+    "compileCode": {
+      "signature": "sys.compileCode(code)",
+      "desc": "Compiles a string of JC2 code into bytecode and returns it as a callable function.",
+      "examples": [
+        "f = sys.compileCode(\"print(1+1)\")",
+        "f()"
+      ]
+    },
+    "clock": {
+      "signature": "sys.clock()",
+      "desc": "Returns the high-resolution time in seconds since the epoch.",
+      "examples": ["sys.clock()"]
+    },
+    "sleep": {
+      "signature": "sys.sleep(seconds)",
+      "desc": "Pauses execution for the specified number of seconds.",
+      "examples": ["sys.sleep(1.5)"]
+    },
+    "highlight": {
+      "signature": "sys.highlight(code)",
+      "desc": "Returns a syntax-highlighted version of the JC2 code string.",
+      "examples": ["sys.highlight(\"x = 1\")"]
+    },
+    "color": {
+      "signature": "sys.color(state)",
+      "desc": "Enables (\"on\") or disables (\"off\") REPL syntax highlighting.",
+      "examples": ["sys.color(\"on\")"]
+    },
+    "imgPlot": {
+      "signature": "sys.imgPlot(inst, f, xMin, xMax, yMin, yMax, color, [thick])",
+      "desc": "Plots a function f(x) onto an image instance over the given x range.",
+      "examples": ["sys.imgPlot(im, f, 0, 10, -1, 1, \"red\")"]
+    },
+    "resetConst": {
+      "signature": "sys.resetConst()",
+      "desc": "Restores system constants PI, E, i, I.",
+      "examples": ["sys.resetConst()"]
+    },
+    "resetType": {
+      "signature": "sys.resetType()",
+      "desc": "Restores all built-in type objects (int, string, list, etc.) to the global scope.",
+      "examples": ["sys.resetType()"]
+    },
+    "setWorkspace": {
+      "signature": "sys.setWorkspace(path)",
+      "desc": "Changes the workspace directory.",
+      "examples": ["sys.setWorkspace(\"./my_project\")"]
+    },
+    "getWorkspace": {
+      "signature": "sys.getWorkspace()",
+      "desc": "Returns the current workspace path.",
+      "examples": ["sys.getWorkspace()"]
+    },
+    "pwd": {
+      "signature": "sys.pwd()",
+      "desc": "Prints the script directory and workspace directory.",
+      "examples": ["sys.pwd()"]
+    },
+    "cls": {
+      "signature": "sys.cls()",
+      "desc": "Clears the console screen.",
+      "examples": ["sys.cls()"]
+    },
+    "breakpoint": {
+      "signature": "sys.breakpoint()",
+      "desc": "Suspends VM execution and opens the interactive step-debugger.",
+      "aliases": ["debugger"],
+      "examples": ["sys.breakpoint()"]
+    },
+    "disassemble": {
+      "signature": "sys.disassemble(f)",
+      "desc": "Prints the bytecode disassembly of a function closure.",
+      "aliases": ["disasm"],
+      "examples": ["sys.disassemble(myFunc)"]
+    },
+    "buildIndex": {
+      "signature": "sys.buildIndex()",
+      "desc": "Builds an O(1) anchor tree in RAM for the prime database.",
+      "aliases": ["loadPrimes"],
+      "examples": ["sys.buildIndex()"]
+    },
+    "mountPrimes": {
+      "signature": "sys.mountPrimes(path)",
+      "desc": "Redirects the prime engine to a custom Prime.bin file.",
+      "examples": ["sys.mountPrimes(\"Prime.bin\")"]
+    },
+    "extendPrimes": {
+      "signature": "sys.extendPrimes(n)",
+      "desc": "Generates and appends n new primes to the currently mounted Prime.bin file.",
+      "examples": ["sys.extendPrimes(1000000)"]
+    },
+    "convertPrimes": {
+      "signature": "sys.convertPrimes(txtPath, binPath)",
+      "desc": "Converts a legacy plain-text prime table (one prime per line) into the highly compressed JCP1 binary format.",
+      "examples": ["sys.convertPrimes(\"Prime.txt\", \"Prime.bin\")"]
+    },
+    "verifyPrimes": {
+      "signature": "sys.verifyPrimes()",
+      "desc": "Verifies the integrity and mathematical accuracy of the currently mounted JCP1 prime table.",
+      "examples": ["sys.verifyPrimes()"]
+    },
+    "sysinfo": {
+      "signature": "sys.sysinfo()",
+      "desc": "Prints current system and prime database status.",
+      "examples": ["sys.sysinfo()"]
+    },
+    "symconfig": {
+      "signature": "sys.symconfig([dict_or_default])",
+      "desc": "Gets or sets CAS limits. Pass \"default\" to reset.",
+      "examples": ["sys.symconfig(\"default\")"]
+    },
+    "setSymLimit": {
+      "signature": "sys.setSymLimit(key, val)",
+      "desc": "Sets a specific CAS limit.",
+      "examples": ["sys.setSymLimit(\"maxDepth\", 10)"]
+    }
+  },
+  "math_methods": {
+    "diff": {
+      "signature": "cas.diff(expr, var) / math.diff(f, x0)",
+      "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",
+      "examples": [
+        "cas.diff(x^2, x)",
+        "math.diff((x) => x^2, 2)"
+      ]
+    },
+    "integ": {
+      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])",
+      "desc": "Computes the exact symbolic indefinite/definite integral, or the numerical definite integral of a function.",
+      "examples": [
+        "cas.integ(x^2, x)",
+        "math.integ((x) => x^2, 0, 1)"
+      ]
+    },
+    "limit": {
+      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])",
+      "desc": "Computes the exact symbolic limit of an expression, or the numerical limit of a function. dir can be \"+\" or \"-\".",
+      "examples": [
+        "cas.limit(sin(x)/x, x, 0)",
+        "math.limit((x) => 1/x, 0, \"+\")"
+      ]
+    },
+    "factor": {
+      "signature": "cas.factor(expr) / math.factor(n)",
+      "desc": "Factors a polynomial symbolically, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
+      "examples": ["cas.factor(x^4 - 1)", "math.factor(12)"]
+    },
+    "solve": {
+      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0) / cas.solve(expr, var)",
+      "desc": "Finds all complex roots of a polynomial up to degree 4, numerically finds a root of f(x) = 0 near x0, or symbolically solves an equation expr = 0.",
+      "examples": [
+        "math.solve(1, 0, -1)",
+        "math.solve((x) => x^2 - 4, 3)",
+        "cas.solve(x^2 - 2, x)"
+      ]
+    },
+    "factorial": {
+      "signature": "math.factorial(n)",
+      "desc": "Returns the factorial of n (n!). Exact for ints.",
+      "examples": [
+        "math.factorial(100)"
+      ]
+    },
+    "fib": {
+      "signature": "math.fib(n)",
+      "desc": "Returns the n-th Fibonacci number.",
+      "examples": [
+        "math.fib(10)"
+      ]
+    },
+    "gcd": {
+      "signature": "math.gcd(a, b)",
+      "desc": "Returns the greatest common divisor of a and b.",
+      "examples": [
+        "math.gcd(48, 18)"
+      ]
+    },
+    "lcm": {
+      "signature": "math.lcm(a, b)",
+      "desc": "Returns the least common multiple of a and b.",
+      "examples": [
+        "math.lcm(4, 6)"
+      ]
+    },
+    "digits": {
+      "signature": "math.digits(n)",
+      "desc": "Returns the number of digits in an integer (base-10).",
+      "examples": [
+        "math.digits(math.factorial(100))",
+        "math.BaseNum(255, 16).digits()"
+      ]
+    },
+    "isPrime": {
+      "signature": "math.isPrime(n)",
+      "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
+      "aliases": [
+        "isprime"
+      ],
+      "examples": [
+        "math.isPrime(10^9 + 7)"
+      ]
+    },
+    "nextPrime": {
+      "signature": "math.nextPrime(n)",
+      "desc": "Returns the smallest prime number strictly greater than n.",
+      "examples": [
+        "math.nextPrime(100)"
+      ]
+    },
+    "nthPrime": {
+      "signature": "math.nthPrime(k)",
+      "desc": "Returns the k-th prime number. Uses a mounted Prime.bin database if available, otherwise computes dynamically.",
+      "examples": [
+        "math.nthPrime(1000)"
+      ]
+    },
+    "primePi": {
+      "signature": "math.primePi(n)",
+      "desc": "Returns the number of primes less than or equal to n (Prime Counting Function).",
+      "examples": [
+        "math.primePi(100)"
+      ]
+    },
+    "phi": {
+      "signature": "math.phi(n)",
+      "desc": "Returns Euler's totient function (number of integers up to n that are coprime to n).",
+      "examples": [
+        "math.phi(100)"
+      ]
+    },
+    "divisors": {
+      "signature": "math.divisors(n)",
+      "desc": "Returns the number of positive divisors of n.",
+      "examples": [
+        "math.divisors(12)"
+      ]
+    },
+    "sigma": {
+      "signature": "math.sigma(n, [k])",
+      "desc": "Returns the sum of the k-th powers of the positive divisors of n. k defaults to 1.",
+      "examples": [
+        "math.sigma(12)"
+      ]
+    },
+    "omega": {
+      "signature": "math.omega(n)",
+      "desc": "Returns the number of distinct prime factors of n.",
+      "examples": [
+        "math.omega(12)"
+      ]
+    },
+    "bigOmega": {
+      "signature": "math.bigOmega(n)",
+      "desc": "Returns the total number of prime factors of n (counted with multiplicity).",
+      "examples": [
+        "math.bigOmega(12)"
+      ]
+    },
+    "mobius": {
+      "signature": "math.mobius(n)",
+      "desc": "Returns the Möbius function of n: 0 if n has a squared prime factor, else (-1)^omega(n).",
+      "examples": [
+        "math.mobius(10)"
+      ]
+    },
+    "isPerfect": {
+      "signature": "math.isPerfect(n)",
+      "desc": "Returns true if n is a perfect number (sum of proper divisors equals n), false otherwise.",
+      "examples": [
+        "math.isPerfect(28)"
+      ]
+    },
+    "mod": {
+      "signature": "math.mod(a, b)",
+      "desc": "Returns the mathematical modulo of a w.r.t b. The result is always non-negative.",
+      "examples": [
+        "math.mod(-7, 3)"
+      ]
+    },
+    "modpow": {
+      "signature": "math.modpow(a, e, m)",
+      "desc": "Returns (a^e) mod m efficiently.",
+      "examples": [
+        "math.modpow(2, 10, 1000)"
+      ]
+    },
+    "C": {
+      "signature": "math.C(n, k)",
+      "desc": "Returns the binomial coefficient (n choose k).",
+      "examples": [
+        "math.C(5, 2)"
+      ]
+    },
+    "A": {
+      "signature": "math.A(n, k)",
+      "desc": "Returns the number of k-permutations of n.",
+      "examples": [
+        "math.A(5, 2)"
+      ]
+    },
+    "catalan": {
+      "signature": "math.catalan(n)",
+      "desc": "Returns the n-th Catalan number.",
+      "examples": [
+        "math.catalan(5)"
+      ]
+    }
+  },
+  "cas_methods": {
+    "diff": {
+      "signature": "cas.diff(expr, var) / math.diff(f, x0)",
+      "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",
+      "examples": [
+        "cas.diff(x^2, x)",
+        "math.diff((x) => x^2, 2)"
+      ]
+    },
+    "integ": {
+      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])",
+      "desc": "Computes the exact symbolic indefinite/definite integral, or the numerical definite integral of a function.",
+      "examples": [
+        "cas.integ(x^2, x)",
+        "math.integ((x) => x^2, 0, 1)"
+      ]
+    },
+    "limit": {
+      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])",
+      "desc": "Computes the exact symbolic limit of an expression, or the numerical limit of a function. dir can be \"+\" or \"-\".",
+      "examples": [
+        "cas.limit(sin(x)/x, x, 0)",
+        "math.limit((x) => 1/x, 0, \"+\")"
+      ]
+    },
+    "expand": {
+      "signature": "cas.expand(expr)",
+      "desc": "Expands a symbolic algebraic expression.",
+      "examples": [
+        "cas.expand((x + 1)^2)"
+      ]
+    },
+    "simplify": {
+      "signature": "cas.simplify(expr)",
+      "desc": "Simplifies a symbolic algebraic expression.",
+      "examples": [
+        "cas.simplify(x + x)"
+      ]
+    },
+    "subs": {
+      "signature": "cas.subs(expr, var, val)",
+      "desc": "Substitutes a variable with a value in a symbolic expression.",
+      "examples": [
+        "cas.subs(x^2, x, 3)"
+      ]
+    },
+    "evalf": {
+      "signature": "cas.evalf(expr)",
+      "desc": "Forces numerical floating-point evaluation of a symbolic expression.",
+      "examples": [
+        "cas.evalf(PI)",
+        "cas.evalf(sym(\"i\"))"
+      ]
+    },
+    "RootOf": {
+      "signature": "cas.RootOf(poly, var, k)",
+      "desc": "Represents the k-th exact root of the polynomial.",
+      "examples": ["cas.RootOf(x^5 - x + 1, x, 1)"]
+    },
+    "RootSum": {
+      "signature": "cas.RootSum(expr, var, poly)",
+      "desc": "Represents the sum of expr evaluated over all roots of poly.",
+      "examples": ["cas.RootSum(x^2, x, x^3 - 2)"]
+    },
+    "contract": {
+      "signature": "cas.contract(expr)",
+      "desc": "Contracts logarithmic and trigonometric expressions.",
+      "examples": ["cas.contract(2*log(x) + log(y))"]
+    },
+    "trigsimp": {
+      "signature": "cas.trigsimp(expr)",
+      "desc": "Simplifies trigonometric expressions.",
+      "examples": ["cas.trigsimp(sin(x)^2 + cos(x)^2)"]
+    },
+    "toFunc": {
+      "signature": "cas.toFunc(expr, vars)",
+      "desc": "Compiles a symbolic AST to a blazing-fast VM closure.",
+      "examples": ["f = cas.toFunc(x^2 + y, [\"x\", \"y\"])"]
+    },
+    "evalv": {
+      "signature": "cas.evalv(expr)",
+      "desc": "Evaluates a symbolic expression preserving exact types (fraction/complex).",
+      "examples": ["cas.evalv(x + 1)"]
+    },
+    "replaceRule": {
+      "signature": "cas.replaceRule(expr, pat, tgt)",
+      "desc": "Pattern matching replacement in a symbolic expression.",
+      "examples": ["cas.replaceRule(sin(x)^2, sin(x)^2, 1 - cos(x)^2)"]
+    },
+    "polyDiv": {
+      "signature": "cas.polyDiv(A, B, var)",
+      "desc": "Polynomial division, returning @[quotient, remainder].",
+      "examples": ["cas.polyDiv(x^2 - 1, x - 1, x)"]
+    },
+    "polyGCD": {
+      "signature": "cas.polyGCD(A, B, var)",
+      "desc": "Polynomial greatest common divisor.",
+      "examples": ["cas.polyGCD(x^2 - 1, x^2 + 2*x + 1, x)"]
+    },
+    "resultant": {
+      "signature": "cas.resultant(A, B, var)",
+      "desc": "Sylvester resultant of two polynomials.",
+      "examples": ["cas.resultant(x^2 - 1, x^2 + 1, x)"]
+    },
+    "factor": {
+      "signature": "cas.factor(expr) / math.factor(n)",
+      "desc": "Factors a polynomial symbolically, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
+      "examples": ["cas.factor(x^4 - 1)", "math.factor(12)"]
+    },
+    "factorReal": {
+      "signature": "cas.factorReal(expr)",
+      "desc": "Factors a polynomial over the real numbers.",
+      "examples": ["cas.factorReal(x^2 + 1)"]
+    },
+    "taylor": {
+      "signature": "cas.taylor(expr, var, a, [order])",
+      "desc": "Computes the Taylor series expansion of expr around a.",
+      "examples": ["cas.taylor(sin(x), x, 0, 5)"]
+    },
+    "verifyInteg": {
+      "signature": "cas.verifyInteg(expr, var)",
+      "desc": "Verifies if the derivative of the integral matches the original expression.",
+      "examples": ["cas.verifyInteg(x^2, x)"]
+    }
+  },
+  "random_methods": {
+    "rand": {
+      "signature": "random.rand([min, max])",
+      "desc": "Returns a random continuous double. Defaults to [0, 1) if no arguments provided.",
+      "examples": [
+        "random.rand()",
+        "random.rand(10, 20)"
+      ]
+    },
+    "randint": {
+      "signature": "random.randint(min, max)",
+      "desc": "Returns a random discrete integer in the closed interval [min, max].",
+      "examples": [
+        "random.randint(1, 6)"
+      ]
+    },
+    "randc": {
+      "signature": "random.randc([min, max])",
+      "desc": "Returns a random complex number with real and imaginary parts in [min, max).",
+      "examples": [
+        "random.randc()"
+      ]
+    },
+    "randmat": {
+      "signature": "random.randmat(r, c, [min, max])",
+      "desc": "Returns an r x c matrix of random continuous doubles.",
+      "examples": [
+        "random.randmat(3, 3)",
+        "random.randmat(2, 2, -10, 10)"
+      ]
+    },
+    "randimat": {
+      "signature": "random.randimat(r, c, [min, max])",
+      "desc": "Returns an r x c matrix of random discrete integers. Defaults to [0, 10].",
+      "examples": [
+        "random.randimat(3, 3, 1, 100)"
+      ]
+    },
+    "randcmat": {
+      "signature": "random.randcmat(r, c, [min, max])",
+      "desc": "Returns an r x c matrix of random complex numbers.",
+      "examples": [
+        "random.randcmat(2, 2)"
+      ]
+    },
+    "magic": {
+      "signature": "random.magic(n)",
+      "desc": "Returns an n x n magic square matrix (n >= 3).",
+      "examples": [
+        "random.magic(3)"
       ]
     }
   }

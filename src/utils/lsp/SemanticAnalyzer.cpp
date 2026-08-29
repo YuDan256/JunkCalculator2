@@ -99,8 +99,8 @@ namespace lsp {
         if (name != "_" && name.find("<") != 0) {
             bool isBuiltin = false;
             jc::HelpRouter::init();
-            if (jc::HelpRouter::helpAst.isObject() && jc::HelpRouter::helpAst.has("functions")) {
-                if (jc::HelpRouter::helpAst["functions"].has(name)) isBuiltin = true;
+            if (jc::HelpRouter::helpAst.isObject() && jc::HelpRouter::helpAst.has("global_functions")) {
+                if (jc::HelpRouter::helpAst["global_functions"].has(name)) isBuiltin = true;
             }
             if (!isBuiltin) {
                 static const std::unordered_set<std::string> builtins = {

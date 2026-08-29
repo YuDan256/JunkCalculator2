@@ -151,7 +151,7 @@ namespace jc {
                         }
                         
                         // Check if a function with the same name exists to provide a hint
-                        auto funcsIt = root.find("functions");
+                        auto funcsIt = root.find("global_functions");
                         if (funcsIt != root.end() && funcsIt->second.isObject()) {
                             if (funcsIt->second.objVal.count(key)) {
                                 std::cout << col(Ansi::BRIGHT_YELLOW) << "  Tip: '" << key << "' is also a built-in function. Type '/help " << key << "()' to see its documentation.\n" << col(Ansi::RESET) << std::endl;
@@ -162,33 +162,39 @@ namespace jc {
                 }
             }
 
-            // 3. Search in "functions" (Exact match or alias)
-            auto funcsIt = root.find("functions");
-            if (funcsIt != root.end() && funcsIt->second.isObject()) {
-                const auto& funcs = funcsIt->second.objVal;
-                
-                const Json* targetFn = nullptr;
-                auto fnIt = funcs.find(key);
-                if (fnIt != funcs.end()) {
-                    targetFn = &fnIt->second;
-                } else {
-                    for (const auto& [k, v] : funcs) {
-                        if (v.isObject()) {
-                            auto aliasesIt = v.objVal.find("aliases");
-                            if (aliasesIt != v.objVal.end() && aliasesIt->second.isArray()) {
-                                for (const auto& alias : aliasesIt->second.arrVal) {
-                                    if (alias.isString() && alias.strVal == key) {
-                                        targetFn = &v;
-                                        break;
+            // 3. Search in functions and methods (Exact match or alias)
+            std::vector<std::string> categories = {
+                "global_functions", "matrix_methods", "list_methods", 
+                "string_methods", "dict_methods", "set_methods",
+                "sys_methods", "math_methods", "cas_methods", "random_methods"
+            };
+            
+            for (const auto& cat : categories) {
+                auto catIt = root.find(cat);
+                if (catIt != root.end() && catIt->second.isObject()) {
+                    const auto& funcs = catIt->second.objVal;
+                    const Json* targetFn = nullptr;
+                    auto fnIt = funcs.find(key);
+                    if (fnIt != funcs.end()) {
+                        targetFn = &fnIt->second;
+                    } else {
+                        for (const auto& [k, v] : funcs) {
+                            if (v.isObject()) {
+                                auto aliasesIt = v.objVal.find("aliases");
+                                if (aliasesIt != v.objVal.end() && aliasesIt->second.isArray()) {
+                                    for (const auto& alias : aliasesIt->second.arrVal) {
+                                        if (alias.isString() && alias.strVal == key) {
+                                            targetFn = &v;
+                                            break;
+                                        }
                                     }
                                 }
                             }
+                            if (targetFn) break;
                         }
-                        if (targetFn) break;
                     }
+                    if (targetFn && printEntry(*targetFn)) return;
                 }
-
-                if (targetFn && printEntry(*targetFn)) return;
             }
 
             // 3.5 Search in "keywords" (case-insensitive)
@@ -203,31 +209,34 @@ namespace jc {
 
             // 4. Did you mean? (Fuzzy matching)
             std::vector<std::pair<std::string, std::string>> candidates;
-            if (funcsIt != root.end() && funcsIt->second.isObject()) {
-                for (const auto& [funcName, v] : funcsIt->second.objVal) {
-                    if (v.isObject()) {
-                        std::string desc = "";
-                        auto descIt = v.objVal.find("desc");
-                        if (descIt != v.objVal.end()) {
-                            if (descIt->second.isString()) {
-                                desc = descIt->second.strVal;
-                            } else if (descIt->second.isArray() && !descIt->second.arrVal.empty()) {
-                                if (descIt->second.arrVal[0].isString()) {
-                                    desc = descIt->second.arrVal[0].strVal;
+            for (const auto& cat : categories) {
+                auto catIt = root.find(cat);
+                if (catIt != root.end() && catIt->second.isObject()) {
+                    for (const auto& [funcName, v] : catIt->second.objVal) {
+                        if (v.isObject()) {
+                            std::string desc = "";
+                            auto descIt = v.objVal.find("desc");
+                            if (descIt != v.objVal.end()) {
+                                if (descIt->second.isString()) {
+                                    desc = descIt->second.strVal;
+                                } else if (descIt->second.isArray() && !descIt->second.arrVal.empty()) {
+                                    if (descIt->second.arrVal[0].isString()) {
+                                        desc = descIt->second.arrVal[0].strVal;
+                                    }
                                 }
                             }
-                        }
-                        
-                        std::string lowerFuncName = funcName;
-                        std::transform(lowerFuncName.begin(), lowerFuncName.end(), lowerFuncName.begin(),
-                            [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
-                        
-                        bool isPrefix = lowerFuncName.find(lowerKey) == 0;
-                        bool isSubstr = lowerFuncName.find(lowerKey) != std::string::npos;
-                        int dist = levenshtein(lowerKey, lowerFuncName);
-                        
-                        if (isPrefix || isSubstr || dist <= 2) {
-                            candidates.push_back({funcName, desc});
+                            
+                            std::string lowerFuncName = funcName;
+                            std::transform(lowerFuncName.begin(), lowerFuncName.end(), lowerFuncName.begin(),
+                                [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); });
+                            
+                            bool isPrefix = lowerFuncName.find(lowerKey) == 0;
+                            bool isSubstr = lowerFuncName.find(lowerKey) != std::string::npos;
+                            int dist = levenshtein(lowerKey, lowerFuncName);
+                            
+                            if (isPrefix || isSubstr || dist <= 2) {
+                                candidates.push_back({funcName, desc});
+                            }
                         }
                     }
                 }
@@ -314,9 +323,9 @@ namespace jc {
             if (helpAst.isNull()) {
                 helpAst.type = JsonType::Object;
             }
-            if (helpAst.objVal.find("functions") == helpAst.objVal.end()) {
+            if (helpAst.objVal.find("global_functions") == helpAst.objVal.end()) {
                 Json funcs; funcs.type = JsonType::Object;
-                helpAst.objVal["functions"] = funcs;
+                helpAst.objVal["global_functions"] = funcs;
             }
             Json fnNode;
             fnNode.type = JsonType::Object;
@@ -334,7 +343,7 @@ namespace jc {
                 fnNode.objVal["examples"] = exArr;
             }
             
-            helpAst.objVal["functions"].objVal[name] = fnNode;
+            helpAst.objVal["global_functions"].objVal[name] = fnNode;
         }
     };
 } // namespace jc

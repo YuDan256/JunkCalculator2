@@ -119,8 +119,8 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
-        if (mag2 - mag1 > g_prec + 2) return other.truncate(g_prec);
+        if (mag1 - mag2 > g_prec + 8) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + 8) return other.truncate(g_prec);
         
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
@@ -138,8 +138,8 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (mag1 - mag2 > g_prec + 2) return this->truncate(g_prec);
-        if (mag2 - mag1 > g_prec + 2) {
+        if (mag1 - mag2 > g_prec + 8) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + 8) {
             return Decimal(-other.mantissa, other.exp).truncate(g_prec);
         }
         
@@ -172,23 +172,29 @@ public:
         } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
         if (d == 0.0) d = mantissa.isNegative() ? -1e-300 : 1e-300;
         double guess = 1.0 / d;
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1e300 : 1e300;
         
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
         Decimal two(jc::BigInt(2), 0);
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
+        int saved_prec = g_prec;
         
         while (current_prec < target_prec) {
             current_prec *= 2;
             if (current_prec > target_prec) current_prec = target_prec;
             
-            Decimal xy = this->mul(y).truncate(current_prec);
+            g_prec = current_prec;
+            Decimal cur_this = this->truncate(current_prec);
+            Decimal xy = cur_this.mul(y);
             Decimal term = two.sub(xy);
-            y = y.mul(term).truncate(current_prec);
+            y = y.mul(term);
         }
+        g_prec = saved_prec;
         return y;
     }
 
@@ -201,7 +207,7 @@ public:
         if (other.mantissa.getRawData().size() <= 2) {
             int64_t len1 = mantissa.digitCount();
             int64_t len2 = other.mantissa.digitCount();
-            int64_t extra_zeros = g_prec + 2 - len1 + len2;
+            int64_t extra_zeros = g_prec + 8 - len1 + len2;
             if (extra_zeros < 0) extra_zeros = 0;
             jc::BigInt m1_shifted = mantissa * pow10(extra_zeros);
             jc::BigInt q = m1_shifted / other.mantissa;
@@ -217,7 +223,7 @@ public:
         
         int64_t mag1 = magnitude();
         int64_t mag2 = other.magnitude();
-        if (std::abs(mag1 - mag2) > g_prec + 2) return false;
+        if (std::abs(mag1 - mag2) > g_prec + 8) return false;
         
         int64_t min_exp = std::min(exp, other.exp);
         jc::BigInt m1 = mantissa;
@@ -239,7 +245,7 @@ public:
         if (neg1 && !neg2) return true;
         if (!neg1 && neg2) return false;
         
-        if (std::abs(mag1 - mag2) > g_prec + 2) {
+        if (std::abs(mag1 - mag2) > g_prec + 8) {
             if (neg1) return mag1 > mag2;
             return mag1 < mag2;
         }
@@ -287,31 +293,40 @@ public:
         } catch (...) { d = 1e300; }
         if (d <= 0.0) d = 1e-300;
         double guess = 1.0 / std::sqrt(d);
+        if (!std::isfinite(guess)) guess = 1e300;
         
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
         Decimal three(jc::BigInt(3), 0);
         Decimal half(jc::BigInt(5), -1);
         
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
+        int saved_prec = g_prec;
         
         while (current_prec < target_prec) {
             current_prec *= 2;
             if (current_prec > target_prec) current_prec = target_prec;
             
-            Decimal y2 = y.mul(y).truncate(current_prec);
-            Decimal xy2 = this->mul(y2).truncate(current_prec);
+            g_prec = current_prec;
+            Decimal cur_this = this->truncate(current_prec);
+            Decimal y2 = y.mul(y);
+            Decimal xy2 = cur_this.mul(y2);
             Decimal term = three.sub(xy2);
-            y = y.mul(term).mul(half).truncate(current_prec);
+            y = y.mul(term).mul(half);
         }
         
+        g_prec = saved_prec;
         return this->mul(y).truncate(g_prec);
     }
 
     Decimal exp_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
+        
         Decimal x = *this;
         int squares = 0;
         Decimal two(jc::BigInt(2), 0);
@@ -319,7 +334,7 @@ public:
         Decimal threshold(jc::BigInt(1), -8);
         
         while (x.abs().gt(threshold) && !x.mantissa.isZero()) {
-            x = x.div(two).truncate(g_prec + 2);
+            x = x.div(two).truncate(g_prec);
             squares++;
         }
         
@@ -328,19 +343,20 @@ public:
         Decimal n(jc::BigInt(1), 0);
         
         for (int i = 1; i < 10000; ++i) {
-            term = term.mul(x).div(n).truncate(g_prec + 2);
+            term = term.mul(x).div(n).truncate(g_prec);
             if (term.mantissa.isZero()) break;
             
-            Decimal next_sum = sum.add(term).truncate(g_prec + 2);
+            Decimal next_sum = sum.add(term).truncate(g_prec);
             if (next_sum.eq(sum)) break;
             sum = next_sum;
             n = n.add(one);
         }
         
         for (int i = 0; i < squares; ++i) {
-            sum = sum.mul(sum).truncate(g_prec + 2);
+            sum = sum.mul(sum).truncate(g_prec);
         }
         
+        g_prec = saved_prec;
         return sum.truncate(g_prec);
     }
 
@@ -359,6 +375,9 @@ public:
     }
 
     void sincos_val(Decimal& s_out, Decimal& c_out) const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
+        
         Decimal x = this->mod_2pi();
         int squares = 0;
         Decimal one(jc::BigInt(1), 0);
@@ -366,7 +385,7 @@ public:
         Decimal threshold(jc::BigInt(1), -8);
         
         while (x.abs().gt(threshold)) {
-            x = x.div(two).truncate(g_prec + 2);
+            x = x.div(two).truncate(g_prec);
             squares++;
         }
         
@@ -374,19 +393,19 @@ public:
         Decimal term_s = x;
         Decimal sum_c = one;
         Decimal term_c = one;
-        Decimal x2 = x.mul(x).truncate(g_prec + 2);
+        Decimal x2 = x.mul(x).truncate(g_prec);
         Decimal n_s(jc::BigInt(2), 0);
         Decimal n_c(jc::BigInt(1), 0);
         int sign = -1;
         
         for (int i = 1; i < 10000; ++i) {
-            term_s = term_s.mul(x2).div(n_s.mul(n_s.add(one))).truncate(g_prec + 2);
-            term_c = term_c.mul(x2).div(n_c.mul(n_c.add(one))).truncate(g_prec + 2);
+            term_s = term_s.mul(x2).div(n_s.mul(n_s.add(one))).truncate(g_prec);
+            term_c = term_c.mul(x2).div(n_c.mul(n_c.add(one))).truncate(g_prec);
             
             if (term_s.mantissa.isZero() && term_c.mantissa.isZero()) break;
             
-            Decimal next_sum_s = (sign == -1) ? sum_s.sub(term_s).truncate(g_prec + 2) : sum_s.add(term_s).truncate(g_prec + 2);
-            Decimal next_sum_c = (sign == -1) ? sum_c.sub(term_c).truncate(g_prec + 2) : sum_c.add(term_c).truncate(g_prec + 2);
+            Decimal next_sum_s = (sign == -1) ? sum_s.sub(term_s).truncate(g_prec) : sum_s.add(term_s).truncate(g_prec);
+            Decimal next_sum_c = (sign == -1) ? sum_c.sub(term_c).truncate(g_prec) : sum_c.add(term_c).truncate(g_prec);
             
             if (next_sum_s.eq(sum_s) && next_sum_c.eq(sum_c)) break;
             
@@ -399,12 +418,13 @@ public:
         }
         
         for (int i = 0; i < squares; ++i) {
-            Decimal next_s = two.mul(sum_s).mul(sum_c).truncate(g_prec + 2);
-            Decimal next_c = sum_c.mul(sum_c).mul(two).sub(one).truncate(g_prec + 2);
+            Decimal next_s = two.mul(sum_s).mul(sum_c).truncate(g_prec);
+            Decimal next_c = sum_c.mul(sum_c).mul(two).sub(one).truncate(g_prec);
             sum_s = next_s;
             sum_c = next_c;
         }
         
+        g_prec = saved_prec;
         s_out = sum_s.truncate(g_prec);
         c_out = sum_c.truncate(g_prec);
     }
@@ -421,30 +441,6 @@ public:
         return c;
     }
 
-    static Decimal arctan_series(const Decimal& x) {
-        Decimal sum = x;
-        Decimal term = x;
-        Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n(jc::BigInt(3), 0);
-        Decimal two(jc::BigInt(2), 0);
-        int sign = -1;
-        
-        for (int i = 0; i < 10000; ++i) {
-            term = term.mul(x2).truncate(g_prec + 2);
-            Decimal cur = term.div(n).truncate(g_prec + 2);
-            if (cur.mantissa.isZero()) break;
-            
-            Decimal next_sum = (sign == -1) ? sum.sub(cur).truncate(g_prec + 2) : sum.add(cur).truncate(g_prec + 2);
-            
-            if (next_sum.eq(sum)) break;
-            sum = next_sum;
-            
-            n = n.add(two);
-            sign = -sign;
-        }
-        return sum;
-    }
-
     static Decimal pi() {
         static int cached_prec = -1;
         static std::string cached_pi = "";
@@ -453,6 +449,9 @@ public:
             return Decimal::from_string(cached_pi).truncate(g_prec);
         }
 
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
+
         Decimal a(jc::BigInt(1), 0);
         Decimal b = Decimal(jc::BigInt(5), -1).sqrt(); // sqrt(0.5)
         Decimal t(jc::BigInt(25), -2); // 0.25
@@ -460,16 +459,19 @@ public:
         Decimal half(jc::BigInt(5), -1);
         Decimal two(jc::BigInt(2), 0);
         
-        int target_prec = g_prec;
+        int digits = 2;
         int iters = 0;
-        while ((16 << iters) < target_prec) iters++;
+        while (digits < g_prec) {
+            digits *= 2;
+            iters++;
+        }
         iters += 2;
         
         for (int i = 0; i < iters; ++i) {
-            Decimal a_next = a.add(b).mul(half).truncate(g_prec + 2);
-            Decimal b_next = a.mul(b).sqrt().truncate(g_prec + 2);
+            Decimal a_next = a.add(b).mul(half).truncate(g_prec);
+            Decimal b_next = a.mul(b).sqrt().truncate(g_prec);
             Decimal a_diff = a.sub(a_next);
-            Decimal t_next = t.sub(p.mul(a_diff).mul(a_diff)).truncate(g_prec + 2);
+            Decimal t_next = t.sub(p.mul(a_diff).mul(a_diff)).truncate(g_prec);
             Decimal p_next = p.mul(two);
             
             a = a_next;
@@ -479,8 +481,9 @@ public:
         }
         
         Decimal sum = a.add(b);
-        Decimal pi_val = sum.mul(sum).div(t.mul(Decimal(jc::BigInt(4), 0))).truncate(g_prec);
+        Decimal pi_val = sum.mul(sum).div(t.mul(Decimal(jc::BigInt(4), 0))).truncate(saved_prec);
         
+        g_prec = saved_prec;
         cached_prec = g_prec;
         cached_pi = pi_val.to_string();
         
@@ -494,13 +497,15 @@ public:
         int64_t L = mantissa.digitCount();
         double first_digit = (mantissa.abs() / pow10(L - 1)).toDouble();
         double guess = (L - 1 + exp) * 2.302585092994046 + std::log(first_digit);
+        if (!std::isfinite(guess)) guess = 0.0;
         
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         Decimal two(jc::BigInt(2), 0);
         
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -533,16 +538,24 @@ public:
     Decimal atan_val() const {
         double d;
         try {
-            d = std::stod(to_string());
-        } catch (...) {
-            d = mantissa.isNegative() ? -1e300 : 1e300;
-        }
+            const auto& raw_data = mantissa.getRawData();
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 4294967296.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
         double guess = std::atan(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1.5707963267948966 : 1.5707963267948966;
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -568,13 +581,26 @@ public:
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: asin domain error.");
         }
-        double d = std::stod(to_string());
+        double d;
+        try {
+            const auto& raw_data = mantissa.getRawData();
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 4294967296.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1.0 : 1.0; }
         double guess = std::asin(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1.5707963267948966 : 1.5707963267948966;
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -599,13 +625,26 @@ public:
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
             jc2::throw_error("MathError: acos domain error.");
         }
-        double d = std::stod(to_string());
+        double d;
+        try {
+            const auto& raw_data = mantissa.getRawData();
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 4294967296.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1.0 : 1.0; }
         double guess = std::acos(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? 3.1415926535897932 : 0.0;
         char buf[64];
         snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
         
-        int target_prec = g_prec + 2;
+        int target_prec = g_prec + 8;
         int current_prec = 16;
         int saved_prec = g_prec;
         
@@ -626,24 +665,39 @@ public:
     }
 
     Decimal sinh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
-        return ex.sub(emx).div(Decimal(jc::BigInt(2), 0)).truncate(g_prec);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
+        Decimal res = ex.sub(emx).div(Decimal(jc::BigInt(2), 0));
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
     }
 
     Decimal cosh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
-        return ex.add(emx).div(Decimal(jc::BigInt(2), 0)).truncate(g_prec);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
+        Decimal res = ex.add(emx).div(Decimal(jc::BigInt(2), 0));
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
     }
 
     Decimal tanh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + 8;
         Decimal ex = this->exp_val();
-        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec + 2);
+        Decimal emx = Decimal(jc::BigInt(1), 0).div(ex).truncate(g_prec);
         Decimal num = ex.sub(emx);
         Decimal den = ex.add(emx);
-        if (den.mantissa.isZero()) return *this;
-        return num.div(den).truncate(g_prec);
+        if (den.mantissa.isZero()) {
+            g_prec = saved_prec;
+            return *this;
+        }
+        Decimal res = num.div(den);
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
     }
 };
 

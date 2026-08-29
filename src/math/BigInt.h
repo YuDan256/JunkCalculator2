@@ -163,10 +163,12 @@ namespace jc {
             fft(fa, true);
 
             BigInt result;
-            result.data.resize(n + m + 1, 0);
+            result.data.resize(n_pow2 / 2, 0);
             uint64_t carry = 0;
             for (size_t i = 0; i < n_pow2; ++i) {
-                uint64_t val = static_cast<uint64_t>(std::round(fa[i].real())) + carry;
+                double dval = std::round(fa[i].real());
+                if (dval < 0.0) dval = 0.0;
+                uint64_t val = static_cast<uint64_t>(dval) + carry;
                 carry = val >> 16;
                 val &= 0xFFFF;
                 if (i % 2 == 0) {

@@ -108,21 +108,27 @@ namespace jc {
                 j ^= bit;
                 if (i < j) std::swap(a[i], a[j]);
             }
+            
+            std::vector<std::complex<double>> roots(n / 2);
+            double ang = 2 * 3.14159265358979323846 / n * (invert ? -1 : 1);
+            for (int i = 0; i < n / 2; i++) {
+                roots[i] = std::complex<double>(std::cos(ang * i), std::sin(ang * i));
+            }
+
             for (int len = 2; len <= n; len <<= 1) {
-                double ang = 2 * 3.14159265358979323846 / len * (invert ? -1 : 1);
-                std::complex<double> wlen(std::cos(ang), std::sin(ang));
+                int step = n / len;
                 for (int i = 0; i < n; i += len) {
-                    std::complex<double> w(1);
                     for (int j = 0; j < len / 2; j++) {
-                        std::complex<double> u = a[i + j], v = a[i + j + len / 2] * w;
+                        std::complex<double> u = a[i + j];
+                        std::complex<double> v = a[i + j + len / 2] * roots[j * step];
                         a[i + j] = u + v;
                         a[i + j + len / 2] = u - v;
-                        w *= wlen;
                     }
                 }
             }
             if (invert) {
-                for (std::complex<double>& x : a) x /= static_cast<double>(n);
+                double inv_n = 1.0 / n;
+                for (std::complex<double>& x : a) x *= inv_n;
             }
         }
 
@@ -959,6 +965,18 @@ namespace jc {
             return { q, static_cast<uint32_t>(rem) };
         }
 
+        static BigInt parseStringDC(const std::string& s, size_t start, size_t end) {
+            size_t len = end - start;
+            if (len <= 9) {
+                return BigInt(std::stoll(s.substr(start, len)));
+            }
+            size_t mid = start + len / 2;
+            size_t right_len = end - mid;
+            BigInt left = parseStringDC(s, start, mid);
+            BigInt right = parseStringDC(s, mid, end);
+            return left * getPow10(static_cast<int>(right_len)) + right;
+        }
+
         explicit BigInt(const std::string& s) {
             if (s.empty()) throw std::invalid_argument("BigInt Error: Empty string.");
             size_t start = 0;
@@ -967,17 +985,9 @@ namespace jc {
             else if (s[0] == '+') { start = 1; }
             if (start == s.size()) throw std::invalid_argument("BigInt Error: No digits found.");
 
-            data.push_back(0);
-            for (size_t i = start; i < s.size(); i += 9) {
-                size_t len = std::min<size_t>(9, s.size() - i);
-                uint32_t chunk = std::stoul(s.substr(i, len));
-                uint32_t multiplier = 1;
-                for (size_t j = 0; j < len; ++j) multiplier *= 10;
-                
-                *this = mul_small(multiplier);
-                *this = add_small(chunk);
-            }
-            trim();
+            BigInt res = parseStringDC(s, start, s.size());
+            this->data = std::move(res.data);
+            this->negative = (this->data.size() == 1 && this->data[0] == 0) ? false : negative;
         }
 
         bool isZero() const { return data.size() == 1 && data[0] == 0; }
@@ -1241,10 +1251,21 @@ namespace jc {
 
         static const BigInt& getPow10(int n) {
             thread_local std::vector<BigInt> p10 = { BigInt(1), BigInt(10) };
-            while (p10.size() <= static_cast<size_t>(n)) {
-                p10.push_back(p10.back().mul_small(10));
+            thread_local std::map<int, BigInt> large_p10;
+            
+            if (n < 10000) {
+                while (p10.size() <= static_cast<size_t>(n)) {
+                    p10.push_back(p10.back().mul_small(10));
+                }
+                return p10[n];
             }
-            return p10[n];
+            
+            auto it = large_p10.find(n);
+            if (it != large_p10.end()) return it->second;
+            
+            BigInt res = BigInt(10).pow(n);
+            large_p10[n] = res;
+            return large_p10[n];
         }
 
         int digitCount() const {

@@ -100,6 +100,18 @@ public:
         int current_digits = mantissa.digitCount();
         if (current_digits <= prec) return *this;
         int drop = current_digits - prec;
+        
+        if (drop > 10000) {
+            std::string s = mantissa.toString();
+            bool neg = false;
+            if (s[0] == '-') { neg = true; s = s.substr(1); }
+            if (drop >= s.length()) return Decimal(jc::BigInt(0), 0);
+            s = s.substr(0, s.length() - drop);
+            if (s.empty()) return Decimal(jc::BigInt(0), 0);
+            if (neg) s = "-" + s;
+            return Decimal(jc::BigInt(s), exp + drop);
+        }
+        
         jc::BigInt new_m = mantissa / pow10(drop);
         return Decimal(new_m, exp + drop);
     }
@@ -447,10 +459,10 @@ public:
 
     static Decimal pi() {
         static int cached_prec = -1;
-        static std::string cached_pi = "";
+        static Decimal cached_pi_val;
         
         if (g_prec <= cached_prec) {
-            return Decimal::from_string(cached_pi).truncate(g_prec);
+            return cached_pi_val.truncate(g_prec);
         }
 
         int saved_prec = g_prec;
@@ -489,7 +501,7 @@ public:
         
         g_prec = saved_prec;
         cached_prec = g_prec;
-        cached_pi = pi_val.to_string();
+        cached_pi_val = pi_val;
         
         return pi_val;
     }

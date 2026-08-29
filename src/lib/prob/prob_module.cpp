@@ -117,21 +117,10 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
     jc2::throw_error(f + "() requires a matrix/vector.");
 }
 
-static void printTest(const jc::TestResult& r) {
-    std::cout << "  " << r.name << std::endl;
-    std::cout << "  statistic = " << r.statistic << ",  df = " << r.df
-        << ",  p-value = " << r.pValue << std::endl;
-    if (r.pValue < 0.001)      std::cout << "  Significance: *** (p < 0.001)" << std::endl;
-    else if (r.pValue < 0.01)  std::cout << "  Significance: **  (p < 0.01)" << std::endl;
-    else if (r.pValue < 0.05)  std::cout << "  Significance: *   (p < 0.05)" << std::endl;
-    else                       std::cout << "  Significance: n.s. (p >= 0.05)" << std::endl;
-}
-
 FUNC(ttest) {
     auto data = extractDS(jc2::Value(argv[0]), "ttest");
     double mu0 = argc >= 2 ? jc2::Value(argv[1]).as_double() : 0.0;
     auto r = jc::ttest1(data, mu0);
-    printTest(r);
     jc2::RealMatrix mat(1, 3);
     mat.set(0, 0, r.statistic); mat.set(0, 1, r.df); mat.set(0, 2, r.pValue);
     return mat.get_handle();
@@ -140,7 +129,6 @@ FUNC(ttest2) {
     (void)argc;
     auto d1 = extractDS(jc2::Value(argv[0]), "ttest2"), d2 = extractDS(jc2::Value(argv[1]), "ttest2");
     auto r = jc::ttest2ind(d1, d2);
-    printTest(r);
     jc2::RealMatrix mat(1, 3);
     mat.set(0, 0, r.statistic); mat.set(0, 1, r.df); mat.set(0, 2, r.pValue);
     return mat.get_handle();
@@ -149,7 +137,6 @@ FUNC(ttestP) {
     (void)argc;
     auto d1 = extractDS(jc2::Value(argv[0]), "ttestP"), d2 = extractDS(jc2::Value(argv[1]), "ttestP");
     auto r = jc::ttestPaired(d1, d2);
-    printTest(r);
     jc2::RealMatrix mat(1, 3);
     mat.set(0, 0, r.statistic); mat.set(0, 1, r.df); mat.set(0, 2, r.pValue);
     return mat.get_handle();
@@ -158,7 +145,6 @@ FUNC(chi2test) {
     (void)argc;
     auto obs = extractDS(jc2::Value(argv[0]), "chi2test"), exp = extractDS(jc2::Value(argv[1]), "chi2test");
     auto r = jc::chi2test(obs, exp);
-    printTest(r);
     jc2::RealMatrix mat(1, 3);
     mat.set(0, 0, r.statistic); mat.set(0, 1, r.df); mat.set(0, 2, r.pValue);
     return mat.get_handle();

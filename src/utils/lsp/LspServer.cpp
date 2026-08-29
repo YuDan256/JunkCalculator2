@@ -231,7 +231,12 @@ namespace lsp {
                     lexer.keepComments = true;
                     auto tokens = lexer.tokenize();
                     
-                    Parser parser(tokens, uri);
+                    std::vector<Token> parserTokens;
+                    for (const auto& t : tokens) {
+                        if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
+                    }
+                    
+                    Parser parser(parserTokens, uri);
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
@@ -347,7 +352,12 @@ namespace lsp {
                     lexer.keepComments = true;
                     auto tokens = lexer.tokenize();
                     
-                    Parser parser(tokens, uri);
+                    std::vector<Token> parserTokens;
+                    for (const auto& t : tokens) {
+                        if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
+                    }
+                    
+                    Parser parser(parserTokens, uri);
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
@@ -384,7 +394,12 @@ namespace lsp {
                     lexer.keepComments = true;
                     auto tokens = lexer.tokenize();
                     
-                    Parser parser(tokens, uri);
+                    std::vector<Token> parserTokens;
+                    for (const auto& t : tokens) {
+                        if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
+                    }
+                    
+                    Parser parser(parserTokens, uri);
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
@@ -646,7 +661,12 @@ namespace lsp {
                     lexer.keepComments = true;
                     auto tokens = lexer.tokenize();
                     
-                    Parser parser(tokens, uri);
+                    std::vector<Token> parserTokens;
+                    for (const auto& t : tokens) {
+                        if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
+                    }
+                    
+                    Parser parser(parserTokens, uri);
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
@@ -677,7 +697,11 @@ namespace lsp {
             auto tokens = lexer.tokenize();
 
             // 收集词法错误
+            std::vector<Token> parserTokens;
             for (const auto& tok : tokens) {
+                if (tok.type == TokenType::COMMENT) continue;
+                parserTokens.push_back(tok);
+                
                 if (tok.type == TokenType::ERROR) {
                     Json diag;
                     diag.type = JsonType::Object;
@@ -695,7 +719,7 @@ namespace lsp {
             }
 
             // 2. 语法分析 (开启 LSP 容错模式)
-            Parser parser(tokens, uri);
+            Parser parser(parserTokens, uri);
             parser.isLspMode = true;
             parser.parse(); // 此时不需要保存 AST，只需让 Parser 收集 diagnostics
 

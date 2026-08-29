@@ -171,16 +171,19 @@ public:
         if (mantissa.isZero()) jc2::throw_error("DivisionByZero: Decimal division by zero.");
         
         int64_t L = mantissa.digitCount();
-        int64_t shift = L - 15;
-        double M = 0.0;
-        if (shift > 0) {
-            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
-        } else {
-            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
-        }
         int64_t E = exp + L - 1;
         
-        double guess_val = 1.0 / M;
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.getRawData().size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 4294967296.0 + mantissa.getRawData()[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.632959861247398 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
+        
+        double guess_val = 1.0 / M_exact;
         if (mantissa.isNegative()) guess_val = -guess_val;
         
         char buf[64];
@@ -291,14 +294,17 @@ public:
         }
         
         int64_t L = mantissa.digitCount();
-        int64_t shift = L - 15;
-        double M = 0.0;
-        if (shift > 0) {
-            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
-        } else {
-            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
-        }
         int64_t E = exp + L - 1;
+        
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.getRawData().size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 4294967296.0 + mantissa.getRawData()[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.632959861247398 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
         
         int64_t k = E / 2;
         int64_t r = E % 2;
@@ -307,7 +313,7 @@ public:
             k -= 1;
         }
         
-        double adjusted_M = M * std::pow(10.0, r);
+        double adjusted_M = M_exact * std::pow(10.0, r);
         double guess_val = 1.0 / std::sqrt(adjusted_M);
         
         char buf[64];
@@ -511,16 +517,19 @@ public:
             jc2::throw_error("MathError: ln of non-positive decimal.");
         }
         int64_t L = mantissa.digitCount();
-        int64_t shift = L - 15;
-        double M = 0.0;
-        if (shift > 0) {
-            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
-        } else {
-            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
-        }
         int64_t E = exp + L - 1;
         
-        double guess = E * 2.302585092994045684 + std::log(M);
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.getRawData().size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 4294967296.0 + mantissa.getRawData()[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.632959861247398 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
+        
+        double guess = E * 2.302585092994045684 + std::log(M_exact);
         if (!std::isfinite(guess)) guess = 0.0;
         
         char buf[64];

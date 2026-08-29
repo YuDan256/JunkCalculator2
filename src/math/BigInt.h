@@ -240,7 +240,7 @@ namespace jc {
             return result;
         }
 
-        static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
+        static std::pair<BigInt, BigInt> divmod_knuth(const BigInt& a, const BigInt& b) {
             if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
 
             BigInt absA = a.abs(), absB = b.abs();
@@ -361,6 +361,105 @@ namespace jc {
             remainder.trim();
 
             return { quotient, remainder };
+        }
+
+        // 牛顿-拉夫逊求逆: 计算 floor(2^(64n) / B)
+        static BigInt invert(const BigInt& B) {
+            int n = static_cast<int>(B.data.size());
+            if (n <= 3072) {
+                BigInt beta2n;
+                beta2n.data.assign(2 * n + 1, 0);
+                beta2n.data.back() = 1;
+                return divmod_knuth(beta2n, B).first;
+            }
+            int k = (n - 1) / 2 + 1;
+            BigInt B1 = B >> ((n - k) * 32);
+            BigInt Z1 = invert(B1);
+            
+            BigInt beta_nk;
+            beta_nk.data.assign(n + k + 1, 0);
+            beta_nk.data.back() = 1;
+            
+            BigInt T = Z1 * B;
+            BigInt U = (Z1 * (beta_nk - T)) >> (2 * k * 32);
+            BigInt Z = (Z1 << ((n - k) * 32)) + U;
+            
+            BigInt beta2n;
+            beta2n.data.assign(2 * n + 1, 0);
+            beta2n.data.back() = 1;
+            
+            BigInt ZB = Z * B;
+            while (ZB > beta2n) { Z = Z - BigInt(1); ZB = ZB - B; }
+            while (ZB + B <= beta2n) { Z = Z + BigInt(1); ZB = ZB + B; }
+            
+            return Z;
+        }
+
+        // O(N log N) 极速除法 (结合分块 Barrett 约减)
+        static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
+            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+
+            BigInt absA = a.abs(), absB = b.abs();
+            if (absA < absB) {
+                BigInt rem = a;
+                rem.negative = a.negative;
+                if (rem.isZero()) rem.negative = false;
+                return { BigInt(0), rem };
+            }
+            
+            if (absB.data.size() <= 3072) {
+                return divmod_knuth(a, b);
+            }
+            
+            // 归一化除数，使其最高位为 1
+            int shift = 0;
+            uint32_t top = absB.data.back();
+            while ((top & 0x80000000) == 0) {
+                shift++;
+                top <<= 1;
+            }
+            
+            BigInt A = absA << shift;
+            BigInt B = absB << shift;
+            int n = static_cast<int>(B.data.size());
+            
+            BigInt Z = invert(B);
+            
+            BigInt Q(0);
+            BigInt R = A;
+            
+            while (R >= B) {
+                int m = static_cast<int>(R.data.size());
+                if (m <= 2 * n) {
+                    BigInt Qc = (R * Z) >> (2 * n * 32);
+                    BigInt prod = Qc * B;
+                    while (R < prod) { Qc = Qc - BigInt(1); prod = prod - B; }
+                    R = R - prod;
+                    while (R >= B) { Qc = Qc + BigInt(1); R = R - B; }
+                    Q = Q + Qc;
+                } else {
+                    int s = m - 2 * n;
+                    BigInt R_top = R >> (s * 32);
+                    BigInt Qc = (R_top * Z) >> (2 * n * 32);
+                    if (Qc > BigInt(2)) {
+                        Qc = Qc - BigInt(2); // 安全下溢
+                    } else {
+                        Qc = BigInt(1);
+                    }
+                    BigInt Q_real = Qc << (s * 32);
+                    R = R - ((Qc * B) << (s * 32));
+                    Q = Q + Q_real;
+                }
+            }
+            
+            Q.negative = (a.negative != b.negative);
+            if (Q.isZero()) Q.negative = false;
+            
+            BigInt rem = R >> shift;
+            rem.negative = a.negative;
+            if (rem.isZero()) rem.negative = false;
+            
+            return { Q, rem };
         }
 
     public:
@@ -1156,7 +1255,7 @@ namespace jc {
 
         BigInt operator*(const BigInt& other) const {
             BigInt result;
-            if (data.size() >= 256 && other.data.size() >= 256) {
+            if (data.size() >= 1024 && other.data.size() >= 1024) {
                 result = mul_fft(data.data(), data.size(), other.data.data(), other.data.size());
             } else {
                 result = karatsuba(data.data(), data.size(), other.data.data(), other.data.size());
@@ -1175,6 +1274,12 @@ namespace jc {
             BigInt res;
             int limbs = shift / 32;
             int rem = shift % 32;
+            if (rem == 0) {
+                res.data.assign(limbs, 0);
+                res.data.insert(res.data.end(), data.begin(), data.end());
+                res.negative = negative;
+                return res;
+            }
             res.data.assign(limbs, 0);
             uint64_t carry = 0;
             for (uint32_t d : data) {
@@ -1194,6 +1299,11 @@ namespace jc {
             int rem = shift % 32;
             if (limbs >= data.size()) return BigInt(0);
             BigInt res;
+            if (rem == 0) {
+                res.data.assign(data.begin() + limbs, data.end());
+                res.negative = negative;
+                return res;
+            }
             res.data.resize(data.size() - limbs, 0);
             uint64_t carry = 0;
             for (int i = static_cast<int>(data.size()) - 1; i >= limbs; --i) {

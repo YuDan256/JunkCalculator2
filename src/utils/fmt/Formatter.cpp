@@ -1,8 +1,8 @@
 #include "Formatter.h"
-#include "../frontend/Lexer.h"
-#include "../frontend/Parser.h"
-#include "../frontend/Expr.h"
-#include "../frontend/Token.h"
+#include "../../frontend/Lexer.h"
+#include "../../frontend/Parser.h"
+#include "../../frontend/Expr.h"
+#include "../../frontend/Token.h"
 #include <set>
 #include <string>
 #include <vector>

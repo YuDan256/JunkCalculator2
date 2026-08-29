@@ -12,7 +12,7 @@
 #include "memory/SipHash.h"
 #include "vm/HelpRouter.h"
 #include "frontend/Highlight.h"
-#include "utils/Formatter.h"
+#include "utils/fmt/Formatter.h"
 #include "vm/BuiltinRegistry.h"
 #include "compiler/Resolver.h"
 #include "compiler/IRBuilder.h"

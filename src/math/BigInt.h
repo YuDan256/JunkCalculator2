@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <complex>
 
 // 引入复数以支持与复数的隐式混合运算提升
 #include "Complex.h"
@@ -93,6 +94,85 @@ namespace jc {
                     carry = prod >> 32;
                 }
                 if (carry > 0) result.data[i + m] += static_cast<uint32_t>(carry);
+            }
+            result.trim();
+            return result;
+        }
+
+        // FFT O(N log N) 乘法
+        static void fft(std::vector<std::complex<double>>& a, bool invert) {
+            int n = static_cast<int>(a.size());
+            for (int i = 1, j = 0; i < n; i++) {
+                int bit = n >> 1;
+                for (; j & bit; bit >>= 1) j ^= bit;
+                j ^= bit;
+                if (i < j) std::swap(a[i], a[j]);
+            }
+            for (int len = 2; len <= n; len <<= 1) {
+                double ang = 2 * 3.14159265358979323846 / len * (invert ? -1 : 1);
+                std::complex<double> wlen(std::cos(ang), std::sin(ang));
+                for (int i = 0; i < n; i += len) {
+                    std::complex<double> w(1);
+                    for (int j = 0; j < len / 2; j++) {
+                        std::complex<double> u = a[i + j], v = a[i + j + len / 2] * w;
+                        a[i + j] = u + v;
+                        a[i + j + len / 2] = u - v;
+                        w *= wlen;
+                    }
+                }
+            }
+            if (invert) {
+                for (std::complex<double>& x : a) x /= static_cast<double>(n);
+            }
+        }
+
+        static BigInt mul_fft(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+            std::vector<std::complex<double>> fa, fb;
+            size_t res_size = (n + m) * 2;
+            size_t n_pow2 = 1;
+            while (n_pow2 < res_size) n_pow2 <<= 1;
+
+            fa.resize(n_pow2);
+            fb.resize(n_pow2);
+
+            for (size_t i = 0; i < n; ++i) {
+                fa[i * 2] = std::complex<double>(a[i] & 0xFFFF, 0);
+                fa[i * 2 + 1] = std::complex<double>(a[i] >> 16, 0);
+            }
+            for (size_t i = 0; i < m; ++i) {
+                fb[i * 2] = std::complex<double>(b[i] & 0xFFFF, 0);
+                fb[i * 2 + 1] = std::complex<double>(b[i] >> 16, 0);
+            }
+
+            fft(fa, false);
+            if (a == b && n == m) {
+                for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fa[i];
+            } else {
+                fft(fb, false);
+                for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fb[i];
+            }
+            fft(fa, true);
+
+            BigInt result;
+            result.data.resize(n + m + 1, 0);
+            uint64_t carry = 0;
+            for (size_t i = 0; i < n_pow2; ++i) {
+                uint64_t val = static_cast<uint64_t>(std::round(fa[i].real())) + carry;
+                carry = val >> 16;
+                val &= 0xFFFF;
+                if (i % 2 == 0) {
+                    result.data[i / 2] |= static_cast<uint32_t>(val);
+                } else {
+                    result.data[i / 2] |= static_cast<uint32_t>(val << 16);
+                }
+            }
+            size_t idx = n_pow2 / 2;
+            while (carry > 0) {
+                if (idx >= result.data.size()) result.data.push_back(0);
+                uint64_t val = static_cast<uint64_t>(result.data[idx]) + carry;
+                result.data[idx] = static_cast<uint32_t>(val);
+                carry = val >> 32;
+                idx++;
             }
             result.trim();
             return result;
@@ -1034,7 +1114,12 @@ namespace jc {
         BigInt operator-(const BigInt& other) const { return *this + (-other); }
 
         BigInt operator*(const BigInt& other) const {
-            BigInt result = karatsuba(data.data(), data.size(), other.data.data(), other.data.size());
+            BigInt result;
+            if (data.size() >= 256 && other.data.size() >= 256) {
+                result = mul_fft(data.data(), data.size(), other.data.data(), other.data.size());
+            } else {
+                result = karatsuba(data.data(), data.size(), other.data.data(), other.data.size());
+            }
             result.negative = (negative != other.negative);
             if (result.isZero()) result.negative = false;
             return result;

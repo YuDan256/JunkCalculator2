@@ -155,21 +155,59 @@ public:
         return Decimal(mantissa * other.mantissa, exp + other.exp).truncate(g_prec);
     }
 
+    Decimal inverse() const {
+        if (mantissa.isZero()) jc2::throw_error("DivisionByZero: Decimal division by zero.");
+        
+        double d;
+        try {
+            int sz = static_cast<int>(mantissa.data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 4294967296.0 + mantissa.data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
+        if (d == 0.0) d = mantissa.isNegative() ? -1e-300 : 1e-300;
+        double guess = 1.0 / d;
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        
+        Decimal two(jc::BigInt(2), 0);
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            Decimal xy = this->mul(y).truncate(current_prec);
+            Decimal term = two.sub(xy);
+            y = y.mul(term).truncate(current_prec);
+        }
+        return y;
+    }
+
     Decimal div(const Decimal& other) const {
         if (other.mantissa.isZero()) {
             jc2::throw_error("DivisionByZero: Decimal division by zero.");
         }
         if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
         
-        int64_t len1 = mantissa.digitCount();
-        int64_t len2 = other.mantissa.digitCount();
+        if (other.mantissa.data.size() <= 2) {
+            int64_t len1 = mantissa.digitCount();
+            int64_t len2 = other.mantissa.digitCount();
+            int64_t extra_zeros = g_prec + 2 - len1 + len2;
+            if (extra_zeros < 0) extra_zeros = 0;
+            jc::BigInt m1_shifted = mantissa * pow10(extra_zeros);
+            jc::BigInt q = m1_shifted / other.mantissa;
+            return Decimal(q, exp - other.exp - extra_zeros).truncate(g_prec);
+        }
         
-        int64_t extra_zeros = g_prec + 2 - len1 + len2;
-        if (extra_zeros < 0) extra_zeros = 0;
-        
-        jc::BigInt m1_shifted = mantissa * pow10(extra_zeros);
-        jc::BigInt q = m1_shifted / other.mantissa;
-        return Decimal(q, exp - other.exp - extra_zeros).truncate(g_prec);
+        return this->mul(other.inverse()).truncate(g_prec);
     }
     
     bool eq(const Decimal& other) const {
@@ -234,18 +272,41 @@ public:
         if (mantissa.isNegative()) {
             jc2::throw_error("MathError: sqrt of negative decimal.");
         }
+        
+        double d;
+        try {
+            int sz = static_cast<int>(mantissa.data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 4294967296.0 + mantissa.data[i];
+            }
+            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
+        } catch (...) { d = 1e300; }
+        if (d <= 0.0) d = 1e-300;
+        double guess = 1.0 / std::sqrt(d);
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        Decimal y = Decimal::from_string(buf);
+        
+        Decimal three(jc::BigInt(3), 0);
         Decimal half(jc::BigInt(5), -1);
         
-        int64_t total_exp = exp + mantissa.digitCount() - 1;
-        int64_t guess_exp = total_exp / 2;
-        Decimal x(jc::BigInt(1), guess_exp);
-
-        for (int i = 0; i < 100; ++i) {
-            Decimal next_x = half.mul(x.add(this->div(x))).truncate(g_prec + 2);
-            if (next_x.eq(x)) break;
-            x = next_x;
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            Decimal y2 = y.mul(y).truncate(current_prec);
+            Decimal xy2 = this->mul(y2).truncate(current_prec);
+            Decimal term = three.sub(xy2);
+            y = y.mul(term).mul(half).truncate(current_prec);
         }
-        return x.truncate(g_prec);
+        
+        return this->mul(y).truncate(g_prec);
     }
 
     Decimal exp_val() const {
@@ -369,10 +430,45 @@ public:
     }
 
     static Decimal pi() {
-        Decimal a = arctan_series(Decimal(jc::BigInt(2), -1));
-        Decimal b = arctan_series(Decimal(jc::BigInt(1), 0).div(Decimal(jc::BigInt(239), 0)));
-        Decimal p = Decimal(jc::BigInt(16), 0).mul(a).sub(Decimal(jc::BigInt(4), 0).mul(b));
-        return p.truncate(g_prec);
+        static int cached_prec = -1;
+        static std::string cached_pi = "";
+        
+        if (g_prec <= cached_prec) {
+            return Decimal::from_string(cached_pi).truncate(g_prec);
+        }
+
+        Decimal a(jc::BigInt(1), 0);
+        Decimal b = Decimal(jc::BigInt(5), -1).sqrt(); // sqrt(0.5)
+        Decimal t(jc::BigInt(25), -2); // 0.25
+        Decimal p(jc::BigInt(1), 0);
+        Decimal half(jc::BigInt(5), -1);
+        Decimal two(jc::BigInt(2), 0);
+        
+        int target_prec = g_prec;
+        int iters = 0;
+        while ((16 << iters) < target_prec) iters++;
+        iters += 2;
+        
+        for (int i = 0; i < iters; ++i) {
+            Decimal a_next = a.add(b).mul(half).truncate(g_prec + 2);
+            Decimal b_next = a.mul(b).sqrt().truncate(g_prec + 2);
+            Decimal a_diff = a.sub(a_next);
+            Decimal t_next = t.sub(p.mul(a_diff).mul(a_diff)).truncate(g_prec + 2);
+            Decimal p_next = p.mul(two);
+            
+            a = a_next;
+            b = b_next;
+            t = t_next;
+            p = p_next;
+        }
+        
+        Decimal sum = a.add(b);
+        Decimal pi_val = sum.mul(sum).div(t.mul(Decimal(jc::BigInt(4), 0))).truncate(g_prec);
+        
+        cached_prec = g_prec;
+        cached_pi = pi_val.to_string();
+        
+        return pi_val;
     }
 
     Decimal ln_val() const {

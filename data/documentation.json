@@ -1634,9 +1634,7 @@
       "    types (lists, dicts, instances, closures) and prevent cyclic memory leaks.",
       "    ",
       "    sys.gcinfo()          Print current heap status (tracked objects, thresholds)",
-      "    sys.gc()              Force a standard GC sweep, returning freed object count",
-      "    sys.gc(true)          Aggressive sweep (clears the 'ANS' variable first to ",
-      "                          prevent it from shielding dead objects from collection)",
+      "    sys.gc()              Force a GC sweep (clears 'ANS' first), returning freed object count",
       "",
       "  CAS Configuration",
       "  ──────────────────────",
@@ -4833,8 +4831,8 @@
       ]
     },
     "gc": {
-      "signature": "sys.gc([aggressive])",
-      "desc": "Forces a Garbage Collection cycle. Returns the number of freed objects.",
+      "signature": "sys.gc()",
+      "desc": "Forces a Garbage Collection cycle (clears 'ANS' first). Returns the number of freed objects.",
       "examples": [
         "sys.gc()"
       ]

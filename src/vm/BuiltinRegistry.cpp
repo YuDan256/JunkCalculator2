@@ -2016,8 +2016,6 @@ void BuiltinRegistry::registerStatistics() {
         if (vX == 0.0) throw std::runtime_error("Math Error: Zero variance in X.");
         double c = computeCov(X, Y);
         double b = c / vX, a = computeMean(Y) - b * computeMean(X);
-        std::cout << "Linear Model: Y = " << a << " + " << b << " * X" << std::endl;
-        std::cout << "Correlation r: " << computeCorr(X, Y) << std::endl;
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
         L->vec.push_back(Value(a)); L->vec.push_back(Value(b));
@@ -2074,24 +2072,19 @@ void BuiltinRegistry::registerSystemUtils() {
         
         return Value(inst);
     }, {"prefix"});
-    regModule(sys_ns, "gc", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "gc", { 0 }, [](const std::vector<Value>&) -> Value {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();
 
         if (!VM::activeVM) return Value(0.0);
 
-        // ★ gc(true) = 激进模式：先清掉 ANS 避免它充当隐形保护伞
-        bool aggressive = (args.size() == 1 && args[0].truthy());
-        if (aggressive) {
-            VM::activeVM->setGlobal("ANS", Value::none());
-        }
+        // ★ 始终采用激进模式：先清掉 ANS 避免它充当隐形保护伞
+        VM::activeVM->setGlobal("ANS", Value::none());
 
         int freed = GcHeap::get().collectGarbage();
 
-        std::cout << "[GC] Collected " << freed << " unreachable object(s). "
-            << "Tracked: " << GcHeap::get().trackedCount() << std::endl;
         return Value::fromInt32(freed);
-        }, {"aggressive"});
+        }, {});
 
     regModule(sys_ns, "gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
         auto& heap = GcHeap::get();
@@ -4852,7 +4845,6 @@ void BuiltinRegistry::registerSystemShell() {
             helpers::setGlobalCallback("i", Value(Complex(0.0, 1.0)));
             helpers::setGlobalCallback("I", Value(Complex(0.0, 1.0)));
         }
-        std::cout << "System constants restored: PI, E, i, I" << std::endl;
         return Value::none();
         }, {});
 
@@ -4887,7 +4879,6 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("type", VM::activeVM->getBuiltinValue("type"));
             VM::activeVM->setGlobal("slice", VM::activeVM->getBuiltinValue("slice"));
         }
-        std::cout << "System types restored." << std::endl;
         return Value::none();
         }, {});
 
@@ -4904,7 +4895,6 @@ void BuiltinRegistry::registerSystemShell() {
             auto u8str = fs::weakly_canonical(dir).u8string();
             g_workspacePath = std::string(u8str.begin(), u8str.end());
         }
-        std::cout << "[System] Workspace set to: " << (g_workspacePath.empty() ? "./data" : g_workspacePath) << std::endl;
         return Value::none();
         }, {"path"});
 

@@ -127,30 +127,39 @@ namespace jc {
         }
 
         static BigInt mul_fft(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
-            std::vector<std::complex<double>> fa, fb;
             size_t res_size = (n + m) * 2;
             size_t n_pow2 = 1;
             while (n_pow2 < res_size) n_pow2 <<= 1;
 
-            fa.resize(n_pow2);
-            fb.resize(n_pow2);
-
-            for (size_t i = 0; i < n; ++i) {
-                fa[i * 2] = std::complex<double>(a[i] & 0xFFFF, 0);
-                fa[i * 2 + 1] = std::complex<double>(a[i] >> 16, 0);
-            }
-            for (size_t i = 0; i < m; ++i) {
-                fb[i * 2] = std::complex<double>(b[i] & 0xFFFF, 0);
-                fb[i * 2 + 1] = std::complex<double>(b[i] >> 16, 0);
-            }
-
-            fft(fa, false);
+            std::vector<std::complex<double>> fa(n_pow2);
+            
             if (a == b && n == m) {
+                for (size_t i = 0; i < n; ++i) {
+                    fa[i * 2] = std::complex<double>(a[i] & 0xFFFF, 0);
+                    fa[i * 2 + 1] = std::complex<double>(a[i] >> 16, 0);
+                }
+                fft(fa, false);
                 for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fa[i];
             } else {
-                fft(fb, false);
-                for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fb[i];
+                for (size_t i = 0; i < std::max(n, m); ++i) {
+                    double r0 = (i < n) ? (a[i] & 0xFFFF) : 0;
+                    double r1 = (i < n) ? (a[i] >> 16) : 0;
+                    double i0 = (i < m) ? (b[i] & 0xFFFF) : 0;
+                    double i1 = (i < m) ? (b[i] >> 16) : 0;
+                    if (i * 2 < n_pow2) fa[i * 2] = std::complex<double>(r0, i0);
+                    if (i * 2 + 1 < n_pow2) fa[i * 2 + 1] = std::complex<double>(r1, i1);
+                }
+                fft(fa, false);
+                std::vector<std::complex<double>> f_prod(n_pow2);
+                for (size_t i = 0; i < n_pow2; ++i) {
+                    size_t j = (n_pow2 - i) & (n_pow2 - 1);
+                    std::complex<double> fa_k = (fa[i] + std::conj(fa[j])) * 0.5;
+                    std::complex<double> fb_k = (fa[i] - std::conj(fa[j])) * std::complex<double>(0, -0.5);
+                    f_prod[i] = fa_k * fb_k;
+                }
+                fa = std::move(f_prod);
             }
+            
             fft(fa, true);
 
             BigInt result;
@@ -305,15 +314,9 @@ namespace jc {
                 uint64_t carry = 0;
                 for (int i = 0; i < m; ++i) {
                     uint64_t prod = q_hat * v.data[i] + carry;
-                    uint32_t p_digit = static_cast<uint32_t>(prod);
-                    carry = prod >> 32;
-                    
-                    if (u.data[j + i] < p_digit) {
-                        u.data[j + i] -= p_digit;
-                        carry++;
-                    } else {
-                        u.data[j + i] -= p_digit;
-                    }
+                    uint64_t sub = static_cast<uint64_t>(u.data[j + i]) - static_cast<uint32_t>(prod);
+                    u.data[j + i] = static_cast<uint32_t>(sub);
+                    carry = (prod >> 32) + ((sub >> 32) & 1);
                 }
                 
                 bool is_borrow = u.data[j + m] < carry;
@@ -1153,6 +1156,53 @@ namespace jc {
 
         BigInt operator/(const BigInt& other) const { return divmod(*this, other).first; }
         BigInt operator%(const BigInt& other) const { return divmod(*this, other).second; }
+
+        BigInt operator<<(int shift) const {
+            if (shift < 0) throw std::runtime_error("Math Error: Negative shift.");
+            if (isZero() || shift == 0) return *this;
+            BigInt res;
+            int limbs = shift / 32;
+            int rem = shift % 32;
+            res.data.assign(limbs, 0);
+            uint64_t carry = 0;
+            for (uint32_t d : data) {
+                uint64_t val = (static_cast<uint64_t>(d) << rem) | carry;
+                res.data.push_back(static_cast<uint32_t>(val));
+                carry = val >> 32;
+            }
+            if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+            res.negative = negative;
+            return res;
+        }
+
+        BigInt operator>>(int shift) const {
+            if (shift < 0) throw std::runtime_error("Math Error: Negative shift.");
+            if (isZero() || shift == 0) return *this;
+            int limbs = shift / 32;
+            int rem = shift % 32;
+            if (limbs >= data.size()) return BigInt(0);
+            BigInt res;
+            res.data.resize(data.size() - limbs, 0);
+            uint64_t carry = 0;
+            for (int i = static_cast<int>(data.size()) - 1; i >= limbs; --i) {
+                uint64_t val = (carry << 32) | data[i];
+                res.data[i - limbs] = static_cast<uint32_t>(val >> rem);
+                carry = val & ((1ULL << rem) - 1);
+            }
+            res.negative = negative;
+            res.trim();
+            return res;
+        }
+
+        BigInt operator<<(const BigInt& shift) const {
+            if (shift.isNegative()) throw std::runtime_error("Math Error: Negative shift.");
+            return *this << static_cast<int>(shift.toInt64());
+        }
+
+        BigInt operator>>(const BigInt& shift) const {
+            if (shift.isNegative()) throw std::runtime_error("Math Error: Negative shift.");
+            return *this >> static_cast<int>(shift.toInt64());
+        }
 
         static BigInt mathMod(const BigInt& a, const BigInt& m) {
             if (m.isZero()) throw std::runtime_error("Math Error: Modulo by zero.");

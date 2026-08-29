@@ -10,134 +10,14 @@
 #include <vector>
 #include "GeneratedHelpText.h"
 #include "../frontend/Highlight.h"
+#include "../utils/json/Json.h"
 
 namespace jc {
     inline std::map<std::string, std::string> DynamicHelp;
 
     class HelpRouter {
     private:
-        struct NativeJson {
-            enum Type { N_NULL, N_STRING, N_ARRAY, N_OBJECT };
-            Type type = N_NULL;
-            std::string str;
-            std::vector<NativeJson> arr;
-            std::map<std::string, NativeJson> obj;
-
-            bool isNull() const { return type == N_NULL; }
-            bool isString() const { return type == N_STRING; }
-            bool isArray() const { return type == N_ARRAY; }
-            bool isObject() const { return type == N_OBJECT; }
-        };
-
-        class NativeJsonParser {
-            std::string s;
-            size_t pos = 0;
-
-            void skipWS() {
-                while (pos < s.size() && std::isspace(static_cast<unsigned char>(s[pos]))) pos++;
-            }
-
-            std::string parseString() {
-                std::string res;
-                pos++; // skip "
-                while (pos < s.size() && s[pos] != '"') {
-                    if (s[pos] == '\\' && pos + 1 < s.size()) {
-                        pos++;
-                        if (s[pos] == 'n') res += '\n';
-                        else if (s[pos] == 't') res += '\t';
-                        else if (s[pos] == 'r') res += '\r';
-                        else if (s[pos] == '"') res += '"';
-                        else if (s[pos] == '\\') res += '\\';
-                        else res += s[pos];
-                    } else {
-                        res += s[pos];
-                    }
-                    pos++;
-                }
-                if (pos < s.size()) pos++; // skip "
-                return res;
-            }
-
-            NativeJson parseArray() {
-                NativeJson node;
-                node.type = NativeJson::N_ARRAY;
-                pos++; // skip [
-                skipWS();
-                if (pos < s.size() && s[pos] == ']') {
-                    pos++;
-                    return node;
-                }
-                while (pos < s.size()) {
-                    node.arr.push_back(parseValue());
-                    skipWS();
-                    if (pos < s.size() && s[pos] == ',') {
-                        pos++;
-                        skipWS();
-                    } else if (pos < s.size() && s[pos] == ']') {
-                        pos++;
-                        break;
-                    } else {
-                        break; // error
-                    }
-                }
-                return node;
-            }
-
-            NativeJson parseObject() {
-                NativeJson node;
-                node.type = NativeJson::N_OBJECT;
-                pos++; // skip {
-                skipWS();
-                if (pos < s.size() && s[pos] == '}') {
-                    pos++;
-                    return node;
-                }
-                while (pos < s.size()) {
-                    skipWS();
-                    if (pos >= s.size() || s[pos] != '"') break;
-                    std::string key = parseString();
-                    skipWS();
-                    if (pos < s.size() && s[pos] == ':') pos++;
-                    skipWS();
-                    node.obj[key] = parseValue();
-                    skipWS();
-                    if (pos < s.size() && s[pos] == ',') {
-                        pos++;
-                        skipWS();
-                    } else if (pos < s.size() && s[pos] == '}') {
-                        pos++;
-                        break;
-                    } else {
-                        break; // error
-                    }
-                }
-                return node;
-            }
-
-        public:
-            NativeJsonParser(const std::string& str) : s(str), pos(0) {}
-
-            NativeJson parseValue() {
-                skipWS();
-                if (pos >= s.size()) return NativeJson();
-                if (s[pos] == '"') {
-                    NativeJson node;
-                    node.type = NativeJson::N_STRING;
-                    node.str = parseString();
-                    return node;
-                }
-                if (s[pos] == '[') return parseArray();
-                if (s[pos] == '{') return parseObject();
-                
-                // skip other values like true, false, numbers, null
-                while (pos < s.size() && !std::isspace(static_cast<unsigned char>(s[pos])) && s[pos] != ',' && s[pos] != ']' && s[pos] != '}') {
-                    pos++;
-                }
-                return NativeJson();
-            }
-        };
-
-        static inline NativeJson helpAst;
+        static inline Json helpAst;
         static inline bool initialized = false;
 
         static void init() {
@@ -162,8 +42,7 @@ namespace jc {
             }
             try {
                 // 将极其干净的字符串喂给你的 Parser
-                NativeJsonParser parser(jsonStr);
-                helpAst = parser.parseValue();
+                helpAst = Json::parse(jsonStr);
             }
             catch (const std::exception& e) {
                 std::cerr << "\n[HelpRouter] Failed to parse documentation.json: " << e.what() << "\n";
@@ -185,31 +64,31 @@ namespace jc {
             return prevCol[len2];
         }
 
-        static bool printEntry(const NativeJson& entry) {
+        static bool printEntry(const Json& entry) {
             if (!entry.isObject()) return false;
             std::cout << "\n";
-            auto sigIt = entry.obj.find("signature");
-            if (sigIt != entry.obj.end() && sigIt->second.isString()) {
-                std::cout << col(Ansi::BRIGHT_GREEN) << sigIt->second.str << col(Ansi::RESET) << "\n";
+            auto sigIt = entry.objVal.find("signature");
+            if (sigIt != entry.objVal.end() && sigIt->second.isString()) {
+                std::cout << col(Ansi::BRIGHT_GREEN) << sigIt->second.strVal << col(Ansi::RESET) << "\n";
             }
-            auto descIt = entry.obj.find("desc");
-            if (descIt != entry.obj.end()) {
+            auto descIt = entry.objVal.find("desc");
+            if (descIt != entry.objVal.end()) {
                 if (descIt->second.isString()) {
-                    std::cout << "  " << descIt->second.str << "\n";
+                    std::cout << "  " << descIt->second.strVal << "\n";
                 } else if (descIt->second.isArray()) {
-                    for (const auto& line : descIt->second.arr) {
+                    for (const auto& line : descIt->second.arrVal) {
                         if (line.isString()) {
-                            std::cout << "  " << line.str << "\n";
+                            std::cout << "  " << line.strVal << "\n";
                         }
                     }
                 }
             }
-            auto exIt = entry.obj.find("examples");
-            if (exIt != entry.obj.end() && exIt->second.isArray()) {
+            auto exIt = entry.objVal.find("examples");
+            if (exIt != entry.objVal.end() && exIt->second.isArray()) {
                 std::cout << "\n  Examples:\n";
-                for (const auto& ex : exIt->second.arr) {
+                for (const auto& ex : exIt->second.arrVal) {
                     if (ex.isString()) {
-                        std::cout << col(Ansi::BRIGHT_YELLOW) << "    " << ex.str << col(Ansi::RESET) << "\n";
+                        std::cout << col(Ansi::BRIGHT_YELLOW) << "    " << ex.strVal << col(Ansi::RESET) << "\n";
                     }
                 }
             }
@@ -245,7 +124,7 @@ namespace jc {
                 return;
             }
 
-            const auto& root = helpAst.obj;
+            const auto& root = helpAst.objVal;
 
             std::string lowerKey = key;
             std::transform(lowerKey.begin(), lowerKey.end(), lowerKey.begin(),
@@ -255,17 +134,17 @@ namespace jc {
             if (!forceFunction) {
                 auto topicsIt = root.find("topics");
                 if (topicsIt != root.end() && topicsIt->second.isObject()) {
-                    const auto& topics = topicsIt->second.obj;
+                    const auto& topics = topicsIt->second.objVal;
                     auto topicIt = topics.find(lowerKey);
                     if (topicIt != topics.end()) {
                         const auto& topicVal = topicIt->second;
                         if (topicVal.isString()) {
-                            std::cout << "\n" << topicVal.str << std::endl;
+                            std::cout << "\n" << topicVal.strVal << std::endl;
                         } else if (topicVal.isArray()) {
                             std::cout << "\n";
-                            for (const auto& line : topicVal.arr) {
+                            for (const auto& line : topicVal.arrVal) {
                                 if (line.isString()) {
-                                    std::cout << line.str << "\n";
+                                    std::cout << line.strVal << "\n";
                                 }
                             }
                             std::cout << std::endl;
@@ -274,7 +153,7 @@ namespace jc {
                         // Check if a function with the same name exists to provide a hint
                         auto funcsIt = root.find("functions");
                         if (funcsIt != root.end() && funcsIt->second.isObject()) {
-                            if (funcsIt->second.obj.count(key)) {
+                            if (funcsIt->second.objVal.count(key)) {
                                 std::cout << col(Ansi::BRIGHT_YELLOW) << "  Tip: '" << key << "' is also a built-in function. Type '/help " << key << "()' to see its documentation.\n" << col(Ansi::RESET) << std::endl;
                             }
                         }
@@ -286,19 +165,19 @@ namespace jc {
             // 3. Search in "functions" (Exact match or alias)
             auto funcsIt = root.find("functions");
             if (funcsIt != root.end() && funcsIt->second.isObject()) {
-                const auto& funcs = funcsIt->second.obj;
+                const auto& funcs = funcsIt->second.objVal;
                 
-                const NativeJson* targetFn = nullptr;
+                const Json* targetFn = nullptr;
                 auto fnIt = funcs.find(key);
                 if (fnIt != funcs.end()) {
                     targetFn = &fnIt->second;
                 } else {
                     for (const auto& [k, v] : funcs) {
                         if (v.isObject()) {
-                            auto aliasesIt = v.obj.find("aliases");
-                            if (aliasesIt != v.obj.end() && aliasesIt->second.isArray()) {
-                                for (const auto& alias : aliasesIt->second.arr) {
-                                    if (alias.isString() && alias.str == key) {
+                            auto aliasesIt = v.objVal.find("aliases");
+                            if (aliasesIt != v.objVal.end() && aliasesIt->second.isArray()) {
+                                for (const auto& alias : aliasesIt->second.arrVal) {
+                                    if (alias.isString() && alias.strVal == key) {
                                         targetFn = &v;
                                         break;
                                     }
@@ -315,7 +194,7 @@ namespace jc {
             // 3.5 Search in "keywords" (case-insensitive)
             auto kwsIt = root.find("keywords");
             if (kwsIt != root.end() && kwsIt->second.isObject()) {
-                const auto& kws = kwsIt->second.obj;
+                const auto& kws = kwsIt->second.objVal;
                 auto kwIt = kws.find(lowerKey);
                 if (kwIt != kws.end()) {
                     if (printEntry(kwIt->second)) return;
@@ -325,16 +204,16 @@ namespace jc {
             // 4. Did you mean? (Fuzzy matching)
             std::vector<std::pair<std::string, std::string>> candidates;
             if (funcsIt != root.end() && funcsIt->second.isObject()) {
-                for (const auto& [funcName, v] : funcsIt->second.obj) {
+                for (const auto& [funcName, v] : funcsIt->second.objVal) {
                     if (v.isObject()) {
                         std::string desc = "";
-                        auto descIt = v.obj.find("desc");
-                        if (descIt != v.obj.end()) {
+                        auto descIt = v.objVal.find("desc");
+                        if (descIt != v.objVal.end()) {
                             if (descIt->second.isString()) {
-                                desc = descIt->second.str;
-                            } else if (descIt->second.isArray() && !descIt->second.arr.empty()) {
-                                if (descIt->second.arr[0].isString()) {
-                                    desc = descIt->second.arr[0].str;
+                                desc = descIt->second.strVal;
+                            } else if (descIt->second.isArray() && !descIt->second.arrVal.empty()) {
+                                if (descIt->second.arrVal[0].isString()) {
+                                    desc = descIt->second.arrVal[0].strVal;
                                 }
                             }
                         }
@@ -355,16 +234,16 @@ namespace jc {
             }
 
             if (kwsIt != root.end() && kwsIt->second.isObject()) {
-                for (const auto& [kwName, v] : kwsIt->second.obj) {
+                for (const auto& [kwName, v] : kwsIt->second.objVal) {
                     if (v.isObject()) {
                         std::string desc = "";
-                        auto descIt = v.obj.find("desc");
-                        if (descIt != v.obj.end()) {
+                        auto descIt = v.objVal.find("desc");
+                        if (descIt != v.objVal.end()) {
                             if (descIt->second.isString()) {
-                                desc = descIt->second.str;
-                            } else if (descIt->second.isArray() && !descIt->second.arr.empty()) {
-                                if (descIt->second.arr[0].isString()) {
-                                    desc = descIt->second.arr[0].str;
+                                desc = descIt->second.strVal;
+                            } else if (descIt->second.isArray() && !descIt->second.arrVal.empty()) {
+                                if (descIt->second.arrVal[0].isString()) {
+                                    desc = descIt->second.arrVal[0].strVal;
                                 }
                             }
                         }
@@ -433,29 +312,29 @@ namespace jc {
         static void addFunctionHelp(const std::string& name, const std::string& sig, const std::string& desc, const std::string& ex) {
             init();
             if (helpAst.isNull()) {
-                helpAst.type = NativeJson::N_OBJECT;
+                helpAst.type = JsonType::Object;
             }
-            if (helpAst.obj.find("functions") == helpAst.obj.end()) {
-                NativeJson funcs; funcs.type = NativeJson::N_OBJECT;
-                helpAst.obj["functions"] = funcs;
+            if (helpAst.objVal.find("functions") == helpAst.objVal.end()) {
+                Json funcs; funcs.type = JsonType::Object;
+                helpAst.objVal["functions"] = funcs;
             }
-            NativeJson fnNode;
-            fnNode.type = NativeJson::N_OBJECT;
+            Json fnNode;
+            fnNode.type = JsonType::Object;
             
-            NativeJson sigNode; sigNode.type = NativeJson::N_STRING; sigNode.str = sig;
-            fnNode.obj["signature"] = sigNode;
+            Json sigNode; sigNode.type = JsonType::String; sigNode.strVal = sig;
+            fnNode.objVal["signature"] = sigNode;
             
-            NativeJson descNode; descNode.type = NativeJson::N_STRING; descNode.str = desc;
-            fnNode.obj["desc"] = descNode;
+            Json descNode; descNode.type = JsonType::String; descNode.strVal = desc;
+            fnNode.objVal["desc"] = descNode;
             
             if (!ex.empty()) {
-                NativeJson exArr; exArr.type = NativeJson::N_ARRAY;
-                NativeJson exNode; exNode.type = NativeJson::N_STRING; exNode.str = ex;
-                exArr.arr.push_back(exNode);
-                fnNode.obj["examples"] = exArr;
+                Json exArr; exArr.type = JsonType::Array;
+                Json exNode; exNode.type = JsonType::String; exNode.strVal = ex;
+                exArr.arrVal.push_back(exNode);
+                fnNode.objVal["examples"] = exArr;
             }
             
-            helpAst.obj["functions"].obj[name] = fnNode;
+            helpAst.objVal["functions"].objVal[name] = fnNode;
         }
     };
 } // namespace jc

@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <sstream>
+#include <unordered_set>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -406,92 +407,209 @@ namespace lsp {
                     SemanticAnalyzer analyzer(doc, tokens);
                     analyzer.analyze(ast.get());
                     
-                    auto visibleSymbols = analyzer.getVisibleSymbolsAt(pos);
-                    
                     std::vector<Json> items;
                     
-                    // 1. 添加当前作用域可见的符号
-                    for (const auto& sym : visibleSymbols) {
-                        Json item;
-                        item.type = JsonType::Object;
-                        item["label"] = Json(sym->name);
-                        
-                        int kind = 1; // Text
-                        if (sym->kind == SymbolKind::Function) kind = 3; // Function
-                        else if (sym->kind == SymbolKind::Class) kind = 7; // Class
-                        else if (sym->kind == SymbolKind::Variable) kind = 6; // Variable
-                        else if (sym->kind == SymbolKind::Parameter) kind = 6; // Variable
-                        else if (sym->kind == SymbolKind::Property) kind = 10; // Property
-                        else if (sym->kind == SymbolKind::Namespace) kind = 9; // Module
-                        
-                        item["kind"] = Json(kind);
-                        
-                        if (!sym->typeHint.empty()) {
-                            item["detail"] = Json(sym->typeHint);
-                        }
-                        
-                        if (!sym->docstring.empty()) {
-                            Json docJson;
-                            docJson.type = JsonType::Object;
-                            docJson["kind"] = Json("markdown");
-                            docJson["value"] = Json(sym->docstring);
-                            item["documentation"] = docJson;
-                        }
-                        
-                        items.push_back(item);
+                    // ★ 上下文感知：检测是否是属性访问 (DotAccess)
+                    int offset = doc->positionToOffset(pos);
+                    bool isDotAccess = false;
+                    std::string objectName = "";
+                    
+                    int tempOffset = offset - 1;
+                    while (tempOffset >= 0 && std::isspace(static_cast<unsigned char>(doc->content[tempOffset]))) tempOffset--;
+                    
+                    // 如果光标前是一个标识符，再往前看是不是点
+                    int wordStart = tempOffset;
+                    while (wordStart >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[wordStart])) || doc->content[wordStart] == '_')) {
+                        wordStart--;
                     }
                     
-                    // 2. 添加 JC2 语言关键字 & 内置函数 (从 HelpRouter 获取)
+                    int dotCheckOffset = wordStart;
+                    while (dotCheckOffset >= 0 && std::isspace(static_cast<unsigned char>(doc->content[dotCheckOffset]))) dotCheckOffset--;
+                    
+                    if (dotCheckOffset >= 0 && doc->content[dotCheckOffset] == '.') {
+                        isDotAccess = true;
+                        int objEnd = dotCheckOffset - 1;
+                        while (objEnd >= 0 && std::isspace(static_cast<unsigned char>(doc->content[objEnd]))) objEnd--;
+                        int objStart = objEnd;
+                        while (objStart >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[objStart])) || doc->content[objStart] == '_')) {
+                            objStart--;
+                        }
+                        if (objStart < objEnd) {
+                            objectName = doc->content.substr(objStart + 1, objEnd - objStart);
+                        }
+                    } else if (tempOffset >= 0 && doc->content[tempOffset] == '.') {
+                        isDotAccess = true;
+                        int objEnd = tempOffset - 1;
+                        while (objEnd >= 0 && std::isspace(static_cast<unsigned char>(doc->content[objEnd]))) objEnd--;
+                        int objStart = objEnd;
+                        while (objStart >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[objStart])) || doc->content[objStart] == '_')) {
+                            objStart--;
+                        }
+                        if (objStart < objEnd) {
+                            objectName = doc->content.substr(objStart + 1, objEnd - objStart);
+                        }
+                    }
+
                     jc::HelpRouter::init();
                     const Json& helpAst = jc::HelpRouter::helpAst;
-                    
-                    if (helpAst.isObject() && helpAst.has("keywords")) {
-                        for (const auto& pair : helpAst["keywords"].objVal) {
-                            Json item;
-                            item.type = JsonType::Object;
-                            item["label"] = Json(pair.first);
-                            item["kind"] = Json(14); // Keyword
-                            items.push_back(item);
+
+                    if (isDotAccess) {
+                        // 属性访问补全
+                        std::string targetType = "";
+                        if (!objectName.empty()) {
+                            auto sym = analyzer.resolveSymbolAt(objectName, pos);
+                            if (sym) {
+                                targetType = sym->inferredType;
+                                if (targetType.empty() && !sym->typeHint.empty()) targetType = sym->typeHint;
+                            }
                         }
-                    }
-                    if (helpAst.isObject() && helpAst.has("functions")) {
-                        const Json& funcs = helpAst["functions"];
-                        for (const auto& pair : funcs.objVal) {
-                            const std::string& funcName = pair.first;
-                            const Json& funcData = pair.second;
-                            
-                            // 忽略 dunder methods (如 __add__)，除非用户主动输入
-                            if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") {
-                                continue;
+                        
+                        // 根据推导出的类型，过滤内置方法
+                        if (helpAst.isObject() && helpAst.has("functions")) {
+                            const Json& funcs = helpAst["functions"];
+                            for (const auto& pair : funcs.objVal) {
+                                const std::string& funcName = pair.first;
+                                const Json& funcData = pair.second;
+                                
+                                if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") continue;
+                                
+                                bool matchType = false;
+                                if (funcData.has("signature")) {
+                                    std::string sig = funcData["signature"].strVal;
+                                    if (targetType == "matrix" && (sig.find("A.") == 0 || sig.find("M.") == 0 || sig.find("X.") == 0)) matchType = true;
+                                    else if ((targetType == "list" || targetType == "array") && (sig.find("v.") == 0 || sig.find("L.") == 0 || sig.find("X.") == 0)) matchType = true;
+                                    else if (targetType == "string" && sig.find("s.") == 0) matchType = true;
+                                    else if (targetType == "dict" && (sig.find("d.") == 0 || sig.find("d1.") == 0)) matchType = true;
+                                    else if (targetType == "set" && (sig.find("a.") == 0 || sig.find("s.") == 0)) matchType = true;
+                                    // 如果无法推导类型，或者类型是 any，则显示所有可能是方法的函数 (包含 '.')
+                                    else if (targetType.empty() && sig.find('.') != std::string::npos && sig.find('(') != std::string::npos && sig.find('.') < sig.find('(')) matchType = true;
+                                }
+                                
+                                if (matchType) {
+                                    Json item;
+                                    item.type = JsonType::Object;
+                                    item["label"] = Json(funcName);
+                                    item["kind"] = Json(2); // Method
+                                    if (funcData.has("signature")) item["detail"] = Json(funcData["signature"].strVal);
+                                    if (funcData.has("desc")) {
+                                        Json docJson;
+                                        docJson.type = JsonType::Object;
+                                        docJson["kind"] = Json("markdown");
+                                        std::string descStr;
+                                        if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
+                                        else if (funcData["desc"].isArray()) {
+                                            for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
+                                        }
+                                        docJson["value"] = Json(descStr);
+                                        item["documentation"] = docJson;
+                                    }
+                                    items.push_back(item);
+                                }
                             }
-                            
+                        }
+                    } else {
+                        // 普通全局/局部补全
+                        auto visibleSymbols = analyzer.getVisibleSymbolsAt(pos);
+                        
+                        std::unordered_set<std::string> visibleNames;
+                        // 1. 添加当前作用域可见的符号
+                        for (const auto& sym : visibleSymbols) {
+                            visibleNames.insert(sym->name);
                             Json item;
                             item.type = JsonType::Object;
-                            item["label"] = Json(funcName);
-                            item["kind"] = Json(3); // Function
+                            item["label"] = Json(sym->name);
                             
-                            if (funcData.has("signature")) {
-                                item["detail"] = Json(funcData["signature"].strVal);
+                            int kind = 1; // Text
+                            if (sym->kind == SymbolKind::Function) kind = 3; // Function
+                            else if (sym->kind == SymbolKind::Class) kind = 7; // Class
+                            else if (sym->kind == SymbolKind::Variable) kind = 6; // Variable
+                            else if (sym->kind == SymbolKind::Parameter) kind = 6; // Variable
+                            else if (sym->kind == SymbolKind::Property) kind = 10; // Property
+                            else if (sym->kind == SymbolKind::Namespace) kind = 9; // Module
+                            
+                            item["kind"] = Json(kind);
+                            
+                            if (!sym->typeHint.empty()) {
+                                item["detail"] = Json(sym->typeHint);
+                            } else if (!sym->inferredType.empty()) {
+                                item["detail"] = Json(sym->inferredType);
                             }
                             
-                            if (funcData.has("desc")) {
+                            if (!sym->docstring.empty()) {
                                 Json docJson;
                                 docJson.type = JsonType::Object;
                                 docJson["kind"] = Json("markdown");
-                                std::string descStr;
-                                if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
-                                else if (funcData["desc"].isArray()) {
-                                    for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
-                                }
-                                if (funcData.has("examples") && funcData["examples"].isArray()) {
-                                    descStr += "\n\n**Examples:**\n```jc2\n";
-                                    for (const auto& ex : funcData["examples"].arrVal) descStr += ex.strVal + "\n";
-                                    descStr += "```";
-                                }
-                                docJson["value"] = Json(descStr);
+                                docJson["value"] = Json(sym->docstring);
                                 item["documentation"] = docJson;
                             }
+                            
                             items.push_back(item);
+                        }
+                        
+                        // 2. 添加 JC2 语言关键字 & 内置函数 (从 HelpRouter 获取)
+                        if (helpAst.isObject() && helpAst.has("keywords")) {
+                            for (const auto& pair : helpAst["keywords"].objVal) {
+                                Json item;
+                                item.type = JsonType::Object;
+                                item["label"] = Json(pair.first);
+                                item["kind"] = Json(14); // Keyword
+                                items.push_back(item);
+                            }
+                        }
+                        if (helpAst.isObject() && helpAst.has("functions")) {
+                            const Json& funcs = helpAst["functions"];
+                            for (const auto& pair : funcs.objVal) {
+                                const std::string& funcName = pair.first;
+                                const Json& funcData = pair.second;
+                                
+                                // 忽略 dunder methods (如 __add__)，除非用户主动输入
+                                if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") {
+                                    continue;
+                                }
+                                
+                                // 如果该内置函数已被用户局部变量覆盖，则不再提示内置函数
+                                if (visibleNames.count(funcName)) {
+                                    continue;
+                                }
+                                
+                                // 在普通补全中，过滤掉纯方法（签名以 "X." 开头的）以保持列表干净
+                                bool isPureMethod = false;
+                                if (funcData.has("signature")) {
+                                    std::string sig = funcData["signature"].strVal;
+                                    if (sig.find('.') != std::string::npos && sig.find('(') != std::string::npos && sig.find('.') < sig.find('(')) {
+                                        isPureMethod = true;
+                                    }
+                                }
+                                if (isPureMethod) continue;
+                                
+                                Json item;
+                                item.type = JsonType::Object;
+                                item["label"] = Json(funcName);
+                                item["kind"] = Json(3); // Function
+                                
+                                if (funcData.has("signature")) {
+                                    item["detail"] = Json(funcData["signature"].strVal);
+                                }
+                                
+                                if (funcData.has("desc")) {
+                                    Json docJson;
+                                    docJson.type = JsonType::Object;
+                                    docJson["kind"] = Json("markdown");
+                                    std::string descStr;
+                                    if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
+                                    else if (funcData["desc"].isArray()) {
+                                        for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
+                                    }
+                                    if (funcData.has("examples") && funcData["examples"].isArray()) {
+                                        descStr += "\n\n**Examples:**\n```jc2\n";
+                                        for (const auto& ex : funcData["examples"].arrVal) descStr += ex.strVal + "\n";
+                                        descStr += "```";
+                                    }
+                                    docJson["value"] = Json(descStr);
+                                    item["documentation"] = docJson;
+                                }
+                                items.push_back(item);
+                            }
                         }
                     }
                     
@@ -721,7 +839,11 @@ namespace lsp {
             // 2. 语法分析 (开启 LSP 容错模式)
             Parser parser(parserTokens, uri);
             parser.isLspMode = true;
-            parser.parse(); // 此时不需要保存 AST，只需让 Parser 收集 diagnostics
+            auto ast = parser.parse();
+
+            // 3. 语义分析 (收集覆盖内置变量等警告)
+            SemanticAnalyzer analyzer(doc, tokens);
+            analyzer.analyze(ast.get());
 
             // 收集语法错误
             for (const auto& err : parser.diagnostics) {
@@ -737,6 +859,22 @@ namespace lsp {
                 diag["message"] = Json(err.message);
                 
                 diagnosticsJson.push_back(diag);
+            }
+
+            // 收集语义警告
+            for (const auto& diag : analyzer.diagnostics) {
+                Json d;
+                d.type = JsonType::Object;
+                
+                Range range;
+                range.start = doc->offsetToPosition(diag.startPos);
+                range.end = doc->offsetToPosition(diag.endPos > diag.startPos ? diag.endPos : diag.startPos + 1);
+                
+                d["range"] = range.toJson();
+                d["severity"] = Json(diag.severity);
+                d["message"] = Json(diag.message);
+                
+                diagnosticsJson.push_back(d);
             }
 
         } catch (...) {

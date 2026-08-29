@@ -1,7 +1,16 @@
 #include "SemanticAnalyzer.h"
+#include "../../vm/HelpRouter.h"
+#include <unordered_set>
 
 namespace jc {
 namespace lsp {
+
+    static bool isPosInRange(const Position& pos, const Range& range) {
+        if (pos.line < range.start.line || pos.line > range.end.line) return false;
+        if (pos.line == range.start.line && pos.character < range.start.character) return false;
+        if (pos.line == range.end.line && pos.character >= range.end.character) return false;
+        return true;
+    }
 
     SemanticAnalyzer::SemanticAnalyzer(Document* doc, const std::vector<Token>& tokens)
         : doc(doc), tokens(tokens) {
@@ -38,7 +47,7 @@ namespace lsp {
         }
     }
 
-    void SemanticAnalyzer::declareSymbol(const std::string& name, SymbolKind kind, int startPos, int endPos, const std::string& typeHint, bool isLocal) {
+    void SemanticAnalyzer::declareSymbol(const std::string& name, SymbolKind kind, int startPos, int endPos, const std::string& typeHint, bool isLocal, const std::string& inferredType) {
         if (!currentScope) return;
         
         Scope* targetScope = currentScope;
@@ -56,10 +65,31 @@ namespace lsp {
         sym->definitionRange.start = doc->offsetToPosition(startPos);
         sym->definitionRange.end = doc->offsetToPosition(endPos);
         sym->typeHint = typeHint;
+        sym->inferredType = inferredType;
         sym->docstring = extractDocstring(startPos);
         
         targetScope->symbols[name] = sym;
         references.push_back({sym->definitionRange, sym});
+
+        // 检查是否覆盖了内置变量/类型/函数，给出警告
+        if (name != "_" && name.find("<") != 0) {
+            bool isBuiltin = false;
+            jc::HelpRouter::init();
+            if (jc::HelpRouter::helpAst.isObject() && jc::HelpRouter::helpAst.has("functions")) {
+                if (jc::HelpRouter::helpAst["functions"].has(name)) isBuiltin = true;
+            }
+            if (!isBuiltin) {
+                static const std::unordered_set<std::string> builtins = {
+                    "int", "double", "string", "bool", "list", "dict", "set", "fraction", "complex",
+                    "realmatrix", "complexmatrix", "symmatrix", "function", "class_type", "instance",
+                    "namespace_type", "type", "slice", "PI", "E", "i", "I", "ANS"
+                };
+                if (builtins.count(name)) isBuiltin = true;
+            }
+            if (isBuiltin) {
+                diagnostics.push_back({"Warning: Shadowing built-in symbol '" + name + "'.", startPos, endPos, 2});
+            }
+        }
     }
 
     void SemanticAnalyzer::declarePattern(Pattern* pat, bool isLocal, bool isConst) {
@@ -132,6 +162,52 @@ namespace lsp {
         return nullptr;
     }
 
+    std::shared_ptr<Symbol> SemanticAnalyzer::resolveSymbolAt(const std::string& name, const Position& pos) {
+        Scope* scope = getScopeAt(globalScope.get(), pos);
+        if (!scope && isPosInRange(pos, globalScope->scopeRange)) {
+            scope = globalScope.get();
+        }
+        while (scope) {
+            auto it = scope->symbols.find(name);
+            if (it != scope->symbols.end()) {
+                return it->second;
+            }
+            scope = scope->parent;
+        }
+        return nullptr;
+    }
+
+    std::string SemanticAnalyzer::inferType(Expr* expr) {
+        if (!expr) return "";
+        if (dynamic_cast<MatrixNode*>(expr)) return "matrix";
+        if (dynamic_cast<ListNode*>(expr) || dynamic_cast<ListCompExpr*>(expr)) return "list";
+        if (dynamic_cast<DictLiteral*>(expr) || dynamic_cast<DictCompExpr*>(expr)) return "dict";
+        if (dynamic_cast<SetLiteral*>(expr) || dynamic_cast<SetCompExpr*>(expr)) return "set";
+        if (dynamic_cast<LambdaExpr*>(expr)) return "function";
+        if (dynamic_cast<ClassDefExpr*>(expr)) return "class";
+        if (auto* lit = dynamic_cast<Literal*>(expr)) {
+            if (lit->isString) return "string";
+            if (lit->isImaginary) return "complex";
+            if (lit->isKeyword) {
+                if (lit->value == "true" || lit->value == "false") return "bool";
+                if (lit->value == "none") return "none_type";
+            }
+            if (lit->value.find('.') != std::string::npos || lit->value.find('e') != std::string::npos || lit->value.find('E') != std::string::npos) return "double";
+            return "int";
+        }
+        if (auto* call = dynamic_cast<Call*>(expr)) {
+            // 简单的构造函数推导
+            if (call->callee.lexeme == "matrix" || call->callee.lexeme == "symmatrix" || call->callee.lexeme == "ones" || call->callee.lexeme == "zeros" || call->callee.lexeme == "id") return "matrix";
+            if (call->callee.lexeme == "list") return "list";
+            if (call->callee.lexeme == "dict") return "dict";
+            if (call->callee.lexeme == "set") return "set";
+            if (call->callee.lexeme == "complex") return "complex";
+            if (call->callee.lexeme == "frac" || call->callee.lexeme == "toFrac") return "fraction";
+            if (call->callee.lexeme == "string" || call->callee.lexeme == "str") return "string";
+        }
+        return "";
+    }
+
     std::string SemanticAnalyzer::extractDocstring(int nodeStartPos) {
         // 往前找紧挨着的 COMMENT token
         std::string docstring = "";
@@ -156,13 +232,6 @@ namespace lsp {
         if (first == std::string::npos) return "";
         size_t last = docstring.find_last_not_of(" \t\r\n");
         return docstring.substr(first, (last - first + 1));
-    }
-
-    static bool isPosInRange(const Position& pos, const Range& range) {
-        if (pos.line < range.start.line || pos.line > range.end.line) return false;
-        if (pos.line == range.start.line && pos.character < range.start.character) return false;
-        if (pos.line == range.end.line && pos.character >= range.end.character) return false;
-        return true;
     }
 
     std::shared_ptr<Symbol> SemanticAnalyzer::getSymbolAt(const Position& pos) {
@@ -289,7 +358,10 @@ namespace lsp {
             return;
         }
         
-        declareSymbol(expr->name.lexeme, kind, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), "", expr->isLocal || expr->isState || expr->isConst);
+        std::string inferred = inferType(expr->value.get());
+        std::string hint = expr->typeHint ? "any" : ""; // 简化处理，实际应提取 typeHint 的文本
+        
+        declareSymbol(expr->name.lexeme, kind, expr->name.position, expr->name.position + static_cast<int>(expr->name.lexeme.length()), hint, expr->isLocal || expr->isState || expr->isConst, inferred);
     }
 
     void SemanticAnalyzer::visitVariable(Variable* expr) {

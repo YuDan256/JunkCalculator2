@@ -22,11 +22,19 @@ namespace lsp {
         Namespace
     };
 
+    struct SemanticDiagnostic {
+        std::string message;
+        int startPos;
+        int endPos;
+        int severity; // 1 = Error, 2 = Warning, 3 = Info, 4 = Hint
+    };
+
     struct Symbol {
         std::string name;
         SymbolKind kind;
         Range definitionRange;
         std::string typeHint;
+        std::string inferredType; // ★ 新增：推导类型
         std::string docstring;
     };
 
@@ -55,6 +63,11 @@ namespace lsp {
         // 获取文档符号树（用于大纲视图）
         std::vector<DocumentSymbol> getDocumentSymbols();
 
+        // 在指定位置解析符号
+        std::shared_ptr<Symbol> resolveSymbolAt(const std::string& name, const Position& pos);
+
+        std::vector<SemanticDiagnostic> diagnostics;
+
     private:
         void buildDocumentSymbols(Scope* scope, std::vector<DocumentSymbol>& outSymbols);
         Scope* getScopeAt(Scope* scope, const Position& pos);
@@ -74,10 +87,12 @@ namespace lsp {
         // 作用域管理
         void enterScope(const Range& range, ScopeKind kind = ScopeKind::Block);
         void leaveScope();
-        void declareSymbol(const std::string& name, SymbolKind kind, int startPos, int endPos, const std::string& typeHint = "", bool isLocal = true);
+        void declareSymbol(const std::string& name, SymbolKind kind, int startPos, int endPos, const std::string& typeHint = "", bool isLocal = true, const std::string& inferredType = "");
         std::shared_ptr<Symbol> resolveSymbol(const std::string& name);
         void declarePattern(Pattern* pat, bool isLocal, bool isConst);
         void hoistBlock(Block* expr);
+        
+        std::string inferType(Expr* expr); // ★ 新增：类型推导
 
         // 提取文档注释
         std::string extractDocstring(int nodeStartPos);

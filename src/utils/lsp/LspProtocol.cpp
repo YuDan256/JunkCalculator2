@@ -39,6 +39,30 @@ namespace lsp {
         return j;
     }
 
+    Json TextEdit::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        j["range"] = range.toJson();
+        j["newText"] = Json(newText);
+        return j;
+    }
+
+    Json DocumentSymbol::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        j["name"] = Json(name);
+        if (!detail.empty()) j["detail"] = Json(detail);
+        j["kind"] = Json(kind);
+        j["range"] = range.toJson();
+        j["selectionRange"] = selectionRange.toJson();
+        if (!children.empty()) {
+            std::vector<Json> arr;
+            for (const auto& c : children) arr.push_back(c.toJson());
+            j["children"] = Json(arr);
+        }
+        return j;
+    }
+
     // ========================================================================
     // JSON-RPC 2.0 消息结构实现
     // ========================================================================
@@ -90,6 +114,15 @@ namespace lsp {
         return params;
     }
 
+    Json ServerCapabilities::SignatureHelpOptions::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        std::vector<Json> triggers;
+        for (const auto& c : triggerCharacters) triggers.push_back(Json(c));
+        j["triggerCharacters"] = Json(triggers);
+        return j;
+    }
+
     Json ServerCapabilities::CompletionOptions::toJson() const {
         Json j;
         j.type = JsonType::Object;
@@ -107,6 +140,8 @@ namespace lsp {
         j["hoverProvider"] = Json(hoverProvider);
         j["definitionProvider"] = Json(definitionProvider);
         j["documentFormattingProvider"] = Json(documentFormattingProvider);
+        j["documentSymbolProvider"] = Json(documentSymbolProvider);
+        j["signatureHelpProvider"] = signatureHelpProvider.toJson();
         j["completionProvider"] = completionProvider.toJson();
         return j;
     }

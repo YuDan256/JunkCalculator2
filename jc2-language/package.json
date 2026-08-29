@@ -39,6 +39,12 @@
                 "path": "./syntaxes/jc2.tmLanguage.json"
             }
         ],
+        "snippets": [
+            {
+                "language": "jc2",
+                "path": "./snippets/jc2.snippets.json"
+            }
+        ],
         "commands": [
             {
                 "command": "jc2.run",
@@ -62,6 +68,10 @@
             {
                 "command": "jc2.setExecutable",
                 "title": "JC2: Set Executable Path"
+            },
+            {
+                "command": "jc2.restartLsp",
+                "title": "JC2: Restart Language Server"
             }
         ],
         "keybindings": [
@@ -117,6 +127,13 @@
     "scripts": {
         "vscode:prepublish": "node build-doc.js",
         "test": "echo \"Error: no test specified\" && exit 1"
+    },
+    "dependencies": {
+        "vscode-languageclient": "^9.0.1"
+    },
+    "devDependencies": {
+        "@types/vscode": "^1.80.0",
+        "@types/node": "^18.0.0"
     },
     "keywords": [],
     "author": "Yu Liangyang",

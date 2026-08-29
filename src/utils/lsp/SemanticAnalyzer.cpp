@@ -204,6 +204,63 @@ namespace lsp {
         return visible;
     }
 
+    void SemanticAnalyzer::buildDocumentSymbols(Scope* scope, std::vector<DocumentSymbol>& outSymbols) {
+        if (!scope) return;
+        
+        // 将当前作用域的符号转换为 DocumentSymbol
+        for (const auto& [name, sym] : scope->symbols) {
+            // 过滤掉不需要在大纲中显示的局部变量和参数，保持大纲清晰
+            if (sym->kind == SymbolKind::Parameter) continue;
+            if (scope->kind == ScopeKind::Block && sym->kind == SymbolKind::Variable) continue;
+
+            DocumentSymbol ds;
+            ds.name = sym->name;
+            ds.detail = sym->typeHint;
+            
+            if (sym->kind == SymbolKind::Function) ds.kind = 12; // Function
+            else if (sym->kind == SymbolKind::Class) ds.kind = 5; // Class
+            else if (sym->kind == SymbolKind::Variable) ds.kind = 13; // Variable
+            else if (sym->kind == SymbolKind::Property) ds.kind = 7; // Property
+            else if (sym->kind == SymbolKind::Namespace) ds.kind = 2; // Module
+            else ds.kind = 13;
+
+            ds.selectionRange = sym->definitionRange;
+            ds.range = sym->definitionRange; // 默认范围
+            
+            // 尝试从子作用域中找到与该符号对应的完整范围（例如函数体、类体）
+            for (const auto& child : scope->children) {
+                if ((child->kind == ScopeKind::Function && sym->kind == SymbolKind::Function) ||
+                    (child->kind == ScopeKind::Class && sym->kind == SymbolKind::Class) ||
+                    (child->kind == ScopeKind::Namespace && sym->kind == SymbolKind::Namespace)) {
+                    
+                    // 启发式匹配：子作用域的起始位置紧跟在符号定义之后
+                    if (child->scopeRange.start.line >= sym->definitionRange.start.line &&
+                        child->scopeRange.start.line <= sym->definitionRange.end.line + 1) {
+                        ds.range = child->scopeRange;
+                        // 递归构建嵌套的子符号（如类的方法）
+                        buildDocumentSymbols(child.get(), ds.children);
+                        break;
+                    }
+                }
+            }
+            
+            outSymbols.push_back(ds);
+        }
+        
+        // 对于没有关联到特定符号的子作用域（如普通的 Block），直接将其内部符号提升到当前层级
+        for (const auto& child : scope->children) {
+            if (child->kind == ScopeKind::Block) {
+                buildDocumentSymbols(child.get(), outSymbols);
+            }
+        }
+    }
+
+    std::vector<DocumentSymbol> SemanticAnalyzer::getDocumentSymbols() {
+        std::vector<DocumentSymbol> symbols;
+        buildDocumentSymbols(globalScope.get(), symbols);
+        return symbols;
+    }
+
     // ========================================================================
     // ExprVisitor 实现 (核心节点)
     // ========================================================================

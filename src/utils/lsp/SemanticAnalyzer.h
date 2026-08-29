@@ -52,7 +52,11 @@ namespace lsp {
         // 获取给定位置所有可见的符号（用于自动补全）
         std::vector<std::shared_ptr<Symbol>> getVisibleSymbolsAt(const Position& pos);
 
+        // 获取文档符号树（用于大纲视图）
+        std::vector<DocumentSymbol> getDocumentSymbols();
+
     private:
+        void buildDocumentSymbols(Scope* scope, std::vector<DocumentSymbol>& outSymbols);
         Scope* getScopeAt(Scope* scope, const Position& pos);
 
         struct Reference {

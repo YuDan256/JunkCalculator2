@@ -505,7 +505,7 @@
       "signature": "assert(cond, [msg])"
     },
     "gc": {
-      "signature": "sys.gc([aggressive])"
+      "signature": "sys.gc()"
     },
     "help": {
       "signature": "help([topic])"

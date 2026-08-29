@@ -3,23 +3,63 @@
     "name": "JC2",
     "scopeName": "source.jc2",
     "patterns": [
-        { "include": "#comments" },
-        { "include": "#fstrings" },
-        { "include": "#rstrings" },
-        { "include": "#strings" },
-        { "include": "#numbers" },
-        { "include": "#property-access" },
-        { "include": "#function-def" },
-        { "include": "#modifiers" },
-        { "include": "#enum-block" },
-        { "include": "#keywords" },
-        { "include": "#class-def" },
-        { "include": "#function-call" },
-        { "include": "#constants" },
-        { "include": "#operators" },
-        { "include": "#punctuation" },
-        { "include": "#macros" },
-        { "include": "#identifiers" }
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#fstrings"
+        },
+        {
+            "include": "#rstrings"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#property-access"
+        },
+        {
+            "include": "#function-def"
+        },
+        {
+            "include": "#modifiers"
+        },
+        {
+            "include": "#enum-block"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#class-def"
+        },
+        {
+            "include": "#function-call"
+        },
+        {
+            "include": "#constants"
+        },
+        {
+            "include": "#builtin-types"
+        },
+        {
+            "include": "#builtin-functions"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#punctuation"
+        },
+        {
+            "include": "#macros"
+        },
+        {
+            "include": "#identifiers"
+        }
     ],
     "repository": {
         "comments": {
@@ -33,7 +73,9 @@
                     "begin": "/\\*",
                     "end": "\\*/",
                     "patterns": [
-                        { "include": "#comments" }
+                        {
+                            "include": "#comments"
+                        }
                     ]
                 },
                 {
@@ -52,33 +94,85 @@
                     "name": "string.quoted.triple.double.jc2",
                     "begin": "\"\"\"",
                     "end": "\"\"\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
-                    "patterns": [ { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"'0]" } ]
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"'0]"
+                        }
+                    ]
                 },
                 {
                     "name": "string.quoted.triple.single.jc2",
                     "begin": "'''",
                     "end": "'''",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
-                    "patterns": [ { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"'0]" } ]
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"'0]"
+                        }
+                    ]
                 },
                 {
                     "name": "string.quoted.double.jc2",
                     "begin": "\"",
                     "end": "\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
-                    "patterns": [ { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"0]" } ]
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"0]"
+                        }
+                    ]
                 },
                 {
                     "name": "string.quoted.single.jc2",
                     "begin": "'",
                     "end": "'",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
-                    "patterns": [ { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\\'0]" } ]
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\\'0]"
+                        }
+                    ]
                 }
             ]
         },
@@ -88,44 +182,96 @@
                     "name": "string.interpolated.triple.double.jc2",
                     "begin": "f\"\"\"",
                     "end": "\"\"\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
                     "patterns": [
-                        { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"'0]" },
-                        { "include": "#fstring-interpolation" }
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"'0]"
+                        },
+                        {
+                            "include": "#fstring-interpolation"
+                        }
                     ]
                 },
                 {
                     "name": "string.interpolated.triple.single.jc2",
                     "begin": "f'''",
                     "end": "'''",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
                     "patterns": [
-                        { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"'0]" },
-                        { "include": "#fstring-interpolation" }
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"'0]"
+                        },
+                        {
+                            "include": "#fstring-interpolation"
+                        }
                     ]
                 },
                 {
                     "name": "string.interpolated.double.jc2",
                     "begin": "f\"",
                     "end": "\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
                     "patterns": [
-                        { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\"0]" },
-                        { "include": "#fstring-interpolation" }
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\"0]"
+                        },
+                        {
+                            "include": "#fstring-interpolation"
+                        }
                     ]
                 },
                 {
                     "name": "string.interpolated.single.jc2",
                     "begin": "f'",
                     "end": "'",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    },
                     "patterns": [
-                        { "name": "constant.character.escape.jc2", "match": "\\\\[nrt\\\\\\'0]" },
-                        { "include": "#fstring-interpolation" }
+                        {
+                            "name": "constant.character.escape.jc2",
+                            "match": "\\\\[nrt\\\\\\'0]"
+                        },
+                        {
+                            "include": "#fstring-interpolation"
+                        }
                     ]
                 }
             ]
@@ -137,7 +283,11 @@
                     "begin": "\\{",
                     "end": "\\}",
                     "contentName": "source.jc2.embedded",
-                    "patterns": [ { "include": "source.jc2" } ]
+                    "patterns": [
+                        {
+                            "include": "source.jc2"
+                        }
+                    ]
                 }
             ]
         },
@@ -147,64 +297,130 @@
                     "comment": "Custom Delimiter Raw String: r\"TAG(content)TAG\"",
                     "name": "string.raw.delimited.double.jc2",
                     "begin": "r\"([a-zA-Z0-9_]*)\\(",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
                     "end": "\\)\\1\"",
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 },
                 {
                     "comment": "Custom Delimiter Raw String: r'TAG(content)TAG'",
                     "name": "string.raw.delimited.single.jc2",
                     "begin": "r'([a-zA-Z0-9_]*)\\(",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
                     "end": "\\)\\1'",
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 },
                 {
                     "comment": "Triple Double Raw String: r\"\"\"content\"\"\"",
                     "name": "string.raw.triple.double.jc2",
                     "begin": "r\"\"\"",
                     "end": "\"\"\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 },
                 {
                     "comment": "Triple Single Raw String: r'''content'''",
                     "name": "string.raw.triple.single.jc2",
                     "begin": "r'''",
                     "end": "'''",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 },
                 {
                     "comment": "Simple Raw String: r\"content\"",
                     "name": "string.raw.simple.double.jc2",
                     "begin": "r\"",
                     "end": "\"",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 },
                 {
                     "comment": "Simple Raw String: r'content'",
                     "name": "string.raw.simple.single.jc2",
                     "begin": "r'",
                     "end": "'",
-                    "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.jc2" } },
-                    "endCaptures": { "0": { "name": "punctuation.definition.string.end.jc2" } }
+                    "beginCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.begin.jc2"
+                        }
+                    },
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.definition.string.end.jc2"
+                        }
+                    }
                 }
             ]
         },
         "numbers": {
             "patterns": [
-                { "name": "constant.numeric.imaginary.jc2", "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?[iI]\\b" },
-                { "name": "constant.numeric.float.jc2", "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b" },
-                { "name": "constant.numeric.scientific.jc2", "match": "\\b\\d+[eE][+-]?\\d+\\b" },
-                { "name": "constant.numeric.integer.jc2", "match": "\\b\\d+[\\d_]*\\b" }
+                {
+                    "name": "constant.numeric.imaginary.jc2",
+                    "match": "\\b\\d+(\\.\\d+)?([eE][+-]?\\d+)?[iI]\\b"
+                },
+                {
+                    "name": "constant.numeric.float.jc2",
+                    "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+                },
+                {
+                    "name": "constant.numeric.scientific.jc2",
+                    "match": "\\b\\d+[eE][+-]?\\d+\\b"
+                },
+                {
+                    "name": "constant.numeric.integer.jc2",
+                    "match": "\\b\\d+[\\d_]*\\b"
+                }
             ]
         },
         "keywords": {
             "patterns": [
-                { "name": "keyword.control.jc2", "match": "\\b(if|else|while|for|in|is|as|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b" },
-                { "name": "keyword.declaration.jc2", "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b" }
+                {
+                    "name": "keyword.control.jc2",
+                    "match": "\\b(if|else|while|for|in|is|as|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b"
+                },
+                {
+                    "name": "keyword.declaration.jc2",
+                    "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b"
+                }
             ]
         },
         "modifiers": {
@@ -212,8 +428,12 @@
                 {
                     "match": "\\b(static|local|const|ref|state)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
                     "captures": {
-                        "1": { "name": "keyword.declaration.modifier.jc2" },
-                        "2": { "name": "variable.other.declaration.jc2" }
+                        "1": {
+                            "name": "keyword.declaration.modifier.jc2"
+                        },
+                        "2": {
+                            "name": "variable.other.declaration.jc2"
+                        }
                     }
                 }
             ]
@@ -223,44 +443,74 @@
                 {
                     "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
                     "beginCaptures": {
-                        "1": { "name": "keyword.declaration.enum.jc2" },
-                        "2": { "name": "entity.name.type.enum.jc2" }
+                        "1": {
+                            "name": "keyword.declaration.enum.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.enum.jc2"
+                        }
                     },
                     "end": "\\}",
                     "endCaptures": {
-                        "0": { "name": "punctuation.bracket.curly.jc2" }
+                        "0": {
+                            "name": "punctuation.bracket.curly.jc2"
+                        }
                     },
                     "patterns": [
-                        { "include": "#comments" },
+                        {
+                            "include": "#comments"
+                        },
                         {
                             "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
                             "name": "variable.other.enummember.jc2"
                         },
-                        { "include": "#numbers" },
-                        { "include": "#strings" },
-                        { "include": "#operators" },
-                        { "include": "#punctuation" }
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#punctuation"
+                        }
                     ]
                 },
                 {
                     "begin": "\\b(enum)\\s*(?=\\{)",
                     "beginCaptures": {
-                        "1": { "name": "keyword.declaration.enum.jc2" }
+                        "1": {
+                            "name": "keyword.declaration.enum.jc2"
+                        }
                     },
                     "end": "\\}",
                     "endCaptures": {
-                        "0": { "name": "punctuation.bracket.curly.jc2" }
+                        "0": {
+                            "name": "punctuation.bracket.curly.jc2"
+                        }
                     },
                     "patterns": [
-                        { "include": "#comments" },
+                        {
+                            "include": "#comments"
+                        },
                         {
                             "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
                             "name": "variable.other.enummember.jc2"
                         },
-                        { "include": "#numbers" },
-                        { "include": "#strings" },
-                        { "include": "#operators" },
-                        { "include": "#punctuation" }
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#punctuation"
+                        }
                     ]
                 }
             ]
@@ -270,70 +520,171 @@
                 {
                     "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
                     "captures": {
-                        "1": { "name": "keyword.declaration.class.jc2" },
-                        "2": { "name": "entity.name.type.class.jc2" },
-                        "3": { "name": "keyword.declaration.extends.jc2" },
-                        "4": { "name": "entity.other.inherited-class.jc2" }
+                        "1": {
+                            "name": "keyword.declaration.class.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.class.jc2"
+                        },
+                        "3": {
+                            "name": "keyword.declaration.extends.jc2"
+                        },
+                        "4": {
+                            "name": "entity.other.inherited-class.jc2"
+                        }
                     }
                 },
                 {
                     "match": "\\b(namespace)\\s+([A-Za-z_][A-Za-z0-9_]*)",
                     "captures": {
-                        "1": { "name": "keyword.declaration.namespace.jc2" },
-                        "2": { "name": "entity.name.namespace.jc2" }
+                        "1": {
+                            "name": "keyword.declaration.namespace.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.namespace.jc2"
+                        }
                     }
                 }
             ]
         },
         "function-def": {
             "patterns": [
-                { "match": "\\b(__[A-Za-z_][A-Za-z0-9_]*__)\\s*(?=\\()", "captures": { "1": { "name": "support.function.magic.jc2" } } },
-                { "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\([^)]*\\)(?:\\s*->\\s*[A-Za-z_][A-Za-z0-9_]*)?\\s*=)", "captures": { "1": { "name": "entity.name.function.definition.jc2" } } }
+                {
+                    "match": "\\b(__[A-Za-z_][A-Za-z0-9_]*__)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "support.function.magic.jc2"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\([^)]*\\)(?:\\s*->\\s*[A-Za-z_][A-Za-z0-9_]*)?\\s*=)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.definition.jc2"
+                        }
+                    }
+                }
             ]
         },
         "function-call": {
-            "patterns": [ { "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()", "captures": { "1": { "name": "entity.name.function.call.jc2" } } } ]
+            "patterns": [
+                {
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.call.jc2"
+                        }
+                    }
+                }
+            ]
         },
         "constants": {
             "patterns": [
-                { "name": "constant.language.jc2", "match": "\\b(true|false|none|PI|E|ANS)\\b" },
-                { "name": "variable.language.jc2", "match": "\\b(self|super|_)\\b" }
+                {
+                    "name": "constant.language.jc2",
+                    "match": "\\b(true|false|none|PI|E|ANS)\\b"
+                },
+                {
+                    "name": "variable.language.jc2",
+                    "match": "\\b(self|super|_)\\b"
+                }
             ]
         },
         "operators": {
             "patterns": [
-                { "name": "keyword.operator.pipe.jc2", "match": "\\|>" },
-                { "name": "keyword.operator.arrow.jc2", "match": "=>" },
-                { "name": "keyword.operator.spread.jc2", "match": "\\.\\.\\." },
-                { "name": "keyword.operator.integer-division.jc2", "match": "~/" },
-                { "name": "keyword.operator.shift-assign.jc2", "match": "<<=|>>=" },
-                { "name": "keyword.operator.shift.jc2", "match": "<<|>>" },
-                { "name": "keyword.operator.comparison.jc2", "match": "==|!=|<=|>=|<|>" },
-                { "name": "keyword.operator.logical.jc2", "match": "&&|\\|\\||!" },
-                { "name": "keyword.operator.assignment.jc2", "match": "\\+=|-=|\\*=|/=|%=|\\^\\^=|\\^=|&=|\\|=|=" },
-                { "name": "keyword.operator.arithmetic.jc2", "match": "\\+|-|\\*|/|%|\\^\\^|\\^|\\\\|~|&|\\|" },
-                { "name": "keyword.operator.ternary.jc2", "match": "\\?|:" }
+                {
+                    "name": "keyword.operator.pipe.jc2",
+                    "match": "\\|>"
+                },
+                {
+                    "name": "keyword.operator.arrow.jc2",
+                    "match": "=>"
+                },
+                {
+                    "name": "keyword.operator.spread.jc2",
+                    "match": "\\.\\.\\."
+                },
+                {
+                    "name": "keyword.operator.integer-division.jc2",
+                    "match": "~/"
+                },
+                {
+                    "name": "keyword.operator.shift-assign.jc2",
+                    "match": "<<=|>>="
+                },
+                {
+                    "name": "keyword.operator.shift.jc2",
+                    "match": "<<|>>"
+                },
+                {
+                    "name": "keyword.operator.comparison.jc2",
+                    "match": "==|!=|<=|>=|<|>"
+                },
+                {
+                    "name": "keyword.operator.logical.jc2",
+                    "match": "&&|\\|\\||!"
+                },
+                {
+                    "name": "keyword.operator.assignment.jc2",
+                    "match": "\\+=|-=|\\*=|/=|%=|\\^\\^=|\\^=|&=|\\|=|="
+                },
+                {
+                    "name": "keyword.operator.arithmetic.jc2",
+                    "match": "\\+|-|\\*|/|%|\\^\\^|\\^|\\\\|~|&|\\|"
+                },
+                {
+                    "name": "keyword.operator.ternary.jc2",
+                    "match": "\\?|:"
+                }
             ]
         },
         "punctuation": {
             "patterns": [
-                { "name": "punctuation.bracket.round.jc2", "match": "[()]" },
-                { "name": "punctuation.bracket.square.jc2", "match": "@?\\[|\\]" },
-                { "name": "punctuation.bracket.curly.jc2", "match": "@?\\{|\\}" },
-                { "name": "punctuation.separator.jc2", "match": "[,;]" },
-                { "name": "punctuation.accessor.jc2", "match": "\\." }
+                {
+                    "name": "punctuation.bracket.round.jc2",
+                    "match": "[()]"
+                },
+                {
+                    "name": "punctuation.bracket.square.jc2",
+                    "match": "@?\\[|\\]"
+                },
+                {
+                    "name": "punctuation.bracket.curly.jc2",
+                    "match": "@?\\{|\\}"
+                },
+                {
+                    "name": "punctuation.separator.jc2",
+                    "match": "[,;]"
+                },
+                {
+                    "name": "punctuation.accessor.jc2",
+                    "match": "\\."
+                }
             ]
         },
         "macros": {
             "patterns": [
-                { "name": "entity.name.function.macro.jc2", "match": "@[a-zA-Z_][a-zA-Z0-9_]*\\b" },
-                { "name": "variable.other.unquote.jc2", "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*\\b" }
+                {
+                    "name": "entity.name.function.macro.jc2",
+                    "match": "@[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                },
+                {
+                    "name": "variable.other.unquote.jc2",
+                    "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                }
             ]
         },
         "identifiers": {
             "patterns": [
-                { "name": "variable.other.quoted.jc2", "match": "`[^`\\n]*`" },
-                { "name": "variable.other.jc2", "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b" }
+                {
+                    "name": "variable.other.quoted.jc2",
+                    "match": "`[^`\\n]*`"
+                },
+                {
+                    "name": "variable.other.jc2",
+                    "match": "\\b[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                }
             ]
         },
         "property-access": {
@@ -341,16 +692,40 @@
                 {
                     "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
                     "captures": {
-                        "1": { "name": "punctuation.accessor.jc2" },
-                        "2": { "name": "entity.name.function.call.jc2" }
+                        "1": {
+                            "name": "punctuation.accessor.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.function.call.jc2"
+                        }
                     }
                 },
                 {
                     "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)",
                     "captures": {
-                        "1": { "name": "punctuation.accessor.jc2" },
-                        "2": { "name": "variable.other.property.jc2" }
+                        "1": {
+                            "name": "punctuation.accessor.jc2"
+                        },
+                        "2": {
+                            "name": "variable.other.property.jc2"
+                        }
                     }
+                }
+            ]
+        },
+        "builtin-types": {
+            "patterns": [
+                {
+                    "name": "support.type.jc2",
+                    "match": "\\b(int|double|string|bool|list|dict|set|fraction|complex|realmatrix|complexmatrix|symmatrix|function|class_type|instance|namespace_type|type|slice)\\b"
+                }
+            ]
+        },
+        "builtin-functions": {
+            "patterns": [
+                {
+                    "name": "support.function.builtin.jc2",
+                    "match": "\\b(pi|e|i|complex|double|int|abs|sqrt|cbrt|root|sqrtD|cbrtD|rootD|pow|log|ln|round|floor|ceil|trunc|sgn|deg|rad|idiv|sin|cos|tan|sec|csc|cot|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|erf|fresnel_s|fresnel_c|Si|Ci|Ei|Li|Re|Im|arg|conj|frac|toFrac|num|den|matrix|symmatrix|det|inv|trans|ctrans|gauss|rank|tr|norm|cond|adj|sum|prod|null|orth|mpow|charPoly|kron|jacobian|hessian|row|rows|col|cols|reshape|hcat|vcat|id|ones|zeros|eig|eigvec|diag|lsolve|lstsq|dim|dot|vnorm|normalize|cross|angle|sproj|vproj|triple|isperp|isparallel|solve|factorial|fib|gcd|lcm|digits|isPrime|isprime|nextPrime|nthPrime|primePi|phi|divisors|sigma|omega|bigOmega|mobius|isPerfect|mod|modpow|C|A|catalan|mean|var|svar|std|sstd|max|min|span|perc|median|mode|cov|corr|rsq|regress|rand|randint|randc|randmat|randimat|randcmat|magic|str|string|len|length|size|substr|replace|format|type|split|join|list|dict|set|push|append|pop|map|filter|reduce|sort|keys|getFields|values|hasKey|has|hasField|union|intersect|print|assert|gc|help|run|compileFile|compileCode|sym|symbolics|diff|integ|limit|expand|simplify|subs|evalf|clear|add|remove|discard|eval|charAt|upper|lower|trim|find|contains|repeat|concat|startsWith|endsWith|ord|chr|parseNum|first|last|shift|prepend|insert|removeAt|slice|reverse|flatten|unique|indexOf|count|cumsum|cumprod|diffs|range|fill|linspace|merge|entries|toList|toArray|toMatrix|zip|cat|enumerate|groupBy|isinstance|getClass|getParent|difference|symDiff|isSubset|isSuperset|isDisjoint|cartesian|powerSet|RootOf|RootSum|contract|trigsimp|toFunc|evalv|replaceRule|polyDiv|polyGCD|resultant|factor|factorReal|taylor|verifyInteg|resetConst|resetType|setWorkspace|getWorkspace|pwd|cls|breakpoint|debugger|disassemble|disasm|buildIndex|loadPrimes|mountPrimes|extendPrimes|convertPrimes|verifyPrimes|sysinfo|freeze|isFrozen|hash|copy|symconfig|setSymLimit|isalpha|isdigit|isalnum|isspace|isupper|islower|iscallable|ishashable|isindexable|isiterable|isempty|isnan|isinf|isfinite|iseven|isodd|ispositive|isnegative|isapprox|iszero|addE|subE|mulE|divE|idivE|powE|modE|eqE|neqE|ltE|leE|gtE|geE|maxE|minE|andE|orE|xorE|atan2E|hypotE|whereE|perm|getElement|setElement|getItem|setItem|getSlice|setSlice|getR|getC|delR|delC|swapR|swapC|multiR|multiC|addR|addC|sub|cof|Acof|blkdiag|qr|lu|residual|gcinfo|bool|not|and|or|seq|error|input|clock|sleep|highlight|color|imgPlot|removeKey|apply|any|all|countIf|table|matpow|toSet|init|finalize|gensym)\\b(?=\\()"
                 }
             ]
         }

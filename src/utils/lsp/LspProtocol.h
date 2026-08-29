@@ -77,12 +77,34 @@ namespace lsp {
         static InitializeParams fromJson(const Json& j);
     };
 
+    struct TextEdit {
+        Range range;
+        std::string newText;
+        Json toJson() const;
+    };
+
+    struct DocumentSymbol {
+        std::string name;
+        std::string detail;
+        int kind = 1;
+        Range range;
+        Range selectionRange;
+        std::vector<DocumentSymbol> children;
+        Json toJson() const;
+    };
+
     struct ServerCapabilities {
         int textDocumentSync = 1; // 1 = Full Sync (全量同步)
         bool hoverProvider = true;
         bool definitionProvider = true;
         bool documentFormattingProvider = true;
+        bool documentSymbolProvider = true;
         
+        struct SignatureHelpOptions {
+            std::vector<std::string> triggerCharacters = { "(", "," };
+            Json toJson() const;
+        } signatureHelpProvider;
+
         // 补全提供者配置
         struct CompletionOptions {
             bool resolveProvider = false;

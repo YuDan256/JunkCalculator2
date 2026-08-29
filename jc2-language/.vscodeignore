@@ -4,3 +4,4 @@ node_modules/**
 *.vsix
 .gitignore
 build-doc.js
+package-lock.json

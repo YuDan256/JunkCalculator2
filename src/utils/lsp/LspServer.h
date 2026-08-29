@@ -49,6 +49,9 @@ namespace lsp {
         void handleHover(const RequestMessage& req);
         void handleDefinition(const RequestMessage& req);
         void handleCompletion(const RequestMessage& req);
+        void handleFormatting(const RequestMessage& req);
+        void handleSignatureHelp(const RequestMessage& req);
+        void handleDocumentSymbol(const RequestMessage& req);
 
         bool isRunning = false;
         ServerState state = ServerState::Uninitialized;

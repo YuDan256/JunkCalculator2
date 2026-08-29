@@ -2,9 +2,12 @@
 #include "../../frontend/Lexer.h"
 #include "../../frontend/Parser.h"
 #include "SemanticAnalyzer.h"
+#include "../../utils/fmt/Formatter.h"
+#include "../../vm/HelpRouter.h"
 #include <iostream>
 #include <string>
 #include <vector>
+#include <sstream>
 
 #ifdef _WIN32
 #include <fcntl.h>
@@ -145,6 +148,15 @@ namespace lsp {
         else if (req.method == "textDocument/completion") {
             handleCompletion(req);
         }
+        else if (req.method == "textDocument/formatting") {
+            handleFormatting(req);
+        }
+        else if (req.method == "textDocument/signatureHelp") {
+            handleSignatureHelp(req);
+        }
+        else if (req.method == "textDocument/documentSymbol") {
+            handleDocumentSymbol(req);
+        }
     }
 
     void LspServer::handleNotification(const NotificationMessage& notif) {
@@ -253,6 +265,65 @@ namespace lsp {
                         contents["value"] = Json(md);
                         hover["contents"] = contents;
                         res.result = hover;
+                    } else {
+                        // Fallback: 检查是否是内置函数或关键字
+                        int offset = doc->positionToOffset(pos);
+                        std::string word;
+                        int start = offset;
+                        while (start > 0 && (std::isalnum(static_cast<unsigned char>(doc->content[start - 1])) || doc->content[start - 1] == '_')) {
+                            start--;
+                        }
+                        int end = offset;
+                        while (end < static_cast<int>(doc->content.length()) && (std::isalnum(static_cast<unsigned char>(doc->content[end])) || doc->content[end] == '_')) {
+                            end++;
+                        }
+                        if (start < end) {
+                            word = doc->content.substr(start, end - start);
+                            
+                            jc::HelpRouter::init();
+                            const Json& helpAst = jc::HelpRouter::helpAst;
+                            if (helpAst.isObject()) {
+                                Json targetData;
+                                std::string kindStr;
+                                if (helpAst.has("functions") && helpAst["functions"].has(word)) {
+                                    targetData = helpAst["functions"][word];
+                                    kindStr = "built-in function";
+                                } else if (helpAst.has("keywords") && helpAst["keywords"].has(word)) {
+                                    targetData = helpAst["keywords"][word];
+                                    kindStr = "keyword";
+                                }
+                                
+                                if (!targetData.isNull()) {
+                                    Json hover;
+                                    hover.type = JsonType::Object;
+                                    Json contents;
+                                    contents.type = JsonType::Object;
+                                    contents["kind"] = Json("markdown");
+                                    
+                                    std::string md = "```jc2\n(" + kindStr + ") ";
+                                    if (targetData.has("signature")) md += targetData["signature"].strVal;
+                                    else md += word;
+                                    md += "\n```";
+                                    
+                                    if (targetData.has("desc")) {
+                                        md += "\n---\n";
+                                        if (targetData["desc"].isString()) md += targetData["desc"].strVal;
+                                        else if (targetData["desc"].isArray()) {
+                                            for (const auto& line : targetData["desc"].arrVal) md += line.strVal + "\n";
+                                        }
+                                    }
+                                    if (targetData.has("examples") && targetData["examples"].isArray()) {
+                                        md += "\n\n**Examples:**\n```jc2\n";
+                                        for (const auto& ex : targetData["examples"].arrVal) md += ex.strVal + "\n";
+                                        md += "```";
+                                    }
+                                    
+                                    contents["value"] = Json(md);
+                                    hover["contents"] = contents;
+                                    res.result = hover;
+                                }
+                            }
+                        }
                     }
                 } catch (...) {}
             }
@@ -355,21 +426,239 @@ namespace lsp {
                         items.push_back(item);
                     }
                     
-                    // 2. 添加 JC2 语言关键字
-                    const char* keywords[] = {
-                        "if", "else", "while", "for", "in", "is", "as", "break", "continue", "return",
-                        "class", "extends", "super", "self", "namespace", "enum", "ref", "state", "const", "local", "static", "delete",
-                        "try", "catch", "throw", "import", "true", "false", "none", "macro", "syntax", "quote", "match", "case", "default", "defer"
-                    };
-                    for (const char* kw : keywords) {
-                        Json item;
-                        item.type = JsonType::Object;
-                        item["label"] = Json(kw);
-                        item["kind"] = Json(14); // Keyword
-                        items.push_back(item);
+                    // 2. 添加 JC2 语言关键字 & 内置函数 (从 HelpRouter 获取)
+                    jc::HelpRouter::init();
+                    const Json& helpAst = jc::HelpRouter::helpAst;
+                    
+                    if (helpAst.isObject() && helpAst.has("keywords")) {
+                        for (const auto& pair : helpAst["keywords"].objVal) {
+                            Json item;
+                            item.type = JsonType::Object;
+                            item["label"] = Json(pair.first);
+                            item["kind"] = Json(14); // Keyword
+                            items.push_back(item);
+                        }
+                    }
+                    if (helpAst.isObject() && helpAst.has("functions")) {
+                        const Json& funcs = helpAst["functions"];
+                        for (const auto& pair : funcs.objVal) {
+                            const std::string& funcName = pair.first;
+                            const Json& funcData = pair.second;
+                            
+                            // 忽略 dunder methods (如 __add__)，除非用户主动输入
+                            if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") {
+                                continue;
+                            }
+                            
+                            Json item;
+                            item.type = JsonType::Object;
+                            item["label"] = Json(funcName);
+                            item["kind"] = Json(3); // Function
+                            
+                            if (funcData.has("signature")) {
+                                item["detail"] = Json(funcData["signature"].strVal);
+                            }
+                            
+                            if (funcData.has("desc")) {
+                                Json docJson;
+                                docJson.type = JsonType::Object;
+                                docJson["kind"] = Json("markdown");
+                                std::string descStr;
+                                if (funcData["desc"].isString()) descStr = funcData["desc"].strVal;
+                                else if (funcData["desc"].isArray()) {
+                                    for (const auto& line : funcData["desc"].arrVal) descStr += line.strVal + "\n";
+                                }
+                                if (funcData.has("examples") && funcData["examples"].isArray()) {
+                                    descStr += "\n\n**Examples:**\n```jc2\n";
+                                    for (const auto& ex : funcData["examples"].arrVal) descStr += ex.strVal + "\n";
+                                    descStr += "```";
+                                }
+                                docJson["value"] = Json(descStr);
+                                item["documentation"] = docJson;
+                            }
+                            items.push_back(item);
+                        }
                     }
                     
                     res.result = Json(items);
+                } catch (...) {}
+            }
+        }
+        sendMessage(res.toJson().serialize());
+    }
+
+    void LspServer::handleFormatting(const RequestMessage& req) {
+        ResponseMessage res;
+        res.id = req.id;
+        res.result = Json(nullptr);
+
+        if (req.params.has("textDocument")) {
+            std::string uri = req.params["textDocument"]["uri"].strVal;
+            Document* doc = workspace.getDocument(uri);
+            if (doc) {
+                try {
+                    std::string formatted = jc::Formatter::format(doc->content);
+                    if (formatted != doc->content) {
+                        TextEdit edit;
+                        edit.range.start = {0, 0};
+                        edit.range.end = {999999, 0}; // 覆盖整个文档
+                        edit.newText = formatted;
+                        
+                        std::vector<Json> edits;
+                        edits.push_back(edit.toJson());
+                        res.result = Json(edits);
+                    } else {
+                        res.result = Json(std::vector<Json>()); // 无需修改
+                    }
+                } catch (...) {}
+            }
+        }
+        sendMessage(res.toJson().serialize());
+    }
+
+    void LspServer::handleSignatureHelp(const RequestMessage& req) {
+        ResponseMessage res;
+        res.id = req.id;
+        res.result = Json(nullptr);
+
+        if (req.params.has("textDocument") && req.params.has("position")) {
+            std::string uri = req.params["textDocument"]["uri"].strVal;
+            Position pos = Position::fromJson(req.params["position"]);
+            
+            Document* doc = workspace.getDocument(uri);
+            if (doc) {
+                try {
+                    int offset = doc->positionToOffset(pos);
+                    if (offset > 0 && offset <= static_cast<int>(doc->content.length())) {
+                        int openParenIdx = -1;
+                        int parenCount = 0;
+                        int activeParam = 0;
+                        
+                        // 向前扫描寻找未闭合的左括号 '('
+                        for (int i = offset - 1; i >= 0; --i) {
+                            char c = doc->content[i];
+                            if (c == ')') parenCount++;
+                            else if (c == '(') {
+                                if (parenCount == 0) {
+                                    openParenIdx = i;
+                                    break;
+                                }
+                                parenCount--;
+                            } else if (c == ',' && parenCount == 0) {
+                                activeParam++;
+                            }
+                        }
+                        
+                        if (openParenIdx > 0) {
+                            int nameEnd = openParenIdx - 1;
+                            while (nameEnd >= 0 && std::isspace(static_cast<unsigned char>(doc->content[nameEnd]))) nameEnd--;
+                            int nameStart = nameEnd;
+                            while (nameStart >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[nameStart])) || doc->content[nameStart] == '_')) {
+                                nameStart--;
+                            }
+                            nameStart++;
+                            
+                            if (nameStart <= nameEnd) {
+                                std::string funcName = doc->content.substr(nameStart, nameEnd - nameStart + 1);
+                                
+                                jc::HelpRouter::init();
+                                const Json& helpAst = jc::HelpRouter::helpAst;
+                                if (helpAst.isObject() && helpAst.has("functions")) {
+                                    const Json& funcs = helpAst["functions"];
+                                    if (funcs.has(funcName)) {
+                                        const Json& funcData = funcs[funcName];
+                                        if (funcData.has("signature")) {
+                                            std::string sig = funcData["signature"].strVal;
+                                            
+                                            Json sigInfo;
+                                            sigInfo.type = JsonType::Object;
+                                            sigInfo["label"] = Json(sig);
+                                            
+                                            if (funcData.has("desc")) {
+                                                Json docJson;
+                                                docJson.type = JsonType::Object;
+                                                docJson["kind"] = Json("markdown");
+                                                
+                                                std::string descStr = funcData["desc"].strVal;
+                                                if (funcData.has("examples") && funcData["examples"].isArray()) {
+                                                    descStr += "\n\n**Examples:**\n```jc2\n";
+                                                    for (const auto& ex : funcData["examples"].arrVal) {
+                                                        descStr += ex.strVal + "\n";
+                                                    }
+                                                    descStr += "\n```";
+                                                }
+                                                docJson["value"] = Json(descStr);
+                                                sigInfo["documentation"] = docJson;
+                                            }
+                                            
+                                            std::vector<Json> params;
+                                            size_t pStart = sig.find('(');
+                                            size_t pEnd = sig.find(')');
+                                            if (pStart != std::string::npos && pEnd != std::string::npos && pEnd > pStart) {
+                                                std::string pStr = sig.substr(pStart + 1, pEnd - pStart - 1);
+                                                std::stringstream ss(pStr);
+                                                std::string item;
+                                                while (std::getline(ss, item, ',')) {
+                                                    size_t s = item.find_first_not_of(" \t");
+                                                    size_t e = item.find_last_not_of(" \t");
+                                                    if (s != std::string::npos) item = item.substr(s, e - s + 1);
+                                                    
+                                                    Json pInfo;
+                                                    pInfo.type = JsonType::Object;
+                                                    pInfo["label"] = Json(item);
+                                                    params.push_back(pInfo);
+                                                }
+                                            }
+                                            sigInfo["parameters"] = Json(params);
+                                            
+                                            Json sigHelp;
+                                            sigHelp.type = JsonType::Object;
+                                            std::vector<Json> signatures;
+                                            signatures.push_back(sigInfo);
+                                            sigHelp["signatures"] = Json(signatures);
+                                            sigHelp["activeSignature"] = Json(0);
+                                            sigHelp["activeParameter"] = Json(activeParam);
+                                            
+                                            res.result = sigHelp;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (...) {}
+            }
+        }
+        sendMessage(res.toJson().serialize());
+    }
+
+    void LspServer::handleDocumentSymbol(const RequestMessage& req) {
+        ResponseMessage res;
+        res.id = req.id;
+        res.result = Json(nullptr);
+
+        if (req.params.has("textDocument")) {
+            std::string uri = req.params["textDocument"]["uri"].strVal;
+            Document* doc = workspace.getDocument(uri);
+            if (doc) {
+                try {
+                    Lexer lexer(doc->content, uri);
+                    lexer.keepComments = true;
+                    auto tokens = lexer.tokenize();
+                    
+                    Parser parser(tokens, uri);
+                    parser.isLspMode = true;
+                    auto ast = parser.parse();
+                    
+                    SemanticAnalyzer analyzer(doc, tokens);
+                    analyzer.analyze(ast.get());
+                    
+                    auto symbols = analyzer.getDocumentSymbols();
+                    std::vector<Json> symJsons;
+                    for (const auto& sym : symbols) {
+                        symJsons.push_back(sym.toJson());
+                    }
+                    res.result = Json(symJsons);
                 } catch (...) {}
             }
         }

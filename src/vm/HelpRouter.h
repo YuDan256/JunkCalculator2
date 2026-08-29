@@ -16,7 +16,7 @@ namespace jc {
     inline std::map<std::string, std::string> DynamicHelp;
 
     class HelpRouter {
-    private:
+    public:
         static inline Json helpAst;
         static inline bool initialized = false;
 

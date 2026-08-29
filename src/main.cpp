@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <cstdlib>
+#include <cctype>
 #include <fstream>
 #include <filesystem>
 #include <chrono>
@@ -910,6 +911,25 @@ int main(int argc, char* argv[]) {
                     else if (c == '/' && i + 1 < s.length() && s[i + 1] == '*') {
                         commentNesting++;
                         i++;
+                    }
+                    else if (c == 'r' && i + 1 < s.length() && (s[i + 1] == '"' || s[i + 1] == '\'')) {
+                        // raw string：r"..." / r'...' / r"TAG(...)TAG"，不能把内容里的引号当字符串分隔符
+                        char rq = s[i + 1];
+                        i += 2;
+                        size_t tagStart = i;
+                        while (i < s.length() && (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '_')) i++;
+                        if (i < s.length() && s[i] == '(') {
+                            std::string delimiter = s.substr(tagStart, i - tagStart);
+                            std::string endMarker = ")" + delimiter + rq;
+                            size_t pos = s.find(endMarker, i);
+                            if (pos != std::string::npos) i = pos + endMarker.length() - 1;
+                            else { inStr = true; strQuote = rq; break; }
+                        }
+                        else {
+                            size_t pos = s.find(rq, i);
+                            if (pos != std::string::npos) i = pos;
+                            else { inStr = true; strQuote = rq; break; }
+                        }
                     }
                     else if (c == '"' || c == '\'') {
                         inStr = true;

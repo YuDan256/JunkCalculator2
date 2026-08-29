@@ -158,26 +158,24 @@ public:
     Decimal inverse() const {
         if (mantissa.isZero()) jc2::throw_error("DivisionByZero: Decimal division by zero.");
         
-        double d;
-        try {
-            const auto& raw_data = mantissa.getRawData();
-            int sz = static_cast<int>(raw_data.size());
-            double res = 0.0;
-            int start = std::max(0, sz - 3);
-            for (int i = sz - 1; i >= start; --i) {
-                res = res * 4294967296.0 + raw_data[i];
-            }
-            if (mantissa.isNegative()) res = -res;
-            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
-        } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
-        if (d == 0.0) d = mantissa.isNegative() ? -1e-300 : 1e-300;
-        double guess = 1.0 / d;
-        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1e300 : 1e300;
+        int64_t L = mantissa.digitCount();
+        int64_t shift = L - 15;
+        double M = 0.0;
+        if (shift > 0) {
+            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
+        } else {
+            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
+        }
+        int64_t E = exp + L - 1;
+        
+        double guess_val = 1.0 / M;
+        if (mantissa.isNegative()) guess_val = -guess_val;
         
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.15g", guess);
+        snprintf(buf, sizeof(buf), "%.15g", guess_val);
         for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
+        y.exp -= E;
         
         Decimal two(jc::BigInt(2), 0);
         int target_prec = g_prec + 8;
@@ -280,25 +278,31 @@ public:
             jc2::throw_error("MathError: sqrt of negative decimal.");
         }
         
-        double d;
-        try {
-            const auto& raw_data = mantissa.getRawData();
-            int sz = static_cast<int>(raw_data.size());
-            double res = 0.0;
-            int start = std::max(0, sz - 3);
-            for (int i = sz - 1; i >= start; --i) {
-                res = res * 4294967296.0 + raw_data[i];
-            }
-            d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
-        } catch (...) { d = 1e300; }
-        if (d <= 0.0) d = 1e-300;
-        double guess = 1.0 / std::sqrt(d);
-        if (!std::isfinite(guess)) guess = 1e300;
+        int64_t L = mantissa.digitCount();
+        int64_t shift = L - 15;
+        double M = 0.0;
+        if (shift > 0) {
+            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
+        } else {
+            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
+        }
+        int64_t E = exp + L - 1;
+        
+        int64_t k = E / 2;
+        int64_t r = E % 2;
+        if (r < 0) {
+            r += 2;
+            k -= 1;
+        }
+        
+        double adjusted_M = M * std::pow(10.0, r);
+        double guess_val = 1.0 / std::sqrt(adjusted_M);
         
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.15g", guess);
+        snprintf(buf, sizeof(buf), "%.15g", guess_val);
         for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
         Decimal y = Decimal::from_string(buf);
+        y.exp -= k;
         
         Decimal three(jc::BigInt(3), 0);
         Decimal half(jc::BigInt(5), -1);
@@ -495,8 +499,16 @@ public:
             jc2::throw_error("MathError: ln of non-positive decimal.");
         }
         int64_t L = mantissa.digitCount();
-        double first_digit = (mantissa.abs() / pow10(L - 1)).toDouble();
-        double guess = (L - 1 + exp) * 2.302585092994046 + std::log(first_digit);
+        int64_t shift = L - 15;
+        double M = 0.0;
+        if (shift > 0) {
+            M = (mantissa.abs() / pow10(shift)).toDouble() * 1e-14;
+        } else {
+            M = mantissa.abs().toDouble() * std::pow(10.0, -(L - 1));
+        }
+        int64_t E = exp + L - 1;
+        
+        double guess = E * 2.302585092994045684 + std::log(M);
         if (!std::isfinite(guess)) guess = 0.0;
         
         char buf[64];

@@ -558,6 +558,7 @@ int main(int argc, char* argv[]) {
 
         // 1. 全局修饰符 (Flags)
         if (arg == "-q" || arg == "--quiet") { g_quiet = true; continue; }
+        if (arg == "--stdio") { continue; } // 兼容 VSCode LanguageClient 自动追加的参数
         if (arg == "-d") { g_showDisasm = true; continue; }
         if (arg == "--ir") { g_showIR = true; continue; }
         if (arg == "--hir") { g_showHIR = true; continue; }

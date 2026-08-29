@@ -160,11 +160,12 @@ public:
         
         double d;
         try {
-            int sz = static_cast<int>(mantissa.data.size());
+            const auto& raw_data = mantissa.getRawData();
+            int sz = static_cast<int>(raw_data.size());
             double res = 0.0;
             int start = std::max(0, sz - 3);
             for (int i = sz - 1; i >= start; --i) {
-                res = res * 4294967296.0 + mantissa.data[i];
+                res = res * 4294967296.0 + raw_data[i];
             }
             if (mantissa.isNegative()) res = -res;
             d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
@@ -197,7 +198,7 @@ public:
         }
         if (mantissa.isZero()) return Decimal(jc::BigInt(0), 0);
         
-        if (other.mantissa.data.size() <= 2) {
+        if (other.mantissa.getRawData().size() <= 2) {
             int64_t len1 = mantissa.digitCount();
             int64_t len2 = other.mantissa.digitCount();
             int64_t extra_zeros = g_prec + 2 - len1 + len2;
@@ -275,11 +276,12 @@ public:
         
         double d;
         try {
-            int sz = static_cast<int>(mantissa.data.size());
+            const auto& raw_data = mantissa.getRawData();
+            int sz = static_cast<int>(raw_data.size());
             double res = 0.0;
             int start = std::max(0, sz - 3);
             for (int i = sz - 1; i >= start; --i) {
-                res = res * 4294967296.0 + mantissa.data[i];
+                res = res * 4294967296.0 + raw_data[i];
             }
             d = res * std::pow(10.0, exp) * std::pow(4294967296.0, start);
         } catch (...) { d = 1e300; }
@@ -314,17 +316,18 @@ public:
         int squares = 0;
         Decimal two(jc::BigInt(2), 0);
         Decimal one(jc::BigInt(1), 0);
-        while (!x.abs().lt(one) && !x.mantissa.isZero()) {
+        Decimal threshold(jc::BigInt(1), -8);
+        
+        while (x.abs().gt(threshold) && !x.mantissa.isZero()) {
             x = x.div(two).truncate(g_prec + 2);
             squares++;
-            if (squares > 30) break;
         }
         
         Decimal sum(jc::BigInt(1), 0);
         Decimal term(jc::BigInt(1), 0);
         Decimal n(jc::BigInt(1), 0);
         
-        for (int i = 1; i < 1000; ++i) {
+        for (int i = 1; i < 10000; ++i) {
             term = term.mul(x).div(n).truncate(g_prec + 2);
             if (term.mantissa.isZero()) break;
             
@@ -355,54 +358,67 @@ public:
         return this->sub(q_int.mul(two_pi));
     }
 
-    Decimal sin_val() const {
+    void sincos_val(Decimal& s_out, Decimal& c_out) const {
         Decimal x = this->mod_2pi();
-        Decimal sum = x;
-        Decimal term = x;
-        Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n(jc::BigInt(2), 0);
+        int squares = 0;
         Decimal one(jc::BigInt(1), 0);
         Decimal two(jc::BigInt(2), 0);
+        Decimal threshold(jc::BigInt(1), -8);
+        
+        while (x.abs().gt(threshold)) {
+            x = x.div(two).truncate(g_prec + 2);
+            squares++;
+        }
+        
+        Decimal sum_s = x;
+        Decimal term_s = x;
+        Decimal sum_c = one;
+        Decimal term_c = one;
+        Decimal x2 = x.mul(x).truncate(g_prec + 2);
+        Decimal n_s(jc::BigInt(2), 0);
+        Decimal n_c(jc::BigInt(1), 0);
         int sign = -1;
         
-        for (int i = 1; i < 1000; ++i) {
-            term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
-            if (term.mantissa.isZero()) break;
+        for (int i = 1; i < 10000; ++i) {
+            term_s = term_s.mul(x2).div(n_s.mul(n_s.add(one))).truncate(g_prec + 2);
+            term_c = term_c.mul(x2).div(n_c.mul(n_c.add(one))).truncate(g_prec + 2);
             
-            Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
+            if (term_s.mantissa.isZero() && term_c.mantissa.isZero()) break;
             
-            if (next_sum.eq(sum)) break;
-            sum = next_sum;
+            Decimal next_sum_s = (sign == -1) ? sum_s.sub(term_s).truncate(g_prec + 2) : sum_s.add(term_s).truncate(g_prec + 2);
+            Decimal next_sum_c = (sign == -1) ? sum_c.sub(term_c).truncate(g_prec + 2) : sum_c.add(term_c).truncate(g_prec + 2);
             
-            n = n.add(two);
+            if (next_sum_s.eq(sum_s) && next_sum_c.eq(sum_c)) break;
+            
+            sum_s = next_sum_s;
+            sum_c = next_sum_c;
+            
+            n_s = n_s.add(two);
+            n_c = n_c.add(two);
             sign = -sign;
         }
-        return sum.truncate(g_prec);
+        
+        for (int i = 0; i < squares; ++i) {
+            Decimal next_s = two.mul(sum_s).mul(sum_c).truncate(g_prec + 2);
+            Decimal next_c = sum_c.mul(sum_c).mul(two).sub(one).truncate(g_prec + 2);
+            sum_s = next_s;
+            sum_c = next_c;
+        }
+        
+        s_out = sum_s.truncate(g_prec);
+        c_out = sum_c.truncate(g_prec);
+    }
+
+    Decimal sin_val() const {
+        Decimal s, c;
+        sincos_val(s, c);
+        return s;
     }
 
     Decimal cos_val() const {
-        Decimal x = this->mod_2pi();
-        Decimal sum(jc::BigInt(1), 0);
-        Decimal term(jc::BigInt(1), 0);
-        Decimal x2 = x.mul(x).truncate(g_prec + 2);
-        Decimal n(jc::BigInt(1), 0);
-        Decimal one(jc::BigInt(1), 0);
-        Decimal two(jc::BigInt(2), 0);
-        int sign = -1;
-        
-        for (int i = 1; i < 1000; ++i) {
-            term = term.mul(x2).div(n.mul(n.add(one))).truncate(g_prec + 2);
-            if (term.mantissa.isZero()) break;
-            
-            Decimal next_sum = (sign == -1) ? sum.sub(term).truncate(g_prec + 2) : sum.add(term).truncate(g_prec + 2);
-            
-            if (next_sum.eq(sum)) break;
-            sum = next_sum;
-            
-            n = n.add(two);
-            sign = -sign;
-        }
-        return sum.truncate(g_prec);
+        Decimal s, c;
+        sincos_val(s, c);
+        return c;
     }
 
     static Decimal arctan_series(const Decimal& x) {
@@ -484,17 +500,24 @@ public:
         Decimal y = Decimal::from_string(buf);
         Decimal two(jc::BigInt(2), 0);
         
-        for (int i = 0; i < 50; ++i) {
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
             Decimal ey = y.exp_val();
-            Decimal num = this->sub(ey);
-            Decimal den = this->add(ey);
+            Decimal num = cur_x.sub(ey);
+            Decimal den = cur_x.add(ey);
             if (den.mantissa.isZero()) break;
-            Decimal diff = two.mul(num).div(den).truncate(g_prec + 2);
-            if (diff.mantissa.isZero()) break;
-            Decimal next_y = y.add(diff).truncate(g_prec + 2);
-            if (next_y.eq(y)) break;
-            y = next_y;
+            Decimal diff = two.mul(num).div(den).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
         }
+        g_prec = saved_prec;
         return y.truncate(g_prec);
     }
 
@@ -519,17 +542,24 @@ public:
         snprintf(buf, sizeof(buf), "%.15g", guess);
         Decimal y = Decimal::from_string(buf);
         
-        for (int i = 0; i < 50; ++i) {
-            Decimal sy = y.sin_val();
-            Decimal cy = y.cos_val();
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
             if (cy.mantissa.isZero()) break;
-            Decimal ty = sy.div(cy).truncate(g_prec + 2);
-            Decimal diff = cy.mul(cy).mul(this->sub(ty)).truncate(g_prec + 2);
-            if (diff.mantissa.isZero()) break;
-            Decimal next_y = y.add(diff).truncate(g_prec + 2);
-            if (next_y.eq(y)) break;
-            y = next_y;
+            Decimal ty = sy.div(cy).truncate(current_prec);
+            Decimal diff = cy.mul(cy).mul(cur_x.sub(ty)).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
         }
+        g_prec = saved_prec;
         return y.truncate(g_prec);
     }
 
@@ -544,16 +574,23 @@ public:
         snprintf(buf, sizeof(buf), "%.15g", guess);
         Decimal y = Decimal::from_string(buf);
         
-        for (int i = 0; i < 50; ++i) {
-            Decimal sy = y.sin_val();
-            Decimal cy = y.cos_val();
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
             if (cy.mantissa.isZero()) break;
-            Decimal diff = this->sub(sy).div(cy).truncate(g_prec + 2);
-            if (diff.mantissa.isZero()) break;
-            Decimal next_y = y.add(diff).truncate(g_prec + 2);
-            if (next_y.eq(y)) break;
-            y = next_y;
+            Decimal diff = cur_x.sub(sy).div(cy).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
         }
+        g_prec = saved_prec;
         return y.truncate(g_prec);
     }
 
@@ -568,16 +605,23 @@ public:
         snprintf(buf, sizeof(buf), "%.15g", guess);
         Decimal y = Decimal::from_string(buf);
         
-        for (int i = 0; i < 50; ++i) {
-            Decimal cy = y.cos_val();
-            Decimal sy = y.sin_val();
+        int target_prec = g_prec + 2;
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
             if (sy.mantissa.isZero()) break;
-            Decimal diff = this->sub(cy).div(sy).truncate(g_prec + 2);
-            if (diff.mantissa.isZero()) break;
-            Decimal next_y = y.sub(diff).truncate(g_prec + 2);
-            if (next_y.eq(y)) break;
-            y = next_y;
+            Decimal diff = cur_x.sub(cy).div(sy).truncate(current_prec);
+            y = y.sub(diff).truncate(current_prec);
         }
+        g_prec = saved_prec;
         return y.truncate(g_prec);
     }
 

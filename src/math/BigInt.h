@@ -1059,19 +1059,45 @@ namespace jc {
             }
         }
 
+        static std::string toStringDC(const BigInt& num, const std::vector<BigInt>& powers, int p_idx) {
+            if (p_idx == 0) {
+                std::string chunk = std::to_string(num.data.empty() ? 0 : num.data[0]);
+                return std::string(9 - chunk.length(), '0') + chunk;
+            }
+            auto [q, r] = divmod(num, powers[p_idx - 1]);
+            std::string high = q.isZero() ? std::string(9 * (1 << (p_idx - 1)), '0') : toStringDC(q, powers, p_idx - 1);
+            std::string low = r.isZero() ? std::string(9 * (1 << (p_idx - 1)), '0') : toStringDC(r, powers, p_idx - 1);
+            return high + low;
+        }
+
         std::string toString() const {
             if (isZero()) return "0";
             BigInt temp = this->abs();
-            std::string result;
-            while (!temp.isZero()) {
-                auto [q, rem] = temp.divmod_small(1000000000);
-                temp = q;
-                std::string chunk = std::to_string(rem);
-                if (!temp.isZero()) {
-                    chunk = std::string(9 - chunk.length(), '0') + chunk;
+            
+            if (temp.data.size() <= 2) {
+                std::string result;
+                while (!temp.isZero()) {
+                    auto [q, rem] = temp.divmod_small(1000000000);
+                    temp = q;
+                    std::string chunk = std::to_string(rem);
+                    if (!temp.isZero()) chunk = std::string(9 - chunk.length(), '0') + chunk;
+                    result = chunk + result;
                 }
-                result = chunk + result;
+                if (negative) result = "-" + result;
+                return result;
             }
+            
+            std::vector<BigInt> powers;
+            powers.push_back(BigInt(1000000000));
+            while (powers.back() < temp) {
+                powers.push_back(powers.back() * powers.back());
+            }
+            
+            std::string result = toStringDC(temp, powers, static_cast<int>(powers.size()) - 1);
+            size_t start = 0;
+            while (start < result.length() - 1 && result[start] == '0') start++;
+            result = result.substr(start);
+            
             if (negative) result = "-" + result;
             return result;
         }

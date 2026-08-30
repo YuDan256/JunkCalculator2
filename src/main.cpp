@@ -890,20 +890,30 @@ int main(int argc, char* argv[]) {
         return 0;
     }
 
-    auto printBanner = []() {
+    auto printBannerTop = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
             << "   Junk Calculator 2.6.2.0\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
-            << "=================================================\n" << jc::col(jc::Ansi::RESET)
-            << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
-        };
+            << "=================================================\n" << jc::col(jc::Ansi::RESET);
+    };
+
+    auto printBannerBottom = []() {
+        std::cout << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
+    };
+
+    auto printBanner = [&]() {
+        printBannerTop();
+        printBannerBottom();
+    };
+
+    if (!g_quiet) printBannerTop();
 
     if (loadMode) {
         loadWorkspace(loadTarget);
     }
 
-    if (!g_quiet) printBanner();
+    if (!g_quiet) printBannerBottom();
 
     while (true) {
         jc::g_interruptRequested.store(false, std::memory_order_relaxed);

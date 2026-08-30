@@ -46,6 +46,7 @@
       "  ────────────────────────────────────────────────────────────────────",
       "    jc2                                Interactive REPL (default)",
       "    jc2 load [name/path]               Load a workspace and enter REPL",
+      "    jc2 [path].jcw                     Auto-fallback to load workspace",
       "    jc2 script.jc2                     Run a script (fallback to 'run')",
       "    jc2 run script.jc2                 Run a script explicitly",
       "    jc2 compile in.jc2 [out.jcb]       Compile script to bytecode",

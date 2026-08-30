@@ -640,9 +640,15 @@ int main(int argc, char* argv[]) {
                 if (command == "load") loadMode = true;
                 continue;
             } else {
-                // 智能 Fallback：默认作为 run 脚本处理
-                command = "run";
-                scriptPath = arg;
+                // 智能 Fallback：根据后缀判断是 load 工作区还是 run 脚本
+                if (arg.length() >= 4 && arg.substr(arg.length() - 4) == ".jcw") {
+                    command = "load";
+                    loadMode = true;
+                    loadTarget = arg;
+                } else {
+                    command = "run";
+                    scriptPath = arg;
+                }
                 continue;
             }
         }

@@ -797,7 +797,8 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
         if (tag == 5) return Value(readDouble(is));
         if (tag == 6) {
             uint32_t id = read32(is);
-            return Value(idToObj[id]);
+            Obj* obj = idToObj[id];
+            return obj ? Value(obj) : Value::none();
         }
         if (tag == 8) {
             idToObj.push_back(nullptr);
@@ -933,8 +934,13 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                     uint32_t size = read32(is);
                     for (uint32_t i = 0; i < size; ++i) {
                         Value k = self(self); Value v = self(self);
-                        d->keyMap[k] = d->elements.size();
-                        d->elements.push_back({k, v});
+                        auto it = d->keyMap.find(k);
+                        if (it != d->keyMap.end()) {
+                            d->elements[it->second].second = v;
+                        } else {
+                            d->keyMap[k] = d->elements.size();
+                            d->elements.push_back({k, v});
+                        }
                     }
                     break;
                 }
@@ -946,8 +952,10 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                     uint32_t size = read32(is);
                     for (uint32_t i = 0; i < size; ++i) {
                         Value v = self(self);
-                        s->keys.insert(v);
-                        s->elements.push_back(v);
+                        if (s->keys.find(v) == s->keys.end()) {
+                            s->keys.insert(v);
+                            s->elements.push_back(v);
+                        }
                     }
                     break;
                 }

@@ -375,6 +375,36 @@ void loadWorkspace(const std::string& arg, bool silent = false, bool merge = fal
     }
 }
 
+void deleteWorkspace(const std::string& arg, bool silent = false) {
+    namespace fs = std::filesystem;
+    fs::path targetPath;
+
+    if (arg.find('/') != std::string::npos || arg.find('\\') != std::string::npos || (arg.length() >= 4 && arg.substr(arg.length() - 4) == ".jcw")) {
+        targetPath = jc::to_path(arg);
+        if (!targetPath.is_absolute()) {
+            targetPath = jc::to_path(jc::g_cwd()) / targetPath;
+        }
+        if (targetPath.extension() != ".jcw") {
+            targetPath += ".jcw";
+        }
+    } else {
+        std::string wp = getWorkspaceDir();
+        targetPath = jc::to_path(wp) / jc::to_path(arg + ".jcw");
+    }
+
+    if (!fs::exists(targetPath)) { 
+        if (!silent) std::cerr << "IO Error: Workspace not found at " << jc::from_path(targetPath) << ".\n"; 
+        return; 
+    }
+
+    try {
+        fs::remove(targetPath);
+        if (!silent) std::cout << "Workspace deleted: " << jc::from_path(targetPath) << std::endl;
+    } catch (const std::exception& e) {
+        if (!silent) std::cerr << "Failed to delete workspace: " << e.what() << std::endl;
+    }
+}
+
 int runTestSuite(const std::string& testPath, const std::string& exeDir) {
     namespace fs = std::filesystem;
     fs::path targetPath = testPath.empty() ? jc::to_path(exeDir) / "tests" : jc::to_path(testPath);
@@ -1232,14 +1262,6 @@ int main(int argc, char* argv[]) {
                     }
                     std::cout << "  Script dir:    " << jc::g_cwd() << std::endl;
                     std::cout << "  Workspace dir: " << getWorkspaceDir() << std::endl;
-                } else if (cmd == "clear") {
-                    vm.clearGlobals(); 
-                    vm.setGlobal("PI", jc::Value(3.14159265358979323846));
-                    vm.setGlobal("E", jc::Value(2.71828182845904523536));
-                    vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
-                    vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
-                    vm.setGlobal("ANS", jc::Value::none());
-                    std::cout << "Workspace cleared.\n"; 
                 } else if (cmd.substr(0, 5) == "save ") {
                     std::string name = cmd.substr(5);
                     s = name.find_first_not_of(" \t");
@@ -1268,8 +1290,14 @@ int main(int argc, char* argv[]) {
                     loadWorkspace(name.empty() ? "default" : name, false, false, true);
                 } else if (cmd == "info") {
                     loadWorkspace("default", false, false, true);
+                } else if (cmd.substr(0, 7) == "delete ") {
+                    std::string name = cmd.substr(7);
+                    s = name.find_first_not_of(" \t");
+                    if (s != std::string::npos) name = name.substr(s);
+                    if (!name.empty()) deleteWorkspace(name);
+                    else std::cerr << "Error: /ws delete requires a workspace name.\n";
                 } else {
-                    std::cout << "Unknown /ws command. Use: /ws save, /ws load, /ws merge, /ws info, /ws list, /ws clear, /ws pwd, /ws set\n";
+                    std::cout << "Unknown /ws command. Use: /ws save, /ws load, /ws merge, /ws info, /ws list, /ws delete, /ws pwd, /ws set\n";
                 }
                 continue;
             }

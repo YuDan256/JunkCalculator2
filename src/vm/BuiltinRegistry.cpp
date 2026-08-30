@@ -4900,7 +4900,7 @@ void BuiltinRegistry::registerSystemShell() {
 
     regModule(sys_ns, "getWorkspace", { 0 }, [](const std::vector<Value>&) -> Value {
         if (g_workspacePath.empty()) {
-            auto u8str = (std::filesystem::current_path() / "data").u8string();
+            auto u8str = std::filesystem::current_path().u8string();
             return Value(std::string(u8str.begin(), u8str.end()));
         }
         return Value(g_workspacePath);
@@ -4910,7 +4910,7 @@ void BuiltinRegistry::registerSystemShell() {
         std::cout << "  Script dir:    " << g_cwd() << std::endl;
         std::string ws = g_workspacePath;
         if (ws.empty()) {
-            auto u8str = (std::filesystem::current_path() / "data").u8string();
+            auto u8str = std::filesystem::current_path().u8string();
             ws = std::string(u8str.begin(), u8str.end());
         }
         std::cout << "  Workspace dir: " << ws << std::endl;

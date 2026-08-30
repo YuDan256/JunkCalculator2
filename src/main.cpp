@@ -557,9 +557,7 @@ int main(int argc, char* argv[]) {
         if (p.is_absolute()) return p.string();
         std::vector<std::string> c = {
             fs::weakly_canonical(fs::current_path() / p).string(),
-            (fs::current_path() / "data" / p).string(),
             (fs::path(exeDir) / p).string(),
-            (fs::path(exeDir) / "data" / p).string(),
             (fs::path(exeDir) / "modules" / p).string(),
             (fs::path(exeDir) / "lib" / p).string()
         };
@@ -1153,6 +1151,17 @@ int main(int argc, char* argv[]) {
                 printBanner();
                 continue;
             }
+            if (input == "/pwd") {
+                jc::Value sysVal = vm.getGlobal("sys");
+                if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
+                    auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
+                    auto it = ns->fields.find("pwd");
+                    if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
+                        jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {});
+                    }
+                }
+                continue;
+            }
             if (input.substr(0, 4) == "/ws ") {
                 std::string cmd = input.substr(4);
                 size_t s = cmd.find_first_not_of(" \t");
@@ -1161,6 +1170,31 @@ int main(int argc, char* argv[]) {
 
                 if (cmd == "list") {
                     listWorkspaces();
+                } else if (cmd == "pwd") {
+                    jc::Value sysVal = vm.getGlobal("sys");
+                    if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
+                        auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
+                        auto it = ns->fields.find("pwd");
+                        if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
+                            jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {});
+                        }
+                    }
+                } else if (cmd.substr(0, 4) == "set ") {
+                    std::string path = cmd.substr(4);
+                    size_t ps = path.find_first_not_of(" \t");
+                    if (ps != std::string::npos) path = path.substr(ps);
+                    jc::Value sysVal = vm.getGlobal("sys");
+                    if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
+                        auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
+                        auto it = ns->fields.find("setWorkspace");
+                        if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
+                            jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {jc::Value(path)});
+                            auto itPwd = ns->fields.find("pwd");
+                            if (itPwd != ns->fields.end() && (*itPwd->second.upval->location).isFunctionClosure()) {
+                                jc::helpers::callFunctionCallback((*itPwd->second.upval->location).asFunction(), {});
+                            }
+                        }
+                    }
                 } else if (cmd == "clear") {
                     vm.clearGlobals(); 
                     vm.setGlobal("PI", jc::Value(3.14159265358979323846));
@@ -1184,7 +1218,7 @@ int main(int argc, char* argv[]) {
                 } else if (cmd == "load") {
                     loadWorkspace("default");
                 } else {
-                    std::cout << "   Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear\n";
+                    std::cout << "   Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear, /ws pwd, /ws set [path]\n";
                 }
                 continue;
             }

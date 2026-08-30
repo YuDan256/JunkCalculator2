@@ -39,9 +39,9 @@ namespace jc {
     }
 
     // 替代 Evaluator 中的路径状态
-    static std::string g_workspacePath = "";
+    std::string g_workspacePath = "";
     // 获取当前路径
-    static std::string g_cwd() {
+    std::string g_cwd() {
         if (!helpers::g_scriptDirStack.empty()) return helpers::g_scriptDirStack.back();
         auto u8str = std::filesystem::current_path().u8string();
         return std::string(u8str.begin(), u8str.end());

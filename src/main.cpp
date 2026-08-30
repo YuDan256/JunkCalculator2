@@ -31,6 +31,8 @@
 
 namespace jc {
     std::atomic<bool> g_isWaitingForInput{ false };
+    extern std::string g_workspacePath;
+    extern std::string g_cwd();
 
     inline std::filesystem::path to_path(const std::string& utf8_str) {
         return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
@@ -288,11 +290,18 @@ void runScript(const std::string& filepath, bool isImport = false) {
     jc::helpers::g_scriptDirStack.pop_back();
 }
 
+std::string getWorkspaceDir() {
+    if (jc::g_workspacePath.empty()) {
+        auto u8str = std::filesystem::current_path().u8string();
+        return std::string(u8str.begin(), u8str.end());
+    }
+    return jc::g_workspacePath;
+}
+
 void saveWorkspace(const std::string& filename, bool silent) {
     namespace fs = std::filesystem;
 
-    jc::BuiltinRegistry reg; reg.registerAll();
-    std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
+    std::string wp = getWorkspaceDir();
 
     fs::path dir = jc::to_path(wp);
     if (!fs::exists(dir)) fs::create_directories(dir);
@@ -308,8 +317,7 @@ void saveWorkspace(const std::string& filename, bool silent) {
 
 void listWorkspaces() {
     namespace fs = std::filesystem;
-    jc::BuiltinRegistry reg; reg.registerAll();
-    std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
+    std::string wp = getWorkspaceDir();
     fs::path dir = jc::to_path(wp);
     
     if (!fs::exists(dir)) {
@@ -331,8 +339,7 @@ void listWorkspaces() {
 void loadWorkspace(const std::string& filename, bool silent = false) {
     namespace fs = std::filesystem;
 
-    jc::BuiltinRegistry reg; reg.registerAll();
-    std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
+    std::string wp = getWorkspaceDir();
 
     std::string path = jc::from_path(jc::to_path(wp) / jc::to_path(filename + ".jcw"));
     if (!fs::exists(jc::to_path(path))) { 
@@ -1152,14 +1159,8 @@ int main(int argc, char* argv[]) {
                 continue;
             }
             if (input == "/pwd") {
-                jc::Value sysVal = vm.getGlobal("sys");
-                if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
-                    auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
-                    auto it = ns->fields.find("pwd");
-                    if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
-                        jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {});
-                    }
-                }
+                std::cout << "  Script dir:    " << jc::g_cwd() << std::endl;
+                std::cout << "  Workspace dir: " << getWorkspaceDir() << std::endl;
                 continue;
             }
             if (input.substr(0, 4) == "/ws ") {
@@ -1171,30 +1172,25 @@ int main(int argc, char* argv[]) {
                 if (cmd == "list") {
                     listWorkspaces();
                 } else if (cmd == "pwd") {
-                    jc::Value sysVal = vm.getGlobal("sys");
-                    if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
-                        auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
-                        auto it = ns->fields.find("pwd");
-                        if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
-                            jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {});
-                        }
-                    }
+                    std::cout << "  Script dir:    " << jc::g_cwd() << std::endl;
+                    std::cout << "  Workspace dir: " << getWorkspaceDir() << std::endl;
                 } else if (cmd.substr(0, 4) == "set ") {
                     std::string path = cmd.substr(4);
                     size_t ps = path.find_first_not_of(" \t");
                     if (ps != std::string::npos) path = path.substr(ps);
-                    jc::Value sysVal = vm.getGlobal("sys");
-                    if (sysVal.isObjType(jc::ObjType::NAMESPACE)) {
-                        auto ns = static_cast<jc::ObjNamespace*>(sysVal.asObj());
-                        auto it = ns->fields.find("setWorkspace");
-                        if (it != ns->fields.end() && (*it->second.upval->location).isFunctionClosure()) {
-                            jc::helpers::callFunctionCallback((*it->second.upval->location).asFunction(), {jc::Value(path)});
-                            auto itPwd = ns->fields.find("pwd");
-                            if (itPwd != ns->fields.end() && (*itPwd->second.upval->location).isFunctionClosure()) {
-                                jc::helpers::callFunctionCallback((*itPwd->second.upval->location).asFunction(), {});
-                            }
-                        }
+                    
+                    if (path == "default") {
+                        jc::g_workspacePath = "";
+                    } else {
+                        namespace fs = std::filesystem;
+                        fs::path dir = jc::to_path(path);
+                        if (!dir.is_absolute()) dir = jc::to_path(jc::g_cwd()) / dir;
+                        if (!fs::exists(dir)) fs::create_directories(dir);
+                        auto u8str = fs::weakly_canonical(dir).u8string();
+                        jc::g_workspacePath = std::string(u8str.begin(), u8str.end());
                     }
+                    std::cout << "  Script dir:    " << jc::g_cwd() << std::endl;
+                    std::cout << "  Workspace dir: " << getWorkspaceDir() << std::endl;
                 } else if (cmd == "clear") {
                     vm.clearGlobals(); 
                     vm.setGlobal("PI", jc::Value(3.14159265358979323846));

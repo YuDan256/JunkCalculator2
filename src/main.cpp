@@ -58,9 +58,7 @@ void sigintHandler(int signum) {
 
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
         extern bool g_quiet;
-        extern bool g_enteredRepl;
         if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-        if (g_enteredRepl) saveWorkspace("default", true);
         vm.shutdown();
         std::exit(0);
     }
@@ -142,7 +140,6 @@ bool g_quiet = false;
 bool g_showNone = false;
 bool g_silentRepl = false;
 bool g_enableJit = false;
-bool g_enteredRepl = false;
 
 // ★ 消费编译器/VM 指令（行首 # 开头）。注册表：'!' 是 Shebang，no-op。
 static void processDirectives(const std::vector<jc::Directive>& directives) {
@@ -871,11 +868,6 @@ int main(int argc, char* argv[]) {
 
     if (!g_quiet) printBanner();
 
-    g_enteredRepl = true;
-    
-    // Auto-load default session
-    loadWorkspace("default", true);
-
     while (true) {
         jc::g_interruptRequested.store(false, std::memory_order_relaxed);
         g_sigintCount = 0;
@@ -898,7 +890,6 @@ int main(int argc, char* argv[]) {
             }
             if (isEof) {
                 if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-                if (g_enteredRepl) saveWorkspace("default", true);
                 vm.shutdown();
                 std::exit(1);
             }
@@ -1030,7 +1021,6 @@ int main(int argc, char* argv[]) {
         }
         if (inputAborted && isEof) {
             if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-            if (g_enteredRepl) saveWorkspace("default", true);
             vm.shutdown();
             std::exit(1);
         }
@@ -1354,7 +1344,6 @@ int main(int argc, char* argv[]) {
     }
 
     if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-    if (g_enteredRepl) saveWorkspace("default", true);
     if (g_profile) vm.printProfileInfo();
     vm.shutdown();
     return 0;

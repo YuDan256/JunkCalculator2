@@ -22,6 +22,12 @@ public:
     // 从 .jcb 文件反序列化，追加到 VM，并返回顶层模块函数
     static std::shared_ptr<CompiledFunction> loadJCB(const std::string& path, VM* vm);
 
+    // 保存完整工作区快照到 .jcw 文件
+    static void saveJCW(const std::string& path, VM* vm);
+    
+    // 从 .jcw 文件恢复完整工作区快照
+    static void loadJCW(const std::string& path, VM* vm);
+
 private:
     enum class ConstTag : uint8_t {
         NONE = 0, BOOL_FALSE, BOOL_TRUE, INT32, DOUBLE, STRING,

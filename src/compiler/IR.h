@@ -425,7 +425,7 @@ public:
             }
             if (n->op == IROp::Constant) {
                 if (n->constVal.isString()) std::cout << " | Val: \"" << n->constVal.asString() << "\"";
-                else std::cout << " | Val: " << n->constVal.toJC2Expression();
+                else std::cout << " | Val: " << n->constVal.toRepr();
             }
             if (!n->name.empty()) std::cout << " | Name: " << n->name;
             std::cout << std::endl;

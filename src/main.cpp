@@ -48,13 +48,17 @@ static auto g_lastSigintTime = std::chrono::steady_clock::now();
 
 extern jc::VM vm;
 
+void saveWorkspace(const std::string& filename, bool silent = false);
+
 void sigintHandler(int signum) {
     (void)signum;
     std::signal(SIGINT, sigintHandler); // 重新注册，防止某些平台恢复默认处理
 
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
         extern bool g_quiet;
+        extern bool g_enteredRepl;
         if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+        if (g_enteredRepl) saveWorkspace("default", true);
         vm.shutdown();
         std::exit(0);
     }
@@ -136,6 +140,7 @@ bool g_quiet = false;
 bool g_showNone = false;
 bool g_silentRepl = false;
 bool g_enableJit = false;
+bool g_enteredRepl = false;
 
 // ★ 消费编译器/VM 指令（行首 # 开头）。注册表：'!' 是 Shebang，no-op。
 static void processDirectives(const std::vector<jc::Directive>& directives) {
@@ -283,40 +288,64 @@ void runScript(const std::string& filepath, bool isImport = false) {
     jc::helpers::g_scriptDirStack.pop_back();
 }
 
-void saveWorkspace(const std::string& filename) {
+void saveWorkspace(const std::string& filename, bool silent) {
     namespace fs = std::filesystem;
 
-    // 正确调用 C++ 原生的 getWorkspace
     jc::BuiltinRegistry reg; reg.registerAll();
     std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
 
     fs::path dir = jc::to_path(wp);
     if (!fs::exists(dir)) fs::create_directories(dir);
-    std::ofstream out(dir / jc::to_path(filename + ".jc2"));
+    std::string path = jc::from_path(dir / jc::to_path(filename + ".jcw"));
 
-    int count = 0;
-    auto globals = vm.getGlobals();
-    for (const auto& [name, value] : globals) {
-        if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
-        if (name.length() >= 2 && name[0] == '_' && name[1] == '_') continue;
-        out << name << " = " << value.toJC2Expression() << "\n";
-        count++;
+    try {
+        jc::BytecodeSerializer::saveJCW(path, &vm);
+        if (!silent) std::cout << "   Saved workspace snapshot to " << path << std::endl;
+    } catch (const std::exception& e) {
+        if (!silent) std::cerr << "   Failed to save workspace: " << e.what() << std::endl;
     }
-    out.close();
-    std::cout << "   Saved " << count << " variables to " << jc::from_path(dir / jc::to_path(filename + ".jc2")) << std::endl;
 }
 
-void loadWorkspace(const std::string& filename) {
+void listWorkspaces() {
+    namespace fs = std::filesystem;
+    jc::BuiltinRegistry reg; reg.registerAll();
+    std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
+    fs::path dir = jc::to_path(wp);
+    
+    if (!fs::exists(dir)) {
+        std::cout << "   No workspaces found.\n";
+        return;
+    }
+    
+    std::cout << "   Available workspaces:\n";
+    int count = 0;
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        if (entry.is_regular_file() && entry.path().extension() == ".jcw") {
+            std::cout << "     - " << jc::from_path(entry.path().stem()) << "\n";
+            count++;
+        }
+    }
+    if (count == 0) std::cout << "     (none)\n";
+}
+
+void loadWorkspace(const std::string& filename, bool silent = false) {
     namespace fs = std::filesystem;
 
     jc::BuiltinRegistry reg; reg.registerAll();
     std::string wp = reg.getBuiltins()["getWorkspace"]({}).asString();
 
-    std::string path = jc::from_path(jc::to_path(wp) / jc::to_path(filename + ".jc2"));
-    if (!fs::exists(jc::to_path(path))) { std::cerr << "   IO Error: Workspace not found.\n"; return; }
+    std::string path = jc::from_path(jc::to_path(wp) / jc::to_path(filename + ".jcw"));
+    if (!fs::exists(jc::to_path(path))) { 
+        if (!silent) std::cerr << "   IO Error: Workspace not found.\n"; 
+        return; 
+    }
 
-    vm.clearGlobals();
-    runScript(path);
+    try {
+        jc::BytecodeSerializer::loadJCW(path, &vm);
+        if (!silent) std::cout << "   Workspace loaded from " << path << std::endl;
+    } catch (const std::exception& e) {
+        if (!silent) std::cerr << "   Failed to load workspace: " << e.what() << std::endl;
+    }
 }
 
 int runTestSuite(const std::string& testPath, const std::string& exeDir) {
@@ -837,6 +866,11 @@ int main(int argc, char* argv[]) {
 
     if (!g_quiet) printBanner();
 
+    g_enteredRepl = true;
+    
+    // Auto-load default session
+    loadWorkspace("default", true);
+
     while (true) {
         jc::g_interruptRequested.store(false, std::memory_order_relaxed);
         g_sigintCount = 0;
@@ -859,6 +893,7 @@ int main(int argc, char* argv[]) {
             }
             if (isEof) {
                 if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+                if (g_enteredRepl) saveWorkspace("default", true);
                 vm.shutdown();
                 std::exit(1);
             }
@@ -990,6 +1025,7 @@ int main(int argc, char* argv[]) {
         }
         if (inputAborted && isEof) {
             if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+            if (g_enteredRepl) saveWorkspace("default", true);
             vm.shutdown();
             std::exit(1);
         }
@@ -1117,8 +1153,41 @@ int main(int argc, char* argv[]) {
                 printBanner();
                 continue;
             }
-            if (input.substr(0, 6) == "/save ") { saveWorkspace(input.substr(6)); continue; }
-            if (input.substr(0, 6) == "/load ") { loadWorkspace(input.substr(6)); continue; }
+            if (input.substr(0, 4) == "/ws ") {
+                std::string cmd = input.substr(4);
+                size_t s = cmd.find_first_not_of(" \t");
+                if (s != std::string::npos) cmd = cmd.substr(s);
+                else cmd = "";
+
+                if (cmd == "list") {
+                    listWorkspaces();
+                } else if (cmd == "clear") {
+                    vm.clearGlobals(); 
+                    vm.setGlobal("PI", jc::Value(3.14159265358979323846));
+                    vm.setGlobal("E", jc::Value(2.71828182845904523536));
+                    vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
+                    vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+                    vm.setGlobal("ANS", jc::Value::none());
+                    std::cout << "   Workspace cleared.\n"; 
+                } else if (cmd.substr(0, 5) == "save ") {
+                    std::string name = cmd.substr(5);
+                    s = name.find_first_not_of(" \t");
+                    if (s != std::string::npos) name = name.substr(s);
+                    saveWorkspace(name.empty() ? "default" : name);
+                } else if (cmd == "save") {
+                    saveWorkspace("default");
+                } else if (cmd.substr(0, 5) == "load ") {
+                    std::string name = cmd.substr(5);
+                    s = name.find_first_not_of(" \t");
+                    if (s != std::string::npos) name = name.substr(s);
+                    loadWorkspace(name.empty() ? "default" : name);
+                } else if (cmd == "load") {
+                    loadWorkspace("default");
+                } else {
+                    std::cout << "   Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear\n";
+                }
+                continue;
+            }
             if (input.substr(0, 8) == "/delete ") {
                 std::string varName = input.substr(8);
                 size_t s = varName.find_first_not_of(" \t");
@@ -1255,6 +1324,7 @@ int main(int argc, char* argv[]) {
     }
 
     if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+    if (g_enteredRepl) saveWorkspace("default", true);
     if (g_profile) vm.printProfileInfo();
     vm.shutdown();
     return 0;

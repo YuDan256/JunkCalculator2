@@ -4,6 +4,7 @@
 #include <fstream>
 #include <cstring>
 #include <stdexcept>
+#include <unordered_map>
 
 namespace jc {
 
@@ -497,6 +498,623 @@ std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string&
         lastFn = fn;
     }
     return lastFn;
+}
+
+void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
+    std::ofstream os(path, std::ios::binary);
+    if (!os) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+
+    write32(os, 0x4A435701); // JCW1
+    write32(os, VERSION);
+
+    auto& fns = vm->getCompiledFunctions();
+    write32(os, static_cast<uint32_t>(fns.size()));
+    for (const auto& fn : fns) {
+        writeFunction(os, fn.get(), 0, false);
+    }
+
+    std::unordered_map<Obj*, uint32_t> objToId;
+    uint32_t nextId = 1;
+
+    auto writeRuntimeValue = [&](const Value& val, auto& self) -> void {
+        if (val.isNone()) { write8(os, 0); return; }
+        if (val.isUninit()) { write8(os, 1); return; }
+        if (val.isBool()) { write8(os, val.asBool() ? 3 : 2); return; }
+        if (val.isInt32()) { write8(os, 4); write32(os, val.asInt32()); return; }
+        if (val.isDouble()) { write8(os, 5); writeDouble(os, val.asDoubleRaw()); return; }
+        
+        Obj* obj = val.asObj();
+        if (objToId.count(obj)) {
+            write8(os, 6);
+            write32(os, objToId[obj]);
+            return;
+        }
+        
+        objToId[obj] = nextId++;
+        
+        if (obj->type == ObjType::INSTANCE) {
+            auto inst = static_cast<ObjInstance*>(obj);
+            if (inst->nativeData.has_value() || inst->c_nativeData != nullptr) {
+                std::string cname = inst->classDef ? inst->classDef->name : "Unknown";
+                std::cout << "   [Warning] Skipped serialization of native instance (Class: " << cname << ").\n";
+                write8(os, 8);
+                return;
+            }
+        } else if (obj->type == ObjType::CLOSURE) {
+            auto cl = static_cast<ObjClosure*>(obj);
+            if (cl->isNative() && !cl->isBytecode()) {
+                write8(os, 9);
+                writeString(os, cl->rawBody);
+                return;
+            }
+        } else if (obj->type == ObjType::NAMESPACE) {
+            for (const auto& [k, v] : vm->getLoadedModules()) {
+                if (v.isObj() && v.asObj() == obj) {
+                    std::cout << "   [Warning] Skipped imported module '" << k << "'. Please re-import it after loading.\n";
+                    write8(os, 10);
+                    writeString(os, k);
+                    return;
+                }
+            }
+        } else if (obj->type == ObjType::CLASS) {
+            auto cls = static_cast<ObjClass*>(obj);
+            if (cls->is_native || cls->native_allocator) {
+                write8(os, 11);
+                writeString(os, cls->name);
+                return;
+            }
+            if (cls == vm->listProto) { write8(os, 11); writeString(os, "<ListProto>"); return; }
+            if (cls == vm->dictProto) { write8(os, 11); writeString(os, "<DictProto>"); return; }
+            if (cls == vm->setProto) { write8(os, 11); writeString(os, "<SetProto>"); return; }
+            if (cls == vm->stringProto) { write8(os, 11); writeString(os, "<StringProto>"); return; }
+            if (cls == vm->matrixProto) { write8(os, 11); writeString(os, "<MatrixProto>"); return; }
+        }
+
+        write8(os, 7);
+        write8(os, static_cast<uint8_t>(obj->type));
+        
+        switch (obj->type) {
+            case ObjType::STRING: writeString(os, static_cast<ObjString*>(obj)->str); break;
+            case ObjType::BIGINT: {
+                BigInt b = static_cast<ObjBigInt*>(obj)->num;
+                write8(os, b.getSign() ? 1 : 0);
+                const auto& raw = b.getRawData();
+                write32(os, static_cast<uint32_t>(raw.size()));
+                for (uint32_t v : raw) write32(os, v);
+                break;
+            }
+            case ObjType::FRACTION: {
+                Fraction f = static_cast<ObjFraction*>(obj)->frac;
+                write8(os, f.getNum().getSign() ? 1 : 0);
+                const auto& numRaw = f.getNum().getRawData();
+                write32(os, static_cast<uint32_t>(numRaw.size()));
+                for (uint32_t v : numRaw) write32(os, v);
+                write8(os, f.getDen().getSign() ? 1 : 0);
+                const auto& denRaw = f.getDen().getRawData();
+                write32(os, static_cast<uint32_t>(denRaw.size()));
+                for (uint32_t v : denRaw) write32(os, v);
+                break;
+            }
+            case ObjType::COMPLEX: {
+                Complex c = static_cast<ObjComplex*>(obj)->comp;
+                writeDouble(os, c.real); writeDouble(os, c.imag);
+                break;
+            }
+            case ObjType::REAL_MATRIX: {
+                RealMatrix m = static_cast<ObjRealMatrix*>(obj)->mat;
+                write16(os, static_cast<uint16_t>(m.getRows()));
+                write16(os, static_cast<uint16_t>(m.getCols()));
+                for (double d : m.rawData()) writeDouble(os, d);
+                break;
+            }
+            case ObjType::COMPLEX_MATRIX: {
+                ComplexMatrix m = static_cast<ObjComplexMatrix*>(obj)->mat;
+                write16(os, static_cast<uint16_t>(m.getRows()));
+                write16(os, static_cast<uint16_t>(m.getCols()));
+                for (Complex c : m.rawData()) { writeDouble(os, c.real); writeDouble(os, c.imag); }
+                break;
+            }
+            case ObjType::SYM_MATRIX: {
+                SymMatrix m = static_cast<ObjSymMatrix*>(obj)->mat;
+                write16(os, static_cast<uint16_t>(m.getRows()));
+                write16(os, static_cast<uint16_t>(m.getCols()));
+                for (const auto& s : m.rawData()) writeString(os, s.toString());
+                break;
+            }
+            case ObjType::SYMBOLIC: {
+                writeString(os, static_cast<ObjSym*>(obj)->sym.toString());
+                break;
+            }
+            case ObjType::LIST: {
+                auto l = static_cast<ObjList*>(obj);
+                write8(os, l->is_frozen ? 1 : 0);
+                write32(os, static_cast<uint32_t>(l->vec.size()));
+                for (const auto& v : l->vec) self(v, self);
+                break;
+            }
+            case ObjType::DICT: {
+                auto d = static_cast<ObjDict*>(obj);
+                write8(os, d->is_frozen ? 1 : 0);
+                write32(os, static_cast<uint32_t>(d->elements.size()));
+                for (const auto& [k, v] : d->elements) {
+                    self(k, self); self(v, self);
+                }
+                break;
+            }
+            case ObjType::SET: {
+                auto s = static_cast<ObjSet*>(obj);
+                write8(os, s->is_frozen ? 1 : 0);
+                write32(os, static_cast<uint32_t>(s->elements.size()));
+                for (const auto& v : s->elements) self(v, self);
+                break;
+            }
+            case ObjType::UPVALUE: {
+                auto uv = static_cast<ObjUpVal*>(obj);
+                self(uv->closed, self);
+                break;
+            }
+            case ObjType::CLOSURE: {
+                auto cl = static_cast<ObjClosure*>(obj);
+                write32(os, cl->compiledFnIndex);
+                write32(os, cl->upvalueCount);
+                for (int i = 0; i < cl->upvalueCount; ++i) {
+                    if (cl->upvalues[i]) {
+                        write8(os, 1);
+                        self(Value(cl->upvalues[i]), self);
+                    } else {
+                        write8(os, 0);
+                    }
+                }
+                self(cl->boundSelf, self);
+                self(cl->boundClass, self);
+                write8(os, cl->isUFCS ? 1 : 0);
+                write8(os, cl->isTokenMacro ? 1 : 0);
+                write8(os, cl->is_local ? 1 : 0);
+                self(cl->owner_class ? Value(cl->owner_class) : Value::none(), self);
+                break;
+            }
+            case ObjType::CLASS: {
+                auto cls = static_cast<ObjClass*>(obj);
+                writeString(os, cls->name);
+                self(cls->parent ? Value(cls->parent) : Value::none(), self);
+                write32(os, static_cast<uint32_t>(cls->properties.size()));
+                for (const auto& [k, p] : cls->properties) {
+                    writeString(os, k);
+                    self(p.val, self);
+                    write8(os, p.is_const ? 1 : 0);
+                    write8(os, p.is_local ? 1 : 0);
+                }
+                break;
+            }
+            case ObjType::INSTANCE: {
+                auto inst = static_cast<ObjInstance*>(obj);
+                self(inst->classDef ? Value(inst->classDef) : Value::none(), self);
+                write8(os, inst->is_frozen ? 1 : 0);
+                write32(os, static_cast<uint32_t>(inst->properties.size()));
+                for (const auto& [k, p] : inst->properties) {
+                    writeString(os, k);
+                    self(p.val, self);
+                    write8(os, p.is_const ? 1 : 0);
+                    write8(os, p.is_local ? 1 : 0);
+                }
+                break;
+            }
+            case ObjType::NAMESPACE: {
+                auto ns = static_cast<ObjNamespace*>(obj);
+                writeString(os, ns->name);
+                write8(os, ns->is_frozen ? 1 : 0);
+                write32(os, static_cast<uint32_t>(ns->fields.size()));
+                for (const auto& [k, f] : ns->fields) {
+                    writeString(os, k);
+                    self(Value(f.upval), self);
+                    write8(os, f.isConst ? 1 : 0);
+                }
+                break;
+            }
+            case ObjType::TYPE_DEF: {
+                auto td = static_cast<ObjTypeDef*>(obj);
+                write32(os, static_cast<uint32_t>(td->types.size()));
+                for (const auto& t : td->types) {
+                    if (std::holds_alternative<BuiltinType>(t)) {
+                        write8(os, 0);
+                        write32(os, static_cast<uint32_t>(std::get<BuiltinType>(t)));
+                    } else {
+                        write8(os, 1);
+                        self(Value(std::get<ObjClass*>(t)), self);
+                    }
+                }
+                break;
+            }
+            case ObjType::SLICE: {
+                auto sl = static_cast<ObjSlice*>(obj);
+                write32(os, sl->start);
+                write32(os, sl->end);
+                write32(os, sl->step);
+                break;
+            }
+            case ObjType::SPREAD: {
+                auto sp = static_cast<ObjSpread*>(obj);
+                self(sp->value, self);
+                write8(os, sp->isKeyword ? 1 : 0);
+                break;
+            }
+            case ObjType::SUPER_PROXY: {
+                auto sp = static_cast<ObjSuper*>(obj);
+                self(sp->instance ? Value(sp->instance) : Value::none(), self);
+                self(sp->parentClass ? Value(sp->parentClass) : Value::none(), self);
+                break;
+            }
+        }
+    };
+
+    auto globals = vm->getGlobals();
+    std::vector<std::pair<std::string, Value>> filteredGlobals;
+    for (const auto& [name, val] : globals) {
+        if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
+        if (name.length() >= 2 && name.front() == '<' && name.back() == '>') continue;
+        
+        if (!vm->getBuiltinValue(name).isNone()) continue;
+        if (vm->getNativeBuiltins().count(name)) continue;
+        
+        filteredGlobals.push_back({name, val});
+    }
+
+    write32(os, static_cast<uint32_t>(filteredGlobals.size()));
+    for (const auto& [name, val] : filteredGlobals) {
+        writeString(os, name);
+        writeRuntimeValue(val, writeRuntimeValue);
+    }
+}
+
+void BytecodeSerializer::loadJCW(const std::string& path, VM* vm) {
+    std::ifstream is(path, std::ios::binary);
+    if (!is) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+
+    uint32_t magic = read32(is);
+    if (magic != 0x4A435701) throw std::runtime_error("JCW_MAGIC_MISMATCH");
+    uint32_t version = read32(is);
+    if (version != VERSION) throw std::runtime_error("JCW_VERSION_MISMATCH");
+
+    uint32_t fnCount = read32(is);
+    vm->getCompiledFunctions().clear();
+    for (uint32_t i = 0; i < fnCount; ++i) {
+        auto fn = std::make_shared<CompiledFunction>();
+        readFunction(is, fn.get(), 0);
+        vm->getCompiledFunctions().push_back(fn);
+    }
+
+    std::vector<Obj*> idToObj;
+    idToObj.push_back(nullptr); // ID 0 is null
+
+    auto readRuntimeValue = [&](auto& self) -> Value {
+        uint8_t tag = read8(is);
+        if (tag == 0) return Value::none();
+        if (tag == 1) return Value::uninit();
+        if (tag == 2) return Value(false);
+        if (tag == 3) return Value(true);
+        if (tag == 4) return Value(static_cast<int32_t>(read32(is)));
+        if (tag == 5) return Value(readDouble(is));
+        if (tag == 6) {
+            uint32_t id = read32(is);
+            return Value(idToObj[id]);
+        }
+        if (tag == 8) {
+            idToObj.push_back(nullptr);
+            return Value::none();
+        }
+        if (tag == 9) {
+            std::string name = readString(is);
+            Value cl = vm->getBuiltinClosure(name);
+            idToObj.push_back(cl.asObj());
+            return cl;
+        }
+        if (tag == 10) {
+            std::string name = readString(is);
+            idToObj.push_back(nullptr);
+            return Value::none();
+        }
+        if (tag == 11) {
+            std::string name = readString(is);
+            Obj* clsObj = nullptr;
+            if (name == "<ListProto>") clsObj = vm->listProto;
+            else if (name == "<DictProto>") clsObj = vm->dictProto;
+            else if (name == "<SetProto>") clsObj = vm->setProto;
+            else if (name == "<StringProto>") clsObj = vm->stringProto;
+            else if (name == "<MatrixProto>") clsObj = vm->matrixProto;
+            else {
+                Value g = vm->getGlobal(name);
+                if (g.isClass()) clsObj = g.asObj();
+            }
+            idToObj.push_back(clsObj);
+            return clsObj ? Value(clsObj) : Value::none();
+        }
+        
+        if (tag == 7) {
+            ObjType type = static_cast<ObjType>(read8(is));
+            uint32_t id = static_cast<uint32_t>(idToObj.size());
+            idToObj.push_back(nullptr); // placeholder
+            
+            Value result;
+            switch (type) {
+                case ObjType::STRING: {
+                    result = Value(readString(is));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::BIGINT: {
+                    bool sign = read8(is) != 0;
+                    uint32_t size = read32(is);
+                    std::vector<uint32_t> raw(size);
+                    for (uint32_t i = 0; i < size; ++i) raw[i] = read32(is);
+                    result = Value(BigInt::fromRawData(sign, raw));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::FRACTION: {
+                    bool nSign = read8(is) != 0;
+                    uint32_t nSize = read32(is);
+                    std::vector<uint32_t> nRaw(nSize);
+                    for (uint32_t i = 0; i < nSize; ++i) nRaw[i] = read32(is);
+                    bool dSign = read8(is) != 0;
+                    uint32_t dSize = read32(is);
+                    std::vector<uint32_t> dRaw(dSize);
+                    for (uint32_t i = 0; i < dSize; ++i) dRaw[i] = read32(is);
+                    result = Value(Fraction(BigInt::fromRawData(nSign, nRaw), BigInt::fromRawData(dSign, dRaw)));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::COMPLEX: {
+                    double r = readDouble(is); double i = readDouble(is);
+                    result = Value(Complex(r, i));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::REAL_MATRIX: {
+                    uint16_t r = read16(is); uint16_t c = read16(is);
+                    std::vector<double> raw(r * c);
+                    for (int i = 0; i < r * c; ++i) raw[i] = readDouble(is);
+                    result = Value(RealMatrix(r, c, raw));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::COMPLEX_MATRIX: {
+                    uint16_t r = read16(is); uint16_t c = read16(is);
+                    std::vector<Complex> raw(r * c);
+                    for (int i = 0; i < r * c; ++i) {
+                        double re = readDouble(is); double im = readDouble(is);
+                        raw[i] = Complex(re, im);
+                    }
+                    result = Value(ComplexMatrix(r, c, raw));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::SYM_MATRIX: {
+                    uint16_t r = read16(is); uint16_t c = read16(is);
+                    std::vector<SymExpr> raw(r * c);
+                    for (int i = 0; i < r * c; ++i) {
+                        std::string s = readString(is);
+                        if (jc::helpers::evalCallback) {
+                            try { raw[i] = jc::helpers::evalCallback(s).asSymbolic(); }
+                            catch (...) { raw[i] = SymExpr(BigInt(0)); }
+                        } else {
+                            raw[i] = SymExpr(BigInt(0));
+                        }
+                    }
+                    result = Value(SymMatrix(r, c, raw));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::SYMBOLIC: {
+                    std::string s = readString(is);
+                    if (jc::helpers::evalCallback) {
+                        try { result = jc::helpers::evalCallback(s); }
+                        catch (...) { result = Value(SymExpr(BigInt(0))); }
+                    } else {
+                        result = Value(SymExpr(BigInt(0)));
+                    }
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::LIST: {
+                    ObjList* l = GcHeap::get().allocate<ObjList>();
+                    result = Value(l);
+                    idToObj[id] = l;
+                    l->is_frozen = read8(is) != 0;
+                    uint32_t size = read32(is);
+                    for (uint32_t i = 0; i < size; ++i) l->vec.push_back(self(self));
+                    break;
+                }
+                case ObjType::DICT: {
+                    ObjDict* d = GcHeap::get().allocate<ObjDict>();
+                    result = Value(d);
+                    idToObj[id] = d;
+                    d->is_frozen = read8(is) != 0;
+                    uint32_t size = read32(is);
+                    for (uint32_t i = 0; i < size; ++i) {
+                        Value k = self(self); Value v = self(self);
+                        d->keyMap[k] = d->elements.size();
+                        d->elements.push_back({k, v});
+                    }
+                    break;
+                }
+                case ObjType::SET: {
+                    ObjSet* s = GcHeap::get().allocate<ObjSet>();
+                    result = Value(s);
+                    idToObj[id] = s;
+                    s->is_frozen = read8(is) != 0;
+                    uint32_t size = read32(is);
+                    for (uint32_t i = 0; i < size; ++i) {
+                        Value v = self(self);
+                        s->keys.insert(v);
+                        s->elements.push_back(v);
+                    }
+                    break;
+                }
+                case ObjType::UPVALUE: {
+                    ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+                    result = Value(uv);
+                    idToObj[id] = uv;
+                    uv->closed = self(self);
+                    uv->location = &uv->closed;
+                    break;
+                }
+                case ObjType::CLOSURE: {
+                    ObjClosure* cl = GcHeap::get().allocate<ObjClosure>(
+                        std::vector<std::string>{}, std::vector<bool>{}, "", nullptr
+                    );
+                    result = Value(cl);
+                    idToObj[id] = cl;
+                    cl->compiledFnIndex = read32(is);
+                    cl->upvalueCount = read32(is);
+                    if (cl->upvalueCount > 0) {
+                        cl->upvalues = new ObjUpVal*[cl->upvalueCount];
+                        for (int i = 0; i < cl->upvalueCount; ++i) {
+                            if (read8(is) != 0) {
+                                cl->upvalues[i] = static_cast<ObjUpVal*>(self(self).asObj());
+                            } else {
+                                cl->upvalues[i] = nullptr;
+                            }
+                        }
+                    }
+                    cl->boundSelf = self(self);
+                    cl->boundClass = self(self);
+                    cl->isUFCS = read8(is) != 0;
+                    cl->isTokenMacro = read8(is) != 0;
+                    cl->is_local = read8(is) != 0;
+                    Value owner = self(self);
+                    if (owner.isClass()) cl->owner_class = static_cast<ObjClass*>(owner.asObj());
+                    
+                    if (cl->compiledFnIndex >= 0 && cl->compiledFnIndex < static_cast<int>(vm->getCompiledFunctions().size())) {
+                        auto fn = vm->getCompiledFunctions()[cl->compiledFnIndex];
+                        cl->paramNames = fn->paramNames;
+                        cl->isRef = fn->paramIsRef;
+                        cl->isConst = fn->paramIsConst;
+                        cl->restName = fn->restName;
+                        cl->kwargNames = fn->kwargNames;
+                        cl->kwargIsRef = fn->kwargIsRef;
+                        cl->kwargIsConst = fn->kwargIsConst;
+                        cl->kwargsName = fn->kwargsName;
+                        cl->kwargHasDefault = fn->kwargHasDefault;
+                        int defaultLimit = fn->maxArity;
+                        for (int j = fn->arity; j < defaultLimit; ++j) cl->defaultValues.push_back(Value::uninit());
+                        
+                        if (!fn->paramTypeRegs.empty()) {
+                            cl->paramTypesCount = static_cast<int>(fn->paramTypeRegs.size());
+                            cl->paramTypes = new Value[cl->paramTypesCount];
+                            for (int i = 0; i < cl->paramTypesCount; ++i) cl->paramTypes[i] = Value::none();
+                        }
+                    }
+                    break;
+                }
+                case ObjType::CLASS: {
+                    ObjClass* cls = GcHeap::get().allocate<ObjClass>();
+                    result = Value(cls);
+                    idToObj[id] = cls;
+                    cls->name = readString(is);
+                    Value parent = self(self);
+                    if (parent.isClass()) cls->parent = static_cast<ObjClass*>(parent.asObj());
+                    uint32_t propCount = read32(is);
+                    for (uint32_t i = 0; i < propCount; ++i) {
+                        std::string k = readString(is);
+                        Value v = self(self);
+                        bool isConst = read8(is) != 0;
+                        bool isLocal = read8(is) != 0;
+                        cls->properties[k] = {v, isConst, isLocal};
+                    }
+                    break;
+                }
+                case ObjType::INSTANCE: {
+                    ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
+                    result = Value(inst);
+                    idToObj[id] = inst;
+                    Value cls = self(self);
+                    if (cls.isClass()) inst->classDef = static_cast<ObjClass*>(cls.asObj());
+                    inst->is_frozen = read8(is) != 0;
+                    uint32_t propCount = read32(is);
+                    for (uint32_t i = 0; i < propCount; ++i) {
+                        std::string k = readString(is);
+                        Value v = self(self);
+                        bool isConst = read8(is) != 0;
+                        bool isLocal = read8(is) != 0;
+                        inst->properties[k] = {v, isConst, isLocal};
+                    }
+                    break;
+                }
+                case ObjType::NAMESPACE: {
+                    ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+                    result = Value(ns);
+                    idToObj[id] = ns;
+                    ns->name = readString(is);
+                    ns->is_frozen = read8(is) != 0;
+                    uint32_t fieldCount = read32(is);
+                    for (uint32_t i = 0; i < fieldCount; ++i) {
+                        std::string k = readString(is);
+                        Value uv = self(self);
+                        bool isConst = read8(is) != 0;
+                        if (uv.isObjType(ObjType::UPVALUE)) {
+                            ns->fields[k] = {static_cast<ObjUpVal*>(uv.asObj()), isConst};
+                        }
+                    }
+                    break;
+                }
+                case ObjType::TYPE_DEF: {
+                    uint32_t typeCount = read32(is);
+                    std::vector<std::variant<BuiltinType, ObjClass*>> types;
+                    for (uint32_t i = 0; i < typeCount; ++i) {
+                        if (read8(is) == 0) {
+                            types.push_back(static_cast<BuiltinType>(read32(is)));
+                        } else {
+                            Value cls = self(self);
+                            if (cls.isClass()) types.push_back(static_cast<ObjClass*>(cls.asObj()));
+                        }
+                    }
+                    result = Value(internType(std::move(types)));
+                    idToObj[id] = result.asObj();
+                    break;
+                }
+                case ObjType::SLICE: {
+                    ObjSlice* sl = GcHeap::get().allocate<ObjSlice>();
+                    result = Value(sl);
+                    idToObj[id] = sl;
+                    sl->start = read32(is);
+                    sl->end = read32(is);
+                    sl->step = read32(is);
+                    break;
+                }
+                case ObjType::SPREAD: {
+                    ObjSpread* sp = GcHeap::get().allocate<ObjSpread>();
+                    result = Value(sp);
+                    idToObj[id] = sp;
+                    sp->value = self(self);
+                    sp->isKeyword = read8(is) != 0;
+                    break;
+                }
+                case ObjType::SUPER_PROXY: {
+                    ObjSuper* sp = GcHeap::get().allocate<ObjSuper>();
+                    result = Value(sp);
+                    idToObj[id] = sp;
+                    Value inst = self(self);
+                    if (inst.isInstance()) sp->instance = inst.asInstance();
+                    Value parent = self(self);
+                    if (parent.isClass()) sp->parentClass = static_cast<ObjClass*>(parent.asObj());
+                    break;
+                }
+                default:
+                    result = Value::none();
+                    break;
+            }
+            return result;
+        }
+        return Value::none();
+    };
+
+    vm->clearGlobals();
+    uint32_t globalCount = read32(is);
+    for (uint32_t i = 0; i < globalCount; ++i) {
+        std::string name = readString(is);
+        Value val = readRuntimeValue(readRuntimeValue);
+        vm->setGlobal(name, val);
+    }
 }
 
 } // namespace jc

@@ -280,6 +280,7 @@ public:
         loadedModules[name] = moduleVal; 
         builtinModules[name] = moduleVal;
     }
+    const std::unordered_map<std::string, Value>& getLoadedModules() const { return loadedModules; }
     Value getBuiltinValue(const std::string& name) const {
         auto it = builtinValues.find(name);
         return it != builtinValues.end() ? it->second : Value::none();

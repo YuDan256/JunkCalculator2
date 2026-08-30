@@ -333,20 +333,39 @@ void listWorkspaces() {
     if (count == 0) std::cout << "     (none)\n";
 }
 
-void loadWorkspace(const std::string& filename, bool silent = false) {
+void loadWorkspace(const std::string& arg, bool silent = false) {
     namespace fs = std::filesystem;
+    fs::path targetPath;
+    bool isExplicitPath = false;
 
-    std::string wp = getWorkspaceDir();
+    if (arg.find('/') != std::string::npos || arg.find('\\') != std::string::npos || (arg.length() >= 4 && arg.substr(arg.length() - 4) == ".jcw")) {
+        isExplicitPath = true;
+        targetPath = jc::to_path(arg);
+        if (!targetPath.is_absolute()) {
+            targetPath = jc::to_path(jc::g_cwd()) / targetPath;
+        }
+        if (targetPath.extension() != ".jcw") {
+            targetPath += ".jcw";
+        }
+    } else {
+        std::string wp = getWorkspaceDir();
+        targetPath = jc::to_path(wp) / jc::to_path(arg + ".jcw");
+    }
 
-    std::string path = jc::from_path(jc::to_path(wp) / jc::to_path(filename + ".jcw"));
-    if (!fs::exists(jc::to_path(path))) { 
-        if (!silent) std::cerr << "   IO Error: Workspace not found.\n"; 
+    if (!fs::exists(targetPath)) { 
+        if (!silent) std::cerr << "   IO Error: Workspace not found at " << jc::from_path(targetPath) << ".\n"; 
         return; 
     }
 
     try {
-        jc::BytecodeSerializer::loadJCW(path, &vm);
-        if (!silent) std::cout << "   Workspace loaded from " << path << std::endl;
+        jc::BytecodeSerializer::loadJCW(jc::from_path(targetPath), &vm);
+        if (!silent) std::cout << "   Workspace loaded from " << jc::from_path(targetPath) << std::endl;
+        
+        if (isExplicitPath) {
+            auto u8str = fs::weakly_canonical(targetPath.parent_path()).u8string();
+            jc::g_workspacePath = std::string(u8str.begin(), u8str.end());
+            if (!silent) std::cout << "   Workspace directory changed to " << jc::g_workspacePath << std::endl;
+        }
     } catch (const std::exception& e) {
         if (!silent) std::cerr << "   Failed to load workspace: " << e.what() << std::endl;
     }
@@ -584,6 +603,8 @@ int main(int argc, char* argv[]) {
     bool fmtCheck = false;
     std::string fmtPath = "";
     bool lspMode = false;
+    bool loadMode = false;
+    std::string loadTarget = "";
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -610,12 +631,13 @@ int main(int argc, char* argv[]) {
 
         // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
         if (command.empty() && arg[0] != '-') {
-            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl" || arg == "fmt" || arg == "lsp") {
+            if (arg == "compile" || arg == "test" || arg == "eval" || arg == "help" || arg == "version" || arg == "run" || arg == "repl" || arg == "fmt" || arg == "lsp" || arg == "load") {
                 command = arg;
                 if (command == "compile") compileMode = true;
                 if (command == "test") runTests = true;
                 if (command == "fmt") fmtMode = true;
                 if (command == "lsp") lspMode = true;
+                if (command == "load") loadMode = true;
                 continue;
             } else {
                 // 智能 Fallback：默认作为 run 脚本处理
@@ -660,6 +682,10 @@ int main(int argc, char* argv[]) {
             else if (fmtPath.empty() && arg[0] != '-') fmtPath = arg;
             else { std::cerr << "Unknown argument for fmt: " << arg << "\n"; return 1; }
         }
+        else if (command == "load") {
+            if (loadTarget.empty() && arg[0] != '-') loadTarget = arg;
+            else { std::cerr << "Unknown argument for load: " << arg << "\n"; return 1; }
+        }
         else if (command == "repl") {
             std::cerr << "Unknown argument for repl: " << arg << "\n"; return 1;
         }
@@ -673,6 +699,7 @@ int main(int argc, char* argv[]) {
     if (command == "version") { std::cout << "Junk Calculator 2.6.2.0\n"; return 0; }
     if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
     if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
+    if (command == "load" && loadTarget.empty()) { std::cerr << "Error: load requires a workspace name or path.\n"; return 1; }
 
     // 如果有 lsp 参数，则启动 LSP 服务器并退出
     if (lspMode) {
@@ -865,6 +892,10 @@ int main(int argc, char* argv[]) {
             << "=================================================\n" << jc::col(jc::Ansi::RESET)
             << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
         };
+
+    if (loadMode) {
+        loadWorkspace(loadTarget);
+    }
 
     if (!g_quiet) printBanner();
 

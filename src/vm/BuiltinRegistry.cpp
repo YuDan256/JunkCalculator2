@@ -2050,6 +2050,37 @@ void BuiltinRegistry::registerSystemUtils() {
     regModule(sys_ns, "verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
     regModule(sys_ns, "sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
 
+    regModule(sys_ns, "vars", { 0 }, [](const std::vector<Value>&) -> Value {
+        if (!VM::activeVM) return Value::none();
+        auto globals = VM::activeVM->getGlobals();
+        std::cout << "--- Current Environment Variables ---\n";
+        int count = 0;
+        for (const auto& [name, val] : globals) {
+            if (name == "PI" || name == "E" || name == "i" || name == "I" || name == "ANS") continue;
+            if (name.length() >= 2 && name.front() == '<' && name.back() == '>') continue;
+            if (!VM::activeVM->getBuiltinValue(name).isNone()) continue;
+            if (VM::activeVM->getNativeBuiltins().count(name)) continue;
+            
+            std::cout << "  - " << name << " : ";
+            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                auto m = val.asRealMatrix();
+                std::cout << "<realmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                auto m = val.asComplexMatrix();
+                std::cout << "<complexmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else if (val.isObjType(ObjType::SYM_MATRIX)) {
+                auto m = val.asSymMatrix();
+                std::cout << "<symmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else {
+                std::cout << "<" << val.typeName() << ">\n";
+            }
+            count++;
+        }
+        if (count == 0) std::cout << "  (none)\n";
+        std::cout << "-------------------------------------\n";
+        return Value::none();
+    }, {});
+
     reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;
         std::string prefix = "gensym";

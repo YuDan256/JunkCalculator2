@@ -333,7 +333,7 @@ void listWorkspaces() {
     if (count == 0) std::cout << "  (none)\n";
 }
 
-void loadWorkspace(const std::string& arg, bool silent = false) {
+void loadWorkspace(const std::string& arg, bool silent = false, bool merge = false, bool infoOnly = false) {
     namespace fs = std::filesystem;
     fs::path targetPath;
     bool isExplicitPath = false;
@@ -358,8 +358,12 @@ void loadWorkspace(const std::string& arg, bool silent = false) {
     }
 
     try {
-        jc::BytecodeSerializer::loadJCW(jc::from_path(targetPath), &vm);
-        if (!silent) std::cout << "Workspace loaded from " << jc::from_path(targetPath) << std::endl;
+        jc::BytecodeSerializer::loadJCW(jc::from_path(targetPath), &vm, merge, infoOnly);
+        if (infoOnly) return;
+        if (!silent) {
+            if (merge) std::cout << "Workspace merged from " << jc::from_path(targetPath) << std::endl;
+            else std::cout << "Workspace loaded from " << jc::from_path(targetPath) << std::endl;
+        }
         
         if (isExplicitPath) {
             auto u8str = fs::weakly_canonical(targetPath.parent_path()).u8string();
@@ -1250,8 +1254,22 @@ int main(int argc, char* argv[]) {
                     loadWorkspace(name.empty() ? "default" : name);
                 } else if (cmd == "load") {
                     loadWorkspace("default");
+                } else if (cmd.substr(0, 6) == "merge ") {
+                    std::string name = cmd.substr(6);
+                    s = name.find_first_not_of(" \t");
+                    if (s != std::string::npos) name = name.substr(s);
+                    loadWorkspace(name.empty() ? "default" : name, false, true, false);
+                } else if (cmd == "merge") {
+                    loadWorkspace("default", false, true, false);
+                } else if (cmd.substr(0, 5) == "info ") {
+                    std::string name = cmd.substr(5);
+                    s = name.find_first_not_of(" \t");
+                    if (s != std::string::npos) name = name.substr(s);
+                    loadWorkspace(name.empty() ? "default" : name, false, false, true);
+                } else if (cmd == "info") {
+                    loadWorkspace("default", false, false, true);
                 } else {
-                    std::cout << "Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear, /ws pwd, /ws set [path]\n";
+                    std::cout << "Unknown /ws command. Use: /ws save, /ws load, /ws merge, /ws info, /ws list, /ws clear, /ws pwd, /ws set\n";
                 }
                 continue;
             }

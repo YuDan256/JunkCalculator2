@@ -766,7 +766,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
     }
 }
 
-void BytecodeSerializer::loadJCW(const std::string& path, VM* vm) {
+void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bool infoOnly) {
     std::ifstream is(path, std::ios::binary);
     if (!is) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
 
@@ -776,11 +776,12 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm) {
     if (version != VERSION) throw std::runtime_error("JCW_VERSION_MISMATCH");
 
     uint32_t fnCount = read32(is);
-    vm->getCompiledFunctions().clear();
+    if (!merge && !infoOnly) vm->getCompiledFunctions().clear();
+    int baseIdx = infoOnly ? 0 : (merge ? static_cast<int>(vm->getCompiledFunctions().size()) : 0);
     for (uint32_t i = 0; i < fnCount; ++i) {
         auto fn = std::make_shared<CompiledFunction>();
-        readFunction(is, fn.get(), 0);
-        vm->getCompiledFunctions().push_back(fn);
+        readFunction(is, fn.get(), baseIdx);
+        if (!infoOnly) vm->getCompiledFunctions().push_back(fn);
     }
 
     std::vector<Obj*> idToObj;
@@ -1108,12 +1109,29 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm) {
         return Value::none();
     };
 
-    vm->clearGlobals();
+    if (!merge && !infoOnly) vm->clearGlobals();
     uint32_t globalCount = read32(is);
+    if (infoOnly) std::cout << "Workspace contains " << globalCount << " variables:\n";
     for (uint32_t i = 0; i < globalCount; ++i) {
         std::string name = readString(is);
         Value val = readRuntimeValue(readRuntimeValue);
-        vm->setGlobal(name, val);
+        if (infoOnly) {
+            std::cout << "  - " << name << " : ";
+            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                auto m = val.asRealMatrix();
+                std::cout << "<realmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                auto m = val.asComplexMatrix();
+                std::cout << "<complexmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else if (val.isObjType(ObjType::SYM_MATRIX)) {
+                auto m = val.asSymMatrix();
+                std::cout << "<symmatrix " << m.getRows() << "x" << m.getCols() << ">\n";
+            } else {
+                std::cout << "<" << val.typeName() << ">\n";
+            }
+        } else {
+            vm->setGlobal(name, val);
+        }
     }
 }
 

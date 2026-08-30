@@ -26,7 +26,7 @@ public:
     static void saveJCW(const std::string& path, VM* vm);
     
     // 从 .jcw 文件恢复完整工作区快照
-    static void loadJCW(const std::string& path, VM* vm);
+    static void loadJCW(const std::string& path, VM* vm, bool merge = false, bool infoOnly = false);
 
 private:
     enum class ConstTag : uint8_t {

@@ -306,9 +306,9 @@ void saveWorkspace(const std::string& filename, bool silent) {
 
     try {
         jc::BytecodeSerializer::saveJCW(path, &vm);
-        if (!silent) std::cout << "   Saved workspace snapshot to " << path << std::endl;
+        if (!silent) std::cout << "Saved workspace snapshot to " << path << std::endl;
     } catch (const std::exception& e) {
-        if (!silent) std::cerr << "   Failed to save workspace: " << e.what() << std::endl;
+        if (!silent) std::cerr << "Failed to save workspace: " << e.what() << std::endl;
     }
 }
 
@@ -318,19 +318,19 @@ void listWorkspaces() {
     fs::path dir = jc::to_path(wp);
     
     if (!fs::exists(dir)) {
-        std::cout << "   No workspaces found.\n";
+        std::cout << "No workspaces found.\n";
         return;
     }
     
-    std::cout << "   Available workspaces:\n";
+    std::cout << "Available workspaces:\n";
     int count = 0;
     for (const auto& entry : fs::directory_iterator(dir)) {
         if (entry.is_regular_file() && entry.path().extension() == ".jcw") {
-            std::cout << "     - " << jc::from_path(entry.path().stem()) << "\n";
+            std::cout << "  - " << jc::from_path(entry.path().stem()) << "\n";
             count++;
         }
     }
-    if (count == 0) std::cout << "     (none)\n";
+    if (count == 0) std::cout << "  (none)\n";
 }
 
 void loadWorkspace(const std::string& arg, bool silent = false) {
@@ -353,21 +353,21 @@ void loadWorkspace(const std::string& arg, bool silent = false) {
     }
 
     if (!fs::exists(targetPath)) { 
-        if (!silent) std::cerr << "   IO Error: Workspace not found at " << jc::from_path(targetPath) << ".\n"; 
+        if (!silent) std::cerr << "IO Error: Workspace not found at " << jc::from_path(targetPath) << ".\n"; 
         return; 
     }
 
     try {
         jc::BytecodeSerializer::loadJCW(jc::from_path(targetPath), &vm);
-        if (!silent) std::cout << "   Workspace loaded from " << jc::from_path(targetPath) << std::endl;
+        if (!silent) std::cout << "Workspace loaded from " << jc::from_path(targetPath) << std::endl;
         
         if (isExplicitPath) {
             auto u8str = fs::weakly_canonical(targetPath.parent_path()).u8string();
             jc::g_workspacePath = std::string(u8str.begin(), u8str.end());
-            if (!silent) std::cout << "   Workspace directory changed to " << jc::g_workspacePath << std::endl;
+            if (!silent) std::cout << "Workspace directory changed to " << jc::g_workspacePath << std::endl;
         }
     } catch (const std::exception& e) {
-        if (!silent) std::cerr << "   Failed to load workspace: " << e.what() << std::endl;
+        if (!silent) std::cerr << "Failed to load workspace: " << e.what() << std::endl;
     }
 }
 
@@ -910,7 +910,7 @@ int main(int argc, char* argv[]) {
     if (!g_quiet) printBannerTop();
 
     if (loadMode) {
-        loadWorkspace(loadTarget);
+        loadWorkspace(loadTarget, g_quiet);
     }
 
     if (!g_quiet) printBannerBottom();
@@ -1235,7 +1235,7 @@ int main(int argc, char* argv[]) {
                     vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
                     vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
                     vm.setGlobal("ANS", jc::Value::none());
-                    std::cout << "   Workspace cleared.\n"; 
+                    std::cout << "Workspace cleared.\n"; 
                 } else if (cmd.substr(0, 5) == "save ") {
                     std::string name = cmd.substr(5);
                     s = name.find_first_not_of(" \t");
@@ -1251,7 +1251,7 @@ int main(int argc, char* argv[]) {
                 } else if (cmd == "load") {
                     loadWorkspace("default");
                 } else {
-                    std::cout << "   Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear, /ws pwd, /ws set [path]\n";
+                    std::cout << "Unknown /ws command. Use: /ws save [name], /ws load [name], /ws list, /ws clear, /ws pwd, /ws set [path]\n";
                 }
                 continue;
             }

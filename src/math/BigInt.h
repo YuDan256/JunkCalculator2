@@ -15,6 +15,7 @@
 #include <vector>
 #include <map>
 #include <complex>
+#include <future>
 
 // 引入复数以支持与复数的隐式混合运算提升
 #include "Complex.h"
@@ -51,6 +52,8 @@ namespace jc {
 
     class BigInt {
     public:
+        inline static size_t NTT_THREAD_THRESHOLD = 16384;
+
         std::vector<uint32_t> data; // 小端序：data[0] 存最低的 32 位
         bool negative = false;
 
@@ -202,20 +205,41 @@ namespace jc {
                 fb3[i] = b[i] % 2130706433;
             }
 
-            ntt(fa1, false, 2013265921, 31);
-            ntt(fb1, false, 2013265921, 31);
-            for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
-            ntt(fa1, true, 2013265921, 31);
+            if (n_pow2 >= NTT_THREAD_THRESHOLD) {
+                auto future1 = std::async(std::launch::async, [&]() {
+                    ntt(fa1, false, 2013265921, 31);
+                    ntt(fb1, false, 2013265921, 31);
+                    for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+                    ntt(fa1, true, 2013265921, 31);
+                });
+                auto future2 = std::async(std::launch::async, [&]() {
+                    ntt(fa2, false, 2113929217, 5);
+                    ntt(fb2, false, 2113929217, 5);
+                    for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+                    ntt(fa2, true, 2113929217, 5);
+                });
+                ntt(fa3, false, 2130706433, 3);
+                ntt(fb3, false, 2130706433, 3);
+                for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+                ntt(fa3, true, 2130706433, 3);
+                future1.wait();
+                future2.wait();
+            } else {
+                ntt(fa1, false, 2013265921, 31);
+                ntt(fb1, false, 2013265921, 31);
+                for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+                ntt(fa1, true, 2013265921, 31);
 
-            ntt(fa2, false, 2113929217, 5);
-            ntt(fb2, false, 2113929217, 5);
-            for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
-            ntt(fa2, true, 2113929217, 5);
+                ntt(fa2, false, 2113929217, 5);
+                ntt(fb2, false, 2113929217, 5);
+                for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+                ntt(fa2, true, 2113929217, 5);
 
-            ntt(fa3, false, 2130706433, 3);
-            ntt(fb3, false, 2130706433, 3);
-            for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
-            ntt(fa3, true, 2130706433, 3);
+                ntt(fa3, false, 2130706433, 3);
+                ntt(fb3, false, 2130706433, 3);
+                for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+                ntt(fa3, true, 2130706433, 3);
+            }
 
             constexpr uint64_t P1 = 2013265921;
             constexpr uint64_t P2 = 2113929217;

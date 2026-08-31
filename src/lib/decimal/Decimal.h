@@ -11,6 +11,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <future>
 
 namespace jc {
 
@@ -201,6 +202,8 @@ public:
 
 class DecInt {
 public:
+    inline static size_t NTT_THREAD_THRESHOLD = 4096;
+
     DecVector data;
     bool negative = false;
     static constexpr uint32_t BASE = 1000000000;
@@ -562,20 +565,41 @@ public:
             fb3[i] = b[i] % 2130706433;
         }
 
-        ntt(fa1, false, 2013265921, 31);
-        ntt(fb1, false, 2013265921, 31);
-        for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
-        ntt(fa1, true, 2013265921, 31);
+        if (n_pow2 >= NTT_THREAD_THRESHOLD) {
+            auto future1 = std::async(std::launch::async, [&]() {
+                ntt(fa1, false, 2013265921, 31);
+                ntt(fb1, false, 2013265921, 31);
+                for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+                ntt(fa1, true, 2013265921, 31);
+            });
+            auto future2 = std::async(std::launch::async, [&]() {
+                ntt(fa2, false, 2113929217, 5);
+                ntt(fb2, false, 2113929217, 5);
+                for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+                ntt(fa2, true, 2113929217, 5);
+            });
+            ntt(fa3, false, 2130706433, 3);
+            ntt(fb3, false, 2130706433, 3);
+            for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+            ntt(fa3, true, 2130706433, 3);
+            future1.wait();
+            future2.wait();
+        } else {
+            ntt(fa1, false, 2013265921, 31);
+            ntt(fb1, false, 2013265921, 31);
+            for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+            ntt(fa1, true, 2013265921, 31);
 
-        ntt(fa2, false, 2113929217, 5);
-        ntt(fb2, false, 2113929217, 5);
-        for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
-        ntt(fa2, true, 2113929217, 5);
+            ntt(fa2, false, 2113929217, 5);
+            ntt(fb2, false, 2113929217, 5);
+            for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+            ntt(fa2, true, 2113929217, 5);
 
-        ntt(fa3, false, 2130706433, 3);
-        ntt(fb3, false, 2130706433, 3);
-        for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
-        ntt(fa3, true, 2130706433, 3);
+            ntt(fa3, false, 2130706433, 3);
+            ntt(fb3, false, 2130706433, 3);
+            for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+            ntt(fa3, true, 2130706433, 3);
+        }
 
         constexpr uint64_t P1 = 2013265921;
         constexpr uint64_t P2 = 2113929217;
@@ -1371,13 +1395,24 @@ public:
                     }
                 }
                 int64_t m = (a + b) / 2;
-                PQR left = compute(a, m);
-                PQR right = compute(m, b);
-                return {
-                    left.P * right.P,
-                    left.Q * right.Q,
-                    left.R * right.Q + left.P * right.R
-                };
+                if (b - a > 2000) {
+                    auto future_left = std::async(std::launch::async, compute, a, m);
+                    PQR right = compute(m, b);
+                    PQR left = future_left.get();
+                    return {
+                        left.P * right.P,
+                        left.Q * right.Q,
+                        left.R * right.Q + left.P * right.R
+                    };
+                } else {
+                    PQR left = compute(a, m);
+                    PQR right = compute(m, b);
+                    return {
+                        left.P * right.P,
+                        left.Q * right.Q,
+                        left.R * right.Q + left.P * right.R
+                    };
+                }
             }
         };
 

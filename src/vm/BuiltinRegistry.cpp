@@ -1217,30 +1217,6 @@ void BuiltinRegistry::registerMatrixOps() {
     };
     regMethod(VM::activeVM->matrixProto, "item", {}, itemFn);
 
-    // 1D 索引读取（对应 setItem）；2D 矩阵返回第 i 行
-    auto getItemFn = [](const std::vector<Value>& args) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        int i = static_cast<int>(std::round(args[0].asDouble()));
-        auto normIdx = [&](int n) { if (i < 0) i += n; if (i < 0 || i >= n) throw std::runtime_error("Runtime Error: getItem() index out of bounds."); };
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            normIdx(m.getCols());
-            return Value(m.getCol(i));
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            normIdx(m.getCols());
-            return Value(m.getCol(i));
-        }
-        if (self.isObjType(ObjType::SYM_MATRIX)) {
-            auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
-            normIdx(m.getCols());
-            return Value(m.getCol(i));
-        }
-        throw std::runtime_error("Type Error: getItem() requires a matrix.");
-    };
-    regMethod(VM::activeVM->matrixProto, "getItem", {"i"}, getItemFn);
-
     // 2D 切片读取（对应 setSlice）；切片返回视图（Matrix 零拷贝）
     auto getSliceFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -1290,36 +1266,6 @@ void BuiltinRegistry::registerMatrixOps() {
         throw std::runtime_error("Type Error: setElement() requires a matrix.");
     };
     regMethod(VM::activeVM->matrixProto, "setElement", {"r", "c", "val"}, setElementFn);
-
-    // 不可变矩阵的修改方法：返回新矩阵
-    auto setItemFn = [](const std::vector<Value>& args) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        int i = static_cast<int>(std::round(args[0].asDouble()));
-        auto normIdx = [&](int n) { if (i < 0) i += n; if (i < 0 || i >= n) throw std::runtime_error("Runtime Error: setItem() index out of bounds."); };
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asDouble(); }
-            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asDouble(); }
-            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
-            return Value(m);
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asComplex(); }
-            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asComplex(); }
-            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
-            return Value(m);
-        }
-        if (self.isObjType(ObjType::SYM_MATRIX)) {
-            SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); m(0, i) = args[1].asSymbolic(); }
-            else if (m.getCols() == 1) { normIdx(m.getRows()); m(i, 0) = args[1].asSymbolic(); }
-            else throw std::runtime_error("Type Error: setItem() on a 2D matrix, use setElement(r, c, x).");
-            return Value(m);
-        }
-        throw std::runtime_error("Type Error: setItem() requires a matrix.");
-    };
-    regMethod(VM::activeVM->matrixProto, "setItem", {"i", "x"}, setItemFn);
 
     auto setSliceFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();

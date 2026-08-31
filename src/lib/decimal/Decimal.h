@@ -11,7 +11,6 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
-#include "../../math/BigInt.h"
 
 namespace jc {
 
@@ -1347,16 +1346,18 @@ public:
 
         // 二分分裂法 (Binary Splitting) 纯整数树状合并
         struct BS {
-            struct PQR { jc::BigInt P, Q, R; };
+            struct PQR { DecInt P, Q, R; };
             static PQR compute(int64_t a, int64_t b) {
                 if (b - a == 1) {
                     if (a == 0) {
-                        return {jc::BigInt(1), jc::BigInt(1), jc::BigInt(13591409)};
+                        return {DecInt(1), DecInt(1), DecInt(13591409)};
                     } else {
-                        jc::BigInt P = jc::BigInt(-(6 * a - 5)) * jc::BigInt(2 * a - 1) * jc::BigInt(6 * a - 1);
-                        jc::BigInt a3 = jc::BigInt(a) * jc::BigInt(a) * jc::BigInt(a);
-                        jc::BigInt Q = jc::BigInt(10939058860032000LL) * a3;
-                        jc::BigInt R = P * (jc::BigInt(545140134LL) * jc::BigInt(a) + jc::BigInt(13591409LL));
+                        int64_t p_val = -(6 * a - 5) * (2 * a - 1) * (6 * a - 1);
+                        DecInt P = p_val < 0 ? -DecInt(static_cast<uint64_t>(-p_val)) : DecInt(static_cast<uint64_t>(p_val));
+                        DecInt a_dec(static_cast<uint64_t>(a));
+                        DecInt a3 = a_dec * a_dec * a_dec;
+                        DecInt Q = DecInt(10939058860032000ULL) * a3;
+                        DecInt R = P * (DecInt(545140134ULL) * a_dec + DecInt(13591409ULL));
                         return {P, Q, R};
                     }
                 }
@@ -1375,9 +1376,9 @@ public:
 
         // 仅在最后一步进行唯一的一次大数开方与除法
         Decimal sqrt_10005 = Decimal(DecInt(10005), 0).sqrt();
-        jc::BigInt num = res.Q * jc::BigInt(426880);
-        Decimal num_dec = Decimal(DecInt(num.toString()), 0);
-        Decimal den_dec = Decimal(DecInt(res.R.toString()), 0);
+        DecInt num = res.Q * DecInt(426880);
+        Decimal num_dec = Decimal(num, 0);
+        Decimal den_dec = Decimal(res.R, 0);
         
         Decimal pi_val = num_dec.mul(sqrt_10005).div(den_dec).truncate(saved_prec);
         

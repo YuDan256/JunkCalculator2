@@ -1,5 +1,4 @@
 #include "../jc2_extension_cpp.h"
-#include "../../math/BigInt.h"
 #include "Decimal.h"
 #include <string>
 #include <memory>

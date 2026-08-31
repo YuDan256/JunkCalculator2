@@ -22,6 +22,30 @@
 
 namespace jc {
 
+#if defined(__SIZEOF_INT128__)
+    using uint128_t = unsigned __int128;
+#else
+    struct uint128_t {
+        uint64_t low;
+        uint64_t high;
+    };
+    inline uint128_t mul64x64(uint64_t a, uint64_t b) {
+        uint64_t a_lo = (uint32_t)a;
+        uint64_t a_hi = a >> 32;
+        uint64_t b_lo = (uint32_t)b;
+        uint64_t b_hi = b >> 32;
+        uint64_t p0 = a_lo * b_lo;
+        uint64_t p1 = a_lo * b_hi;
+        uint64_t p2 = a_hi * b_lo;
+        uint64_t p3 = a_hi * b_hi;
+        uint32_t cy = (uint32_t)(((p0 >> 32) + (uint32_t)p1 + (uint32_t)p2) >> 32);
+        uint128_t res;
+        res.low = p0 + (p1 << 32) + (p2 << 32);
+        res.high = p3 + (p1 >> 32) + (p2 >> 32) + cy;
+        return res;
+    }
+#endif
+
     class BigInt {
     public:
         std::vector<uint32_t> data; // 小端序：data[0] 存最低的 32 位
@@ -157,24 +181,22 @@ namespace jc {
         }
 
         static BigInt mul_ntt(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
-            size_t res_size = (n + m) * 2;
+            size_t res_size = n + m;
             size_t n_pow2 = 1;
             while (n_pow2 < res_size) n_pow2 <<= 1;
 
-            std::vector<uint32_t> fa1(n_pow2, 0), fa2(n_pow2, 0);
-            std::vector<uint32_t> fb1(n_pow2, 0), fb2(n_pow2, 0);
+            std::vector<uint32_t> fa1(n_pow2, 0), fa2(n_pow2, 0), fa3(n_pow2, 0);
+            std::vector<uint32_t> fb1(n_pow2, 0), fb2(n_pow2, 0), fb3(n_pow2, 0);
 
             for (size_t i = 0; i < n; ++i) {
-                uint32_t lo = a[i] & 0xFFFF;
-                uint32_t hi = a[i] >> 16;
-                fa1[i * 2] = lo; fa2[i * 2] = lo;
-                fa1[i * 2 + 1] = hi; fa2[i * 2 + 1] = hi;
+                fa1[i] = a[i] % 2013265921;
+                fa2[i] = a[i] % 2113929217;
+                fa3[i] = a[i] % 2130706433;
             }
             for (size_t i = 0; i < m; ++i) {
-                uint32_t lo = b[i] & 0xFFFF;
-                uint32_t hi = b[i] >> 16;
-                fb1[i * 2] = lo; fb2[i * 2] = lo;
-                fb1[i * 2 + 1] = hi; fb2[i * 2 + 1] = hi;
+                fb1[i] = b[i] % 2013265921;
+                fb2[i] = b[i] % 2113929217;
+                fb3[i] = b[i] % 2130706433;
             }
 
             ntt(fa1, false, 2013265921, 31);
@@ -187,36 +209,47 @@ namespace jc {
             for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
             ntt(fa2, true, 2113929217, 5);
 
+            ntt(fa3, false, 2130706433, 3);
+            ntt(fb3, false, 2130706433, 3);
+            for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+            ntt(fa3, true, 2130706433, 3);
+
             constexpr uint64_t P1 = 2013265921;
             constexpr uint64_t P2 = 2113929217;
+            constexpr uint64_t P3 = 2130706433;
+            constexpr uint64_t P1P2 = P1 * P2;
             constexpr uint64_t invP1_modP2 = ct_inv_mod(P1, P2);
+            constexpr uint64_t invP1P2_modP3 = ct_inv_mod(P1P2 % P3, P3);
 
             BigInt result;
-            result.data.resize(n_pow2 / 2 + 1, 0);
+            result.data.resize(n_pow2, 0);
             uint64_t carry = 0;
 
             for (size_t i = 0; i < n_pow2; ++i) {
-                uint64_t a1 = fa1[i], a2 = fa2[i];
+                uint64_t a1 = fa1[i], a2 = fa2[i], a3 = fa3[i];
                 uint64_t k1 = (a2 + P2 - a1) % P2 * invP1_modP2 % P2;
-                uint64_t exact_val = a1 + k1 * P1;
+                uint64_t x12 = a1 + k1 * P1;
+                uint64_t k2 = (a3 + P3 - x12 % P3) % P3 * invP1P2_modP3 % P3;
 
-                uint64_t val = exact_val + carry;
-                carry = val >> 16;
-                val &= 0xFFFF;
-            
-                if (i % 2 == 0) {
-                    result.data[i / 2] = static_cast<uint32_t>(val);
-                } else {
-                    result.data[i / 2] |= static_cast<uint32_t>(val << 16);
-                }
+    #if defined(__SIZEOF_INT128__)
+                uint128_t term = (uint128_t)k2 * P1P2 + x12 + carry;
+                result.data[i] = static_cast<uint32_t>(term);
+                carry = static_cast<uint64_t>(term >> 32);
+    #else
+                uint128_t term = mul64x64(k2, P1P2);
+                term.low += x12;
+                if (term.low < x12) term.high++;
+                term.low += carry;
+                if (term.low < carry) term.high++;
+                
+                result.data[i] = static_cast<uint32_t>(term.low);
+                // 极速进位：除以 2^32 就是直接位移，无需软件除法！
+                carry = (term.low >> 32) | (term.high << 32);
+    #endif
             }
-            size_t idx = n_pow2 / 2;
             while (carry > 0) {
-                if (idx >= result.data.size()) result.data.push_back(0);
-                uint64_t val = static_cast<uint64_t>(result.data[idx]) + carry;
-                result.data[idx] = static_cast<uint32_t>(val);
-                carry = val >> 32;
-                idx++;
+                result.data.push_back(static_cast<uint32_t>(carry));
+                carry >>= 32;
             }
             result.trim();
             return result;

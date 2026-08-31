@@ -2110,11 +2110,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     }
 
     std::vector<IRNode*> elements;
-    size_t expectedCols = expr->elements.empty() ? 0 : expr->elements[0].size();
     for (auto& row : expr->elements) {
-        if (row.size() != expectedCols) {
-            error("Syntax Error: Matrix rows must have the same number of columns.");
-        }
         for (auto& e : row) {
             e->accept(*this);
             elements.push_back(lastValue);
@@ -2124,7 +2120,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     node->setControl(currentControl);
     for (auto* e : elements) node->addData(e);
     node->payload1 = static_cast<uint32_t>(expr->elements.size());
-    node->payload2 = static_cast<uint32_t>(expectedCols);
+    for (auto& row : expr->elements) node->rowCols.push_back(static_cast<uint32_t>(row.size()));
     currentControl = node;
     lastValue = node;
 }

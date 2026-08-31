@@ -308,6 +308,7 @@ struct IRNode {
     uint32_t payload3 = 0;
     uint32_t payload4 = 0;
     uint32_t payload5 = 0;
+    std::vector<uint32_t> rowCols;   // BuildMatrix：每行的列数（支持不等量行拼接）
     
     IRNode(int id, IROp op) : id(id), op(op) {}
 

@@ -906,40 +906,63 @@ public:
     }
 
     Decimal exp_val() const {
+        if (mantissa.isZero()) return Decimal(DecInt(1), 0);
+
         int saved_prec = g_prec;
-        g_prec = saved_prec + guard_digits(saved_prec);
+        int target_prec = saved_prec + guard_digits(saved_prec);
         
-        Decimal x = *this;
-        int squares = 0;
-        Decimal two(DecInt(2), 0);
+        double d;
+        try {
+            const auto& raw_data = mantissa.data;
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 1000000000.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(1000000000.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
+
+        double guess_val;
+        int64_t guess_exp = 0;
+        if (d > 600.0 || d < -600.0) {
+            double log10_e = 0.43429448190325182765;
+            double x_log10 = d * log10_e;
+            guess_exp = static_cast<int64_t>(std::floor(x_log10));
+            double rem = x_log10 - guess_exp;
+            guess_val = std::pow(10.0, rem);
+        } else {
+            guess_val = std::exp(d);
+        }
+
+        if (!std::isfinite(guess_val)) {
+            if (d > 0) throw std::runtime_error("Overflow: exp result too large.");
+            return Decimal(DecInt(0), 0);
+        }
+
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess_val);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        y.exp += guess_exp;
+
         Decimal one(DecInt(1), 0);
-        Decimal threshold(DecInt(1), -8);
+        int current_prec = 16;
         
-        while (x.abs().gt(threshold) && !x.mantissa.isZero()) {
-            x = x.div(two).truncate(g_prec);
-            squares++;
-        }
-        
-        Decimal sum(DecInt(1), 0);
-        Decimal term(DecInt(1), 0);
-        Decimal n(DecInt(1), 0);
-        
-        for (int i = 1; i < 10000; ++i) {
-            term = term.mul(x).div(n).truncate(g_prec);
-            if (term.mantissa.isZero()) break;
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
             
-            Decimal next_sum = sum.add(term).truncate(g_prec);
-            if (next_sum.eq(sum)) break;
-            sum = next_sum;
-            n = n.add(one);
-        }
-        
-        for (int i = 0; i < squares; ++i) {
-            sum = sum.mul(sum).truncate(g_prec);
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal ln_y = y.ln_val();
+            Decimal term = cur_x.sub(ln_y).add(one);
+            y = y.mul(term).truncate(current_prec);
         }
         
         g_prec = saved_prec;
-        return sum.truncate(g_prec);
+        return y.truncate(g_prec);
     }
 
     Decimal mod_2pi() const {
@@ -1080,56 +1103,91 @@ public:
         return pi_val;
     }
 
+    static Decimal ln10() {
+        static int cached_prec = -1;
+        static Decimal cached_ln10_val;
+        
+        if (g_prec <= cached_prec) {
+            return cached_ln10_val.truncate(g_prec);
+        }
+
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+
+        int64_t m = g_prec / 2 + 4;
+        Decimal x = Decimal(DecInt(1), m);
+        Decimal a(DecInt(1), 0);
+        Decimal b = Decimal(DecInt(4), 0).div(x);
+        Decimal half(DecInt(5), -1);
+
+        while (true) {
+            Decimal next_a = a.add(b).mul(half).truncate(g_prec);
+            Decimal next_b = a.mul(b).sqrt().truncate(g_prec);
+            if (a.eq(next_a)) {
+                a = next_a;
+                break;
+            }
+            a = next_a;
+            b = next_b;
+        }
+
+        Decimal pi_val = Decimal::pi();
+        Decimal m_dec(DecInt(m), 0);
+        Decimal res = pi_val.div(a.mul(m_dec).mul(Decimal(DecInt(2), 0))).truncate(saved_prec);
+
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_ln10_val = res;
+
+        return res;
+    }
+
     Decimal ln_val() const {
         if (mantissa.isZero() || mantissa.isNegative()) {
             throw std::runtime_error("MathError: ln of non-positive decimal.");
         }
-        int64_t L = mantissa.digitCount();
-        int64_t E = exp + L - 1;
-        
-        double M = 0.0;
-        int sz = static_cast<int>(mantissa.data.size());
-        int start = std::max(0, sz - 3);
-        for (int i = sz - 1; i >= start; --i) {
-            M = M * 1000000000.0 + mantissa.data[i];
-        }
-        
-        double log10_M_exact = std::log10(M) + start * 9.0 - (L - 1);
-        double M_exact = std::pow(10.0, log10_M_exact);
-        
-        double guess = E * 2.302585092994045684 + std::log(M_exact);
-        if (!std::isfinite(guess)) guess = 0.0;
-        
-        char buf[64];
-        snprintf(buf, sizeof(buf), "%.15g", guess);
-        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
-        Decimal y = Decimal::from_string(buf);
-        Decimal two(DecInt(2), 0);
-        
-        int target_prec = g_prec + guard_digits(g_prec);
-        int current_prec = 16;
+        if (this->eq(Decimal(DecInt(1), 0))) return Decimal(DecInt(0), 0);
+
         int saved_prec = g_prec;
-        
-        while (current_prec < target_prec) {
-            current_prec *= 2;
-            if (current_prec > target_prec) current_prec = target_prec;
-            
-            g_prec = current_prec;
-            Decimal cur_x = this->truncate(current_prec);
-            Decimal ey = y.exp_val();
-            Decimal num = cur_x.sub(ey);
-            Decimal den = cur_x.add(ey);
-            if (den.mantissa.isZero()) break;
-            Decimal diff = two.mul(num).div(den).truncate(current_prec);
-            y = y.add(diff).truncate(current_prec);
+        g_prec = saved_prec + guard_digits(saved_prec);
+
+        int64_t mag = magnitude();
+        int64_t m = g_prec / 2 + 4 - mag;
+        if (m < 0) m = 0;
+
+        Decimal y = this->mul(Decimal(DecInt(1), m));
+        Decimal a(DecInt(1), 0);
+        Decimal b = Decimal(DecInt(4), 0).div(y);
+        Decimal half(DecInt(5), -1);
+
+        while (true) {
+            Decimal next_a = a.add(b).mul(half).truncate(g_prec);
+            Decimal next_b = a.mul(b).sqrt().truncate(g_prec);
+            if (a.eq(next_a)) {
+                a = next_a;
+                break;
+            }
+            a = next_a;
+            b = next_b;
         }
+
+        Decimal pi_val = Decimal::pi();
+        Decimal ln_y = pi_val.div(a.mul(Decimal(DecInt(2), 0))).truncate(g_prec);
+
+        Decimal res;
+        if (m == 0) {
+            res = ln_y;
+        } else {
+            Decimal m_dec(DecInt(m), 0);
+            res = ln_y.sub(m_dec.mul(Decimal::ln10()));
+        }
+
         g_prec = saved_prec;
-        return y.truncate(g_prec);
+        return res.truncate(g_prec);
     }
 
     Decimal log10_val() const {
-        Decimal ln10 = Decimal(DecInt(10), 0).ln_val();
-        return this->ln_val().div(ln10).truncate(g_prec);
+        return this->ln_val().div(Decimal::ln10()).truncate(g_prec);
     }
 
     Decimal tan_val() const {

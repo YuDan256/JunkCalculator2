@@ -3326,11 +3326,6 @@ void BuiltinRegistry::registerListConversion() {
 
         if (arg.isObjType(ObjType::REAL_MATRIX)) {
             const auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
-            if (m.getRows() == 1 || m.getCols() == 1) {
-                ObjList* L = GcHeap::get().allocate<ObjList>();
-                for (double d : m.rawData()) L->vec.push_back(Value(d));
-                return Value(L);
-            }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
@@ -3342,11 +3337,6 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
             const auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
-            if (m.getRows() == 1 || m.getCols() == 1) {
-                ObjList* L = GcHeap::get().allocate<ObjList>();
-                for (const auto& c : m.rawData()) L->vec.push_back(Value(c));
-                return Value(L);
-            }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
@@ -3358,11 +3348,6 @@ void BuiltinRegistry::registerListConversion() {
         }
         if (arg.isObjType(ObjType::SYM_MATRIX)) {
             const auto& m = static_cast<ObjSymMatrix*>(arg.asObj())->mat;
-            if (m.getRows() == 1 || m.getCols() == 1) {
-                ObjList* L = GcHeap::get().allocate<ObjList>();
-                for (const auto& s : m.rawData()) L->vec.push_back(Value(s));
-                return Value(L);
-            }
             ObjList* rows = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(rows);
             for (int i = 0; i < m.getRows(); ++i) {
@@ -3424,12 +3409,7 @@ void BuiltinRegistry::registerListConversion() {
         auto valToStr = [](const Value& v) -> std::string { if (v.isString()) return v.asString(); std::ostringstream oss; oss << v; return oss.str(); };
 
         if (!isNested) {
-            int n = static_cast<int>(L.size()); bool allReal = true, allNum = true, allSym = true;
-            for (const auto& v : L) { if (!isReal(v)) allReal = false; if (!isNumeric(v)) allNum = false; if (!isSym(v) && !isNumeric(v)) allSym = false; }
-            if (allReal) { std::vector<double> flatReal; for (const auto& v : L) flatReal.push_back(v.asDouble()); return Value(RealMatrix(1, n, flatReal)); }
-            if (allNum) { std::vector<Complex> flatComp; for (const auto& v : L) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(1, n, flatComp)); }
-            if (allSym) { std::vector<SymExpr> flatSym; for (const auto& v : L) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(1, n, flatSym)); }
-            throw std::runtime_error("Type Error: toMatrix() cannot convert mixed types to a matrix.");
+            throw std::runtime_error("Type Error: toMatrix() expects a List of Lists.");
         }
 
         int rows = static_cast<int>(L.size()), cols = -1; bool allReal = true, allNum = true, allSym = true;

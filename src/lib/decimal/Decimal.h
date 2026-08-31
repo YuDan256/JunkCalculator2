@@ -15,9 +15,134 @@
 
 namespace jc {
 
+class DecVector {
+    static constexpr size_t INLINE_CAPACITY = 8;
+    size_t m_size;
+    size_t m_capacity;
+    uint32_t* m_data;
+    uint32_t m_inline[INLINE_CAPACITY];
+
+    void reallocate(size_t new_cap) {
+        uint32_t* new_data = new uint32_t[new_cap];
+        std::memcpy(new_data, m_data, m_size * sizeof(uint32_t));
+        if (m_data != m_inline) delete[] m_data;
+        m_data = new_data;
+        m_capacity = new_cap;
+    }
+public:
+    DecVector() : m_size(0), m_capacity(INLINE_CAPACITY), m_data(m_inline) {}
+    DecVector(size_t count, uint32_t val = 0) : m_size(0), m_capacity(INLINE_CAPACITY), m_data(m_inline) {
+        assign(count, val);
+    }
+    DecVector(const DecVector& other) : m_size(0), m_capacity(INLINE_CAPACITY), m_data(m_inline) {
+        if (other.m_size > INLINE_CAPACITY) {
+            m_data = new uint32_t[other.m_capacity];
+            m_capacity = other.m_capacity;
+        }
+        m_size = other.m_size;
+        std::memcpy(m_data, other.m_data, m_size * sizeof(uint32_t));
+    }
+    DecVector(DecVector&& other) noexcept : m_size(other.m_size), m_capacity(other.m_capacity) {
+        if (other.m_data == other.m_inline) {
+            m_data = m_inline;
+            std::memcpy(m_inline, other.m_inline, m_size * sizeof(uint32_t));
+        } else {
+            m_data = other.m_data;
+            other.m_data = other.m_inline;
+            other.m_capacity = INLINE_CAPACITY;
+            other.m_size = 0;
+        }
+    }
+    ~DecVector() {
+        if (m_data != m_inline) delete[] m_data;
+    }
+    DecVector& operator=(const DecVector& other) {
+        if (this != &other) {
+            if (other.m_size > m_capacity) {
+                if (m_data != m_inline) delete[] m_data;
+                m_capacity = other.m_capacity;
+                m_data = new uint32_t[m_capacity];
+            }
+            m_size = other.m_size;
+            std::memcpy(m_data, other.m_data, m_size * sizeof(uint32_t));
+        }
+        return *this;
+    }
+    DecVector& operator=(DecVector&& other) noexcept {
+        if (this != &other) {
+            if (m_data != m_inline) delete[] m_data;
+            m_size = other.m_size;
+            m_capacity = other.m_capacity;
+            if (other.m_data == other.m_inline) {
+                m_data = m_inline;
+                std::memcpy(m_inline, other.m_inline, m_size * sizeof(uint32_t));
+            } else {
+                m_data = other.m_data;
+                other.m_data = other.m_inline;
+                other.m_capacity = INLINE_CAPACITY;
+                other.m_size = 0;
+            }
+        }
+        return *this;
+    }
+
+    void push_back(uint32_t val) {
+        if (m_size == m_capacity) reallocate(m_capacity * 2);
+        m_data[m_size++] = val;
+    }
+    void pop_back() { if (m_size > 0) m_size--; }
+    size_t size() const { return m_size; }
+    bool empty() const { return m_size == 0; }
+    uint32_t& back() { return m_data[m_size - 1]; }
+    const uint32_t& back() const { return m_data[m_size - 1]; }
+    uint32_t& operator[](size_t idx) { return m_data[idx]; }
+    const uint32_t& operator[](size_t idx) const { return m_data[idx]; }
+    uint32_t* data() { return m_data; }
+    const uint32_t* data() const { return m_data; }
+    
+    void resize(size_t new_size, uint32_t val = 0) {
+        if (new_size > m_capacity) reallocate(std::max(m_capacity * 2, new_size));
+        if (new_size > m_size) {
+            std::fill(m_data + m_size, m_data + new_size, val);
+        }
+        m_size = new_size;
+    }
+    void assign(size_t count, uint32_t val) {
+        if (count > m_capacity) reallocate(std::max(m_capacity * 2, count));
+        m_size = count;
+        std::fill(m_data, m_data + m_size, val);
+    }
+    template<typename Iter>
+    void assign(Iter first, Iter last) {
+        size_t count = static_cast<size_t>(last - first);
+        if (count > m_capacity) reallocate(std::max(m_capacity * 2, count));
+        m_size = count;
+        std::copy(first, last, m_data);
+    }
+    void clear() { m_size = 0; }
+    
+    uint32_t* begin() { return m_data; }
+    uint32_t* end() { return m_data + m_size; }
+    const uint32_t* begin() const { return m_data; }
+    const uint32_t* end() const { return m_data + m_size; }
+
+    void insert(uint32_t* pos, size_t count, uint32_t val) {
+        size_t idx = static_cast<size_t>(pos - m_data);
+        if (m_size + count > m_capacity) reallocate(std::max(m_capacity * 2, m_size + count));
+        std::memmove(m_data + idx + count, m_data + idx, (m_size - idx) * sizeof(uint32_t));
+        std::fill(m_data + idx, m_data + idx + count, val);
+        m_size += count;
+    }
+
+    bool operator==(const DecVector& other) const {
+        if (m_size != other.m_size) return false;
+        return std::memcmp(m_data, other.m_data, m_size * sizeof(uint32_t)) == 0;
+    }
+};
+
 class DecInt {
 public:
-    std::vector<uint32_t> data;
+    DecVector data;
     bool negative = false;
     static constexpr uint32_t BASE = 1000000000;
 

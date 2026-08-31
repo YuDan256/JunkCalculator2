@@ -25,8 +25,8 @@ test_middle() = {
         [first, ...mid, last] => str(first) + "|" + str(mid) + "|" + str(last),
         _ => "Fail"
     }
-    assert(f([1, 2, 3, 4]) == "1.0|[2.0, 3.0]|4.0", "Middle rest failed")
-    assert(f([9, 8]) == "9.0|[]|8.0", "Middle rest empty failed")
+    assert(f(@[1, 2, 3, 4]) == "1|@[2, 3]|4", "Middle rest failed")
+    assert(f(@[9, 8]) == "9|@[]|8", "Middle rest empty failed")
 }
 test_middle()
 

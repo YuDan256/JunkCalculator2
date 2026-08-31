@@ -148,7 +148,7 @@ test_no_arg_macro_safety() = {
     }
     
     // 确保无参宏后面的 { 2 } 不会被当作宏参数吃掉
-    arr = [@get_one, { 2 }]
+    arr = @[@get_one, { 2 }]
     assert(arr[0] == 1, "No-arg macro safety failed")
 }
 test_no_arg_macro_safety()

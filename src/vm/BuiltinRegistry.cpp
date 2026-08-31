@@ -1195,6 +1195,28 @@ void BuiltinRegistry::registerMatrixOps() {
     };
     regMethod(VM::activeVM->matrixProto, "getElement", {"r", "c"}, getElementFn);
 
+    // 显式降维：1x1 矩阵 → 标量
+    auto itemFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::REAL_MATRIX)) {
+            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
+            if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: item() requires a 1x1 matrix.");
+            return Value(m(0, 0));
+        }
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
+            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
+            if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: item() requires a 1x1 matrix.");
+            return Value(m(0, 0));
+        }
+        if (self.isObjType(ObjType::SYM_MATRIX)) {
+            auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
+            if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: item() requires a 1x1 matrix.");
+            return Value(m(0, 0));
+        }
+        throw std::runtime_error("Type Error: item() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "item", {}, itemFn);
+
     // 1D 索引读取（对应 setItem）；2D 矩阵返回第 i 行
     auto getItemFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -1202,24 +1224,18 @@ void BuiltinRegistry::registerMatrixOps() {
         auto normIdx = [&](int n) { if (i < 0) i += n; if (i < 0 || i >= n) throw std::runtime_error("Runtime Error: getItem() index out of bounds."); };
         if (self.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
-            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
-            normIdx(m.getRows());
-            return Value(m.getRow(i));
+            normIdx(m.getCols());
+            return Value(m.getCol(i));
         }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
-            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
-            normIdx(m.getRows());
-            return Value(m.getRow(i));
+            normIdx(m.getCols());
+            return Value(m.getCol(i));
         }
         if (self.isObjType(ObjType::SYM_MATRIX)) {
             auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
-            if (m.getRows() == 1) { normIdx(m.getCols()); return Value(m(0, i)); }
-            if (m.getCols() == 1) { normIdx(m.getRows()); return Value(m(i, 0)); }
-            normIdx(m.getRows());
-            return Value(m.getRow(i));
+            normIdx(m.getCols());
+            return Value(m.getCol(i));
         }
         throw std::runtime_error("Type Error: getItem() requires a matrix.");
     };
@@ -2599,8 +2615,8 @@ void BuiltinRegistry::registerStringFunctions() {
             return Value::fromInt32(static_cast<int32_t>(inst->properties.size()));
         }
         if (args[0].isString()) return Value::fromInt32(static_cast<int32_t>(args[0].asObjString()->charLength));
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; if (m.getCols() == 1) return Value::fromInt32(m.getRows()); if (m.getRows() == 1) return Value::fromInt32(m.getCols()); return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
         if (args[0].isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(args[0].asObj())->elements.size()));
         if (args[0].isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
         if (args[0].isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(args[0].asObj())->elements.size()));
@@ -2700,20 +2716,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             if (l->vec.empty()) throw std::runtime_error("Runtime Error: first() on empty list.");
             return l->vec[0];
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            if (m.getRows() * m.getCols() == 0) throw std::runtime_error("Runtime Error: first() on empty vector.");
-            return Value(m.rawData()[0]);
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            if (m.getRows() * m.getCols() == 0) throw std::runtime_error("Runtime Error: first() on empty vector.");
-            return Value(m.rawData()[0]);
-        }
         return expectContainer("first");
     };
     regMethod(VM::activeVM->listProto, "first", {}, firstFn);
-    regMethod(VM::activeVM->matrixProto, "first", {}, firstFn);
 
     auto lastFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2722,22 +2727,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             if (l->vec.empty()) throw std::runtime_error("Runtime Error: last() on empty list.");
             return l->vec.back();
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: last() on empty vector.");
-            return Value(m.rawData()[n - 1]);
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: last() on empty vector.");
-            return Value(m.rawData()[n - 1]);
-        }
         return expectContainer("last");
     };
     regMethod(VM::activeVM->listProto, "last", {}, lastFn);
-    regMethod(VM::activeVM->matrixProto, "last", {}, lastFn);
 
     auto popFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2748,22 +2740,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().pop_back();
             return val;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: pop() on empty vector.");
-            return Value(m.rawData()[n - 1]);
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: pop() on empty vector.");
-            return Value(m.rawData()[n - 1]);
-        }
         return expectContainer("pop");
     };
     regMethod(VM::activeVM->listProto, "pop", {}, popFn);
-    regMethod(VM::activeVM->matrixProto, "pop", {}, popFn);
 
     auto shiftFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2774,22 +2753,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().erase(l->mut().begin());
             return val;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: shift() on empty vector.");
-            return Value(m.rawData()[0]);
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            int n = m.getRows() * m.getCols();
-            if (n == 0) throw std::runtime_error("Runtime Error: shift() on empty vector.");
-            return Value(m.rawData()[0]);
-        }
         return expectContainer("shift");
     };
     regMethod(VM::activeVM->listProto, "shift", {}, shiftFn);
-    regMethod(VM::activeVM->matrixProto, "shift", {}, shiftFn);
 
     auto pushFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2798,28 +2764,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().push_back(args[0]);
             return self;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            v.push_back(args[0].asDouble());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(RealMatrix(r, c, v));
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            v.push_back(args[0].asComplex());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(ComplexMatrix(r, c, v));
-        }
         return expectContainer("push");
     };
     regMethod(VM::activeVM->listProto, "push", {"val"}, pushFn);
-    regMethod(VM::activeVM->matrixProto, "push", {"val"}, pushFn);
     regMethod(VM::activeVM->listProto, "append", {"val"}, pushFn);
-    regMethod(VM::activeVM->matrixProto, "append", {"val"}, pushFn);
 
     auto prependFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2828,26 +2776,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().insert(l->mut().begin(), args[0]);
             return self;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            v.insert(v.begin(), args[0].asDouble());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(RealMatrix(r, c, v));
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            v.insert(v.begin(), args[0].asComplex());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(ComplexMatrix(r, c, v));
-        }
         return expectContainer("prepend");
     };
     regMethod(VM::activeVM->listProto, "prepend", {"val"}, prependFn);
-    regMethod(VM::activeVM->matrixProto, "prepend", {"val"}, prependFn);
 
     auto insertFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2859,30 +2790,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().insert(l->mut().begin() + i, args[1]);
             return self;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            int i = idx < 0 ? static_cast<int>(v.size()) + idx : idx;
-            if (i < 0 || i > static_cast<int>(v.size())) throw std::runtime_error("Runtime Error: insert() index out of range.");
-            v.insert(v.begin() + i, args[1].asDouble());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(RealMatrix(r, c, v));
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            int i = idx < 0 ? static_cast<int>(v.size()) + idx : idx;
-            if (i < 0 || i > static_cast<int>(v.size())) throw std::runtime_error("Runtime Error: insert() index out of range.");
-            v.insert(v.begin() + i, args[1].asComplex());
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            return Value(ComplexMatrix(r, c, v));
-        }
         return expectContainer("insert");
     };
     regMethod(VM::activeVM->listProto, "insert", {"idx", "val"}, insertFn);
-    regMethod(VM::activeVM->matrixProto, "insert", {"idx", "val"}, insertFn);
 
     auto removeAtFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2894,34 +2804,9 @@ void BuiltinRegistry::registerArrayFunctions() {
             l->mut().erase(l->mut().begin() + i);
             return self;
         }
-        if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            if (v.empty()) throw std::runtime_error("Runtime Error: removeAt() on empty vector.");
-            int i = idx < 0 ? static_cast<int>(v.size()) + idx : idx;
-            if (i < 0 || i >= static_cast<int>(v.size())) throw std::runtime_error("Runtime Error: removeAt() index out of range.");
-            v.erase(v.begin() + i);
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            if (r * c == 0) return Value(RealMatrix(1, 0));
-            return Value(RealMatrix(r, c, v));
-        }
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            if (v.empty()) throw std::runtime_error("Runtime Error: removeAt() on empty vector.");
-            int i = idx < 0 ? static_cast<int>(v.size()) + idx : idx;
-            if (i < 0 || i >= static_cast<int>(v.size())) throw std::runtime_error("Runtime Error: removeAt() index out of range.");
-            v.erase(v.begin() + i);
-            int r = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(v.size()) : 1;
-            int c = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(v.size());
-            if (r * c == 0) return Value(ComplexMatrix(1, 0));
-            return Value(ComplexMatrix(r, c, v));
-        }
         return expectContainer("removeAt");
     };
     regMethod(VM::activeVM->listProto, "removeAt", {"idx"}, removeAtFn);
-    regMethod(VM::activeVM->matrixProto, "removeAt", {"idx"}, removeAtFn);
 
     auto sliceFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2944,31 +2829,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             GcObjGuard guard(result);
             for (int i = start; i < end; ++i) result->vec.push_back(l->vec[i]);
             return Value(result);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            int start, end; getBounds(static_cast<int>(v.size()), start, end);
-            std::vector<double> retV;
-            if (start < end) retV.assign(v.begin() + start, v.begin() + end);
-            int cr = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(retV.size()) : 1;
-            int cc = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(retV.size());
-            if (cr * cc == 0) return Value(RealMatrix(1, 0));
-            return Value(RealMatrix(cr, cc, retV));
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            int start, end; getBounds(static_cast<int>(v.size()), start, end);
-            std::vector<Complex> retV;
-            if (start < end) retV.assign(v.begin() + start, v.begin() + end);
-            int cr = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(retV.size()) : 1;
-            int cc = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(retV.size());
-            if (cr * cc == 0) return Value(ComplexMatrix(1, 0));
-            return Value(ComplexMatrix(cr, cc, retV));
         }
         return expectContainer("slice");
     };
     regMethod(VM::activeVM->listProto, "slice", {"start", "end"}, sliceFn, 1);
-    regMethod(VM::activeVM->matrixProto, "slice", {"start", "end"}, sliceFn, 1);
 
     auto reverseFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2992,19 +2856,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             L->vec = static_cast<ObjList*>(self.asObj())->vec;
             std::reverse(L->vec.begin(), L->vec.end());
             return Value(L);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData(); std::reverse(v.begin(), v.end());
-            return Value(RealMatrix(m.getRows(), m.getCols(), v));
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData(); std::reverse(v.begin(), v.end());
-            return Value(ComplexMatrix(m.getRows(), m.getCols(), v));
         }
         return expectContainer("reverse");
     };
     regMethod(VM::activeVM->listProto, "reverse", {}, reverseFn);
-    regMethod(VM::activeVM->matrixProto, "reverse", {}, reverseFn);
     regMethod(VM::activeVM->stringProto, "reverse", {}, reverseFn);
 
     auto flattenFn = [expectContainer](const std::vector<Value>&) -> Value {
@@ -3019,17 +2874,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             };
             flattenList(static_cast<ObjList*>(self.asObj()));
             return Value(result);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            return Value(RealMatrix(1, m.getRows() * m.getCols(), m.rawData()));
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            return Value(ComplexMatrix(1, m.getRows() * m.getCols(), m.rawData()));
         }
         return expectContainer("flatten");
     };
     regMethod(VM::activeVM->listProto, "flatten", {}, flattenFn);
-    regMethod(VM::activeVM->matrixProto, "flatten", {}, flattenFn);
 
     auto uniqueFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3044,35 +2892,10 @@ void BuiltinRegistry::registerArrayFunctions() {
                 if (!found) result->vec.push_back(e);
             }
             return Value(result);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            std::vector<double> result;
-            for (const auto& x : m.rawData()) {
-                bool found = false;
-                for (const auto& y : result) { if (x == y) { found = true; break; } }
-                if (!found) result.push_back(x);
-            }
-            int cr = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(result.size()) : 1;
-            int cc = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(result.size());
-            if (cr * cc == 0) return Value(RealMatrix(1, 0));
-            return Value(RealMatrix(cr, cc, result));
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            std::vector<Complex> result;
-            for (const auto& x : m.rawData()) {
-                bool found = false;
-                for (const auto& y : result) { if (x == y) { found = true; break; } }
-                if (!found) result.push_back(x);
-            }
-            int cr = (m.getCols() == 1 && m.getRows() > 1) ? static_cast<int>(result.size()) : 1;
-            int cc = (m.getCols() == 1 && m.getRows() > 1) ? 1 : static_cast<int>(result.size());
-            if (cr * cc == 0) return Value(ComplexMatrix(1, 0));
-            return Value(ComplexMatrix(cr, cc, result));
         }
         return expectContainer("unique");
     };
     regMethod(VM::activeVM->listProto, "unique", {}, uniqueFn);
-    regMethod(VM::activeVM->matrixProto, "unique", {}, uniqueFn);
 
     auto indexOfFn = [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3094,27 +2917,10 @@ void BuiltinRegistry::registerArrayFunctions() {
                 if (Value::equals(l->vec[i], args[0])) return Value::fromInt32(static_cast<int32_t>(i));
             }
             return Value::fromInt32(-1);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            try {
-                double target = args[0].asDouble();
-                auto v = m.rawData();
-                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value::fromInt32(static_cast<int32_t>(i));
-            } catch (...) {}
-            return Value::fromInt32(-1);
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            try {
-                Complex target = args[0].asComplex();
-                auto v = m.rawData();
-                for (size_t i = 0; i < v.size(); ++i) if (v[i] == target) return Value::fromInt32(static_cast<int32_t>(i));
-            } catch (...) {}
-            return Value::fromInt32(-1);
         }
         return expectContainer("indexOf");
     };
     regMethod(VM::activeVM->listProto, "indexOf", {"val"}, indexOfFn);
-    regMethod(VM::activeVM->matrixProto, "indexOf", {"val"}, indexOfFn);
     regMethod(VM::activeVM->stringProto, "indexOf", {"val"}, indexOfFn);
 
     auto countFn = [expectContainer, this](const std::vector<Value>& args) -> Value {
@@ -3131,27 +2937,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             int countVal = 0;
             for (const auto& e : l->vec) { if (Value::equals(e, args[0])) countVal++; }
             return Value::fromInt32(countVal);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            int countVal = 0;
-            try {
-                double target = args[0].asDouble();
-                for (const auto& x : m.rawData()) if (x == target) countVal++;
-            } catch (...) {}
-            return Value::fromInt32(countVal);
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            int countVal = 0;
-            try {
-                Complex target = args[0].asComplex();
-                for (const auto& x : m.rawData()) if (x == target) countVal++;
-            } catch (...) {}
-            return Value::fromInt32(countVal);
         }
         return expectContainer("count");
     };
     regMethod(VM::activeVM->listProto, "count", {"val"}, countFn);
-    regMethod(VM::activeVM->matrixProto, "count", {"val"}, countFn);
     regMethod(VM::activeVM->stringProto, "count", {"val"}, countFn);
 
     auto joinFn = [expectContainer, this](const std::vector<Value>& args) -> Value {
@@ -3193,24 +2982,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             std::ostringstream listOss;
             for (size_t i = 0; i < l->vec.size(); ++i) { if (i > 0) listOss << delim; listOss << l->vec[i]; }
             return Value(listOss.str());
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            std::ostringstream matOss; auto v = m.rawData();
-            for (size_t i = 0; i < v.size(); ++i) {
-                if (i > 0) matOss << delim;
-                matOss << Value(v[i]);
-            }
-            return Value(matOss.str());
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            std::ostringstream cmatOss; auto v = m.rawData();
-            for (size_t i = 0; i < v.size(); ++i) { if (i > 0) cmatOss << delim; cmatOss << Value(v[i]); }
-            return Value(cmatOss.str());
         }
         return expectContainer("join");
     };
     regMethod(VM::activeVM->listProto, "join", {"delim"}, joinFn);
-    regMethod(VM::activeVM->matrixProto, "join", {"delim"}, joinFn);
     regMethod(VM::activeVM->stringProto, "join", {"delim"}, joinFn);
     regMethod(VM::activeVM->setProto, "join", {"delim"}, joinFn);
 
@@ -3261,14 +3036,12 @@ void BuiltinRegistry::registerArrayFunctions() {
         return applyMathVectorOp(self, [](const Value& a, const Value& b) { return a + b; });
     };
     regMethod(VM::activeVM->listProto, "cumsum", {}, cumsumFn);
-    regMethod(VM::activeVM->matrixProto, "cumsum", {}, cumsumFn);
 
     auto cumprodFn = [applyMathVectorOp](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         return applyMathVectorOp(self, [](const Value& a, const Value& b) { return a * b; });
     };
     regMethod(VM::activeVM->listProto, "cumprod", {}, cumprodFn);
-    regMethod(VM::activeVM->matrixProto, "cumprod", {}, cumprodFn);
 
     auto diffsFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3279,32 +3052,10 @@ void BuiltinRegistry::registerArrayFunctions() {
             GcObjGuard guard(result);
             for (size_t i = 0; i < l->vec.size() - 1; ++i) result->vec.push_back(l->vec[i + 1] - l->vec[i]);
             return Value(result);
-        } else if (self.isObjType(ObjType::REAL_MATRIX)) {
-            auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
-            std::vector<double> d(v.size() - 1);
-            for (size_t i = 0; i < d.size(); ++i) d[i] = v[i + 1] - v[i];
-            return Value(RealMatrix(1, static_cast<int>(d.size()), d));
-        } else if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
-            auto& m = static_cast<ObjComplexMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
-            std::vector<Complex> d(v.size() - 1);
-            for (size_t i = 0; i < d.size(); ++i) d[i] = v[i + 1] - v[i];
-            return Value(ComplexMatrix(1, static_cast<int>(d.size()), d));
-        } else if (self.isObjType(ObjType::SYM_MATRIX)) {
-            auto& m = static_cast<ObjSymMatrix*>(self.asObj())->mat;
-            auto v = m.rawData();
-            if (v.size() < 2) throw std::runtime_error("Runtime Error: diffs() requires at least 2 elements.");
-            std::vector<SymExpr> d(v.size() - 1);
-            for (size_t i = 0; i < d.size(); ++i) d[i] = jc::simplifyCore(v[i + 1] - v[i]);
-            return Value(SymMatrix(1, static_cast<int>(d.size()), d));
         }
         throw std::runtime_error("Type Error: diffs() expects a numeric vector or list.");
     };
     regMethod(VM::activeVM->listProto, "diffs", {}, diffsFn);
-    regMethod(VM::activeVM->matrixProto, "diffs", {}, diffsFn);
 
     auto findFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4499,21 +4250,10 @@ void BuiltinRegistry::registerHigherOrder() {
                     return safeCallValue(cmp, { a, b }).truthy();
                 });
                 return Value(L);
-            } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
-                auto f = static_cast<ObjRealMatrix*>(arg.asObj())->mat.rawData();
-                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallValue(cmp, { Value(a), Value(b) }).truthy(); });
-                return Value(RealMatrix(1, static_cast<int>(f.size()), f));
-            } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
-                auto f = static_cast<ObjComplexMatrix*>(arg.asObj())->mat.rawData();
-                std::stable_sort(f.begin(), f.end(), [&](const auto& a, const auto& b) { return safeCallValue(cmp, { Value(a), Value(b) }).truthy(); });
-                return Value(ComplexMatrix(1, static_cast<int>(f.size()), f));
             }
             throw std::runtime_error("Type Error: sort() expects a vector or list.");
         } else {
-            if (arg.isObjType(ObjType::REAL_MATRIX)) {
-                auto f = static_cast<ObjRealMatrix*>(arg.asObj())->mat.rawData();
-                std::sort(f.begin(), f.end()); return Value(RealMatrix(1, static_cast<int>(f.size()), f));
-            } else if (arg.isObjType(ObjType::LIST)) {
+            if (arg.isObjType(ObjType::LIST)) {
                 ObjList* L = GcHeap::get().allocate<ObjList>();
                 GcObjGuard guard(L);
                 L->vec = static_cast<ObjList*>(arg.asObj())->vec;
@@ -4532,7 +4272,6 @@ void BuiltinRegistry::registerHigherOrder() {
         return sortCore(self, cmp);
     };
     regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn, 1);
-    regMethod(VM::activeVM->matrixProto, "sort", {"cmp"}, sortFn, 1);
     regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn, 1);
 
     // ==== dict 高阶函数（pair 优先：map/filter/reduce/any/all/countIf 回调收 @[k,v] frozen list）====

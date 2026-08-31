@@ -24,7 +24,7 @@ test_for_loop()
 
 test_for_in_loop() = {
     sum = 0
-    for (x in [10, 20, 30]) {
+    for (x in @[10, 20, 30]) {
         sum += x
     }
     assert(sum == 60, "For-in loop over list failed")

@@ -115,8 +115,6 @@ namespace jc {
     // 矩阵乘法 (带防膨胀机制)
     // ==========================================
     SymMatrix SymMatrix::operator*(const SymMatrix& other) const {
-        if (rows == 1 && cols == 1) return other * data[0];
-        if (other.rows == 1 && other.cols == 1) return (*this) * other.data[0];
         if (cols != other.rows) throw std::invalid_argument("SymMatrix Error: Cols must equal rows (*).");
 
         SymMatrix result(rows, other.cols);

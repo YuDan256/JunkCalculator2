@@ -206,14 +206,12 @@ namespace helpers {
         }
         if (iterable.isObjType(ObjType::REAL_MATRIX)) {
             auto& m = static_cast<ObjRealMatrix*>(iterable.asObj())->mat;
-            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: positional spread expects a 1D vector.");
-            for (auto& d : m.rawData()) out.push_back(Value(d));
+            for (int c = 0; c < m.getCols(); ++c) out.push_back(Value(m.getCol(c)));
             return true;
         }
         if (iterable.isObjType(ObjType::COMPLEX_MATRIX)) {
             auto& m = static_cast<ObjComplexMatrix*>(iterable.asObj())->mat;
-            if (m.getRows() != 1 && m.getCols() != 1) throw std::runtime_error("Type Error: positional spread expects a 1D vector.");
-            for (auto& d : m.rawData()) out.push_back(Value(d));
+            for (int c = 0; c < m.getCols(); ++c) out.push_back(Value(m.getCol(c)));
             return true;
         }
         if (iterable.isString()) {

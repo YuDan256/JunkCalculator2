@@ -3318,6 +3318,16 @@ VM::VM() {
 
         bind("int", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
             Value val = evalIfSym(args[0]);
+            // 1×1 矩阵 → 取元素降维
+            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: int() only accepts a 1x1 matrix.");
+                val = Value(m(0, 0));
+            } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
+                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: int() only accepts a 1x1 matrix.");
+                val = Value(m(0, 0));
+            }
             // 截断取整（向零方向）
             if (val.isObjType(ObjType::BIGINT) || val.isInt32())
                 return val;
@@ -3373,6 +3383,16 @@ VM::VM() {
 
         bind("double", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
             Value val = evalIfSym(args[0]);
+            // 1×1 矩阵 → 取元素降维
+            if (val.isObjType(ObjType::REAL_MATRIX)) {
+                const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: double() only accepts a 1x1 matrix.");
+                val = Value(m(0, 0));
+            } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
+                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: double() only accepts a 1x1 matrix.");
+                val = Value(m(0, 0));
+            }
             if (val.isComplex()) {
                 const auto& c = val.asComplex();
                 if (!Tol::isEq(c.imag, 0.0))
@@ -3385,6 +3405,16 @@ VM::VM() {
         bind("complex", {1, 2}, {"real", "imag"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
             if (args.size() == 1) {
                 Value val = evalIfSym(args[0]);
+                // 1×1 矩阵 → 取元素降维
+                if (val.isObjType(ObjType::REAL_MATRIX)) {
+                    const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+                    if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: complex() only accepts a 1x1 matrix.");
+                    val = Value(m(0, 0));
+                } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+                    const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
+                    if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: complex() only accepts a 1x1 matrix.");
+                    val = Value(m(0, 0));
+                }
                 if (val.isComplex())
                     return val;
                 return Value(Complex(val.asDouble(), 0.0));
@@ -5538,28 +5568,19 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         auto processMatGet = [&](const auto& m) -> Value {
                             using MatType = std::decay_t<decltype(m)>;
-                            int n = (m.getRows() == 1) ? m.getCols() : ((m.getCols() == 1) ? m.getRows() : m.getRows());
+                            int n = m.getCols();
                             auto range = idx.parseIndex(n, noThrow);
                             if (!range.isSlice && range.scalarIdx == -1) return Value::uninit();
                             
                             if (!range.isSlice) {
-                                if (m.getRows() == 1) return Value(m(0, range.scalarIdx));
-                                else if (m.getCols() == 1) return Value(m(range.scalarIdx, 0));
-                                else {
-                                    using ElemType = std::decay_t<decltype(m(0,0))>;
-                                    std::vector<ElemType> row(m.getCols());
-                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(range.scalarIdx, j);
-                                    return Value(MatType(1, m.getCols(), row));
-                                }
+                                // 列优先：A[i] 返回第 i 列（M×1）
+                                using ElemType = std::decay_t<decltype(m(0,0))>;
+                                std::vector<ElemType> col(m.getRows());
+                                for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, range.scalarIdx);
+                                return Value(MatType(m.getRows(), 1, col));
                             } else {
-                                // 切片：返回视图（Matrix<T> 零拷贝，SymMatrix 拷贝）
-                                if (m.getRows() == 1) {
-                                    return Value(m.view(0, 1, 1, range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count));
-                                } else if (m.getCols() == 1) {
-                                    return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, 1));
-                                } else {
-                                    return Value(m.view(range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count, 0, 1, m.getCols()));
-                                }
+                                // 切片：列切片（M×count）
+                                return Value(m.view(0, 1, m.getRows(), range.sliceInfo.start, range.sliceInfo.step, range.sliceInfo.count));
                             }
                         };
                         try {
@@ -6072,49 +6093,37 @@ Value VM::run(int targetFrameDepth) {
                             break;
                         } else if (iterTarget.isObjType(ObjType::REAL_MATRIX)) {
                             const auto& m = static_cast<ObjRealMatrix*>(iterTarget.asObj())->mat;
-                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            int len = m.getCols();
                             if (i >= len) {
                                 getReg(a) = Value::uninit();
                             } else {
-                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
-                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
-                                else {
-                                    std::vector<double> row(m.getCols());
-                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                    getReg(a) = Value(RealMatrix(1, m.getCols(), row));
-                                }
+                                std::vector<double> col(m.getRows());
+                                for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
+                                getReg(a) = Value(RealMatrix(m.getRows(), 1, col));
                                 state->vec[1] = Value::fromInt32(i + 1);
                             }
                             break;
                         } else if (iterTarget.isObjType(ObjType::COMPLEX_MATRIX)) {
                             const auto& m = static_cast<ObjComplexMatrix*>(iterTarget.asObj())->mat;
-                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            int len = m.getCols();
                             if (i >= len) {
                                 getReg(a) = Value::uninit();
                             } else {
-                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
-                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
-                                else {
-                                    std::vector<Complex> row(m.getCols());
-                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                    getReg(a) = Value(ComplexMatrix(1, m.getCols(), row));
-                                }
+                                std::vector<Complex> col(m.getRows());
+                                for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
+                                getReg(a) = Value(ComplexMatrix(m.getRows(), 1, col));
                                 state->vec[1] = Value::fromInt32(i + 1);
                             }
                             break;
                         } else if (iterTarget.isObjType(ObjType::SYM_MATRIX)) {
                             const auto& m = static_cast<ObjSymMatrix*>(iterTarget.asObj())->mat;
-                            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+                            int len = m.getCols();
                             if (i >= len) {
                                 getReg(a) = Value::uninit();
                             } else {
-                                if (m.getRows() == 1) getReg(a) = Value(m(0, i));
-                                else if (m.getCols() == 1) getReg(a) = Value(m(i, 0));
-                                else {
-                                    std::vector<SymExpr> row(m.getCols());
-                                    for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                                    getReg(a) = Value(SymMatrix(1, m.getCols(), row));
-                                }
+                                std::vector<SymExpr> col(m.getRows());
+                                for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
+                                getReg(a) = Value(SymMatrix(m.getRows(), 1, col));
                                 state->vec[1] = Value::fromInt32(i + 1);
                             }
                             break;
@@ -9957,46 +9966,28 @@ Value VM::opIterNext(Value stateVal) {
             }
         } else if (iterTarget.isObjType(ObjType::REAL_MATRIX)) {
             const auto& m = static_cast<ObjRealMatrix*>(iterTarget.asObj())->mat;
-            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            int len = m.getCols();
             if (i >= len) return Value::uninit();
-            Value out;
-            if (m.getRows() == 1) out = Value(m(0, i));
-            else if (m.getCols() == 1) out = Value(m(i, 0));
-            else {
-                std::vector<double> row(m.getCols());
-                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                out = Value(RealMatrix(1, m.getCols(), row));
-            }
+            std::vector<double> col(m.getRows());
+            for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
             state->vec[1] = Value::fromInt32(i + 1);
-            return out;
+            return Value(RealMatrix(m.getRows(), 1, col));
         } else if (iterTarget.isObjType(ObjType::COMPLEX_MATRIX)) {
             const auto& m = static_cast<ObjComplexMatrix*>(iterTarget.asObj())->mat;
-            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            int len = m.getCols();
             if (i >= len) return Value::uninit();
-            Value out;
-            if (m.getRows() == 1) out = Value(m(0, i));
-            else if (m.getCols() == 1) out = Value(m(i, 0));
-            else {
-                std::vector<Complex> row(m.getCols());
-                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                out = Value(ComplexMatrix(1, m.getCols(), row));
-            }
+            std::vector<Complex> col(m.getRows());
+            for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
             state->vec[1] = Value::fromInt32(i + 1);
-            return out;
+            return Value(ComplexMatrix(m.getRows(), 1, col));
         } else if (iterTarget.isObjType(ObjType::SYM_MATRIX)) {
             const auto& m = static_cast<ObjSymMatrix*>(iterTarget.asObj())->mat;
-            int len = (m.getRows() == 1) ? m.getCols() : m.getRows();
+            int len = m.getCols();
             if (i >= len) return Value::uninit();
-            Value out;
-            if (m.getRows() == 1) out = Value(m(0, i));
-            else if (m.getCols() == 1) out = Value(m(i, 0));
-            else {
-                std::vector<SymExpr> row(m.getCols());
-                for (int j = 0; j < m.getCols(); ++j) row[j] = m(i, j);
-                out = Value(SymMatrix(1, m.getCols(), row));
-            }
+            std::vector<SymExpr> col(m.getRows());
+            for (int r = 0; r < m.getRows(); ++r) col[r] = m(r, i);
             state->vec[1] = Value::fromInt32(i + 1);
-            return out;
+            return Value(SymMatrix(m.getRows(), 1, col));
         }
     }
 

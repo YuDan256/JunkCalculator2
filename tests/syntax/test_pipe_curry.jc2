@@ -2,7 +2,7 @@ test_pipe() = {
     res = [1, 2, 3] |> .sum()
     assert(res == 6, "Basic pipe operator failed")
     
-    res2 = [3, 1, 2] |> .sort() |> .first()
+    res2 = @[3, 1, 2] |> .sort() |> .first()
     assert(res2 == 1, "Chained pipe operator failed")
 }
 test_pipe()

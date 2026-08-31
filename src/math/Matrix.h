@@ -428,8 +428,6 @@ namespace jc {
 
         // 智能矩阵乘法入口
         Matrix operator*(const Matrix& other) const {
-            if (rows == 1 && cols == 1) return other * (*this)(0, 0);
-            if (other.rows == 1 && other.cols == 1) return (*this) * other(0, 0);
             if (cols != other.rows) throw std::invalid_argument("Matrix Error: Cols must equal rows (*).");
 
             int minDim = std::min({rows, cols, other.cols});

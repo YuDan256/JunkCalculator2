@@ -38,7 +38,7 @@ test_const_ref() = {
 test_const_ref()
 
 test_destruct_modifiers() = {
-    const local [a, b] = [1, 2]
+    const local [a, b] = @[1, 2]
     assert(a == 1 && b == 2, "const local destruct failed")
     
     call_count = 0
@@ -46,7 +46,7 @@ test_destruct_modifiers() = {
         ref call_count
         state [x, y] = {
             call_count += 1
-            [10, 20]
+            @[10, 20]
         }
         return x + y
     }
@@ -58,7 +58,7 @@ test_destruct_modifiers()
 
 test_forin_modifiers() = {
     sum = 0
-    for (const local x in [1, 2, 3]) {
+    for (const local x in @[1, 2, 3]) {
         sum += x
     }
     assert(sum == 6, "const local for-in failed")

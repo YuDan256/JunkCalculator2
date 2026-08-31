@@ -18,7 +18,7 @@ test_spread_set()
 // 1D matrix 解包
 test_spread_matrix() = {
     h(a, b, c) = a * 100 + b * 10 + c
-    assert(h(...[1, 2, 3]) == 123, "matrix spread failed")
+    assert(h(...@[1, 2, 3]) == 123, "matrix spread failed")
 }
 test_spread_matrix()
 

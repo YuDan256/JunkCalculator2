@@ -7,7 +7,7 @@ test_for_in_destruct() = {
     
     // 测试复杂左值在 for-in 中的解构
     obj = {totals: @[0, 0]}
-    for ([idx, val] in [[0, 10]; [1, 20]]) {
+    for ([idx, val] in @[@[0, 10], @[1, 20]]) {
         obj.totals[idx] += val
     }
     assert(obj.totals[0] == 10 && obj.totals[1] == 20, "for-in complex lvalue destruct failed")
@@ -45,7 +45,7 @@ test_match_expr() = {
     
     assert(process({type: "user", id: 123}) == "User 123", "Match dict pattern")
     assert(process({type: "admin", level: 1}) == "Admin", "Match dict rest pattern")
-    assert(process([5, 2]) == "Descending", "Match list with guard")
+    assert(process(@[5, 2]) == "Descending", "Match list with guard")
     assert(process("hello") == "Unknown", "Match default")
 }
 test_match_expr()

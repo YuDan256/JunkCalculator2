@@ -8,7 +8,7 @@ test_list_comp_destruct() = {
     assert("a:1" in res1 && "b:2" in res1, "List comp dict destruct failed")
     
     // 列表解构推导带条件
-    points = [[1, 2]; [3, 4]; [5, 6]]
+    points = @[@[1, 2], @[3, 4], @[5, 6]]
     res2 = [x + y for ([x, y] in points) if (x > 2)]
     check("List comp list destruct with condition", res2, [7, 11])
 }

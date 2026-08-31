@@ -23,10 +23,11 @@
 namespace jc {
 
     class BigInt {
-    private:
+    public:
         std::vector<uint32_t> data; // 小端序：data[0] 存最低的 32 位
         bool negative = false;
 
+    private:
         // 清理前导零
         void trim() {
             while (data.size() > 1 && data.back() == 0) data.pop_back();
@@ -79,6 +80,7 @@ namespace jc {
             return result;
         }
 
+    public:
         // 基础 O(N^2) 乘法 (视窗版)
         static BigInt mul_basecase(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
             BigInt result;
@@ -99,8 +101,34 @@ namespace jc {
             return result;
         }
 
-        // FFT O(N log N) 乘法
-        static void fft(std::vector<std::complex<double>>& a, bool invert) {
+        // NTT O(N log N) 乘法 (绝对精确，无浮点误差)
+        static constexpr uint64_t ct_inv_mod(int64_t a, int64_t m) {
+            int64_t m0 = m, y = 0, x = 1;
+            if (m == 1) return 0;
+            while (a > 1) {
+                int64_t q = a / m;
+                int64_t t = m;
+                m = a % m, a = t;
+                t = y;
+                y = x - q * y;
+                x = t;
+            }
+            if (x < 0) x += m0;
+            return static_cast<uint64_t>(x);
+        }
+
+        static uint32_t pow_mod(uint32_t base, uint32_t exp, uint32_t mod) {
+            uint64_t res = 1;
+            uint64_t b = base % mod;
+            while (exp > 0) {
+                if (exp & 1) res = (res * b) % mod;
+                b = (b * b) % mod;
+                exp >>= 1;
+            }
+            return static_cast<uint32_t>(res);
+        }
+
+        static void ntt(std::vector<uint32_t>& a, bool invert, uint32_t P, uint32_t g) {
             int n = static_cast<int>(a.size());
             for (int i = 1, j = 0; i < n; i++) {
                 int bit = n >> 1;
@@ -108,77 +136,76 @@ namespace jc {
                 j ^= bit;
                 if (i < j) std::swap(a[i], a[j]);
             }
-            
-            std::vector<std::complex<double>> roots(n / 2);
-            double ang = 2 * 3.14159265358979323846 / n * (invert ? -1 : 1);
-            for (int i = 0; i < n / 2; i++) {
-                roots[i] = std::complex<double>(std::cos(ang * i), std::sin(ang * i));
-            }
-
             for (int len = 2; len <= n; len <<= 1) {
-                int step = n / len;
+                uint32_t wlen = pow_mod(g, (P - 1) / len, P);
+                if (invert) wlen = static_cast<uint32_t>(ct_inv_mod(wlen, P));
                 for (int i = 0; i < n; i += len) {
+                    uint32_t w = 1;
                     for (int j = 0; j < len / 2; j++) {
-                        std::complex<double> u = a[i + j];
-                        std::complex<double> v = a[i + j + len / 2] * roots[j * step];
-                        a[i + j] = u + v;
-                        a[i + j + len / 2] = u - v;
+                        uint32_t u = a[i + j];
+                        uint32_t v = (1ULL * a[i + j + len / 2] * w) % P;
+                        a[i + j] = u + v < P ? u + v : u + v - P;
+                        a[i + j + len / 2] = u >= v ? u - v : u + P - v;
+                        w = (1ULL * w * wlen) % P;
                     }
                 }
             }
             if (invert) {
-                double inv_n = 1.0 / n;
-                for (std::complex<double>& x : a) x *= inv_n;
+                uint32_t n_inv = static_cast<uint32_t>(ct_inv_mod(n, P));
+                for (uint32_t& x : a) x = (1ULL * x * n_inv) % P;
             }
         }
 
-        static BigInt mul_fft(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        static BigInt mul_ntt(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
             size_t res_size = (n + m) * 2;
             size_t n_pow2 = 1;
             while (n_pow2 < res_size) n_pow2 <<= 1;
 
-            std::vector<std::complex<double>> fa(n_pow2);
-            
-            if (a == b && n == m) {
-                for (size_t i = 0; i < n; ++i) {
-                    fa[i * 2] = std::complex<double>(a[i] & 0xFFFF, 0);
-                    fa[i * 2 + 1] = std::complex<double>(a[i] >> 16, 0);
-                }
-                fft(fa, false);
-                for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fa[i];
-            } else {
-                for (size_t i = 0; i < std::max(n, m); ++i) {
-                    double r0 = (i < n) ? (a[i] & 0xFFFF) : 0;
-                    double r1 = (i < n) ? (a[i] >> 16) : 0;
-                    double i0 = (i < m) ? (b[i] & 0xFFFF) : 0;
-                    double i1 = (i < m) ? (b[i] >> 16) : 0;
-                    if (i * 2 < n_pow2) fa[i * 2] = std::complex<double>(r0, i0);
-                    if (i * 2 + 1 < n_pow2) fa[i * 2 + 1] = std::complex<double>(r1, i1);
-                }
-                fft(fa, false);
-                std::vector<std::complex<double>> f_prod(n_pow2);
-                for (size_t i = 0; i < n_pow2; ++i) {
-                    size_t j = (n_pow2 - i) & (n_pow2 - 1);
-                    std::complex<double> fa_k = (fa[i] + std::conj(fa[j])) * 0.5;
-                    std::complex<double> fb_k = (fa[i] - std::conj(fa[j])) * std::complex<double>(0, -0.5);
-                    f_prod[i] = fa_k * fb_k;
-                }
-                fa = std::move(f_prod);
+            std::vector<uint32_t> fa1(n_pow2, 0), fa2(n_pow2, 0);
+            std::vector<uint32_t> fb1(n_pow2, 0), fb2(n_pow2, 0);
+
+            for (size_t i = 0; i < n; ++i) {
+                uint32_t lo = a[i] & 0xFFFF;
+                uint32_t hi = a[i] >> 16;
+                fa1[i * 2] = lo; fa2[i * 2] = lo;
+                fa1[i * 2 + 1] = hi; fa2[i * 2 + 1] = hi;
             }
-            
-            fft(fa, true);
+            for (size_t i = 0; i < m; ++i) {
+                uint32_t lo = b[i] & 0xFFFF;
+                uint32_t hi = b[i] >> 16;
+                fb1[i * 2] = lo; fb2[i * 2] = lo;
+                fb1[i * 2 + 1] = hi; fb2[i * 2 + 1] = hi;
+            }
+
+            ntt(fa1, false, 2013265921, 31);
+            ntt(fb1, false, 2013265921, 31);
+            for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+            ntt(fa1, true, 2013265921, 31);
+
+            ntt(fa2, false, 2113929217, 5);
+            ntt(fb2, false, 2113929217, 5);
+            for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+            ntt(fa2, true, 2113929217, 5);
+
+            constexpr uint64_t P1 = 2013265921;
+            constexpr uint64_t P2 = 2113929217;
+            constexpr uint64_t invP1_modP2 = ct_inv_mod(P1, P2);
 
             BigInt result;
-            result.data.resize(n_pow2 / 2, 0);
+            result.data.resize(n_pow2 / 2 + 1, 0);
             uint64_t carry = 0;
+
             for (size_t i = 0; i < n_pow2; ++i) {
-                double dval = std::round(fa[i].real());
-                if (dval < 0.0) dval = 0.0;
-                uint64_t val = static_cast<uint64_t>(dval) + carry;
+                uint64_t a1 = fa1[i], a2 = fa2[i];
+                uint64_t k1 = (a2 + P2 - a1) % P2 * invP1_modP2 % P2;
+                uint64_t exact_val = a1 + k1 * P1;
+
+                uint64_t val = exact_val + carry;
                 carry = val >> 16;
                 val &= 0xFFFF;
+            
                 if (i % 2 == 0) {
-                    result.data[i / 2] |= static_cast<uint32_t>(val);
+                    result.data[i / 2] = static_cast<uint32_t>(val);
                 } else {
                     result.data[i / 2] |= static_cast<uint32_t>(val << 16);
                 }
@@ -201,7 +228,7 @@ namespace jc {
             while (m > 1 && b[m - 1] == 0) m--;
             if (n == 0 || m == 0 || (n == 1 && a[0] == 0) || (m == 1 && b[0] == 0)) return BigInt(0);
 
-            if (n < 32 || m < 32) return mul_basecase(a, n, b, m);
+            if (n < 128 || m < 128) return mul_basecase(a, n, b, m);
 
             size_t half = std::max(n, m) / 2;
 
@@ -235,6 +262,67 @@ namespace jc {
                 z2_shifted.data.insert(z2_shifted.data.begin(), 2 * half, 0);
                 result = absAdd(result, z2_shifted);
             }
+
+            result.trim();
+            return result;
+        }
+
+        static BigInt toom3(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+            if (n < 192 || m < 192) return karatsuba(a, n, b, m);
+
+            size_t k = (std::max(n, m) + 2) / 3;
+
+            auto get_slice = [](const uint32_t* arr, size_t len, size_t start, size_t k_len) {
+                if (start >= len) return BigInt(0);
+                size_t slice_len = std::min(k_len, len - start);
+                BigInt res;
+                res.data.assign(arr + start, arr + start + slice_len);
+                res.trim();
+                return res;
+            };
+
+            BigInt a0 = get_slice(a, n, 0, k);
+            BigInt a1 = get_slice(a, n, k, k);
+            BigInt a2 = get_slice(a, n, 2 * k, k);
+
+            BigInt b0 = get_slice(b, m, 0, k);
+            BigInt b1 = get_slice(b, m, k, k);
+            BigInt b2 = get_slice(b, m, 2 * k, k);
+
+            BigInt v0 = a0;
+            BigInt v1 = a0 + a1 + a2;
+            BigInt vm1 = a0 - a1 + a2;
+            BigInt v2 = a0 + a1.mul_small(2) + a2.mul_small(4);
+            BigInt vinf = a2;
+
+            BigInt u0 = b0;
+            BigInt u1 = b0 + b1 + b2;
+            BigInt um1 = b0 - b1 + b2;
+            BigInt u2 = b0 + b1.mul_small(2) + b2.mul_small(4);
+            BigInt uinf = b2;
+
+            BigInt w0 = v0 * u0;
+            BigInt w1 = v1 * u1;
+            BigInt wm1 = vm1 * um1;
+            BigInt w2 = v2 * u2;
+            BigInt winf = vinf * uinf;
+
+            BigInt t1 = (w1 + wm1).divmod_small(2).first;
+            BigInt t2 = (w1 - wm1).divmod_small(2).first;
+
+            BigInt r0 = w0;
+            BigInt r4 = winf;
+            BigInt r2 = t1 - w0 - winf;
+
+            BigInt t3 = (w2 - r0 - r2.mul_small(4) - r4.mul_small(16)).divmod_small(2).first;
+            BigInt r3 = (t3 - t2).divmod_small(3).first;
+            BigInt r1 = t2 - r3;
+
+            BigInt result = r0;
+            if (!r1.isZero()) { BigInt tmp = r1; tmp.data.insert(tmp.data.begin(), k, 0); result = result + tmp; }
+            if (!r2.isZero()) { BigInt tmp = r2; tmp.data.insert(tmp.data.begin(), 2 * k, 0); result = result + tmp; }
+            if (!r3.isZero()) { BigInt tmp = r3; tmp.data.insert(tmp.data.begin(), 3 * k, 0); result = result + tmp; }
+            if (!r4.isZero()) { BigInt tmp = r4; tmp.data.insert(tmp.data.begin(), 4 * k, 0); result = result + tmp; }
 
             result.trim();
             return result;
@@ -366,7 +454,7 @@ namespace jc {
         // 牛顿-拉夫逊求逆: 计算 floor(2^(64n) / B)
         static BigInt invert(const BigInt& B) {
             int n = static_cast<int>(B.data.size());
-            if (n <= 3072) {
+            if (n <= 4096) {
                 BigInt beta2n;
                 beta2n.data.assign(2 * n + 1, 0);
                 beta2n.data.back() = 1;
@@ -407,7 +495,7 @@ namespace jc {
                 return { BigInt(0), rem };
             }
             
-            if (absB.data.size() <= 3072) {
+            if (absB.data.size() <= 4096) {
                 return divmod_knuth(a, b);
             }
             
@@ -1255,8 +1343,10 @@ namespace jc {
 
         BigInt operator*(const BigInt& other) const {
             BigInt result;
-            if (data.size() >= 1024 && other.data.size() >= 1024) {
-                result = mul_fft(data.data(), data.size(), other.data.data(), other.data.size());
+            if (data.size() >= 3072 && other.data.size() >= 3072) {
+                result = mul_ntt(data.data(), data.size(), other.data.data(), other.data.size());
+            } else if (data.size() >= 192 && other.data.size() >= 192) {
+                result = toom3(data.data(), data.size(), other.data.data(), other.data.size());
             } else {
                 result = karatsuba(data.data(), data.size(), other.data.data(), other.data.size());
             }

@@ -140,6 +140,57 @@ public:
     }
 };
 
+#if defined(__SIZEOF_INT128__)
+    using uint128_t = unsigned __int128;
+#else
+    struct uint128_t {
+        uint64_t low;
+        uint64_t high;
+    };
+    inline uint128_t mul64x64(uint64_t a, uint64_t b) {
+        uint64_t a_lo = (uint32_t)a;
+        uint64_t a_hi = a >> 32;
+        uint64_t b_lo = (uint32_t)b;
+        uint64_t b_hi = b >> 32;
+        uint64_t p0 = a_lo * b_lo;
+        uint64_t p1 = a_lo * b_hi;
+        uint64_t p2 = a_hi * b_lo;
+        uint64_t p3 = a_hi * b_hi;
+        uint32_t cy = (uint32_t)(((p0 >> 32) + (uint32_t)p1 + (uint32_t)p2) >> 32);
+        uint128_t res;
+        res.low = p0 + (p1 << 32) + (p2 << 32);
+        res.high = p3 + (p1 >> 32) + (p2 >> 32) + cy;
+        return res;
+    }
+    inline uint64_t div128by64(uint128_t num, uint64_t den, uint64_t* rem_out) {
+        double d_num = (double)num.high * 18446744073709551616.0 + (double)num.low;
+        uint64_t q = (uint64_t)(d_num / (double)den);
+        uint128_t q_den = mul64x64(q, den);
+        
+        while (q_den.high > num.high || (q_den.high == num.high && q_den.low > num.low)) {
+            q--;
+            if (q_den.low < den) q_den.high--;
+            q_den.low -= den;
+        }
+        
+        while (true) {
+            uint128_t next_q_den = q_den;
+            next_q_den.low += den;
+            if (next_q_den.low < den) next_q_den.high++;
+            
+            if (num.high > next_q_den.high || (num.high == next_q_den.high && num.low >= next_q_den.low)) {
+                q++;
+                q_den = next_q_den;
+            } else {
+                break;
+            }
+        }
+        
+        if (rem_out) *rem_out = num.low - q_den.low;
+        return q;
+    }
+#endif
+
 class DecInt {
 public:
     DecVector data;
@@ -274,6 +325,22 @@ public:
     DecInt operator-() const {
         DecInt res = *this;
         if (!res.isZero()) res.negative = !res.negative;
+        return res;
+    }
+
+    DecInt mul_small(uint32_t v) const {
+        if (v == 0) return DecInt(0);
+        if (v == 1) return *this;
+        DecInt res; res.data.resize(data.size(), 0);
+        uint64_t carry = 0;
+        for (size_t i = 0; i < data.size(); ++i) {
+            uint64_t prod = static_cast<uint64_t>(data[i]) * v + carry;
+            uint64_t q = prod / BASE;
+            res.data[i] = static_cast<uint32_t>(prod - q * BASE);
+            carry = q;
+        }
+        if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+        res.negative = negative;
         return res;
     }
 
@@ -414,7 +481,33 @@ public:
         return {quotient, remainder};
     }
 
-    static void fft(std::vector<std::complex<double>>& a, bool invert) {
+    static constexpr uint64_t ct_inv_mod(int64_t a, int64_t m) {
+        int64_t m0 = m, y = 0, x = 1;
+        if (m == 1) return 0;
+        while (a > 1) {
+            int64_t q = a / m;
+            int64_t t = m;
+            m = a % m, a = t;
+            t = y;
+            y = x - q * y;
+            x = t;
+        }
+        if (x < 0) x += m0;
+        return static_cast<uint64_t>(x);
+    }
+
+    static uint32_t pow_mod(uint32_t base, uint32_t exp, uint32_t mod) {
+        uint64_t res = 1;
+        uint64_t b = base % mod;
+        while (exp > 0) {
+            if (exp & 1) res = (res * b) % mod;
+            b = (b * b) % mod;
+            exp >>= 1;
+        }
+        return static_cast<uint32_t>(res);
+    }
+
+    static void ntt(std::vector<uint32_t>& a, bool invert, uint32_t P, uint32_t g) {
         int n = static_cast<int>(a.size());
         for (int i = 1, j = 0; i < n; i++) {
             int bit = n >> 1;
@@ -422,94 +515,97 @@ public:
             j ^= bit;
             if (i < j) std::swap(a[i], a[j]);
         }
-        std::vector<std::complex<double>> roots(n / 2);
-        double ang = 2 * 3.14159265358979323846 / n * (invert ? -1 : 1);
-        for (int i = 0; i < n / 2; i++) {
-            roots[i] = std::complex<double>(std::cos(ang * i), std::sin(ang * i));
-        }
         for (int len = 2; len <= n; len <<= 1) {
-            int step = n / len;
+            uint32_t wlen = pow_mod(g, (P - 1) / len, P);
+            if (invert) wlen = static_cast<uint32_t>(ct_inv_mod(wlen, P));
             for (int i = 0; i < n; i += len) {
+                uint32_t w = 1;
                 for (int j = 0; j < len / 2; j++) {
-                    std::complex<double> u = a[i + j];
-                    std::complex<double> v = a[i + j + len / 2] * roots[j * step];
-                    a[i + j] = u + v;
-                    a[i + j + len / 2] = u - v;
+                    uint32_t u = a[i + j];
+                    uint32_t v = (1ULL * a[i + j + len / 2] * w) % P;
+                    a[i + j] = u + v < P ? u + v : u + v - P;
+                    a[i + j + len / 2] = u >= v ? u - v : u + P - v;
+                    w = (1ULL * w * wlen) % P;
                 }
             }
         }
         if (invert) {
-            double inv_n = 1.0 / n;
-            for (std::complex<double>& x : a) x *= inv_n;
+            uint32_t n_inv = static_cast<uint32_t>(ct_inv_mod(n, P));
+            for (uint32_t& x : a) x = (1ULL * x * n_inv) % P;
         }
     }
 
-    static DecInt mul_fft(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
-        size_t res_size = (n + m) * 3;
+    static DecInt mul_ntt(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        size_t res_size = n + m;
         size_t n_pow2 = 1;
         while (n_pow2 < res_size) n_pow2 <<= 1;
 
-        std::vector<std::complex<double>> fa(n_pow2);
-        
-        if (a == b && n == m) {
-            for (size_t i = 0; i < n; ++i) {
-                fa[i * 3] = std::complex<double>(a[i] % 1000, 0);
-                fa[i * 3 + 1] = std::complex<double>((a[i] / 1000) % 1000, 0);
-                fa[i * 3 + 2] = std::complex<double>(a[i] / 1000000, 0);
-            }
-            fft(fa, false);
-            for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fa[i];
-        } else {
-            for (size_t i = 0; i < std::max(n, m); ++i) {
-                double r0 = (i < n) ? (a[i] % 1000) : 0;
-                double r1 = (i < n) ? ((a[i] / 1000) % 1000) : 0;
-                double r2 = (i < n) ? (a[i] / 1000000) : 0;
-                double i0 = (i < m) ? (b[i] % 1000) : 0;
-                double i1 = (i < m) ? ((b[i] / 1000) % 1000) : 0;
-                double i2 = (i < m) ? (b[i] / 1000000) : 0;
-                if (i * 3 < n_pow2) fa[i * 3] = std::complex<double>(r0, i0);
-                if (i * 3 + 1 < n_pow2) fa[i * 3 + 1] = std::complex<double>(r1, i1);
-                if (i * 3 + 2 < n_pow2) fa[i * 3 + 2] = std::complex<double>(r2, i2);
-            }
-            fft(fa, false);
-            std::vector<std::complex<double>> f_prod(n_pow2);
-            for (size_t i = 0; i < n_pow2; ++i) {
-                size_t j = (n_pow2 - i) & (n_pow2 - 1);
-                std::complex<double> fa_k = (fa[i] + std::conj(fa[j])) * 0.5;
-                std::complex<double> fb_k = (fa[i] - std::conj(fa[j])) * std::complex<double>(0, -0.5);
-                f_prod[i] = fa_k * fb_k;
-            }
-            fa = std::move(f_prod);
+        std::vector<uint32_t> fa1(n_pow2, 0), fa2(n_pow2, 0), fa3(n_pow2, 0);
+        std::vector<uint32_t> fb1(n_pow2, 0), fb2(n_pow2, 0), fb3(n_pow2, 0);
+
+        for (size_t i = 0; i < n; ++i) {
+            fa1[i] = a[i] % 2013265921;
+            fa2[i] = a[i] % 2113929217;
+            fa3[i] = a[i] % 2130706433;
         }
-        
-        fft(fa, true);
+        for (size_t i = 0; i < m; ++i) {
+            fb1[i] = b[i] % 2013265921;
+            fb2[i] = b[i] % 2113929217;
+            fb3[i] = b[i] % 2130706433;
+        }
+
+        ntt(fa1, false, 2013265921, 31);
+        ntt(fb1, false, 2013265921, 31);
+        for (size_t i = 0; i < n_pow2; ++i) fa1[i] = (1ULL * fa1[i] * fb1[i]) % 2013265921;
+        ntt(fa1, true, 2013265921, 31);
+
+        ntt(fa2, false, 2113929217, 5);
+        ntt(fb2, false, 2113929217, 5);
+        for (size_t i = 0; i < n_pow2; ++i) fa2[i] = (1ULL * fa2[i] * fb2[i]) % 2113929217;
+        ntt(fa2, true, 2113929217, 5);
+
+        ntt(fa3, false, 2130706433, 3);
+        ntt(fb3, false, 2130706433, 3);
+        for (size_t i = 0; i < n_pow2; ++i) fa3[i] = (1ULL * fa3[i] * fb3[i]) % 2130706433;
+        ntt(fa3, true, 2130706433, 3);
+
+        constexpr uint64_t P1 = 2013265921;
+        constexpr uint64_t P2 = 2113929217;
+        constexpr uint64_t P3 = 2130706433;
+        constexpr uint64_t P1P2 = P1 * P2;
+        constexpr uint64_t invP1_modP2 = ct_inv_mod(P1, P2);
+        constexpr uint64_t invP1P2_modP3 = ct_inv_mod(P1P2 % P3, P3);
 
         DecInt result;
-        result.data.resize(n_pow2 / 3 + 1, 0);
+        result.data.resize(n_pow2, 0);
         uint64_t carry = 0;
+
         for (size_t i = 0; i < n_pow2; ++i) {
-            double dval = std::round(fa[i].real());
-            if (dval < 0.0) dval = 0.0;
-            uint64_t val = static_cast<uint64_t>(dval) + carry;
-            uint64_t q = val / 1000;
-            val -= q * 1000;
+            uint64_t a1 = fa1[i], a2 = fa2[i], a3 = fa3[i];
+            uint64_t k1 = (a2 + P2 - a1) % P2 * invP1_modP2 % P2;
+            uint64_t x12 = a1 + k1 * P1;
+            uint64_t k2 = (a3 + P3 - x12 % P3) % P3 * invP1P2_modP3 % P3;
+
+#if defined(__SIZEOF_INT128__)
+            uint128_t term = (uint128_t)k2 * P1P2 + x12 + carry;
+            uint64_t q = (uint64_t)(term / BASE);
+            result.data[i] = static_cast<uint32_t>(term - (uint128_t)q * BASE);
             carry = q;
+#else
+            uint128_t term = mul64x64(k2, P1P2);
+            term.low += x12;
+            if (term.low < x12) term.high++;
+            term.low += carry;
+            if (term.low < carry) term.high++;
             
-            size_t limb_idx = i / 3;
-            int part_idx = i % 3;
-            if (limb_idx >= result.data.size()) result.data.resize(limb_idx + 1, 0);
-            
-            if (part_idx == 0) result.data[limb_idx] += static_cast<uint32_t>(val);
-            else if (part_idx == 1) result.data[limb_idx] += static_cast<uint32_t>(val * 1000);
-            else result.data[limb_idx] += static_cast<uint32_t>(val * 1000000);
+            uint64_t rem;
+            carry = div128by64(term, BASE, &rem);
+            result.data[i] = static_cast<uint32_t>(rem);
+#endif
         }
-        size_t idx = n_pow2 / 3;
         while (carry > 0) {
-            if (idx >= result.data.size()) result.data.push_back(0);
-            uint64_t val = static_cast<uint64_t>(result.data[idx]) + carry;
-            result.data[idx] = static_cast<uint32_t>(val % BASE);
-            carry = val / BASE;
-            idx++;
+            result.data.push_back(static_cast<uint32_t>(carry % BASE));
+            carry /= BASE;
         }
         result.trim();
         return result;
@@ -520,7 +616,7 @@ public:
         while (m > 1 && b[m - 1] == 0) m--;
         if (n == 0 || m == 0 || (n == 1 && a[0] == 0) || (m == 1 && b[0] == 0)) return DecInt(0);
 
-        if (n < 32 || m < 32) return mul_basecase(a, n, b, m);
+        if (n < 96 || m < 96) return mul_basecase(a, n, b, m);
 
         size_t half = std::max(n, m) / 2;
 
@@ -559,10 +655,74 @@ public:
         return result;
     }
 
+    static DecInt toom3(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        if (n < 128 || m < 128) return karatsuba(a, n, b, m);
+
+        size_t k = (std::max(n, m) + 2) / 3;
+
+        auto get_slice = [](const uint32_t* arr, size_t len, size_t start, size_t k_len) {
+            if (start >= len) return DecInt(0);
+            size_t slice_len = std::min(k_len, len - start);
+            DecInt res;
+            res.data.assign(arr + start, arr + start + slice_len);
+            res.trim();
+            return res;
+        };
+
+        DecInt a0 = get_slice(a, n, 0, k);
+        DecInt a1 = get_slice(a, n, k, k);
+        DecInt a2 = get_slice(a, n, 2 * k, k);
+
+        DecInt b0 = get_slice(b, m, 0, k);
+        DecInt b1 = get_slice(b, m, k, k);
+        DecInt b2 = get_slice(b, m, 2 * k, k);
+
+        DecInt v0 = a0;
+        DecInt v1 = a0 + a1 + a2;
+        DecInt vm1 = a0 - a1 + a2;
+        DecInt v2 = a0 + a1.mul_small(2) + a2.mul_small(4);
+        DecInt vinf = a2;
+
+        DecInt u0 = b0;
+        DecInt u1 = b0 + b1 + b2;
+        DecInt um1 = b0 - b1 + b2;
+        DecInt u2 = b0 + b1.mul_small(2) + b2.mul_small(4);
+        DecInt uinf = b2;
+
+        DecInt w0 = v0 * u0;
+        DecInt w1 = v1 * u1;
+        DecInt wm1 = vm1 * um1;
+        DecInt w2 = v2 * u2;
+        DecInt winf = vinf * uinf;
+
+        uint32_t rem;
+        DecInt t1 = (w1 + wm1).div_small(2, rem);
+        DecInt t2 = (w1 - wm1).div_small(2, rem);
+
+        DecInt r0 = w0;
+        DecInt r4 = winf;
+        DecInt r2 = t1 - w0 - winf;
+
+        DecInt t3 = (w2 - r0 - r2.mul_small(4) - r4.mul_small(16)).div_small(2, rem);
+        DecInt r3 = (t3 - t2).div_small(3, rem);
+        DecInt r1 = t2 - r3;
+
+        DecInt result = r0;
+        if (!r1.isZero()) { DecInt tmp = r1; tmp.data.insert(tmp.data.begin(), k, 0); result = result + tmp; }
+        if (!r2.isZero()) { DecInt tmp = r2; tmp.data.insert(tmp.data.begin(), 2 * k, 0); result = result + tmp; }
+        if (!r3.isZero()) { DecInt tmp = r3; tmp.data.insert(tmp.data.begin(), 3 * k, 0); result = result + tmp; }
+        if (!r4.isZero()) { DecInt tmp = r4; tmp.data.insert(tmp.data.begin(), 4 * k, 0); result = result + tmp; }
+
+        result.trim();
+        return result;
+    }
+
     DecInt operator*(const DecInt& o) const {
         DecInt res;
-        if (data.size() >= 3072 && o.data.size() >= 3072) {
-            res = mul_fft(data.data(), data.size(), o.data.data(), o.data.size());
+        if (data.size() >= 1536 && o.data.size() >= 1536) {
+            res = mul_ntt(data.data(), data.size(), o.data.data(), o.data.size());
+        } else if (data.size() >= 128 && o.data.size() >= 128) {
+            res = toom3(data.data(), data.size(), o.data.data(), o.data.size());
         } else {
             res = karatsuba(data.data(), data.size(), o.data.data(), o.data.size());
         }
@@ -899,7 +1059,7 @@ public:
         }
         if (mantissa.isZero()) return Decimal(DecInt(0), 0);
         
-        if (other.mantissa.data.size() <= 2048) {
+        if (other.mantissa.data.size() <= 1536) {
             int64_t len1 = mantissa.digitCount();
             int64_t len2 = other.mantissa.digitCount();
             int64_t extra_zeros = g_prec + guard_digits(g_prec) - len1 + len2;

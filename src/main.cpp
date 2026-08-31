@@ -1110,102 +1110,46 @@ int main(int argc, char* argv[]) {
         if (input.length() >= 2 && input[0] == '/' && input[1] == '/') continue;
 
         if (!input.empty() && input[0] == '/' && (input.length() == 1 || (input[1] != '/' && input[1] != '*'))) {
-            if (input == "/color on") { jc::colorsEnabled = true; continue; }
-            if (input == "/color off") { jc::colorsEnabled = false; continue; }
+            // ★ 统一开关命令簇 /set <switch> on|off
+            auto applySwitch = [&](const std::string& name, bool on) -> bool {
+                if (name == "jit") { g_enableJit = on; }
+                else if (name == "debug") { g_autoDebug = on; }
+                else if (name == "ir") { g_showIR = on; }
+                else if (name == "hir") { g_showHIR = on; }
+                else if (name == "mc") { g_showMachineCode = on; }
+                else if (name == "disasm") { g_showDisasm = on; }
+                else if (name == "profile") { g_profile = on; }
+                else if (name == "color") { jc::colorsEnabled = on; }
+                else if (name == "none") { g_showNone = on; }
+                else if (name == "silent") { g_silentRepl = on; }
+                else return false;
+                return true;
+            };
 
-            // ★ 随时开关 Disassembly 打印
-            if (input == "/d on") {
-                g_showDisasm = true;
-                std::cout << "Bytecode disassembly enabled.\n";
+            if (input.substr(0, 5) == "/set ") {
+                std::string rest = input.substr(5);
+                size_t sp = rest.find(' ');
+                if (sp == std::string::npos) { std::cout << "Usage: /set <switch> on|off\n"; continue; }
+                std::string name = rest.substr(0, sp);
+                std::string val = rest.substr(sp + 1);
+                size_t vs = val.find_first_not_of(" \t");
+                if (vs != std::string::npos) val = val.substr(vs);
+                bool on;
+                if (val == "on") on = true;
+                else if (val == "off") on = false;
+                else { std::cout << "Usage: /set <switch> on|off\n"; continue; }
+                if (!applySwitch(name, on)) {
+                    std::cout << "Unknown switch '" << name << "'. Available: jit, debug, ir, hir, mc, disasm, profile, color, none, silent\n";
+                } else {
+                    std::cout << "Switch '" << name << "' " << (on ? "enabled" : "disabled") << ".\n";
+                }
                 continue;
             }
-            if (input == "/d off") {
-                g_showDisasm = false;
-                std::cout << "Bytecode disassembly disabled.\n";
-                continue;
-            }
-            if (input == "/ir on") {
-                g_showIR = true;
-                std::cout << "IR Graph printing enabled.\n";
-                continue;
-            }
-            if (input == "/ir off") {
-                g_showIR = false;
-                std::cout << "IR Graph printing disabled.\n";
-                continue;
-            }
-            if (input == "/hir on") {
-                g_showHIR = true;
-                std::cout << "JIT HIR Graph printing enabled.\n";
-                continue;
-            }
-            if (input == "/hir off") {
-                g_showHIR = false;
-                std::cout << "JIT HIR Graph printing disabled.\n";
-                continue;
-            }
-            if (input == "/mc on") {
-                g_showMachineCode = true;
-                std::cout << "JIT Machine Code printing enabled.\n";
-                continue;
-            }
-            if (input == "/mc off") {
-                g_showMachineCode = false;
-                std::cout << "JIT Machine Code printing disabled.\n";
-                continue;
-            }
-
-            // ★ 随时开关全局单步 Debugger
-            if (input == "/debug on") {
-                g_autoDebug = true;
-                std::cout << "Interactive Step-Debugger enabled. (Will break on next evaluated line)\n";
-                continue;
-            }
-            if (input == "/debug off") {
-                g_autoDebug = false;
-                std::cout << "Interactive Step-Debugger disabled.\n";
-                continue;
-            }
-            if (input == "/profile on") {
-                g_profile = true;
-                std::cout << "Profiler enabled.\n";
-                continue;
-            }
-            if (input == "/profile off") {
-                g_profile = false;
-                std::cout << "Profiler disabled.\n";
-                continue;
-            }
-            if (input == "/jit on") {
-                g_enableJit = true;
-                std::cout << "JIT Compilation enabled.\n";
-                continue;
-            }
-            if (input == "/jit off") {
-                g_enableJit = false;
-                std::cout << "JIT Compilation disabled.\n";
-                continue;
-            }
-            if (input == "/show_none on") {
-                g_showNone = true;
-                std::cout << "Show 'none' enabled.\n";
-                continue;
-            }
-            if (input == "/show_none off") {
-                g_showNone = false;
-                std::cout << "Show 'none' disabled.\n";
-                continue;
-            }
-            if (input == "/silent on") {
-                g_silentRepl = true;
-                std::cout << "Silent REPL enabled. Return values will not be printed.\n";
-                continue;
-            }
-            if (input == "/silent off") {
-                g_silentRepl = false;
-                std::cout << "Silent REPL disabled.\n";
-                continue;
-            }
+            // 高频别名
+            if (input == "/jit on") { applySwitch("jit", true); std::cout << "JIT Compilation enabled.\n"; continue; }
+            if (input == "/jit off") { applySwitch("jit", false); std::cout << "JIT Compilation disabled.\n"; continue; }
+            if (input == "/debug on") { applySwitch("debug", true); std::cout << "Interactive Step-Debugger enabled.\n"; continue; }
+            if (input == "/debug off") { applySwitch("debug", false); std::cout << "Interactive Step-Debugger disabled.\n"; continue; }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
             if (input == "/version") { std::cout << "Junk Calculator 2.6.2.0\n"; continue; }
@@ -1337,6 +1281,22 @@ int main(int argc, char* argv[]) {
                           << jc::col(jc::Ansi::BRIGHT_CYAN) 
                           << "===========================================================\n"
                           << jc::col(jc::Ansi::RESET);
+                continue;
+            }
+            if (input == "/gc") {
+                jc::SymExpr::cleanupPool();
+                if (jc::VM::activeVM) jc::VM::activeVM->setGlobal("ANS", jc::Value::none());
+                int freed = jc::GcHeap::get().collectGarbage();
+                std::cout << "Garbage collected: " << freed << " object(s) freed.\n";
+                continue;
+            }
+            if (input == "/gcinfo") {
+                auto& heap = jc::GcHeap::get();
+                std::cout << "--- GC Status ---\n"
+                          << "  Tracked objects:     " << heap.trackedCount() << "\n"
+                          << "  Allocs since GC:     " << heap.allocsSinceGc() << "\n"
+                          << "  Next GC threshold:   " << heap.threshold() << "\n"
+                          << "-----------------\n";
                 continue;
             }
             if (input == "\x2f\x65\x67\x67") {

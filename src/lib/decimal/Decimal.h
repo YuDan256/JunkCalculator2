@@ -1530,11 +1530,51 @@ public:
         if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
         int saved_prec = g_prec;
         g_prec = saved_prec + guard_digits(saved_prec);
-        Decimal res = Decimal(DecInt(1), 0).exp_val().truncate(saved_prec);
+
+        // 估算需要的项数 N，使得 N! > 10^g_prec
+        int64_t N = 1;
+        double target_ln = g_prec * 2.302585092994046; // g_prec * ln(10)
+        double current_ln = 0;
+        while (current_ln < target_ln) {
+            current_ln += std::log(N);
+            N++;
+        }
+
+        // 二分分裂法计算 e = sum(1/k!)
+        struct BS_E {
+            struct PQ { DecInt P, Q; };
+            static PQ compute(int64_t a, int64_t b) {
+                if (b - a == 1) {
+                    DecInt val(static_cast<uint64_t>(b));
+                    return {val, val};
+                }
+                int64_t m = (a + b) / 2;
+                if (b - a > 2000) {
+                    auto future_left = std::async(std::launch::async, compute, a, m);
+                    PQ right = compute(m, b);
+                    PQ left = future_left.get();
+                    return {
+                        left.P * right.Q + right.P,
+                        left.Q * right.Q
+                    };
+                } else {
+                    PQ left = compute(a, m);
+                    PQ right = compute(m, b);
+                    return {
+                        left.P * right.Q + right.P,
+                        left.Q * right.Q
+                    };
+                }
+            }
+        };
+
+        BS_E::PQ res = BS_E::compute(0, N);
+        Decimal e_val = Decimal(res.P, 0).div(Decimal(res.Q, 0)).truncate(saved_prec);
+
         g_prec = saved_prec;
         cached_prec = g_prec;
-        cached_val = res;
-        return res;
+        cached_val = e_val;
+        return e_val;
     }
 
     Decimal ln_val() const {

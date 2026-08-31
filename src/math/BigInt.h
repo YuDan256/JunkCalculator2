@@ -22,6 +22,8 @@
 
 namespace jc {
 
+#ifndef JC2_UINT128_DEFINED
+#define JC2_UINT128_DEFINED
 #if defined(__SIZEOF_INT128__)
     using uint128_t = unsigned __int128;
 #else
@@ -45,6 +47,7 @@ namespace jc {
         return res;
     }
 #endif
+#endif // JC2_UINT128_DEFINED
 
     class BigInt {
     public:

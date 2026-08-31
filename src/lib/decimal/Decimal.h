@@ -139,6 +139,8 @@ public:
     }
 };
 
+#ifndef JC2_UINT128_DEFINED
+#define JC2_UINT128_DEFINED
 #if defined(__SIZEOF_INT128__)
     using uint128_t = unsigned __int128;
 #else
@@ -161,6 +163,12 @@ public:
         res.high = p3 + (p1 >> 32) + (p2 >> 32) + cy;
         return res;
     }
+#endif
+#endif // JC2_UINT128_DEFINED
+
+#ifndef JC2_DIV128_DEFINED
+#define JC2_DIV128_DEFINED
+#if !defined(__SIZEOF_INT128__)
     inline uint64_t div128by64(uint128_t num, uint64_t den, uint64_t* rem_out) {
         double d_num = (double)num.high * 18446744073709551616.0 + (double)num.low;
         uint64_t q = (uint64_t)(d_num / (double)den);
@@ -189,6 +197,7 @@ public:
         return q;
     }
 #endif
+#endif // JC2_DIV128_DEFINED
 
 class DecInt {
 public:

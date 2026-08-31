@@ -1,9 +1,9 @@
 test_basic_1d() = {
-    [a, b, c] = @[10, 20, 30]
+    @[a, b, c] = @[10, 20, 30]
     assert(a == 10 && b == 20 && c == 30, "1D Array Destructuring Failed")
-    [la, lb] = list("hello", "world")
+    @[la, lb] = list("hello", "world")
     assert(la == "hello" && lb == "world", "List Destructuring Failed")
-    [s1, s2, s3] = "ABC"
+    @[s1, s2, s3] = "ABC"
     assert(s1 == "A" && s2 == "B" && s3 == "C", "String Destructuring Failed")
 }
 test_basic_1d()
@@ -15,11 +15,11 @@ test_matrix_2d() = {
 test_matrix_2d()
 
 test_rest_1d() = {
-    [head, ...tail] = @[1, 2, 3, 4]
+    @[head, ...tail] = @[1, 2, 3, 4]
     assert(head == 1 && tail == @[2, 3, 4], "1D Tail Rest Failed")
-    [first, ...mid, last] = @[1, 2, 3, 4, 5]
+    @[first, ...mid, last] = @[1, 2, 3, 4, 5]
     assert(first == 1 && mid == @[2, 3, 4] && last == 5, "1D Middle Rest Failed")
-    [...all] = @[7, 8, 9]
+    @[...all] = @[7, 8, 9]
     assert(all == @[7, 8, 9], "1D Full Rest Failed")
 }
 test_rest_1d()
@@ -44,7 +44,7 @@ test_dict()
 test_complex_lvalues() = {
     arr = @[0, 0]
     target = {val: 0}
-    [arr[0], target.val] = @[99, 88]
+    @[arr[0], target.val] = @[99, 88]
     assert(arr[0] == 99 && target.val == 88, "Complex L-Value Destructuring Failed")
 }
 test_complex_lvalues()
@@ -52,7 +52,7 @@ test_complex_lvalues()
 global_counter = 0
 test_modifiers() = {
     inner() = {
-        [local a, ref global_counter, state c] = @[10, 20, 30]
+        @[local a, ref global_counter, state c] = @[10, 20, 30]
         c += 5
         return c
     }
@@ -66,14 +66,14 @@ test_modifiers()
 test_forin() = {
     sum_keys = ""
     sum_vals = 0
-    for ([k, v] in {A: 1, B: 2, C: 3}) {
+    for (@[k, v] in {A: 1, B: 2, C: 3}) {
         sum_keys += k
         sum_vals += v
     }
     assert(sum_keys == "ABC" && sum_vals == 6, "For-In Dict Destructuring Failed")
 
     row_sum = 0
-    for ([r1, ...r_rest] in @[@[1, 2, 3], @[4, 5, 6]]) {
+    for (@[r1, ...r_rest] in @[@[1, 2, 3], @[4, 5, 6]]) {
         row_sum += r1 + r_rest.sum()
     }
     assert(row_sum == 21, "For-In Matrix Rest Destructuring Failed")
@@ -81,7 +81,7 @@ test_forin() = {
 test_forin()
 
 test_comprehension() = {
-    comp_res = [x * y for ([x, y] in @[@[1, 2], @[3, 4], @[5, 6]])]
+    comp_res = [x * y for (@[x, y] in @[@[1, 2], @[3, 4], @[5, 6]])]
     assert(comp_res == [2, 12, 30], "List Comprehension Destructuring Failed")
 
     comp_dict = @[k + str(v) for ({k, v} in @[{k: "X", v: 1}, {k: "Y", v: 2}])]
@@ -93,7 +93,7 @@ test_match() = {
     match_test(val) = {
         return match (val) {
             [a, b; c, d] => a + d,
-            [head, ...tail] if (head == 99) => tail.sum(),
+            @[head, ...tail] if (head == 99) => tail.sum(),
             {type: t, ...data} => t + str(data.id),
             _ => -1
         }
@@ -130,13 +130,13 @@ check(name, actual, expected) = {
 }
 
 test_list_destruct() = {
-    [a, b, ...rest] = @[1, 2, 3, 4, 5]
+    @[a, b, ...rest] = @[1, 2, 3, 4, 5]
     assert(a == 1, "List destruct a")
     assert(b == 2, "List destruct b")
     check("List destruct rest", rest, @[3, 4, 5])
     
     // 默认值测试
-    [x, y=10] = @[1]
+    @[x, y=10] = @[1]
     assert(x == 1, "List destruct x")
     assert(y == 10, "List destruct default y")
 }

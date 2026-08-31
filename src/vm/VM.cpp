@@ -7706,8 +7706,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                     const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                     if (is1DPattern) {
-                        if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
-                        else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+                        matched = false;
                     } else {
                         bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
                         bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
@@ -7717,8 +7716,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                     const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
                     if (is1DPattern) {
-                        if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
-                        else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+                        matched = false;
                     } else {
                         bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
                         bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
@@ -7728,8 +7726,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (val.isObjType(ObjType::SYM_MATRIX)) {
                     const auto& m = static_cast<ObjSymMatrix*>(val.asObj())->mat;
                     if (is1DPattern) {
-                        if (m.getRows() == 0 && m.getCols() == 0) matched = (0U >= minCols && (maxCols == 0xFFFFFFFF || 0U <= maxCols));
-                        else matched = (m.getRows() == 1) && (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+                        matched = false;
                     } else {
                         bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
                         bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));

@@ -625,8 +625,10 @@ namespace jc {
         }
 
         // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
-        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE)) {
+        bool isListPatternStart = check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET;
+        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE) || isListPatternStart) {
             int destructPeekPos = current;
+            if (check(TokenType::AT)) destructPeekPos++;
             int depth = 0;
             while (destructPeekPos < static_cast<int>(tokens.size())) {
                 TokenType t = tokens[destructPeekPos].type;
@@ -3155,6 +3157,61 @@ namespace jc {
             int endPos = typeHint ? typeHint->endPos : name.position + static_cast<int>(name.lexeme.length());
             return withPosPat(std::make_unique<VariablePattern>(name, mod, isConst, std::move(typeHint)), startPos, endPos);
         }
+        if (match({TokenType::AT})) {
+            consume(TokenType::LBRACKET, "Parser Error: Expect '[' after '@'.");
+            std::vector<std::unique_ptr<Pattern>> elements;
+            std::unique_ptr<RestPattern> rest = nullptr;
+
+            while (!check(TokenType::RBRACKET) && !isAtEnd()) {
+                while (match({TokenType::NEWLINE})) {}
+                if (check(TokenType::RBRACKET)) break;
+                if (check(TokenType::SEMICOLON)) {
+                    throw std::runtime_error("Parser Error: List pattern (@[...]) cannot contain ';'. Use [...] for a matrix pattern.");
+                }
+
+                ScopeModifier elemMod = ScopeModifier::None;
+                bool elemConst = false;
+                int savedPos = current;
+                while (true) {
+                    if (match({TokenType::LOCAL})) elemMod = ScopeModifier::Local;
+                    else if (match({TokenType::REF})) elemMod = ScopeModifier::Ref;
+                    else if (match({TokenType::STATE})) elemMod = ScopeModifier::State;
+                    else if (match({TokenType::CONST})) elemConst = true;
+                    else break;
+                }
+
+                if (match({TokenType::ELLIPSIS})) {
+                    Token name = consume(TokenType::IDENTIFIER, "Parser Error: Expect variable name or '_' after '...'.");
+                    auto typeHint = parseOptionalTypeHint();
+                    bool hasRest = rest != nullptr;
+                    for (const auto& e : elements) {
+                        if (dynamic_cast<RestPattern*>(e.get())) { hasRest = true; break; }
+                    }
+                    if (hasRest) {
+                        throw std::runtime_error("Parser Error: Multiple rest patterns ('...') are not allowed in a list pattern.");
+                    }
+                    auto rp = std::make_unique<RestPattern>(name, elemMod, elemConst, std::move(typeHint));
+                    if (check(TokenType::COMMA)) {
+                        elements.push_back(std::move(rp));
+                        match({TokenType::COMMA});
+                    } else {
+                        rest = std::move(rp);
+                    }
+                    continue;
+                }
+                current = savedPos;
+
+                elements.push_back(parsePattern());
+                if (!match({TokenType::COMMA})) {
+                    if (!check(TokenType::RBRACKET)) {
+                        throw std::runtime_error("Parser Error: Expect ',' or ']' in list pattern.");
+                    }
+                }
+            }
+            consume(TokenType::RBRACKET, "Parser Error: Expect ']' after list pattern.");
+            int endPos = previous().position + static_cast<int>(previous().lexeme.length());
+            return withPosPat(std::make_unique<ListPattern>(std::move(elements), std::move(rest)), startPos, endPos);
+        }
         if (match({TokenType::LBRACKET})) {
             std::vector<std::vector<std::unique_ptr<Pattern>>> rows;
             std::vector<std::unique_ptr<Pattern>> currentRow;
@@ -3234,7 +3291,7 @@ namespace jc {
                 }
             }
             if (!currentRow.empty() || restCol) {
-                if (isMatrix && restCol) {
+                if (restCol) {
                     currentRow.push_back(std::move(restCol));
                     restCol = nullptr;
                 }
@@ -3243,12 +3300,7 @@ namespace jc {
             consume(TokenType::RBRACKET, "Parser Error: Expect ']' after pattern.");
 
             int endPos = previous().position + static_cast<int>(previous().lexeme.length());
-            if (!isMatrix && rows.size() <= 1) {
-                auto elements = rows.empty() ? std::vector<std::unique_ptr<Pattern>>() : std::move(rows[0]);
-                return withPosPat(std::make_unique<ListPattern>(std::move(elements), std::move(restCol)), startPos, endPos);
-            } else {
-                return withPosPat(std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow)), startPos, endPos);
-            }
+            return withPosPat(std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow)), startPos, endPos);
         }
         if (match({TokenType::LBRACE})) {
             std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;

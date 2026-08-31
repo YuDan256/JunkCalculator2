@@ -38,13 +38,13 @@ test_const_ref() = {
 test_const_ref()
 
 test_destruct_modifiers() = {
-    const local [a, b] = @[1, 2]
+    const local @[a, b] = @[1, 2]
     assert(a == 1 && b == 2, "const local destruct failed")
     
     call_count = 0
     get_state() = {
         ref call_count
-        state [x, y] = {
+        state @[x, y] = {
             call_count += 1
             @[10, 20]
         }

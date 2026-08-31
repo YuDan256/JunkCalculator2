@@ -1,13 +1,13 @@
 test_for_in_destruct() = {
     sum = 0
-    for ([k, v] in {a: 1, b: 2, c: 3}) {
+    for (@[k, v] in {a: 1, b: 2, c: 3}) {
         sum += v
     }
     assert(sum == 6, "for-in dict destruct failed")
     
     // 测试复杂左值在 for-in 中的解构
     obj = {totals: @[0, 0]}
-    for ([idx, val] in @[@[0, 10], @[1, 20]]) {
+    for (@[idx, val] in @[@[0, 10], @[1, 20]]) {
         obj.totals[idx] += val
     }
     assert(obj.totals[0] == 10 && obj.totals[1] == 20, "for-in complex lvalue destruct failed")
@@ -39,7 +39,7 @@ test_match_expr() = {
     process(data) = match (data) {
         {type: "user", id} => f"User {id}"
         {type: "admin", ..._} => "Admin"
-        [a, b] if (a > b) => "Descending"
+        @[a, b] if (a > b) => "Descending"
         _ => "Unknown"
     }
     

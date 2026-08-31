@@ -8,10 +8,10 @@ test_dict_defaults() = {
 test_dict_defaults()
 
 test_list_defaults() = {
-    [l1, l2 = 2, l3 = 3] = @[10]
+    @[l1, l2 = 2, l3 = 3] = @[10]
     assert(l1 == 10 && l2 == 2 && l3 == 3, "List Default Failed")
 
-    [l4 = 4, l5 = 5] = @[40, 50]
+    @[l4 = 4, l5 = 5] = @[40, 50]
     assert(l4 == 40 && l5 == 50, "List Default (Existing Index) Failed")
 }
 test_list_defaults()
@@ -35,10 +35,10 @@ test_lazy_eval() = {
     {val2 = get_default()} = {}
     assert(val2 == 999 && side_effect_count == 1, "Lazy Eval (Dict Missing) Failed")
 
-    [val3 = get_default()] = @[1]
+    @[val3 = get_default()] = @[1]
     assert(val3 == 1 && side_effect_count == 1, "Lazy Eval (List Existing) Failed")
 
-    [val4, val5 = get_default()] = @[1]
+    @[val4, val5 = get_default()] = @[1]
     assert(val5 == 999 && side_effect_count == 2, "Lazy Eval (List Missing) Failed")
 }
 test_lazy_eval()
@@ -46,7 +46,7 @@ test_lazy_eval()
 test_modifiers_defaults() = {
     outer_var = 0
     inner() = {
-        [local ma = 10, ref outer_var = 20, const mc = 30] = @[]
+        @[local ma = 10, ref outer_var = 20, const mc = 30] = @[]
         return @[ma, outer_var, mc]
     }
     res = inner()
@@ -55,13 +55,13 @@ test_modifiers_defaults() = {
 test_modifiers_defaults()
 
 test_rest_defaults() = {
-    [ra = 1, rb = 2, ...r_rest] = @[99]
+    @[ra = 1, rb = 2, ...r_rest] = @[99]
     assert(ra == 99 && rb == 2 && r_rest == @[], "Rest Pattern with Defaults Failed")
 }
 test_rest_defaults()
 
 test_nested_defaults() = {
-    [[na, nb = 2] = @[1], nc = 3] = @[]
+    @[@[na, nb = 2] = @[1], nc = 3] = @[]
     assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
 
     {nested: {nx, ny = 20} = {nx: 10}} = {}

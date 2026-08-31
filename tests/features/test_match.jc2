@@ -22,7 +22,7 @@ test_guard()
 
 test_middle() = {
     f(arr) = match(arr) {
-        [first, ...mid, last] => str(first) + "|" + str(mid) + "|" + str(last),
+        @[first, ...mid, last] => str(first) + "|" + str(mid) + "|" + str(last),
         _ => "Fail"
     }
     assert(f(@[1, 2, 3, 4]) == "1|@[2, 3]|4", "Middle rest failed")
@@ -62,7 +62,7 @@ test_dict()
 
 test_deep() = {
     f(data) = match(data) {
-        {"users": [{id, name}, ..._]} => str(id) + ":" + name,
+        {"users": @[{id, name}, ..._]} => str(id) + ":" + name,
         _ => "Fail"
     }
     payload = {"users": @[{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}

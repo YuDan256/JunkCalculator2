@@ -59,14 +59,14 @@ test_assign_index_fail()
 
 // ============ 解构断言 ============
 test_destruct_assert() = {
-    [a: int, b: string] = @[1, "hi"]
+    @[a: int, b: string] = @[1, "hi"]
     assert(a == 1 && b == "hi", "Destructuring with type assertions should succeed")
 }
 test_destruct_assert()
 
 test_destruct_assert_fail() = {
     try {
-        [a: int, b: int] = @[1, "hi"]
+        @[a: int, b: int] = @[1, "hi"]
         assert(false, "Should throw when destructuring string into int")
     } catch (e) {
         assert("expected type" in str(e.message), "Wrong error for destructuring assertion: " + str(e.message))

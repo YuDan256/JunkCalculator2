@@ -123,6 +123,26 @@ JC2_ValueHandle global_pi(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
     return wrapDecimal(Decimal::pi()).get_handle();
 }
 
+JC2_ValueHandle global_e(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
+    (void)argc;
+    return wrapDecimal(Decimal::e()).get_handle();
+}
+
+JC2_ValueHandle global_ln2(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
+    (void)argc;
+    return wrapDecimal(Decimal::ln2()).get_handle();
+}
+
+JC2_ValueHandle global_ln10(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
+    (void)argc;
+    return wrapDecimal(Decimal::ln10()).get_handle();
+}
+
+JC2_ValueHandle global_sqrt2(JC2_VMContext, int argc, JC2_ValueHandle*, void*) {
+    (void)argc;
+    return wrapDecimal(Decimal::sqrt2()).get_handle();
+}
+
 int jc2_init(jc2::Module& mod) {
     g_decimalClass = new jc2::Class("Decimal");
     mod.register_value("Decimal", *g_decimalClass);
@@ -165,6 +185,10 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("getcontext", global_getcontext, 0, 0);
     mod.register_function("setcontext", global_setcontext, 1, 1, {"prec"});
     mod.register_function("pi", global_pi, 0, 0);
+    mod.register_function("e", global_e, 0, 0);
+    mod.register_function("ln2", global_ln2, 0, 0);
+    mod.register_function("ln10", global_ln10, 0, 0);
+    mod.register_function("sqrt2", global_sqrt2, 0, 0);
 
     mod.register_help("decimal",
         "═══ Arbitrary-Precision Decimal Arithmetic — Native Module ═══\n\n"
@@ -183,7 +207,9 @@ int jc2_init(jc2::Module& mod) {
         "    decimal.setcontext(prec)      Sets the global precision (number of digits)\n\n"
         "  Math Functions\n"
         "  ──────────────────────\n"
-        "    decimal.pi()                  Returns Pi to the current precision\n"
+        "    decimal.pi() / e()            Returns Pi or Euler's number (e)\n"
+        "    decimal.ln2() / ln10()        Returns natural log of 2 or 10\n"
+        "    decimal.sqrt2()               Returns square root of 2\n"
         "    d.sqrt()                      Square root\n"
         "    d.exp()                       Exponential (e^x)\n"
         "    d.ln() / d.log10()            Natural and Base-10 Logarithm\n"

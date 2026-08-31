@@ -1091,7 +1091,7 @@ public:
     }
 
     Decimal mod_2pi() const {
-        Decimal two_pi = Decimal::pi().mul(Decimal(DecInt(2), 0));
+        Decimal two_pi = Decimal::two_pi();
         Decimal q = this->div(two_pi);
         Decimal q_int;
         if (q.exp >= 0) {
@@ -1264,6 +1264,71 @@ public:
         cached_prec = g_prec;
         cached_ln10_val = res;
 
+        return res;
+    }
+
+    static Decimal two_pi() {
+        static int cached_prec = -1;
+        static Decimal cached_val;
+        if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal res = Decimal::pi().mul(Decimal(DecInt(2), 0)).truncate(saved_prec);
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_val = res;
+        return res;
+    }
+
+    static Decimal half_pi() {
+        static int cached_prec = -1;
+        static Decimal cached_val;
+        if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal res = Decimal::pi().div(Decimal(DecInt(2), 0)).truncate(saved_prec);
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_val = res;
+        return res;
+    }
+
+    static Decimal ln2() {
+        static int cached_prec = -1;
+        static Decimal cached_val;
+        if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal res = Decimal(DecInt(2), 0).ln_val().truncate(saved_prec);
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_val = res;
+        return res;
+    }
+
+    static Decimal sqrt2() {
+        static int cached_prec = -1;
+        static Decimal cached_val;
+        if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal res = Decimal(DecInt(2), 0).sqrt().truncate(saved_prec);
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_val = res;
+        return res;
+    }
+
+    static Decimal e() {
+        static int cached_prec = -1;
+        static Decimal cached_val;
+        if (g_prec <= cached_prec) return cached_val.truncate(g_prec);
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal res = Decimal(DecInt(1), 0).exp_val().truncate(saved_prec);
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_val = res;
         return res;
     }
 

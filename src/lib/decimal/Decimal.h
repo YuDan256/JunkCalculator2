@@ -1,0 +1,1307 @@
+#ifndef JC2_DECIMAL_H
+#define JC2_DECIMAL_H
+
+#include <vector>
+#include <string>
+#include <cmath>
+#include <complex>
+#include <stdexcept>
+#include <algorithm>
+#include <memory>
+#include <cctype>
+#include <cstdio>
+#include <cstring>
+#include "../../math/BigInt.h"
+
+namespace jc {
+
+class DecInt {
+public:
+    std::vector<uint32_t> data;
+    bool negative = false;
+    static constexpr uint32_t BASE = 1000000000;
+
+    DecInt() : data(1, 0), negative(false) {}
+    DecInt(uint64_t v) {
+        negative = false;
+        if (v == 0) data.push_back(0);
+        while (v > 0) {
+            data.push_back(static_cast<uint32_t>(v % BASE));
+            v /= BASE;
+        }
+    }
+    DecInt(const std::string& s) {
+        if (s.empty()) { data.push_back(0); return; }
+        size_t start = 0;
+        if (s[0] == '-') { negative = true; start = 1; }
+        else if (s[0] == '+') { start = 1; }
+        
+        if (start == s.length()) { data.push_back(0); negative = false; return; }
+        
+        for (int i = static_cast<int>(s.length()); i > static_cast<int>(start); i -= 9) {
+            int len = std::min(9, i - static_cast<int>(start));
+            data.push_back(std::stoul(s.substr(i - len, len)));
+        }
+        trim();
+    }
+
+    void trim() {
+        while (data.size() > 1 && data.back() == 0) data.pop_back();
+        if (data.size() == 1 && data[0] == 0) negative = false;
+    }
+
+    bool isZero() const { return data.size() == 1 && data[0] == 0; }
+    bool isNegative() const { return negative; }
+
+    std::string to_string() const {
+        if (isZero()) return "0";
+        std::string res = negative ? "-" : "";
+        res += std::to_string(data.back());
+        for (int i = static_cast<int>(data.size()) - 2; i >= 0; --i) {
+            std::string chunk = std::to_string(data[i]);
+            res += std::string(9 - chunk.length(), '0') + chunk;
+        }
+        return res;
+    }
+
+    int compare_abs(const DecInt& o) const {
+        if (data.size() != o.data.size()) return data.size() < o.data.size() ? -1 : 1;
+        for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
+            if (data[i] != o.data[i]) return data[i] < o.data[i] ? -1 : 1;
+        }
+        return 0;
+    }
+
+    bool operator==(const DecInt& o) const {
+        return negative == o.negative && data == o.data;
+    }
+    bool operator<(const DecInt& o) const {
+        if (negative != o.negative) return negative;
+        int cmp = compare_abs(o);
+        return negative ? (cmp > 0) : (cmp < 0);
+    }
+    bool operator>(const DecInt& o) const { return o < *this; }
+    bool operator<=(const DecInt& o) const { return !(o < *this); }
+    bool operator>=(const DecInt& o) const { return !(*this < o); }
+
+    static DecInt add_abs(const DecInt& a, const DecInt& b) {
+        return add_abs_ptr(a.data.data(), a.data.size(), b.data.data(), b.data.size());
+    }
+
+    static DecInt add_abs_ptr(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        DecInt res;
+        size_t sz = std::max(n, m);
+        res.data.resize(sz, 0);
+        uint32_t carry = 0;
+        for (size_t i = 0; i < sz; ++i) {
+            uint32_t sum = carry;
+            if (i < n) sum += a[i];
+            if (i < m) sum += b[i];
+            if (sum >= BASE) { sum -= BASE; carry = 1; }
+            else { carry = 0; }
+            res.data[i] = sum;
+        }
+        if (carry) res.data.push_back(carry);
+        return res;
+    }
+
+    static DecInt sub_abs(const DecInt& a, const DecInt& b) {
+        DecInt res;
+        res.data.resize(a.data.size(), 0);
+        uint32_t borrow = 0;
+        for (size_t i = 0; i < a.data.size(); ++i) {
+            uint32_t sub = b.data.size() > i ? b.data[i] : 0;
+            if (a.data[i] < sub + borrow) {
+                res.data[i] = a.data[i] + BASE - sub - borrow;
+                borrow = 1;
+            } else {
+                res.data[i] = a.data[i] - sub - borrow;
+                borrow = 0;
+            }
+        }
+        res.trim();
+        return res;
+    }
+
+    DecInt operator+(const DecInt& o) const {
+        if (negative == o.negative) {
+            DecInt res = add_abs(*this, o);
+            res.negative = negative;
+            return res;
+        }
+        if (compare_abs(o) >= 0) {
+            DecInt res = sub_abs(*this, o);
+            res.negative = negative;
+            return res;
+        } else {
+            DecInt res = sub_abs(o, *this);
+            res.negative = o.negative;
+            return res;
+        }
+    }
+
+    DecInt operator-(const DecInt& o) const {
+        DecInt neg_o = o;
+        if (!neg_o.isZero()) neg_o.negative = !neg_o.negative;
+        return *this + neg_o;
+    }
+
+    DecInt operator-() const {
+        DecInt res = *this;
+        if (!res.isZero()) res.negative = !res.negative;
+        return res;
+    }
+
+    static DecInt mul_basecase(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        DecInt res;
+        if (n == 0 || m == 0) return res;
+        res.data.assign(n + m, 0);
+        for (size_t i = 0; i < n; ++i) {
+            if (a[i] == 0) continue;
+            uint64_t carry = 0;
+            uint64_t d_i = a[i];
+            for (size_t j = 0; j < m; ++j) {
+                uint64_t prod = d_i * b[j] + res.data[i+j] + carry;
+                uint64_t q = prod / 1000000000ULL;
+                res.data[i+j] = static_cast<uint32_t>(prod - q * 1000000000ULL);
+                carry = q;
+            }
+            if (carry > 0) res.data[i + m] += static_cast<uint32_t>(carry);
+        }
+        res.trim();
+        return res;
+    }
+
+    static std::pair<DecInt, DecInt> divmod_knuth(const DecInt& a, const DecInt& b) {
+        if (b.isZero()) throw std::runtime_error("Division by zero");
+        DecInt absA = a.abs(), absB = b.abs();
+        if (absA < absB) return {DecInt(0), absA};
+        if (absB.data.size() == 1) {
+            uint32_t rem;
+            DecInt q = absA.div_small(absB.data[0], rem);
+            q.negative = (a.negative != b.negative);
+            if (q.isZero()) q.negative = false;
+            DecInt r(rem);
+            r.negative = a.negative;
+            if (r.isZero()) r.negative = false;
+            return {q, r};
+        }
+
+        int n_orig = static_cast<int>(absA.data.size());
+        int m = static_cast<int>(absB.data.size());
+        uint32_t d = BASE / (absB.data.back() + 1);
+
+        auto mul_scalar = [](const DecInt& num, uint32_t scalar) {
+            if (scalar == 1) return num;
+            DecInt res; res.data.resize(num.data.size(), 0);
+            uint64_t carry = 0;
+            for (size_t i = 0; i < num.data.size(); ++i) {
+                uint64_t prod = static_cast<uint64_t>(num.data[i]) * scalar + carry;
+                uint64_t q = prod / 1000000000ULL;
+                res.data[i] = static_cast<uint32_t>(prod - q * 1000000000ULL);
+                carry = q;
+            }
+            if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+            return res;
+        };
+
+        DecInt u = mul_scalar(absA, d);
+        DecInt v = mul_scalar(absB, d);
+        u.data.resize(n_orig + 1, 0);
+
+        DecInt quotient;
+        quotient.data.resize(n_orig - m + 1, 0);
+
+        for (int j = n_orig - m; j >= 0; --j) {
+            uint64_t num = (static_cast<uint64_t>(u.data[j + m]) * BASE) + u.data[j + m - 1];
+            uint64_t v_m1 = v.data[m - 1];
+            uint64_t q_hat = num / v_m1;
+            uint64_t r_hat = num % v_m1;
+
+            if (m >= 2) {
+                uint64_t v_m2 = v.data[m - 2];
+                uint64_t u_jm2 = u.data[j + m - 2];
+                while (q_hat == BASE || q_hat * v_m2 > r_hat * BASE + u_jm2) {
+                    q_hat--;
+                    r_hat += v_m1;
+                    if (r_hat >= BASE) break;
+                }
+            } else {
+                if (q_hat == BASE) q_hat--;
+            }
+
+            if (q_hat == 0) {
+                quotient.data[j] = 0;
+                continue;
+            }
+
+            uint64_t carry = 0;
+            for (int i = 0; i < m; ++i) {
+                uint64_t prod = q_hat * v.data[i] + carry;
+                uint64_t q_prod = prod / 1000000000ULL;
+                uint32_t rem_prod = static_cast<uint32_t>(prod - q_prod * 1000000000ULL);
+                
+                uint64_t sub = static_cast<uint64_t>(u.data[j + i]) + 1000000000ULL - rem_prod;
+                if (sub >= 1000000000ULL) {
+                    u.data[j + i] = static_cast<uint32_t>(sub - 1000000000ULL);
+                    carry = q_prod;
+                } else {
+                    u.data[j + i] = static_cast<uint32_t>(sub);
+                    carry = q_prod + 1;
+                }
+            }
+            
+            bool is_borrow = u.data[j + m] < carry;
+            u.data[j + m] -= static_cast<uint32_t>(carry);
+            quotient.data[j] = static_cast<uint32_t>(q_hat);
+
+            if (is_borrow) {
+                quotient.data[j]--;
+                uint32_t carry_add = 0;
+                for (int i = 0; i < m; ++i) {
+                    uint32_t sum = u.data[j + i] + v.data[i] + carry_add;
+                    if (sum >= BASE) {
+                        u.data[j + i] = sum - BASE;
+                        carry_add = 1;
+                    } else {
+                        u.data[j + i] = sum;
+                        carry_add = 0;
+                    }
+                }
+                u.data[j + m] += carry_add;
+            }
+        }
+
+        quotient.negative = (a.negative != b.negative);
+        quotient.trim();
+
+        DecInt remainder;
+        remainder.data.resize(m, 0);
+        uint64_t rem = 0;
+        for (int i = m - 1; i >= 0; --i) {
+            uint64_t cur = rem * BASE + u.data[i];
+            remainder.data[i] = static_cast<uint32_t>(cur / d);
+            rem = cur % d;
+        }
+        remainder.negative = a.negative;
+        remainder.trim();
+
+        return {quotient, remainder};
+    }
+
+    static void fft(std::vector<std::complex<double>>& a, bool invert) {
+        int n = static_cast<int>(a.size());
+        for (int i = 1, j = 0; i < n; i++) {
+            int bit = n >> 1;
+            for (; j & bit; bit >>= 1) j ^= bit;
+            j ^= bit;
+            if (i < j) std::swap(a[i], a[j]);
+        }
+        std::vector<std::complex<double>> roots(n / 2);
+        double ang = 2 * 3.14159265358979323846 / n * (invert ? -1 : 1);
+        for (int i = 0; i < n / 2; i++) {
+            roots[i] = std::complex<double>(std::cos(ang * i), std::sin(ang * i));
+        }
+        for (int len = 2; len <= n; len <<= 1) {
+            int step = n / len;
+            for (int i = 0; i < n; i += len) {
+                for (int j = 0; j < len / 2; j++) {
+                    std::complex<double> u = a[i + j];
+                    std::complex<double> v = a[i + j + len / 2] * roots[j * step];
+                    a[i + j] = u + v;
+                    a[i + j + len / 2] = u - v;
+                }
+            }
+        }
+        if (invert) {
+            double inv_n = 1.0 / n;
+            for (std::complex<double>& x : a) x *= inv_n;
+        }
+    }
+
+    static DecInt mul_fft(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        size_t res_size = (n + m) * 3;
+        size_t n_pow2 = 1;
+        while (n_pow2 < res_size) n_pow2 <<= 1;
+
+        std::vector<std::complex<double>> fa(n_pow2);
+        
+        if (a == b && n == m) {
+            for (size_t i = 0; i < n; ++i) {
+                fa[i * 3] = std::complex<double>(a[i] % 1000, 0);
+                fa[i * 3 + 1] = std::complex<double>((a[i] / 1000) % 1000, 0);
+                fa[i * 3 + 2] = std::complex<double>(a[i] / 1000000, 0);
+            }
+            fft(fa, false);
+            for (size_t i = 0; i < n_pow2; ++i) fa[i] *= fa[i];
+        } else {
+            for (size_t i = 0; i < std::max(n, m); ++i) {
+                double r0 = (i < n) ? (a[i] % 1000) : 0;
+                double r1 = (i < n) ? ((a[i] / 1000) % 1000) : 0;
+                double r2 = (i < n) ? (a[i] / 1000000) : 0;
+                double i0 = (i < m) ? (b[i] % 1000) : 0;
+                double i1 = (i < m) ? ((b[i] / 1000) % 1000) : 0;
+                double i2 = (i < m) ? (b[i] / 1000000) : 0;
+                if (i * 3 < n_pow2) fa[i * 3] = std::complex<double>(r0, i0);
+                if (i * 3 + 1 < n_pow2) fa[i * 3 + 1] = std::complex<double>(r1, i1);
+                if (i * 3 + 2 < n_pow2) fa[i * 3 + 2] = std::complex<double>(r2, i2);
+            }
+            fft(fa, false);
+            std::vector<std::complex<double>> f_prod(n_pow2);
+            for (size_t i = 0; i < n_pow2; ++i) {
+                size_t j = (n_pow2 - i) & (n_pow2 - 1);
+                std::complex<double> fa_k = (fa[i] + std::conj(fa[j])) * 0.5;
+                std::complex<double> fb_k = (fa[i] - std::conj(fa[j])) * std::complex<double>(0, -0.5);
+                f_prod[i] = fa_k * fb_k;
+            }
+            fa = std::move(f_prod);
+        }
+        
+        fft(fa, true);
+
+        DecInt result;
+        result.data.resize(n_pow2 / 3 + 1, 0);
+        uint64_t carry = 0;
+        for (size_t i = 0; i < n_pow2; ++i) {
+            double dval = std::round(fa[i].real());
+            if (dval < 0.0) dval = 0.0;
+            uint64_t val = static_cast<uint64_t>(dval) + carry;
+            uint64_t q = val / 1000;
+            val -= q * 1000;
+            carry = q;
+            
+            size_t limb_idx = i / 3;
+            int part_idx = i % 3;
+            if (limb_idx >= result.data.size()) result.data.resize(limb_idx + 1, 0);
+            
+            if (part_idx == 0) result.data[limb_idx] += static_cast<uint32_t>(val);
+            else if (part_idx == 1) result.data[limb_idx] += static_cast<uint32_t>(val * 1000);
+            else result.data[limb_idx] += static_cast<uint32_t>(val * 1000000);
+        }
+        size_t idx = n_pow2 / 3;
+        while (carry > 0) {
+            if (idx >= result.data.size()) result.data.push_back(0);
+            uint64_t val = static_cast<uint64_t>(result.data[idx]) + carry;
+            result.data[idx] = static_cast<uint32_t>(val % BASE);
+            carry = val / BASE;
+            idx++;
+        }
+        result.trim();
+        return result;
+    }
+
+    static DecInt karatsuba(const uint32_t* a, size_t n, const uint32_t* b, size_t m) {
+        while (n > 1 && a[n - 1] == 0) n--;
+        while (m > 1 && b[m - 1] == 0) m--;
+        if (n == 0 || m == 0 || (n == 1 && a[0] == 0) || (m == 1 && b[0] == 0)) return DecInt(0);
+
+        if (n < 32 || m < 32) return mul_basecase(a, n, b, m);
+
+        size_t half = std::max(n, m) / 2;
+
+        size_t a0_len = std::min(n, half);
+        size_t a1_len = (n > half) ? n - half : 0;
+        const uint32_t* a0 = a;
+        const uint32_t* a1 = a + a0_len;
+
+        size_t b0_len = std::min(m, half);
+        size_t b1_len = (m > half) ? m - half : 0;
+        const uint32_t* b0 = b;
+        const uint32_t* b1 = b + b0_len;
+
+        DecInt z0 = karatsuba(a0, a0_len, b0, b0_len);
+        DecInt z2 = karatsuba(a1, a1_len, b1, b1_len);
+        
+        DecInt a_sum = add_abs_ptr(a0, a0_len, a1, a1_len);
+        DecInt b_sum = add_abs_ptr(b0, b0_len, b1, b1_len);
+
+        DecInt z1 = karatsuba(a_sum.data.data(), a_sum.data.size(), b_sum.data.data(), b_sum.data.size());
+        z1 = sub_abs(sub_abs(z1, z2), z0);
+
+        DecInt result = z0;
+        if (!z1.isZero()) {
+            DecInt z1_shifted = z1;
+            z1_shifted.data.insert(z1_shifted.data.begin(), half, 0);
+            result = add_abs(result, z1_shifted);
+        }
+        if (!z2.isZero()) {
+            DecInt z2_shifted = z2;
+            z2_shifted.data.insert(z2_shifted.data.begin(), 2 * half, 0);
+            result = add_abs(result, z2_shifted);
+        }
+
+        result.trim();
+        return result;
+    }
+
+    DecInt operator*(const DecInt& o) const {
+        DecInt res;
+        if (data.size() >= 3072 && o.data.size() >= 3072) {
+            res = mul_fft(data.data(), data.size(), o.data.data(), o.data.size());
+        } else {
+            res = karatsuba(data.data(), data.size(), o.data.data(), o.data.size());
+        }
+        res.negative = (negative != o.negative);
+        if (res.isZero()) res.negative = false;
+        return res;
+    }
+
+    DecInt abs() const {
+        DecInt res = *this;
+        res.negative = false;
+        return res;
+    }
+
+    int64_t digitCount() const {
+        if (isZero()) return 0;
+        int64_t count = (data.size() - 1) * 9;
+        uint32_t top = data.back();
+        while (top > 0) { count++; top /= 10; }
+        return count;
+    }
+
+    uint32_t to_uint32() const {
+        return data.empty() ? 0 : data[0];
+    }
+
+    DecInt mul_pow10(int64_t n) const {
+        if (isZero() || n == 0) return *this;
+        int64_t blocks = n / 9;
+        int64_t rem = n % 9;
+        DecInt res;
+        res.negative = negative;
+        res.data.assign(blocks + data.size(), 0);
+        uint64_t carry = 0;
+        uint32_t multiplier = 1;
+        for(int i=0; i<rem; ++i) multiplier *= 10;
+        
+        for (size_t i = 0; i < data.size(); ++i) {
+            uint64_t prod = static_cast<uint64_t>(data[i]) * multiplier + carry;
+            uint64_t q = prod / 1000000000ULL;
+            res.data[blocks + i] = static_cast<uint32_t>(prod - q * 1000000000ULL);
+            carry = q;
+        }
+        if (carry > 0) res.data.push_back(static_cast<uint32_t>(carry));
+        else res.trim();
+        return res;
+    }
+
+    DecInt div_pow10(int64_t n) const {
+        if (isZero() || n == 0) return *this;
+        int64_t blocks = n / 9;
+        int64_t rem = n % 9;
+        if (blocks >= static_cast<int64_t>(data.size())) return DecInt(0);
+        
+        DecInt res;
+        res.negative = negative;
+        uint32_t divisor = 1;
+        for(int i=0; i<rem; ++i) divisor *= 10;
+        
+        uint64_t rem_val = 0;
+        res.data.resize(data.size() - blocks, 0);
+        for (int i = static_cast<int>(data.size()) - 1; i >= blocks; --i) {
+            uint64_t cur = rem_val * BASE + data[i];
+            res.data[i - blocks] = static_cast<uint32_t>(cur / divisor);
+            rem_val = cur % divisor;
+        }
+        res.trim();
+        return res;
+    }
+
+    DecInt mod_pow10(int64_t n) const {
+        if (isZero() || n == 0) return DecInt(0);
+        int64_t blocks = n / 9;
+        int64_t rem = n % 9;
+        if (blocks >= static_cast<int64_t>(data.size())) return this->abs();
+        
+        DecInt res;
+        res.negative = false;
+        res.data.assign(data.begin(), data.begin() + blocks);
+        
+        if (rem > 0) {
+            uint32_t mod_val = 1;
+            for(int i=0; i<rem; ++i) mod_val *= 10;
+            res.data.push_back(data[blocks] % mod_val);
+        }
+        res.trim();
+        return res;
+    }
+
+    DecInt div_small(uint32_t v, uint32_t& rem_out) const {
+        if (v == 0) throw std::runtime_error("Division by zero");
+        DecInt res; res.data.resize(data.size(), 0);
+        uint64_t r = 0;
+        for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
+            uint64_t cur = r * BASE + data[i];
+            res.data[i] = static_cast<uint32_t>(cur / v);
+            r = cur % v;
+        }
+        res.negative = negative;
+        res.trim();
+        rem_out = static_cast<uint32_t>(r);
+        return res;
+    }
+};
+
+class Decimal {
+public:
+    static inline int g_prec = 28;
+
+    DecInt mantissa;
+    int64_t exp;
+
+    Decimal() : mantissa(0), exp(0) {}
+    Decimal(DecInt m, int64_t e) : mantissa(std::move(m)), exp(e) {}
+
+    static Decimal from_string(const std::string& s) {
+        std::string m_str = "";
+        int64_t e = 0;
+        bool in_frac = false;
+        int64_t frac_count = 0;
+        
+        size_t i = 0;
+        while (i < s.length() && std::isspace(static_cast<unsigned char>(s[i]))) i++;
+        
+        if (i < s.length() && (s[i] == '+' || s[i] == '-')) {
+            m_str += s[i++];
+        }
+        
+        bool has_digits = false;
+        for (; i < s.length(); ++i) {
+            if (s[i] == '.') {
+                if (in_frac) throw std::runtime_error("ValueError: Invalid decimal string (multiple decimal points).");
+                in_frac = true;
+            } else if (s[i] >= '0' && s[i] <= '9') {
+                m_str += s[i];
+                has_digits = true;
+                if (in_frac) frac_count++;
+            } else if (s[i] == 'e' || s[i] == 'E') {
+                try {
+                    e = std::stoll(s.substr(i + 1));
+                } catch (...) {
+                    throw std::runtime_error("ValueError: Invalid exponent in decimal string.");
+                }
+                break;
+            } else if (std::isspace(static_cast<unsigned char>(s[i]))) {
+                size_t j = i;
+                while (j < s.length() && std::isspace(static_cast<unsigned char>(s[j]))) j++;
+                if (j == s.length()) break;
+                throw std::runtime_error("ValueError: Invalid character in decimal string.");
+            } else {
+                throw std::runtime_error("ValueError: Invalid character in decimal string.");
+            }
+        }
+        if (!has_digits) throw std::runtime_error("ValueError: No digits found in decimal string.");
+        if (m_str.empty() || m_str == "+" || m_str == "-") m_str += "0";
+        return Decimal(DecInt(m_str), e - frac_count);
+    }
+
+    std::string to_string() const {
+        std::string m = mantissa.to_string();
+        bool neg = false;
+        if (m.length() > 0 && m[0] == '-') {
+            neg = true;
+            m = m.substr(1);
+        }
+        if (m == "0") return "0";
+        
+        std::string res;
+        if (exp >= 0) {
+            res = m + std::string(static_cast<size_t>(exp), '0');
+        } else {
+            int64_t pos_exp = -exp;
+            if (pos_exp >= static_cast<int64_t>(m.length())) {
+                res = "0." + std::string(static_cast<size_t>(pos_exp - m.length()), '0') + m;
+            } else {
+                res = m.substr(0, m.length() - pos_exp) + "." + m.substr(m.length() - pos_exp);
+            }
+        }
+        
+        if (res.find('.') != std::string::npos) {
+            while (!res.empty() && res.back() == '0') res.pop_back();
+            if (!res.empty() && res.back() == '.') res.pop_back();
+        }
+        
+        if (neg && res != "0") res = "-" + res;
+        return res;
+    }
+
+    static int guard_digits(int prec) {
+        if (prec <= 0) return 8;
+        return 8 + static_cast<int>(std::log2(prec));
+    }
+
+    Decimal truncate(int prec) const {
+        if (mantissa.isZero()) return Decimal(DecInt(0), 0);
+        int64_t current_digits = mantissa.digitCount();
+        if (current_digits <= prec) return *this;
+        int64_t drop = current_digits - prec;
+        
+        DecInt new_m = mantissa.div_pow10(drop);
+        
+        uint32_t next_digit = mantissa.abs().div_pow10(drop - 1).mod_pow10(1).to_uint32();
+        bool exact_half = (next_digit == 5);
+        if (exact_half) {
+            DecInt rest = mantissa.abs().mod_pow10(drop - 1);
+            if (!rest.isZero()) exact_half = false;
+        }
+        
+        bool round_up = false;
+        if (next_digit > 5) {
+            round_up = true;
+        } else if (next_digit == 5) {
+            if (!exact_half) {
+                round_up = true;
+            } else {
+                uint32_t last_digit = new_m.abs().mod_pow10(1).to_uint32();
+                if (last_digit % 2 != 0) {
+                    round_up = true;
+                }
+            }
+        }
+        
+        if (round_up) {
+            if (mantissa.isNegative()) {
+                new_m = new_m - DecInt(1);
+            } else {
+                new_m = new_m + DecInt(1);
+            }
+        }
+        
+        return Decimal(new_m, exp + drop);
+    }
+
+    int64_t magnitude() const {
+        if (mantissa.isZero()) return 0;
+        return exp + mantissa.digitCount();
+    }
+
+    Decimal abs() const {
+        return Decimal(mantissa.abs(), exp);
+    }
+
+    Decimal add(const Decimal& other) const {
+        if (mantissa.isZero()) return other.truncate(g_prec);
+        if (other.mantissa.isZero()) return this->truncate(g_prec);
+        
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
+        int guard = guard_digits(g_prec);
+        if (mag1 - mag2 > g_prec + guard) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + guard) return other.truncate(g_prec);
+        
+        int64_t min_exp = std::min(exp, other.exp);
+        DecInt m1 = mantissa;
+        if (exp > min_exp) m1 = m1.mul_pow10(exp - min_exp);
+        DecInt m2 = other.mantissa;
+        if (other.exp > min_exp) m2 = m2.mul_pow10(other.exp - min_exp);
+        return Decimal(m1 + m2, min_exp).truncate(g_prec);
+    }
+
+    Decimal sub(const Decimal& other) const {
+        if (mantissa.isZero()) {
+            return Decimal(-other.mantissa, other.exp).truncate(g_prec);
+        }
+        if (other.mantissa.isZero()) return this->truncate(g_prec);
+        
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
+        int guard = guard_digits(g_prec);
+        if (mag1 - mag2 > g_prec + guard) return this->truncate(g_prec);
+        if (mag2 - mag1 > g_prec + guard) {
+            return Decimal(-other.mantissa, other.exp).truncate(g_prec);
+        }
+        
+        int64_t min_exp = std::min(exp, other.exp);
+        DecInt m1 = mantissa;
+        if (exp > min_exp) m1 = m1.mul_pow10(exp - min_exp);
+        DecInt m2 = other.mantissa;
+        if (other.exp > min_exp) m2 = m2.mul_pow10(other.exp - min_exp);
+        return Decimal(m1 - m2, min_exp).truncate(g_prec);
+    }
+
+    Decimal mul(const Decimal& other) const {
+        return Decimal(mantissa * other.mantissa, exp + other.exp).truncate(g_prec);
+    }
+
+    Decimal inverse() const {
+        if (mantissa.isZero()) throw std::runtime_error("DivisionByZero: Decimal division by zero.");
+        
+        int64_t L = mantissa.digitCount();
+        int64_t E = exp + L - 1;
+        
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.data.size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 1000000000.0 + mantissa.data[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.0 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
+        
+        double guess_val = 1.0 / M_exact;
+        if (mantissa.isNegative()) guess_val = -guess_val;
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess_val);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        y.exp -= E;
+        
+        Decimal two(DecInt(2), 0);
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_this = this->truncate(current_prec);
+            Decimal xy = cur_this.mul(y);
+            Decimal term = two.sub(xy);
+            y = y.mul(term);
+        }
+        g_prec = saved_prec;
+        return y;
+    }
+
+    Decimal div(const Decimal& other) const {
+        if (other.mantissa.isZero()) {
+            throw std::runtime_error("DivisionByZero: Decimal division by zero.");
+        }
+        if (mantissa.isZero()) return Decimal(DecInt(0), 0);
+        
+        if (other.mantissa.data.size() <= 2048) {
+            int64_t len1 = mantissa.digitCount();
+            int64_t len2 = other.mantissa.digitCount();
+            int64_t extra_zeros = g_prec + guard_digits(g_prec) - len1 + len2;
+            if (extra_zeros < 0) extra_zeros = 0;
+            DecInt m1_shifted = mantissa.mul_pow10(extra_zeros);
+            
+            DecInt q = DecInt::divmod_knuth(m1_shifted, other.mantissa).first;
+            q.negative = (mantissa.negative != other.mantissa.negative);
+            if (q.isZero()) q.negative = false;
+            return Decimal(q, exp - other.exp - extra_zeros).truncate(g_prec);
+        }
+        
+        return this->mul(other.inverse()).truncate(g_prec);
+    }
+    
+    bool eq(const Decimal& other) const {
+        if (mantissa.isZero() && other.mantissa.isZero()) return true;
+        if (mantissa.isZero() || other.mantissa.isZero()) return false;
+        
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
+        if (std::abs(mag1 - mag2) > g_prec + guard_digits(g_prec)) return false;
+        
+        int64_t min_exp = std::min(exp, other.exp);
+        DecInt m1 = mantissa;
+        if (exp > min_exp) m1 = m1.mul_pow10(exp - min_exp);
+        DecInt m2 = other.mantissa;
+        if (other.exp > min_exp) m2 = m2.mul_pow10(other.exp - min_exp);
+        return m1 == m2;
+    }
+    
+    bool lt(const Decimal& other) const {
+        int64_t mag1 = magnitude();
+        int64_t mag2 = other.magnitude();
+        
+        bool neg1 = mantissa.isNegative();
+        bool neg2 = other.mantissa.isNegative();
+        if (mantissa.isZero()) neg1 = false;
+        if (other.mantissa.isZero()) neg2 = false;
+        
+        if (neg1 && !neg2) return true;
+        if (!neg1 && neg2) return false;
+        
+        if (std::abs(mag1 - mag2) > g_prec + guard_digits(g_prec)) {
+            if (neg1) return mag1 > mag2;
+            return mag1 < mag2;
+        }
+        
+        int64_t min_exp = std::min(exp, other.exp);
+        DecInt m1 = mantissa;
+        if (exp > min_exp) m1 = m1.mul_pow10(exp - min_exp);
+        DecInt m2 = other.mantissa;
+        if (other.exp > min_exp) m2 = m2.mul_pow10(other.exp - min_exp);
+        return m1 < m2;
+    }
+
+    bool gt(const Decimal& other) const {
+        return !this->lt(other) && !this->eq(other);
+    }
+
+    bool le(const Decimal& other) const {
+        return this->lt(other) || this->eq(other);
+    }
+
+    bool ge(const Decimal& other) const {
+        return this->gt(other) || this->eq(other);
+    }
+
+    bool neq(const Decimal& other) const {
+        return !this->eq(other);
+    }
+
+    Decimal sqrt() const {
+        if (mantissa.isZero()) return *this;
+        if (mantissa.isNegative()) {
+            throw std::runtime_error("MathError: sqrt of negative decimal.");
+        }
+        
+        int64_t L = mantissa.digitCount();
+        int64_t E = exp + L - 1;
+        
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.data.size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 1000000000.0 + mantissa.data[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.0 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
+        
+        int64_t k = E / 2;
+        int64_t r = E % 2;
+        if (r < 0) {
+            r += 2;
+            k -= 1;
+        }
+        
+        double adjusted_M = M_exact * std::pow(10.0, r);
+        double guess_val = 1.0 / std::sqrt(adjusted_M);
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess_val);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        y.exp -= k;
+        
+        Decimal three(DecInt(3), 0);
+        Decimal half(DecInt(5), -1);
+        
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_this = this->truncate(current_prec);
+            Decimal y2 = y.mul(y);
+            Decimal xy2 = cur_this.mul(y2);
+            Decimal term = three.sub(xy2);
+            y = y.mul(term).mul(half);
+        }
+        
+        g_prec = saved_prec;
+        return this->mul(y).truncate(g_prec);
+    }
+
+    Decimal exp_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        
+        Decimal x = *this;
+        int squares = 0;
+        Decimal two(DecInt(2), 0);
+        Decimal one(DecInt(1), 0);
+        Decimal threshold(DecInt(1), -8);
+        
+        while (x.abs().gt(threshold) && !x.mantissa.isZero()) {
+            x = x.div(two).truncate(g_prec);
+            squares++;
+        }
+        
+        Decimal sum(DecInt(1), 0);
+        Decimal term(DecInt(1), 0);
+        Decimal n(DecInt(1), 0);
+        
+        for (int i = 1; i < 10000; ++i) {
+            term = term.mul(x).div(n).truncate(g_prec);
+            if (term.mantissa.isZero()) break;
+            
+            Decimal next_sum = sum.add(term).truncate(g_prec);
+            if (next_sum.eq(sum)) break;
+            sum = next_sum;
+            n = n.add(one);
+        }
+        
+        for (int i = 0; i < squares; ++i) {
+            sum = sum.mul(sum).truncate(g_prec);
+        }
+        
+        g_prec = saved_prec;
+        return sum.truncate(g_prec);
+    }
+
+    Decimal mod_2pi() const {
+        Decimal two_pi = Decimal::pi().mul(Decimal(DecInt(2), 0));
+        Decimal q = this->div(two_pi);
+        Decimal q_int;
+        if (q.exp >= 0) {
+            q_int = q;
+        } else if (-q.exp >= q.mantissa.digitCount()) {
+            q_int = Decimal(DecInt(0), 0);
+        } else {
+            q_int = Decimal(q.mantissa.div_pow10(-q.exp), 0);
+        }
+        return this->sub(q_int.mul(two_pi));
+    }
+
+    void sincos_val(Decimal& s_out, Decimal& c_out) const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        
+        Decimal x = this->mod_2pi();
+        int squares = 0;
+        Decimal one(DecInt(1), 0);
+        Decimal two(DecInt(2), 0);
+        Decimal threshold(DecInt(1), -8);
+        
+        while (x.abs().gt(threshold)) {
+            x = x.div(two).truncate(g_prec);
+            squares++;
+        }
+        
+        Decimal sum_s = x;
+        Decimal term_s = x;
+        Decimal sum_c = one;
+        Decimal term_c = one;
+        Decimal x2 = x.mul(x).truncate(g_prec);
+        Decimal n_s(DecInt(2), 0);
+        Decimal n_c(DecInt(1), 0);
+        int sign = -1;
+        
+        for (int i = 1; i < 10000; ++i) {
+            term_s = term_s.mul(x2).div(n_s.mul(n_s.add(one))).truncate(g_prec);
+            term_c = term_c.mul(x2).div(n_c.mul(n_c.add(one))).truncate(g_prec);
+            
+            if (term_s.mantissa.isZero() && term_c.mantissa.isZero()) break;
+            
+            Decimal next_sum_s = (sign == -1) ? sum_s.sub(term_s).truncate(g_prec) : sum_s.add(term_s).truncate(g_prec);
+            Decimal next_sum_c = (sign == -1) ? sum_c.sub(term_c).truncate(g_prec) : sum_c.add(term_c).truncate(g_prec);
+            
+            if (next_sum_s.eq(sum_s) && next_sum_c.eq(sum_c)) break;
+            
+            sum_s = next_sum_s;
+            sum_c = next_sum_c;
+            
+            n_s = n_s.add(two);
+            n_c = n_c.add(two);
+            sign = -sign;
+        }
+        
+        for (int i = 0; i < squares; ++i) {
+            Decimal next_s = two.mul(sum_s).mul(sum_c).truncate(g_prec);
+            Decimal next_c = sum_c.mul(sum_c).mul(two).sub(one).truncate(g_prec);
+            sum_s = next_s;
+            sum_c = next_c;
+        }
+        
+        g_prec = saved_prec;
+        s_out = sum_s.truncate(g_prec);
+        c_out = sum_c.truncate(g_prec);
+    }
+
+    Decimal sin_val() const {
+        Decimal s, c;
+        sincos_val(s, c);
+        return s;
+    }
+
+    Decimal cos_val() const {
+        Decimal s, c;
+        sincos_val(s, c);
+        return c;
+    }
+
+    static Decimal pi() {
+        static int cached_prec = -1;
+        static Decimal cached_pi_val;
+        
+        if (g_prec <= cached_prec) {
+            return cached_pi_val.truncate(g_prec);
+        }
+
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+
+        // Chudnovsky 算法每项提供约 14.18 位十进制精度
+        int64_t N = g_prec / 14 + 2;
+
+        // 二分分裂法 (Binary Splitting) 纯整数树状合并
+        struct BS {
+            struct PQR { jc::BigInt P, Q, R; };
+            static PQR compute(int64_t a, int64_t b) {
+                if (b - a == 1) {
+                    if (a == 0) {
+                        return {jc::BigInt(1), jc::BigInt(1), jc::BigInt(13591409)};
+                    } else {
+                        jc::BigInt P = jc::BigInt(-(6 * a - 5)) * jc::BigInt(2 * a - 1) * jc::BigInt(6 * a - 1);
+                        jc::BigInt a3 = jc::BigInt(a) * jc::BigInt(a) * jc::BigInt(a);
+                        jc::BigInt Q = jc::BigInt(10939058860032000LL) * a3;
+                        jc::BigInt R = P * (jc::BigInt(545140134LL) * jc::BigInt(a) + jc::BigInt(13591409LL));
+                        return {P, Q, R};
+                    }
+                }
+                int64_t m = (a + b) / 2;
+                PQR left = compute(a, m);
+                PQR right = compute(m, b);
+                return {
+                    left.P * right.P,
+                    left.Q * right.Q,
+                    left.R * right.Q + left.P * right.R
+                };
+            }
+        };
+
+        BS::PQR res = BS::compute(0, N);
+
+        // 仅在最后一步进行唯一的一次大数开方与除法
+        Decimal sqrt_10005 = Decimal(DecInt(10005), 0).sqrt();
+        jc::BigInt num = res.Q * jc::BigInt(426880);
+        Decimal num_dec = Decimal(DecInt(num.toString()), 0);
+        Decimal den_dec = Decimal(DecInt(res.R.toString()), 0);
+        
+        Decimal pi_val = num_dec.mul(sqrt_10005).div(den_dec).truncate(saved_prec);
+        
+        g_prec = saved_prec;
+        cached_prec = g_prec;
+        cached_pi_val = pi_val;
+        
+        return pi_val;
+    }
+
+    Decimal ln_val() const {
+        if (mantissa.isZero() || mantissa.isNegative()) {
+            throw std::runtime_error("MathError: ln of non-positive decimal.");
+        }
+        int64_t L = mantissa.digitCount();
+        int64_t E = exp + L - 1;
+        
+        double M = 0.0;
+        int sz = static_cast<int>(mantissa.data.size());
+        int start = std::max(0, sz - 3);
+        for (int i = sz - 1; i >= start; --i) {
+            M = M * 1000000000.0 + mantissa.data[i];
+        }
+        
+        double log10_M_exact = std::log10(M) + start * 9.0 - (L - 1);
+        double M_exact = std::pow(10.0, log10_M_exact);
+        
+        double guess = E * 2.302585092994045684 + std::log(M_exact);
+        if (!std::isfinite(guess)) guess = 0.0;
+        
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        Decimal two(DecInt(2), 0);
+        
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal ey = y.exp_val();
+            Decimal num = cur_x.sub(ey);
+            Decimal den = cur_x.add(ey);
+            if (den.mantissa.isZero()) break;
+            Decimal diff = two.mul(num).div(den).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
+        }
+        g_prec = saved_prec;
+        return y.truncate(g_prec);
+    }
+
+    Decimal log10_val() const {
+        Decimal ln10 = Decimal(DecInt(10), 0).ln_val();
+        return this->ln_val().div(ln10).truncate(g_prec);
+    }
+
+    Decimal tan_val() const {
+        return this->sin_val().div(this->cos_val()).truncate(g_prec);
+    }
+
+    Decimal atan_val() const {
+        double d;
+        try {
+            const auto& raw_data = mantissa.data;
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 1000000000.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(1000000000.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1e300 : 1e300; }
+        double guess = std::atan(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1.5707963267948966 : 1.5707963267948966;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
+            if (cy.mantissa.isZero()) break;
+            Decimal ty = sy.div(cy).truncate(current_prec);
+            Decimal diff = cy.mul(cy).mul(cur_x.sub(ty)).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
+        }
+        g_prec = saved_prec;
+        return y.truncate(g_prec);
+    }
+
+    Decimal asin_val() const {
+        Decimal one(DecInt(1), 0);
+        if (this->abs().lt(one) == false && !this->abs().eq(one)) {
+            throw std::runtime_error("MathError: asin domain error.");
+        }
+        double d;
+        try {
+            const auto& raw_data = mantissa.data;
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 1000000000.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(1000000000.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1.0 : 1.0; }
+        double guess = std::asin(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? -1.5707963267948966 : 1.5707963267948966;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
+            if (cy.mantissa.isZero()) break;
+            Decimal diff = cur_x.sub(sy).div(cy).truncate(current_prec);
+            y = y.add(diff).truncate(current_prec);
+        }
+        g_prec = saved_prec;
+        return y.truncate(g_prec);
+    }
+
+    Decimal acos_val() const {
+        Decimal one(DecInt(1), 0);
+        if (this->abs().lt(one) == false && !this->abs().eq(one)) {
+            throw std::runtime_error("MathError: acos domain error.");
+        }
+        double d;
+        try {
+            const auto& raw_data = mantissa.data;
+            int sz = static_cast<int>(raw_data.size());
+            double res = 0.0;
+            int start = std::max(0, sz - 3);
+            for (int i = sz - 1; i >= start; --i) {
+                res = res * 1000000000.0 + raw_data[i];
+            }
+            if (mantissa.isNegative()) res = -res;
+            d = res * std::pow(10.0, exp) * std::pow(1000000000.0, start);
+        } catch (...) { d = mantissa.isNegative() ? -1.0 : 1.0; }
+        double guess = std::acos(d);
+        if (!std::isfinite(guess)) guess = mantissa.isNegative() ? 3.1415926535897932 : 0.0;
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%.15g", guess);
+        for (char* p = buf; *p; ++p) if (*p == ',') *p = '.';
+        Decimal y = Decimal::from_string(buf);
+        
+        int target_prec = g_prec + guard_digits(g_prec);
+        int current_prec = 16;
+        int saved_prec = g_prec;
+        
+        while (current_prec < target_prec) {
+            current_prec *= 2;
+            if (current_prec > target_prec) current_prec = target_prec;
+            
+            g_prec = current_prec;
+            Decimal cur_x = this->truncate(current_prec);
+            Decimal sy, cy;
+            y.sincos_val(sy, cy);
+            if (sy.mantissa.isZero()) break;
+            Decimal diff = cur_x.sub(cy).div(sy).truncate(current_prec);
+            y = y.sub(diff).truncate(current_prec);
+        }
+        g_prec = saved_prec;
+        return y.truncate(g_prec);
+    }
+
+    Decimal sinh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal(DecInt(1), 0).div(ex).truncate(g_prec);
+        Decimal res = ex.sub(emx).div(Decimal(DecInt(2), 0));
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
+    }
+
+    Decimal cosh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal(DecInt(1), 0).div(ex).truncate(g_prec);
+        Decimal res = ex.add(emx).div(Decimal(DecInt(2), 0));
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
+    }
+
+    Decimal tanh_val() const {
+        int saved_prec = g_prec;
+        g_prec = saved_prec + guard_digits(saved_prec);
+        Decimal ex = this->exp_val();
+        Decimal emx = Decimal(DecInt(1), 0).div(ex).truncate(g_prec);
+        Decimal num = ex.sub(emx);
+        Decimal den = ex.add(emx);
+        if (den.mantissa.isZero()) {
+            g_prec = saved_prec;
+            return *this;
+        }
+        Decimal res = num.div(den);
+        g_prec = saved_prec;
+        return res.truncate(g_prec);
+    }
+};
+
+} // namespace jc
+
+#endif // JC2_DECIMAL_H

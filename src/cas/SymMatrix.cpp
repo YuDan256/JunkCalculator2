@@ -23,12 +23,12 @@ namespace jc {
     SymMatrix::SymMatrix() : rows(0), cols(0), data() {}
 
     SymExpr& SymMatrix::operator()(int row, int col) {
-        if (row >= 0 && row < rows && col >= 0 && col < cols) return data[row * cols + col];
+        if (row >= 0 && row < rows && col >= 0 && col < cols) return data[static_cast<size_t>(col) * rows + row];
         throw std::out_of_range("SymMatrix Error: Index out of bounds.");
     }
 
     const SymExpr& SymMatrix::operator()(int row, int col) const {
-        if (row >= 0 && row < rows && col >= 0 && col < cols) return data[row * cols + col];
+        if (row >= 0 && row < rows && col >= 0 && col < cols) return data[static_cast<size_t>(col) * rows + row];
         throw std::out_of_range("SymMatrix Error: Index out of bounds.");
     }
 

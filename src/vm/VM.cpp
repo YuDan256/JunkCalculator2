@@ -5323,15 +5323,21 @@ Value VM::run(int targetFrameDepth) {
 
                         if (hasSymbolic) {
                             std::vector<SymExpr> flat(total);
-                            for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asSymbolic();
+                            for (int i = 0; i < rows; ++i)
+                                for (int j = 0; j < expectedCols; ++j)
+                                    flat[static_cast<size_t>(j) * rows + i] = getReg(b + i * expectedCols + j).asSymbolic();
                             result = Value(SymMatrix(rows, expectedCols, flat));
                         } else if (hasComplex) {
                             std::vector<Complex> flat(total);
-                            for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asComplex();
+                            for (int i = 0; i < rows; ++i)
+                                for (int j = 0; j < expectedCols; ++j)
+                                    flat[static_cast<size_t>(j) * rows + i] = getReg(b + i * expectedCols + j).asComplex();
                             result = Value(ComplexMatrix(rows, expectedCols, flat));
                         } else {
                             std::vector<double> flat(total);
-                            for (int ii = 0; ii < total; ++ii) flat[ii] = getReg(b + ii).asDouble();
+                            for (int i = 0; i < rows; ++i)
+                                for (int j = 0; j < expectedCols; ++j)
+                                    flat[static_cast<size_t>(j) * rows + i] = getReg(b + i * expectedCols + j).asDouble();
                             result = Value(RealMatrix(rows, expectedCols, flat));
                         }
                     }

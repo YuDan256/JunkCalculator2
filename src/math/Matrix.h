@@ -21,8 +21,8 @@ namespace jc {
     private:
         int rows;
         int cols;
-        int row_stride;   // 行步长（连续矩阵 == cols）
-        int col_stride;   // 列步长（连续矩阵 == 1）
+        int row_stride;   // 行步长（连续矩阵 == 1）
+        int col_stride;   // 列步长（连续矩阵 == rows）
         int offset;       // data 起始偏移
         std::shared_ptr<T[]> data; // 共享底层（视图共享同一块）
 
@@ -32,11 +32,11 @@ namespace jc {
 
     public:
         // --- 构造函数 ---
-        Matrix(int r, int c) : rows(r), cols(c), row_stride(c), col_stride(1), offset(0),
+        Matrix(int r, int c) : rows(r), cols(c), row_stride(1), col_stride(r), offset(0),
             data(std::make_shared<T[]>(static_cast<size_t>(r) * c)) {}
 
         Matrix(int r, int c, const std::vector<T>& flat_data)
-            : rows(r), cols(c), row_stride(c), col_stride(1), offset(0),
+            : rows(r), cols(c), row_stride(1), col_stride(r), offset(0),
               data(std::make_shared<T[]>(static_cast<size_t>(r) * c)) {
             if (flat_data.size() != static_cast<size_t>(r * c)) {
                 throw std::invalid_argument("Matrix Error: Data size does not match dimensions.");
@@ -46,18 +46,18 @@ namespace jc {
 
         Matrix(T num) : rows(1), cols(1), row_stride(1), col_stride(1), offset(0),
             data(std::make_shared<T[]>(1)) { data[0] = num; }
-        Matrix() : rows(0), cols(0), row_stride(0), col_stride(1), offset(0), data(nullptr) {}
+        Matrix() : rows(0), cols(0), row_stride(1), col_stride(0), offset(0), data(nullptr) {}
 
         // 拷贝构造：物化成连续矩阵（连续源走 memcpy 快路径）
         Matrix(const Matrix& other) : rows(other.rows), cols(other.cols),
-            row_stride(other.cols), col_stride(1), offset(0),
+            row_stride(1), col_stride(other.rows), offset(0),
             data(std::make_shared<T[]>(static_cast<size_t>(other.rows) * other.cols)) {
-            if (other.offset == 0 && other.row_stride == other.cols && other.col_stride == 1) {
+            if (other.offset == 0 && other.row_stride == 1 && other.col_stride == other.rows) {
                 std::copy(other.data.get(), other.data.get() + static_cast<size_t>(rows) * cols, data.get());
             } else {
                 for (int i = 0; i < rows; ++i)
                     for (int j = 0; j < cols; ++j)
-                        data[i * cols + j] = other(i, j);
+                        data[static_cast<size_t>(j) * rows + i] = other(i, j);
             }
         }
 
@@ -65,14 +65,14 @@ namespace jc {
         Matrix& operator=(const Matrix& other) {
             if (this == &other) return *this;
             rows = other.rows; cols = other.cols;
-            row_stride = other.cols; col_stride = 1; offset = 0;
+            row_stride = 1; col_stride = other.rows; offset = 0;
             data = std::make_shared<T[]>(static_cast<size_t>(rows) * cols);
-            if (other.offset == 0 && other.row_stride == other.cols && other.col_stride == 1) {
+            if (other.offset == 0 && other.row_stride == 1 && other.col_stride == other.rows) {
                 std::copy(other.data.get(), other.data.get() + static_cast<size_t>(rows) * cols, data.get());
             } else {
                 for (int i = 0; i < rows; ++i)
                     for (int j = 0; j < cols; ++j)
-                        data[i * cols + j] = other(i, j);
+                        data[static_cast<size_t>(j) * rows + i] = other(i, j);
             }
             return *this;
         }
@@ -84,7 +84,7 @@ namespace jc {
 
         // 是否连续（用于 rawData / 快路径判断）
         bool isContiguous() const {
-            return offset == 0 && row_stride == cols && col_stride == 1;
+            return offset == 0 && row_stride == 1 && col_stride == rows;
         }
 
         // 切片视图：行 [rStart, rStep, rCount]，列 [cStart, cStep, cCount]
@@ -192,7 +192,7 @@ namespace jc {
         }
 
         // 基础 O(N^3) 乘法 (i-k-j 缓存优化 + 稀疏跳跃)
-        // 用 raw pointer + stride 直接访问，连续矩阵与视图性能一致
+        // 用 raw pointer + stride 直接访问，连续矩阵与视图性能一致（列主序）
         static Matrix multiplyBase(const Matrix& A, const Matrix& B) {
             Matrix result(A.rows, B.cols);
             const T* a = A.data.get() + A.offset;
@@ -200,57 +200,57 @@ namespace jc {
             T* c = result.data.get();
             int ars = A.row_stride, acs = A.col_stride;
             int brs = B.row_stride, bcs = B.col_stride;
-            int cc = result.cols;
-            for (int i = 0; i < A.rows; ++i) {
+            int cr = result.rows;
+            for (int j = 0; j < B.cols; ++j) {
                 checkInterrupt();
-                const T* arow = a + i * ars;
-                T* crow = c + i * cc;
+                T* ccol = c + j * cr;
+                for (int i = 0; i < A.rows; ++i) ccol[i] = T(0);
                 for (int k = 0; k < A.cols; ++k) {
-                    T r = arow[k * acs];
-                    if (isEssentiallyZero(r)) continue; // ★ 稀疏优化：若乘数为0，直接跳过整行遍历，大幅加速稀疏/对角矩阵
-                    const T* brow = b + k * brs;
-                    for (int j = 0; j < B.cols; ++j) {
-                        crow[j] = crow[j] + r * brow[j * bcs];
+                    T r = b[k * brs + j * bcs];
+                    if (isEssentiallyZero(r)) continue;
+                    const T* acol = a + k * acs;
+                    for (int i = 0; i < A.rows; ++i) {
+                        ccol[i] = ccol[i] + acol[i * ars] * r;
                     }
                 }
             }
             return result;
         }
 
-        // 零拷贝视图基础乘法
+        // 零拷贝视图基础乘法（列主序）
         static void multiplyBaseView(
             const T* A, int strideA,
             const T* B, int strideB,
             T* C, int strideC,
             int m, int k_dim, int n) 
         {
-            for (int i = 0; i < m; ++i) {
-                for (int j = 0; j < n; ++j) {
-                    C[i * strideC + j] = T(0);
+            for (int j = 0; j < n; ++j) {
+                for (int i = 0; i < m; ++i) {
+                    C[j * strideC + i] = T(0);
                 }
             }
-            for (int i = 0; i < m; ++i) {
+            for (int j = 0; j < n; ++j) {
                 checkInterrupt();
                 for (int k = 0; k < k_dim; ++k) {
-                    T r = A[i * strideA + k];
+                    T r = B[j * strideB + k];
                     if (isEssentiallyZero(r)) continue;
-                    for (int j = 0; j < n; ++j) {
-                        C[i * strideC + j] = C[i * strideC + j] + r * B[k * strideB + j];
+                    for (int i = 0; i < m; ++i) {
+                        C[j * strideC + i] = C[j * strideC + i] + A[k * strideA + i] * r;
                     }
                 }
             }
         }
 
         static void addView(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
-            for (int i = 0; i < m; ++i)
-                for (int j = 0; j < n; ++j)
-                    C[i * strideC + j] = A[i * strideA + j] + B[i * strideB + j];
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < m; ++i)
+                    C[j * strideC + i] = A[j * strideA + i] + B[j * strideB + i];
         }
 
         static void subView(const T* A, int strideA, const T* B, int strideB, T* C, int strideC, int m, int n) {
-            for (int i = 0; i < m; ++i)
-                for (int j = 0; j < n; ++j)
-                    C[i * strideC + j] = A[i * strideA + j] - B[i * strideB + j];
+            for (int j = 0; j < n; ++j)
+                for (int i = 0; i < m; ++i)
+                    C[j * strideC + i] = A[j * strideA + i] - B[j * strideB + i];
         }
 
         // 零拷贝 + 动态裁剪的 Strassen 核心
@@ -282,18 +282,18 @@ namespace jc {
             T* T2 = T1 + half * half;
 
             const T* A11 = A;
-            const T* A12 = A + half;
-            const T* A21 = A + half * strideA;
+            const T* A12 = A + half * strideA;
+            const T* A21 = A + half;
             const T* A22 = A + half * strideA + half;
 
             const T* B11 = B;
-            const T* B12 = B + half;
-            const T* B21 = B + half * strideB;
+            const T* B12 = B + half * strideB;
+            const T* B21 = B + half;
             const T* B22 = B + half * strideB + half;
 
             T* C11 = C;
-            T* C12 = C + half;
-            T* C21 = C + half * strideC;
+            T* C12 = C + half * strideC;
+            T* C21 = C + half;
             T* C22 = C + half * strideC + half;
 
             if (depth < 2) {
@@ -378,12 +378,12 @@ namespace jc {
             }
 
             // C11 = M1 + M4 - M5 + M7
-            for (int i = 0; i < half; ++i) {
-                for (int j = 0; j < half; ++j) {
-                    C11[i * strideC + j] = M1[i * half + j] + M4[i * half + j] - M5[i * half + j] + M7[i * half + j];
-                    C12[i * strideC + j] = M3[i * half + j] + M5[i * half + j];
-                    C21[i * strideC + j] = M2[i * half + j] + M4[i * half + j];
-                    C22[i * strideC + j] = M1[i * half + j] - M2[i * half + j] + M3[i * half + j] + M6[i * half + j];
+            for (int j = 0; j < half; ++j) {
+                for (int i = 0; i < half; ++i) {
+                    C11[j * strideC + i] = M1[j * half + i] + M4[j * half + i] - M5[j * half + i] + M7[j * half + i];
+                    C12[j * strideC + i] = M3[j * half + i] + M5[j * half + i];
+                    C21[j * strideC + i] = M2[j * half + i] + M4[j * half + i];
+                    C22[j * strideC + i] = M1[j * half + i] - M2[j * half + i] + M3[j * half + i] + M6[j * half + i];
                 }
             }
 
@@ -393,33 +393,33 @@ namespace jc {
                 for (int i = 0; i < even_n; ++i) {
                     T sum = T(0);
                     for (int k = 0; k < n; ++k) {
-                        sum = sum + A[i * strideA + k] * B[k * strideB + even_n];
+                        sum = sum + A[k * strideA + i] * B[even_n * strideB + k];
                     }
-                    C[i * strideC + even_n] = sum;
+                    C[even_n * strideC + i] = sum;
                 }
 
                 // 2. C(even_n, 0..even_n-1) = A(even_n, 0..n-1) * B(0..n-1, 0..even_n-1)
                 for (int j = 0; j < even_n; ++j) {
                     T sum = T(0);
                     for (int k = 0; k < n; ++k) {
-                        sum = sum + A[even_n * strideA + k] * B[k * strideB + j];
+                        sum = sum + A[k * strideA + even_n] * B[j * strideB + k];
                     }
-                    C[even_n * strideC + j] = sum;
+                    C[j * strideC + even_n] = sum;
                 }
 
                 // 3. C(even_n, even_n) = A(even_n, 0..n-1) * B(0..n-1, even_n)
                 T sum = T(0);
                 for (int k = 0; k < n; ++k) {
-                    sum = sum + A[even_n * strideA + k] * B[k * strideB + even_n];
+                    sum = sum + A[k * strideA + even_n] * B[even_n * strideB + k];
                 }
                 C[even_n * strideC + even_n] = sum;
 
                 // 4. 补齐 C(0..even_n-1, 0..even_n-1) 缺失的 A(0..even_n-1, even_n) * B(even_n, 0..even_n-1)
                 for (int i = 0; i < even_n; ++i) {
-                    T a_edge = A[i * strideA + even_n];
+                    T a_edge = A[even_n * strideA + i];
                     if (!isEssentiallyZero(a_edge)) {
                         for (int j = 0; j < even_n; ++j) {
-                            C[i * strideC + j] = C[i * strideC + j] + a_edge * B[even_n * strideB + j];
+                            C[j * strideC + i] = C[j * strideC + i] + a_edge * B[j * strideB + even_n];
                         }
                     }
                 }
@@ -437,12 +437,12 @@ namespace jc {
             if (minDim > 64 && maxDim < minDim * 4) {
                 int n = maxDim;
 
-                // Strassen 假设 col_stride == 1（行内连续）；列步长视图先物化
+                // Strassen 假设 row_stride == 1（列内连续）；行步长视图先物化
                 const Matrix* A = this;
                 const Matrix* B = &other;
                 Matrix A_mat, B_mat;
-                if (col_stride != 1) { A_mat = Matrix(*this); A = &A_mat; }
-                if (other.col_stride != 1) { B_mat = Matrix(other); B = &B_mat; }
+                if (row_stride != 1) { A_mat = Matrix(*this); A = &A_mat; }
+                if (other.row_stride != 1) { B_mat = Matrix(other); B = &B_mat; }
 
                 // ★ 延迟分配：不要无条件初始化 n*n 的矩阵，否则会破坏方阵的零拷贝初衷
                 Matrix A_pad, B_pad;
@@ -450,7 +450,7 @@ namespace jc {
                 bool needPadB = (B->rows != n || B->cols != n);
                 
                 const T* ptrA = A->data.get() + A->offset;
-                int strideA = A->row_stride;
+                int strideA = A->col_stride;
                 if (needPadA) {
                     A_pad = Matrix(n, n);
                     for (int i = 0; i < A->rows; ++i)
@@ -461,7 +461,7 @@ namespace jc {
                 }
 
                 const T* ptrB = B->data.get() + B->offset;
-                int strideB = B->row_stride;
+                int strideB = B->col_stride;
                 if (needPadB) {
                     B_pad = Matrix(n, n);
                     for (int i = 0; i < B->rows; ++i)
@@ -1105,7 +1105,7 @@ namespace jc {
             return norm() * inverse().norm();
         }
 
-        // 用于外部访问底层数据的只读接口（按行主序物化成连续 vector）
+        // 用于外部访问底层数据的只读接口（按列主序物化成连续 vector）
         std::vector<T> rawData() const {
             std::vector<T> out(static_cast<size_t>(rows) * cols);
             if (isContiguous()) {
@@ -1113,7 +1113,7 @@ namespace jc {
             } else {
                 for (int i = 0; i < rows; ++i)
                     for (int j = 0; j < cols; ++j)
-                        out[static_cast<size_t>(i) * cols + j] = (*this)(i, j);
+                        out[static_cast<size_t>(j) * rows + i] = (*this)(i, j);
             }
             return out;
         }

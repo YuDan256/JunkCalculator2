@@ -565,7 +565,7 @@
             "patterns": [
                 {
                     "name": "constant.language.jc2",
-                    "match": "\\b(true|false|none|PI|E|ANS)\\b"
+                    "match": "\\b(true|false|none)\\b"
                 },
                 {
                     "name": "variable.language.jc2",

@@ -92,7 +92,7 @@ namespace jc {
             "throw", "try", "catch", "import", "switch", "case", "default", "match", "enum"
         };
         static const std::set<std::string> constants = {
-            "PI", "E", "true", "false", "i", "I", "self", "none", "ANS"
+            "true", "false", "self", "none"
         };
 
         // 用 Lexer 分词

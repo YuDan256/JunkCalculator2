@@ -5,6 +5,7 @@
 #include <iostream>
 #include "LspProtocol.h"
 #include "Workspace.h"
+#include "BuiltinIndex.h"
 
 namespace jc {
 namespace lsp {
@@ -57,6 +58,7 @@ namespace lsp {
         bool isRunning = false;
         ServerState state = ServerState::Uninitialized;
         Workspace workspace;
+        BuiltinIndex builtinIndex;
     };
 
 } // namespace lsp

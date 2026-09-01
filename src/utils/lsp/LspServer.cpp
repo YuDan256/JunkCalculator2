@@ -1,7 +1,8 @@
 #include "LspServer.h"
 #include "../../frontend/Lexer.h"
 #include "../../frontend/Parser.h"
-#include "SemanticAnalyzer.h"
+#include "NameResolver.h"
+#include "TypeChecker.h"
 #include "../../utils/fmt/Formatter.h"
 #include "../../vm/HelpRouter.h"
 #include "../../frontend/Utf8.h"
@@ -254,37 +255,42 @@ namespace lsp {
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
-                    SemanticAnalyzer analyzer(doc, tokens);
-                    analyzer.analyze(ast.get());
+                    NameResolver resolver(doc, builtinIndex);
+                    resolver.resolve(ast.get());
                     
-                    auto sym = analyzer.getSymbolAt(pos);
-                    if (sym) {
+                    const NameRes* nr = resolver.resolveAtPos(pos);
+                    if (nr) {
                         Json hover;
                         hover.type = JsonType::Object;
-                        
                         Json contents;
                         contents.type = JsonType::Object;
                         contents["kind"] = Json("markdown");
                         
-                        std::string kindStr = "variable";
-                        if (sym->kind == SymbolKind::Function) kindStr = "function";
-                        else if (sym->kind == SymbolKind::Class) kindStr = "class";
-                        else if (sym->kind == SymbolKind::Parameter) kindStr = "parameter";
-                        else if (sym->kind == SymbolKind::Property) kindStr = "property";
-                        else if (sym->kind == SymbolKind::Namespace) kindStr = "namespace";
-                        
-                        std::string md = "```jc2\n(" + kindStr + ") " + sym->name;
-                        if (!sym->typeHint.empty()) md += ": " + sym->typeHint;
-                        else if (!sym->inferredType.empty()) md += ": " + sym->inferredType;
-                        md += "\n```";
-                        
-                        if (!sym->docstring.empty()) {
-                            md += "\n---\n" + sym->docstring;
+                        std::string md;
+                        if (nr->origin == NameRes::User && nr->user) {
+                            std::string kindStr = "variable";
+                            if (nr->user->kind == UserSymbol::Function) kindStr = "function";
+                            else if (nr->user->kind == UserSymbol::Class) kindStr = "class";
+                            else if (nr->user->kind == UserSymbol::Parameter) kindStr = "parameter";
+                            else if (nr->user->kind == UserSymbol::Property) kindStr = "property";
+                            else if (nr->user->kind == UserSymbol::Namespace) kindStr = "namespace";
+                            md = "```jc2\n(" + kindStr + ") " + nr->user->name;
+                            if (!nr->user->typeHint.empty()) md += ": " + nr->user->typeHint;
+                            md += "\n```";
+                        } else if (nr->origin == NameRes::Builtin && nr->builtin) {
+                            const BuiltinSymbol& b = *nr->builtin;
+                            std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : "built-in function";
+                            md = "```jc2\n(" + kindStr + ") " + (b.signatureText.empty() ? b.name : b.signatureText) + "\n```";
+                            if (!b.desc.empty()) md += "\n---\n" + b.desc;
+                        } else if (nr->origin == NameRes::Imported && nr->member) {
+                            md = "```jc2\n(module member) " + nr->moduleName + "." + nr->member->name + "\n```";
+                            if (!nr->member->desc.empty()) md += "\n---\n" + nr->member->desc;
                         }
-                        
-                        contents["value"] = Json(md);
-                        hover["contents"] = contents;
-                        res.result = hover;
+                        if (!md.empty()) {
+                            contents["value"] = Json(md);
+                            hover["contents"] = contents;
+                            res.result = hover;
+                        }
                     } else {
                         // Fallback: 检查是否是内置函数或关键字
                         int offset = doc->positionToOffset(pos);
@@ -388,15 +394,18 @@ namespace lsp {
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
-                    SemanticAnalyzer analyzer(doc, tokens);
-                    analyzer.analyze(ast.get());
+                    NameResolver resolver(doc, builtinIndex);
+                    resolver.resolve(ast.get());
                     
-                    auto sym = analyzer.getSymbolAt(pos);
-                    if (sym) {
+                    const NameRes* nr = resolver.resolveAtPos(pos);
+                    if (nr && nr->origin == NameRes::User && nr->user) {
                         Json location;
                         location.type = JsonType::Object;
                         location["uri"] = Json(uri);
-                        location["range"] = sym->definitionRange.toJson();
+                        Range range;
+                        range.start = nr->user->defPos;
+                        range.end = nr->user->defEndPos;
+                        location["range"] = range.toJson();
                         res.result = location;
                     }
                 } catch (...) {}
@@ -430,8 +439,8 @@ namespace lsp {
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
-                    SemanticAnalyzer analyzer(doc, tokens);
-                    analyzer.analyze(ast.get());
+                    NameResolver resolver(doc, builtinIndex);
+                    resolver.resolve(ast.get());
                     
                     std::vector<Json> items;
                     
@@ -483,10 +492,12 @@ namespace lsp {
                         // 属性访问补全
                         std::string targetType = "";
                         if (!objectName.empty()) {
-                            auto sym = analyzer.resolveSymbolAt(objectName, pos);
-                            if (sym) {
-                                targetType = sym->inferredType;
-                                if (targetType.empty() && !sym->typeHint.empty()) targetType = sym->typeHint;
+                            for (auto* s : resolver.visibleSymbolsAt(pos)) {
+                                if (s->name == objectName) {
+                                    targetType = s->inferredType;
+                                    if (targetType.empty() && !s->typeHint.empty()) targetType = s->typeHint;
+                                    break;
+                                }
                             }
                         }
                         
@@ -553,23 +564,21 @@ namespace lsp {
                         }
                     } else {
                         // 普通全局/局部补全
-                        auto visibleSymbols = analyzer.getVisibleSymbolsAt(pos);
+                        auto visibleSymbols = resolver.visibleSymbolsAt(pos);
                         
                         std::unordered_set<std::string> visibleNames;
                         // 1. 添加当前作用域可见的符号
-                        for (const auto& sym : visibleSymbols) {
+                        for (auto* sym : visibleSymbols) {
                             visibleNames.insert(sym->name);
                             Json item;
                             item.type = JsonType::Object;
                             item["label"] = Json(sym->name);
                             
-                            int kind = 1; // Text
-                            if (sym->kind == SymbolKind::Function) kind = 3; // Function
-                            else if (sym->kind == SymbolKind::Class) kind = 7; // Class
-                            else if (sym->kind == SymbolKind::Variable) kind = 6; // Variable
-                            else if (sym->kind == SymbolKind::Parameter) kind = 6; // Variable
-                            else if (sym->kind == SymbolKind::Property) kind = 10; // Property
-                            else if (sym->kind == SymbolKind::Namespace) kind = 9; // Module
+                            int kind = 6; // Variable
+                            if (sym->kind == UserSymbol::Function) kind = 3; // Function
+                            else if (sym->kind == UserSymbol::Class) kind = 7; // Class
+                            else if (sym->kind == UserSymbol::Property) kind = 10; // Property
+                            else if (sym->kind == UserSymbol::Namespace) kind = 9; // Module
                             
                             item["kind"] = Json(kind);
                             
@@ -822,13 +831,26 @@ namespace lsp {
                     parser.isLspMode = true;
                     auto ast = parser.parse();
                     
-                    SemanticAnalyzer analyzer(doc, tokens);
-                    analyzer.analyze(ast.get());
+                    NameResolver resolver(doc, builtinIndex);
+                    resolver.resolve(ast.get());
                     
-                    auto symbols = analyzer.getDocumentSymbols();
                     std::vector<Json> symJsons;
-                    for (const auto& sym : symbols) {
-                        symJsons.push_back(sym.toJson());
+                    for (const auto& [name, sym] : resolver.globalSymbols()) {
+                        Json ds;
+                        ds.type = JsonType::Object;
+                        ds["name"] = Json(sym.name);
+                        ds["detail"] = Json(sym.typeHint);
+                        int kind = 13; // Variable
+                        if (sym.kind == UserSymbol::Function) kind = 12;
+                        else if (sym.kind == UserSymbol::Class) kind = 5;
+                        else if (sym.kind == UserSymbol::Namespace) kind = 2;
+                        ds["kind"] = Json((double)kind);
+                        Range range;
+                        range.start = sym.defPos;
+                        range.end = sym.defEndPos;
+                        ds["range"] = range.toJson();
+                        ds["selectionRange"] = range.toJson();
+                        symJsons.push_back(ds);
                     }
                     res.result = Json(symJsons);
                 } catch (...) {}
@@ -867,8 +889,8 @@ namespace lsp {
                         prevChar = startChar;
                     };
 
-                    // 简单结合 SemanticAnalyzer 获取更精确的符号类型
-                    SemanticAnalyzer analyzer(doc, tokens);
+                    // 结合 NameResolver 获取更精确的符号类型
+                    NameResolver resolver(doc, builtinIndex);
                     std::vector<Token> parserTokens;
                     for (const auto& t : tokens) {
                         if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
@@ -876,123 +898,181 @@ namespace lsp {
                     Parser parser(parserTokens, uri);
                     parser.isLspMode = true;
                     auto ast = parser.parse();
-                    analyzer.analyze(ast.get());
+                    resolver.resolve(ast.get());
 
-                    for (const auto& t : tokens) {
+                    int braceDepth = 0;
+                    int enumBraceDepth = -1;
+                    bool expectEnumBrace = false;
+
+                    for (size_t i = 0; i < tokens.size(); ++i) {
+                        const auto& t = tokens[i];
                         int tokenType = -1;
                         int tokenModifiers = 0;
 
-                        switch (t.type) {
-                            case TokenType::CLASS:
-                            case TokenType::ENUM:
-                            case TokenType::NAMESPACE:
-                            case TokenType::IF:
-                            case TokenType::ELSE:
-                            case TokenType::WHILE:
-                            case TokenType::FOR:
-                            case TokenType::IN:
-                            case TokenType::IS:
-                            case TokenType::AS:
-                            case TokenType::BREAK:
-                            case TokenType::CONTINUE:
-                            case TokenType::RETURN:
-                            case TokenType::SWITCH:
-                            case TokenType::CASE:
-                            case TokenType::DEFAULT:
-                            case TokenType::THROW:
-                            case TokenType::TRY:
-                            case TokenType::CATCH:
-                            case TokenType::MATCH:
-                            case TokenType::DEFER:
-                            case TokenType::IMPORT:
-                            case TokenType::MACRO:
-                            case TokenType::SYNTAX:
-                            case TokenType::QUOTE:
-                            case TokenType::TRUE_KW:
-                            case TokenType::FALSE_KW:
-                            case TokenType::NONE_KW:
-                                tokenType = 15; // keyword
-                                break;
-                            case TokenType::STATIC:
-                            case TokenType::LOCAL:
-                            case TokenType::CONST:
-                            case TokenType::REF:
-                            case TokenType::STATE:
-                            case TokenType::DELETE:
-                            case TokenType::EXTENDS:
-                                tokenType = 16; // modifier
-                                break;
-                            case TokenType::IDENTIFIER: {
-                                tokenType = 8; // variable
-                                Position pos = doc->offsetToPosition(t.position);
-                                auto sym = analyzer.getSymbolAt(pos);
-                                if (sym) {
-                                    if (sym->kind == SymbolKind::Function) tokenType = 12; // function
-                                    else if (sym->kind == SymbolKind::Class) tokenType = 2; // class
-                                    else if (sym->kind == SymbolKind::Parameter) tokenType = 7; // parameter
-                                    else if (sym->kind == SymbolKind::Property) tokenType = 9; // property
-                                    else if (sym->kind == SymbolKind::Namespace) tokenType = 0; // namespace
-                                }
-                                break;
+                        if (t.type == TokenType::LBRACE) {
+                            braceDepth++;
+                            if (expectEnumBrace) {
+                                enumBraceDepth = braceDepth;
+                                expectEnumBrace = false;
                             }
-                            case TokenType::NUMBER:
-                            case TokenType::IMAGINARY:
-                                tokenType = 19; // number
+                        } else if (t.type == TokenType::RBRACE) {
+                            if (braceDepth == enumBraceDepth) {
+                                enumBraceDepth = -1;
+                            }
+                            braceDepth--;
+                        } else if (t.type == TokenType::ENUM) {
+                            expectEnumBrace = true;
+                        } else if (t.type != TokenType::COMMENT && t.type != TokenType::NEWLINE && t.type != TokenType::IDENTIFIER) {
+                            expectEnumBrace = false;
+                        }
+
+                        bool isAfterDot = false;
+                        if (i > 0) {
+                            int prevIdx = static_cast<int>(i) - 1;
+                            while (prevIdx >= 0 && (tokens[prevIdx].type == TokenType::COMMENT || tokens[prevIdx].type == TokenType::NEWLINE)) {
+                                prevIdx--;
+                            }
+                            if (prevIdx >= 0 && tokens[prevIdx].type == TokenType::DOT) {
+                                isAfterDot = true;
+                            }
+                        }
+
+                        bool isKeyword = false;
+                        bool isModifier = false;
+
+                        switch (t.type) {
+                            case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
+                            case TokenType::IF: case TokenType::ELSE: case TokenType::WHILE:
+                            case TokenType::FOR: case TokenType::IN: case TokenType::IS:
+                            case TokenType::AS: case TokenType::BREAK: case TokenType::CONTINUE:
+                            case TokenType::RETURN: case TokenType::SWITCH: case TokenType::CASE:
+                            case TokenType::DEFAULT: case TokenType::THROW: case TokenType::TRY:
+                            case TokenType::CATCH: case TokenType::MATCH: case TokenType::DEFER:
+                            case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
+                            case TokenType::QUOTE: case TokenType::TRUE_KW: case TokenType::FALSE_KW:
+                            case TokenType::NONE_KW:
+                                isKeyword = true;
                                 break;
-                            case TokenType::STRING:
-                            case TokenType::FSTRING:
-                            case TokenType::RSTRING:
-                                tokenType = 18; // string
-                                break;
-                            case TokenType::COMMENT:
-                                tokenType = 17; // comment
-                                break;
-                            case TokenType::PLUS:
-                            case TokenType::MINUS:
-                            case TokenType::STAR:
-                            case TokenType::SLASH:
-                            case TokenType::CARET:
-                            case TokenType::PERCENT:
-                            case TokenType::ASSIGN:
-                            case TokenType::EQUAL:
-                            case TokenType::BANG_EQUAL:
-                            case TokenType::LESS:
-                            case TokenType::LESS_EQUAL:
-                            case TokenType::GREATER:
-                            case TokenType::GREATER_EQUAL:
-                            case TokenType::AND_AND:
-                            case TokenType::OR_OR:
-                            case TokenType::BANG:
-                            case TokenType::BIT_AND:
-                            case TokenType::BIT_OR:
-                            case TokenType::BIT_XOR:
-                            case TokenType::TILDE:
-                            case TokenType::SHIFT_LEFT:
-                            case TokenType::SHIFT_RIGHT:
-                            case TokenType::PLUS_ASSIGN:
-                            case TokenType::MINUS_ASSIGN:
-                            case TokenType::STAR_ASSIGN:
-                            case TokenType::SLASH_ASSIGN:
-                            case TokenType::CARET_ASSIGN:
-                            case TokenType::PERCENT_ASSIGN:
-                            case TokenType::BIT_AND_ASSIGN:
-                            case TokenType::BIT_OR_ASSIGN:
-                            case TokenType::BIT_XOR_ASSIGN:
-                            case TokenType::SHIFT_LEFT_ASSIGN:
-                            case TokenType::SHIFT_RIGHT_ASSIGN:
-                            case TokenType::TILDE_SLASH:
-                            case TokenType::TILDE_SLASH_ASSIGN:
-                            case TokenType::BACKSLASH:
-                            case TokenType::BACKSLASH_ASSIGN:
-                            case TokenType::PIPE:
-                            case TokenType::ARROW:
-                            case TokenType::ELLIPSIS:
-                            case TokenType::QUESTION:
-                            case TokenType::SUBSET:
-                                tokenType = 21; // operator
+                            case TokenType::STATIC: case TokenType::LOCAL: case TokenType::CONST:
+                            case TokenType::REF: case TokenType::STATE: case TokenType::DELETE:
+                            case TokenType::EXTENDS:
+                                isModifier = true;
                                 break;
                             default:
                                 break;
+                        }
+
+                        if (isKeyword || isModifier || t.type == TokenType::IDENTIFIER) {
+                            if (isAfterDot) {
+                                tokenType = 9; // property（默认）
+                                Position dotPos = doc->offsetToPosition(t.position);
+                                const NameRes* dotNr = resolver.resolveAtPos(dotPos);
+                                if (dotNr) {
+                                    if (dotNr->origin == NameRes::Imported && dotNr->member) tokenType = 12; // 模块成员 function
+                                    else if (dotNr->isMethod) tokenType = 13; // method
+                                }
+                            } else if (enumBraceDepth != -1) {
+                                // 在 enum 块内，判断是否是枚举成员定义
+                                bool isEnumMember = false;
+                                int nextIdx = static_cast<int>(i) + 1;
+                                while (nextIdx < static_cast<int>(tokens.size()) && tokens[nextIdx].type == TokenType::COMMENT) {
+                                    nextIdx++;
+                                }
+                                if (nextIdx < static_cast<int>(tokens.size())) {
+                                    auto nt = tokens[nextIdx].type;
+                                    if (nt == TokenType::COMMA || nt == TokenType::ASSIGN || nt == TokenType::RBRACE || nt == TokenType::NEWLINE) {
+                                        isEnumMember = true;
+                                    }
+                                }
+                                if (isEnumMember) {
+                                    tokenType = 10; // enumMember
+                                } else {
+                                    tokenType = isKeyword ? 15 : (isModifier ? 16 : 8);
+                                }
+                            } else if (isKeyword) {
+                                tokenType = 15; // keyword
+                            } else if (isModifier) {
+                                tokenType = 16; // modifier
+                            } else {
+                                tokenType = 8; // variable
+                                Position pos = doc->offsetToPosition(t.position);
+                                const NameRes* nr = resolver.resolveAtPos(pos);
+                                if (nr) {
+                                    if (nr->origin == NameRes::Builtin && nr->builtin) {
+                                        if (nr->builtin->kind == BuiltinKind::Type) tokenType = 1; // type
+                                        else tokenType = 12; // function
+                                    } else if (nr->origin == NameRes::Imported) {
+                                        tokenType = nr->isMethod ? 13 : 12; // method / function
+                                    } else if (nr->origin == NameRes::User && nr->user) {
+                                        if (nr->user->kind == UserSymbol::Function) tokenType = 12;
+                                        else if (nr->user->kind == UserSymbol::Class) tokenType = 2;
+                                        else if (nr->user->kind == UserSymbol::Parameter) tokenType = 7;
+                                        else if (nr->user->kind == UserSymbol::Property) tokenType = 9;
+                                        else if (nr->user->kind == UserSymbol::Namespace) tokenType = 0;
+                                    }
+                                }
+                            }
+                        } else {
+                            switch (t.type) {
+                                case TokenType::NUMBER:
+                                case TokenType::IMAGINARY:
+                                    tokenType = 19; // number
+                                    break;
+                                case TokenType::STRING:
+                                case TokenType::FSTRING:
+                                case TokenType::RSTRING:
+                                    tokenType = 18; // string
+                                    break;
+                                case TokenType::COMMENT:
+                                    tokenType = 17; // comment
+                                    break;
+                                case TokenType::PLUS:
+                                case TokenType::MINUS:
+                                case TokenType::STAR:
+                                case TokenType::SLASH:
+                                case TokenType::CARET:
+                                case TokenType::PERCENT:
+                                case TokenType::ASSIGN:
+                                case TokenType::EQUAL:
+                                case TokenType::BANG_EQUAL:
+                                case TokenType::LESS:
+                                case TokenType::LESS_EQUAL:
+                                case TokenType::GREATER:
+                                case TokenType::GREATER_EQUAL:
+                                case TokenType::AND_AND:
+                                case TokenType::OR_OR:
+                                case TokenType::BANG:
+                                case TokenType::BIT_AND:
+                                case TokenType::BIT_OR:
+                                case TokenType::BIT_XOR:
+                                case TokenType::TILDE:
+                                case TokenType::SHIFT_LEFT:
+                                case TokenType::SHIFT_RIGHT:
+                                case TokenType::PLUS_ASSIGN:
+                                case TokenType::MINUS_ASSIGN:
+                                case TokenType::STAR_ASSIGN:
+                                case TokenType::SLASH_ASSIGN:
+                                case TokenType::CARET_ASSIGN:
+                                case TokenType::PERCENT_ASSIGN:
+                                case TokenType::BIT_AND_ASSIGN:
+                                case TokenType::BIT_OR_ASSIGN:
+                                case TokenType::BIT_XOR_ASSIGN:
+                                case TokenType::SHIFT_LEFT_ASSIGN:
+                                case TokenType::SHIFT_RIGHT_ASSIGN:
+                                case TokenType::TILDE_SLASH:
+                                case TokenType::TILDE_SLASH_ASSIGN:
+                                case TokenType::BACKSLASH:
+                                case TokenType::BACKSLASH_ASSIGN:
+                                case TokenType::PIPE:
+                                case TokenType::ARROW:
+                                case TokenType::ELLIPSIS:
+                                case TokenType::QUESTION:
+                                case TokenType::SUBSET:
+                                    tokenType = 21; // operator
+                                    break;
+                                default:
+                                    break;
+                            }
                         }
 
                         if (tokenType != -1) {
@@ -1077,9 +1157,11 @@ namespace lsp {
             parser.isLspMode = true;
             auto ast = parser.parse();
 
-            // 3. 语义分析 (收集覆盖内置变量等警告)
-            SemanticAnalyzer analyzer(doc, tokens);
-            analyzer.analyze(ast.get());
+            // 3. 语义分析（NameResolver + TypeChecker：未定义函数/方法、参数数量、shadowing）
+            NameResolver resolver(doc, builtinIndex);
+            resolver.resolve(ast.get());
+            TypeChecker checker(doc, resolver, builtinIndex);
+            checker.check(ast.get());
 
             // 收集语法错误
             for (const auto& err : parser.diagnostics) {
@@ -1098,7 +1180,7 @@ namespace lsp {
             }
 
             // 收集语义警告
-            for (const auto& diag : analyzer.diagnostics) {
+            for (const auto& diag : checker.diagnostics) {
                 Json d;
                 d.type = JsonType::Object;
                 

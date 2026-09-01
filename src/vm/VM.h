@@ -287,6 +287,12 @@ public:
     }
     const std::unordered_map<std::string, NativeCallable>& getNativeBuiltins() const { return nativeBuiltins; }
     const std::unordered_map<std::string, std::set<int>>& getBuiltinArity() const { return builtinArity; }
+    const std::unordered_map<std::string, std::vector<std::string>>& getBuiltinParamNames() const { return builtinParamNames; }
+    const std::unordered_map<std::string, std::string>& getBuiltinRestName() const { return builtinRestName; }
+    const std::unordered_map<std::string, std::vector<std::string>>& getBuiltinKwargNames() const { return builtinKwargNames; }
+    const std::unordered_map<std::string, std::string>& getBuiltinKwargsName() const { return builtinKwargsName; }
+    const std::unordered_map<std::string, int>& getBuiltinKwargDefaultCount() const { return builtinKwargDefaultCount; }
+    const std::unordered_map<std::string, Value>& getBuiltinModules() const { return builtinModules; }
 
     void* getJitEntryPoint(int fnIdx) const {
         auto it = jitEntryPoints.find(fnIdx);

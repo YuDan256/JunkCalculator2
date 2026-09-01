@@ -1,0 +1,11 @@
+refactor(lsp): rebuild semantic layer on BuiltinIndex + NameResolver + TypeChecker
+
+【动机】
+LSP 语义层（SemanticAnalyzer）是 token 流 + 补丁式启发驱动的：无内置符号表、无 import 解析、无精确签名，导致类型/函数/方法全部标成 variable，信息量太少，无法「完全按照 documentation.json 高亮和警告」。推翻重做为单一权威来源 + 单一语义引擎。
+
+【原理】
+1. 新增 `BuiltinIndex`：合成三个权威源——BuiltinRegistry 精确签名（VM 的 builtinArity/paramNames/restName/kwargNames）、Value.h 类型枚举（+complex 去 bigint）、helpAst 文档。
+2. 新增 `NameResolver`：作用域 + 声明 + import 惰性加载（解析到 `import xxx` 才 LoadLibrary 对应 dll，按模块缓存）+ dot 解析 + shadowing（用户符号优先，内置名被覆盖标普通变量）。
+3. 新增 `TypeChecker`：未定义函数/方法警告（did-you-mean）、参数数量检查（精确 arity）、shadowing 警告（排除可覆盖的 PI/E/I/ANS）。
+4. `LspServer` 六处接线（hover/definition/completion/documentSymbol/semanticTokens/diagnostics）改接新组件。
+5. 删除 `SemanticAnalyzer`；`VM` 加签名 getter；`Highlight.h`/tmLanguage 移除 PI/E/I/ANS 常量高亮（当普通变量）。

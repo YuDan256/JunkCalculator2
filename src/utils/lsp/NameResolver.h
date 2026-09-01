@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include "BuiltinIndex.h"
 #include "Workspace.h"
@@ -90,8 +91,10 @@ namespace lsp {
         // 已 import 的模块名 → 命名空间符号（从 sidecar json 读取）
         std::unordered_map<std::string, std::unordered_map<std::string, BuiltinSymbol>> importedModules;
         std::unordered_set<std::string> importedMethods;  // sidecar 里的类方法名（不报未知方法）
+        std::unordered_map<std::string, std::string> moduleAliases;  // 变量名 → 模块名（p = import decimal）
 
         std::unordered_map<Expr*, NameRes> nameRes;
+        std::map<int, NameRes> declaredAt;  // 声明位置（函数名/变量名等非 Expr 节点）→ 解析结果
         std::vector<ShadowWarning> shadowWarn;
 
         // 作用域管理

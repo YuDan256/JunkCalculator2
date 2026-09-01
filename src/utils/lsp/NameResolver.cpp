@@ -17,6 +17,20 @@ namespace lsp {
         return "";
     }
 
+    // 提取 import 表达式的模块名：p = import xxx / p = import "xxx" / p = (xxx = import(xxx)) 脱糖
+    static std::string importModuleName(Expr* e) {
+        if (!e) return "";
+        if (auto* imp = dynamic_cast<ImportExpr*>(e)) {
+            if (auto* lit = dynamic_cast<Literal*>(imp->path.get())) return lit->value;
+            if (auto* v = dynamic_cast<Variable*>(imp->path.get())) return v->name.lexeme;
+            return "";
+        }
+        if (auto* assign = dynamic_cast<Assign*>(e)) {
+            return importModuleName(assign->value.get());
+        }
+        return "";
+    }
+
     NameResolver::NameResolver(Document* doc, BuiltinIndex& index) : doc(doc), index(index) {
         globalScope.name = "<global>";
         current = &globalScope;
@@ -39,6 +53,9 @@ namespace lsp {
 
     const NameRes* NameResolver::resolveAtPos(const Position& pos) const {
         int offset = doc->positionToOffset(pos);
+        // 先查声明位置（函数名/变量名等非 Expr 节点，如 `test() = {...}` 的 test）
+        auto it = declaredAt.find(offset);
+        if (it != declaredAt.end()) return &it->second;
         const NameRes* best = nullptr;
         int bestLen = INT_MAX;
         for (const auto& [node, res] : nameRes) {
@@ -85,7 +102,13 @@ namespace lsp {
         sym.typeHint = typeHint;
         sym.inferredType = inferredType;
         auto [it, inserted] = current->symbols.emplace(name, std::move(sym));
-        return &it->second;
+        UserSymbol* ptr = &it->second;
+        // 记录声明位置（函数名/变量名等非 Expr 节点），供 hover / semanticTokens 查询
+        NameRes res;
+        res.origin = NameRes::User;
+        res.user = ptr;
+        declaredAt[startPos] = res;
+        return ptr;
     }
 
     UserSymbol* NameResolver::findUser(const std::string& name) const {
@@ -264,6 +287,13 @@ namespace lsp {
 
     void NameResolver::visitAssign(Assign* e) {
         if (e->value) e->value->accept(*this);
+        // import 别名：p = import decimal → p 是 decimal 模块的别名
+        std::string modName = importModuleName(e->value.get());
+        if (!modName.empty()) {
+            moduleAliases[e->name.lexeme] = modName;
+            declare(e->name.lexeme, UserSymbol::Variable, e->name.position, e->name.position + (int)e->name.lexeme.size());
+            return;
+        }
         // 如果右侧是 Lambda/Class，已在 hoist 里声明过，这里不重复
         if (dynamic_cast<LambdaExpr*>(e->value.get()) || dynamic_cast<ClassDefExpr*>(e->value.get())) return;
         declare(e->name.lexeme, UserSymbol::Variable, e->name.position, e->name.position + (int)e->name.lexeme.size());
@@ -287,18 +317,21 @@ namespace lsp {
         res.memberName = e->field.lexeme;
         std::string objName = objectNameOf(e->object.get());
         if (!objName.empty()) {
-            const BuiltinSymbol* member = index.findModuleMember(objName, e->field.lexeme);
+            std::string actualModule = objName;
+            auto aliasIt = moduleAliases.find(objName);
+            if (aliasIt != moduleAliases.end()) actualModule = aliasIt->second;
+            const BuiltinSymbol* member = index.findModuleMember(actualModule, e->field.lexeme);
             if (member) {
                 res.origin = NameRes::Imported;
-                res.moduleName = objName;
+                res.moduleName = actualModule;
                 res.member = member;
                 res.isMethod = false;
-            } else if (importedModules.count(objName)) {
-                auto& mm = importedModules[objName];
+            } else if (importedModules.count(actualModule)) {
+                auto& mm = importedModules[actualModule];
                 auto it = mm.find(e->field.lexeme);
                 if (it != mm.end()) {
                     res.origin = NameRes::Imported;
-                    res.moduleName = objName;
+                    res.moduleName = actualModule;
                     res.member = &it->second;
                     res.isMethod = false;
                 }
@@ -316,18 +349,21 @@ namespace lsp {
         res.memberName = e->method.lexeme;
         std::string objName = objectNameOf(e->object.get());
         if (!objName.empty()) {
-            const BuiltinSymbol* member = index.findModuleMember(objName, e->method.lexeme);
+            std::string actualModule = objName;
+            auto aliasIt = moduleAliases.find(objName);
+            if (aliasIt != moduleAliases.end()) actualModule = aliasIt->second;
+            const BuiltinSymbol* member = index.findModuleMember(actualModule, e->method.lexeme);
             if (member) {
                 res.origin = NameRes::Imported;
-                res.moduleName = objName;
+                res.moduleName = actualModule;
                 res.member = member;
                 res.isMethod = false;  // 模块成员，非方法
-            } else if (importedModules.count(objName)) {
-                auto& mm = importedModules[objName];
+            } else if (importedModules.count(actualModule)) {
+                auto& mm = importedModules[actualModule];
                 auto it = mm.find(e->method.lexeme);
                 if (it != mm.end()) {
                     res.origin = NameRes::Imported;
-                    res.moduleName = objName;
+                    res.moduleName = actualModule;
                     res.member = &it->second;
                     res.isMethod = false;
                 }

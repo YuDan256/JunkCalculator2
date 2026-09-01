@@ -23,6 +23,9 @@ namespace lsp {
         // 查询节点推导出的类型
         Type typeOf(Expr* node) const;
 
+        // 类型对象推导（类型上下文，供 TypeChecker 类型检查用）
+        Type inferTypeObject(Expr* e);
+
         // 类型别名表（诊断/补全用）
         const std::unordered_map<std::string, Type>& aliases() const { return typeAliases; }
 
@@ -37,8 +40,6 @@ namespace lsp {
 
         // 值推导
         Type inferExpr(Expr* e);
-        // 类型对象推导（类型上下文：注解/断言/类型定义右边）
-        Type inferTypeObject(Expr* e);
         // 内置函数返回类型（TypeSig → Type，处理 sameAsParam）
         Type returnTypeOf(const BuiltinSymbol& sym, const std::vector<Type>& argTypes);
 

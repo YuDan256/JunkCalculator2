@@ -358,6 +358,7 @@ struct TypeSig {
     static TypeSig bt(BuiltinType t) { TypeSig s; s.types.push_back(t); return s; }
     static TypeSig cls(const std::string& n) { TypeSig s; s.types.push_back(n); return s; }
     static TypeSig sameAs(int n) { TypeSig s; s.sameAsParam = n; return s; }
+    static TypeSig of(std::vector<std::variant<BuiltinType, std::string>> t) { TypeSig s; s.types = std::move(t); return s; }
 };
 
 // ═══════════════════════════════════════════

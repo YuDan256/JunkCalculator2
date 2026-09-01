@@ -5,6 +5,7 @@
 #include <vector>
 #include "NameResolver.h"
 #include "BuiltinIndex.h"
+#include "TypeInferrer.h"
 #include "Workspace.h"
 #include "../../frontend/Expr.h"
 
@@ -20,7 +21,7 @@ namespace lsp {
 
     class TypeChecker : public ExprVisitor {
     public:
-        TypeChecker(Document* doc, NameResolver& resolver, BuiltinIndex& index);
+        TypeChecker(Document* doc, NameResolver& resolver, BuiltinIndex& index, TypeInferrer& inferrer);
         void check(Expr* root);
         std::vector<Diagnostic> diagnostics;
 
@@ -28,6 +29,7 @@ namespace lsp {
         Document* doc;
         NameResolver& resolver;
         BuiltinIndex& index;
+        TypeInferrer& inferrer;
 
         void addDiag(const std::string& msg, int startPos, int endPos, int severity = 2);
         std::string didYouMean(const std::string& name);

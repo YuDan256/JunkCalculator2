@@ -414,7 +414,8 @@ void BuiltinRegistry::registerAll() {
 // =================================================================
 void BuiltinRegistry::registerMath() {
 
-    auto regMath = [&](const std::string& name, std::set<int> arities, std::vector<std::string> paramNames, NativeCallable fn) {
+    auto regMath = [&](const std::string& name, std::set<int> arities, std::vector<std::string> paramNames, NativeCallable fn,
+                       TypeSig returnType = TypeSig::of({ BuiltinType::FLOAT, BuiltinType::COMPLEX })) {
         reg(name, std::move(arities), [name, fn](const std::vector<Value>& args) -> Value {
             // 扫描：是否有任何参数是符号表达式？
             bool hasSymbolic = false;
@@ -451,7 +452,7 @@ void BuiltinRegistry::registerMath() {
             }
             // 否则正常执行数值计算
             return fn(args);
-            }, std::move(paramNames));
+            }, std::move(paramNames), "", {}, "", 0, {}, {}, returnType);
         };
 
     // 我们在此插入您要求的常量工厂和泛类型构造：
@@ -2223,7 +2224,7 @@ void BuiltinRegistry::registerSystemUtils() {
             return v;
         };
         return deepCopyExact(args[0]);
-        }, {"obj", "freeze"});
+        }, {"obj", "freeze"}, "", {}, "", 0, {}, {}, TypeSig::sameAs(0));
 
     regModule(sys_ns, "symconfig", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
@@ -2557,7 +2558,7 @@ void BuiltinRegistry::registerStringFunctions() {
         }
         if (args[0].isString()) return args[0];
         std::ostringstream oss; oss << args[0]; return Value(oss.str());
-        }, {"x"});
+        }, {"x"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::STRING));
     reg("len", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __len__
         if (args[0].isInstance()) {
@@ -3383,7 +3384,7 @@ void BuiltinRegistry::registerListConversion() {
         ObjList* L = GcHeap::get().allocate<ObjList>();
         L->vec.push_back(arg);
         return Value(L);
-        }, {"v"});
+        }, {"v"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::LIST));
 
     reg("toArray", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
@@ -3433,7 +3434,7 @@ void BuiltinRegistry::registerListConversion() {
         if (allNum) { std::vector<Complex> flatComp; for (const auto& row : grid) for (const auto& v : row) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flatComp)); }
         if (allSym) { std::vector<SymExpr> flatSym; for (const auto& row : grid) for (const auto& v : row) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(rows, cols, flatSym)); }
         throw std::runtime_error("Type Error: toMatrix() cannot convert mixed types to a matrix.");
-        }, {"v"});
+        }, {"v"}, "", {}, "", 0, {}, {}, TypeSig::of({ BuiltinType::REALMAT, BuiltinType::COMPLEXMAT, BuiltinType::SYMMAT }));
 
     reg("zip", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST) || args[1].isObjType(ObjType::LIST)) {
@@ -3808,7 +3809,7 @@ void BuiltinRegistry::registerFormatType() {
             newTypes.push_back(bt);
         }
         return Value(internType(std::move(newTypes)));
-        }, {"x"});
+        }, {"x"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::TYPE_DEF));
 }
 
 // =================================================================

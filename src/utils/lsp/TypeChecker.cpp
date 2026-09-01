@@ -14,8 +14,15 @@ namespace lsp {
         return n;
     }
 
-    TypeChecker::TypeChecker(Document* doc, NameResolver& resolver, BuiltinIndex& index)
-        : doc(doc), resolver(resolver), index(index) {}
+    static Type sigToType(const TypeSig& sig) {
+        std::vector<TypeElem> elems;
+        for (const auto& t : sig.types) elems.push_back(t);
+        if (elems.empty()) return Type::any();
+        return Type(std::move(elems));
+    }
+
+    TypeChecker::TypeChecker(Document* doc, NameResolver& resolver, BuiltinIndex& index, TypeInferrer& inferrer)
+        : doc(doc), resolver(resolver), index(index), inferrer(inferrer) {}
 
     void TypeChecker::check(Expr* root) {
         if (root) root->accept(*this);
@@ -85,6 +92,29 @@ namespace lsp {
             addDiag(msg, e->callee.position, e->callee.position + (int)e->callee.lexeme.size());
         } else if (res->origin == NameRes::Builtin && res->builtin && res->builtin->kind == BuiltinKind::Function) {
             checkCallArity(*res, positionalArgCount(e->arguments), e->callee);
+            // 参数类型检查（内置函数）
+            const auto& pt = res->builtin->paramTypes;
+            for (size_t i = 0; i < pt.size() && i < e->arguments.size(); ++i) {
+                if (!e->arguments[i] || dynamic_cast<KeywordArgExpr*>(e->arguments[i].get())) continue;
+                Type expected = sigToType(pt[i]);
+                Type actual = inferrer.typeOf(e->arguments[i].get());
+                if (!expected.isAny() && !actual.isAny() && !actual.isNever() && !Type::compatible(actual, expected)) {
+                    addDiag("Warning: Argument " + std::to_string(i + 1) + " expects '" + expected.toString() + "', got '" + actual.toString() + "'.",
+                            e->arguments[i]->startPos, e->arguments[i]->endPos);
+                }
+            }
+        } else if (res->origin == NameRes::User && res->user && res->user->kind == UserSymbol::Function) {
+            // 参数类型检查（用户函数）
+            const auto& pt = res->user->paramTypes;
+            for (size_t i = 0; i < pt.size() && i < e->arguments.size(); ++i) {
+                if (!e->arguments[i]) continue;
+                Type expected = pt[i];
+                Type actual = inferrer.typeOf(e->arguments[i].get());
+                if (!expected.isAny() && !actual.isAny() && !actual.isNever() && !Type::compatible(actual, expected)) {
+                    addDiag("Warning: Argument " + std::to_string(i + 1) + " expects '" + expected.toString() + "', got '" + actual.toString() + "'.",
+                            e->arguments[i]->startPos, e->arguments[i]->endPos);
+                }
+            }
         }
     }
 
@@ -106,6 +136,22 @@ namespace lsp {
         const NameRes* res = resolver.resolveAt(e);
         if (res && res->origin == NameRes::Imported && res->member) {
             checkMemberArity(*res->member, positionalArgCount(e->arguments), e->method);
+            return;
+        }
+        // UFCS：x.f(y) 等价 f(x, y)，method 是全局函数时检查参数类型（接收者为第 1 参）
+        const BuiltinSymbol* gf = index.findGlobal(e->method.lexeme);
+        if (gf && gf->kind == BuiltinKind::Function) {
+            std::vector<Type> argTypes;
+            if (e->object) argTypes.push_back(inferrer.typeOf(e->object.get()));
+            for (auto& a : e->arguments) if (a) argTypes.push_back(inferrer.typeOf(a.get()));
+            for (size_t i = 0; i < gf->paramTypes.size() && i < argTypes.size(); ++i) {
+                Type expected = sigToType(gf->paramTypes[i]);
+                Type actual = argTypes[i];
+                if (!expected.isAny() && !actual.isAny() && !actual.isNever() && !Type::compatible(actual, expected)) {
+                    addDiag("Warning: UFCS argument " + std::to_string(i + 1) + " expects '" + expected.toString() + "', got '" + actual.toString() + "'.",
+                            e->method.position, e->method.position + (int)e->method.lexeme.size());
+                }
+            }
             return;
         }
         if (!index.isMethodName(e->method.lexeme) && !resolver.isImportedMethod(e->method.lexeme)) {
@@ -147,6 +193,17 @@ namespace lsp {
     }
     void TypeChecker::visitAssign(Assign* e) {
         if (e->value) e->value->accept(*this);
+        // 类型注解检查：x: T = expr，检查 expr 类型 compatible T
+        if (e->typeHint) {
+            Type expected = inferrer.inferTypeObject(e->typeHint.get());
+            Type actual = inferrer.typeOf(e->value.get());
+            if (!expected.isAny() && !actual.isNever() && !actual.isAny()) {
+                if (!Type::compatible(actual, expected)) {
+                    addDiag("Warning: Type mismatch. Expected '" + expected.toString() + "', got '" + actual.toString() + "'.",
+                            e->value->startPos, e->value->endPos);
+                }
+            }
+        }
     }
     void TypeChecker::visitMatrixNode(MatrixNode* e) {
         for (auto& row : e->elements) for (auto& c : row) if (c) c->accept(*this);
@@ -316,6 +373,16 @@ namespace lsp {
     }
     void TypeChecker::visitTypeAssertExpr(TypeAssertExpr* e) {
         if (e->value) e->value->accept(*this);
+        if (e->typeHint) {
+            Type expected = inferrer.inferTypeObject(e->typeHint.get());
+            Type actual = inferrer.typeOf(e->value.get());
+            if (!expected.isAny() && !actual.isNever() && !actual.isAny()) {
+                if (!Type::compatible(actual, expected)) {
+                    addDiag("Warning: Type assertion may fail. Inferred '" + actual.toString() + "' does not match '" + expected.toString() + "'.",
+                            e->value->startPos, e->value->endPos);
+                }
+            }
+        }
     }
 
 } // namespace lsp

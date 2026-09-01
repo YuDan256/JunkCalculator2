@@ -1170,7 +1170,7 @@ namespace lsp {
             resolver.resolve(ast.get());
             TypeInferrer inferrer(doc, resolver, builtinIndex);
             inferrer.infer(ast.get());
-            TypeChecker checker(doc, resolver, builtinIndex);
+            TypeChecker checker(doc, resolver, builtinIndex, inferrer);
             checker.check(ast.get());
 
             // 收集语法错误

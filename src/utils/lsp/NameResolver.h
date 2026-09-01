@@ -22,8 +22,12 @@ namespace lsp {
         Position defPos;
         Position defEndPos;
         std::string typeHint;
-        Type inferredType;   // 类型推导（TypeInferrer 填）
+        Type inferredType;   // 类型推导（TypeInferrer 填）：变量=值类型，函数={FUNC}
         std::string docstring;
+        // 函数签名（Function 时）
+        std::vector<Type> paramTypes;   // 参数类型
+        Type returnType;               // 返回类型
+        bool hasReturnType = false;    // 是否显式声明了返回类型
     };
 
     // 名字解析结果（某个 identifier 节点解析到谁）

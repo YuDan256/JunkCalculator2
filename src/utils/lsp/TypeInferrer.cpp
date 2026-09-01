@@ -84,7 +84,26 @@ namespace lsp {
                 }
             }
         }
-        // 2. 变量类型轮（迭代到不动点）
+        // 2. 函数签名推导（参数类型 + 返回类型）
+        for (const auto& [node, sym] : declTargets) {
+            if (!sym || sym->kind != UserSymbol::Function) continue;
+            if (auto* assign = dynamic_cast<Assign*>(node)) {
+                if (auto* lam = dynamic_cast<LambdaExpr*>(assign->value.get())) {
+                    sym->paramTypes.clear();
+                    for (auto& pt : lam->paramTypes) {
+                        sym->paramTypes.push_back(pt ? inferTypeObject(pt.get()) : Type::any());
+                    }
+                    if (lam->returnType) {
+                        sym->returnType = inferTypeObject(lam->returnType.get());
+                        sym->hasReturnType = true;
+                    } else {
+                        sym->returnType = lam->body ? inferExpr(lam->body.get()) : Type::any();
+                        sym->hasReturnType = false;
+                    }
+                }
+            }
+        }
+        // 3. 变量类型轮（迭代到不动点）
         changed = true;
         guard = 0;
         while (changed && guard++ < 200) {
@@ -192,6 +211,9 @@ namespace lsp {
                 std::vector<Type> argTypes;
                 for (auto& a : c->arguments) argTypes.push_back(inferExpr(a.get()));
                 result = returnTypeOf(*nr->builtin, argTypes);
+            } else if (nr && nr->origin == NameRes::User && nr->user && nr->user->kind == UserSymbol::Function) {
+                for (auto& a : c->arguments) if (a) inferExpr(a.get());  // 推导实参（供参数类型检查）
+                result = nr->user->returnType;  // 用户函数返回类型（含覆盖内置）
             } else {
                 result = Type::any();
             }
@@ -201,6 +223,10 @@ namespace lsp {
             result = Type::unify(inferExpr(ife->thenBranch.get()), inferExpr(ife->elseBranch.get()));
         } else if (auto* seq = dynamic_cast<SequenceExpr*>(e)) {
             result = seq->expressions.empty() ? Type::any() : inferExpr(seq->expressions.back().get());
+        } else if (auto* blk = dynamic_cast<Block*>(e)) {
+            Type r = Type::any();
+            for (auto& s : blk->statements) if (s) r = inferExpr(s.get());
+            result = r;
         } else {
             result = Type::any();
         }

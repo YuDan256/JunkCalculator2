@@ -949,18 +949,20 @@ namespace lsp {
                         bool isModifier = false;
 
                         switch (t.type) {
-                            case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
                             case TokenType::IF: case TokenType::ELSE: case TokenType::WHILE:
                             case TokenType::FOR: case TokenType::IN: case TokenType::IS:
                             case TokenType::AS: case TokenType::BREAK: case TokenType::CONTINUE:
                             case TokenType::RETURN: case TokenType::SWITCH: case TokenType::CASE:
                             case TokenType::DEFAULT: case TokenType::THROW: case TokenType::TRY:
                             case TokenType::CATCH: case TokenType::MATCH: case TokenType::DEFER:
-                            case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
-                            case TokenType::QUOTE: case TokenType::TRUE_KW: case TokenType::FALSE_KW:
+                            case TokenType::TRUE_KW: case TokenType::FALSE_KW:
                             case TokenType::NONE_KW:
                                 isKeyword = true;
                                 break;
+                            // 声明关键字 + 修饰符（与 tmLanguage 的 keyword.declaration 对齐，深蓝）
+                            case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
+                            case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
+                            case TokenType::QUOTE:
                             case TokenType::STATIC: case TokenType::LOCAL: case TokenType::CONST:
                             case TokenType::REF: case TokenType::STATE: case TokenType::DELETE:
                             case TokenType::EXTENDS:

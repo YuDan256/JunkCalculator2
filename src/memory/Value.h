@@ -611,6 +611,7 @@ namespace jc {
                         case BuiltinType::DICT: res += "dict"; break;
                         case BuiltinType::SET: res += "set"; break;
                         case BuiltinType::FRACTION: res += "fraction"; break;
+                        case BuiltinType::COMPLEX: res += "complex"; break;
                         case BuiltinType::SYMBOLIC: res += "symbolic"; break;
                         case BuiltinType::REALMAT: res += "realmatrix"; break;
                         case BuiltinType::COMPLEXMAT: res += "complexmatrix"; break;

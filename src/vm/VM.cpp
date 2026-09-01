@@ -11453,4 +11453,562 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     JIT_CALLOUT_CATCH
 }
 
+// ============================================================================
+// 补全：缺失 opcode 的 callout（复用解释器逻辑）
+// ============================================================================
+
+uint64_t jc2_jit_list_init() {
+    JIT_CALLOUT_TRY
+    Value res = Value(GcHeap::get().allocate<ObjList>());
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_list_append(uint64_t list_bits, uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    Value listVal = Value::fromRawBits(list_bits);
+    Value val = Value::fromRawBits(val_bits);
+    if (listVal.isObjType(ObjType::LIST)) {
+        static_cast<ObjList*>(listVal.asObj())->mut().push_back(val);
+    } else {
+        throw std::runtime_error("VM Error: LIST_APPEND target is not a list.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_set_init() {
+    JIT_CALLOUT_TRY
+    Value res = Value(GcHeap::get().allocate<ObjSet>());
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_append(uint64_t set_bits, uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    Value setVal = Value::fromRawBits(set_bits);
+    Value val = Value::fromRawBits(val_bits);
+    if (setVal.isObjType(ObjType::SET)) {
+        static_cast<ObjSet*>(setVal.asObj())->add(val);
+    } else {
+        throw std::runtime_error("VM Error: SET_APPEND target is not a set.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_matrix_comp_init() {
+    JIT_CALLOUT_TRY
+    ObjList* acc = GcHeap::get().allocate<ObjList>();
+    Value res(acc);
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_make_spread(uint64_t val_bits, uint32_t isKeyword) {
+    JIT_CALLOUT_TRY
+    ObjSpread* sp = GcHeap::get().allocate<ObjSpread>();
+    Value res(sp);
+    GcValueGuard guard(res);
+    sp->value = Value::fromRawBits(val_bits);
+    sp->isKeyword = (isKeyword != 0);
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_stringify(uint64_t val_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value v = Value::fromRawBits(val_bits);
+    Value res;
+    if (v.isString()) {
+        res = v;
+    } else {
+        auto [d, owner] = vm->findDunder(v, DUNDER_STR);
+        if (d) {
+            res = vm->callDunder(v, d, owner, {});
+        } else {
+            std::ostringstream oss;
+            if (v.isUninit()) oss << "Uninitialized";
+            else oss << v;
+            res = Value(oss.str());
+        }
+    }
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_assert_return_type(uint64_t a_bits) {
+    JIT_CALLOUT_TRY
+    VM::activeVM->execAssertReturnType(Value::fromRawBits(a_bits));
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_inherit(uint64_t sub_bits, uint64_t super_bits) {
+    JIT_CALLOUT_TRY
+    Value subClass = Value::fromRawBits(sub_bits);
+    Value superClass = Value::fromRawBits(super_bits);
+    if (!subClass.isClass() || !superClass.isClass()) throw std::runtime_error("VM Error: Inheritance requires two classes.");
+    auto sub = static_cast<ObjClass*>(subClass.asObj());
+    auto sup = static_cast<ObjClass*>(superClass.asObj());
+    if (sub) sub->parent = sup;
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_match_init(uint64_t b_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value val = Value::fromRawBits(b_bits);
+    Value res;
+    if (val.isInstance()) {
+        auto [method, owner] = vm->findDunder(val, "__match__");
+        if (method) {
+            Value view = vm->callDunder(val, method, owner, {});
+            if (view.as_bits != val.as_bits) {
+                res = view;
+            } else {
+                res = val;
+            }
+        } else {
+            res = val;
+        }
+    } else {
+        res = val;
+    }
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_global_ref(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    const std::string& name = chunk->constants[ic.nameIdx].asString();
+    Value val = Value::fromRawBits(val_bits);
+    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
+    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
+    if (!vm->hasGlobal(name) && vm->getNativeBuiltins().find(name) == vm->getNativeBuiltins().end() && vm->getBuiltinValue(name).isNone()) {
+        throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
+    }
+    vm->setGlobal(name, val);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_define_const_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    const std::string& name = chunk->constants[ic.nameIdx].asString();
+    Value val = Value::fromRawBits(val_bits);
+    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
+    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+    vm->setGlobal(name, val);
+    vm->setConstGlobal(name);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_delete_global(uint32_t bx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    const std::string& name = chunk->constants[bx].asString();
+    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'class'.");
+    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
+    if (!vm->hasGlobal(name)) throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+    vm->removeGlobal(name);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    Value obj = Value::fromRawBits(obj_bits);
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value result;
+
+    auto bindPrivate = [&](ObjClosure* rawMethod, ObjClass* owner, Value boundSelf) -> Value {
+        auto bound = GcHeap::get().allocate<ObjClosure>(
+            std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
+        );
+        Value res(bound);
+        GcValueGuard guard(res);
+        bound->paramNames = rawMethod->paramNames;
+        bound->isRef = rawMethod->isRef;
+        bound->defaultValues = rawMethod->defaultValues;
+        bound->restName = rawMethod->restName;
+        bound->compiledFnIndex = rawMethod->compiledFnIndex;
+        if (rawMethod->upvalueCount > 0) {
+            bound->upvalueCount = rawMethod->upvalueCount;
+            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
+            for (int i = 0; i < bound->upvalueCount; ++i) {
+                bound->upvalues[i] = rawMethod->upvalues[i];
+            }
+        }
+        if (rawMethod->paramTypesCount > 0) {
+            bound->paramTypesCount = rawMethod->paramTypesCount;
+            bound->paramTypes = new Value[bound->paramTypesCount];
+            for (int i = 0; i < bound->paramTypesCount; ++i) {
+                bound->paramTypes[i] = rawMethod->paramTypes[i];
+            }
+        }
+        bound->returnType = rawMethod->returnType;
+        bound->nativeFn = rawMethod->nativeFn;
+        bound->boundSelf = boundSelf;
+        bound->boundClass = Value(owner);
+        bound->is_local = true;
+        return res;
+    };
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = inst->properties.find(mangledName);
+        if (it != inst->properties.end()) {
+            result = it->second.val;
+        } else {
+            auto cit = owner->properties.find(mangledName);
+            if (cit != owner->properties.end()) {
+                if (cit->second.val.isFunctionClosure()) {
+                    result = bindPrivate(cit->second.val.asFunction(), owner, Value(inst));
+                } else {
+                    result = cit->second.val;
+                }
+            } else {
+                throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+            }
+        }
+    } else if (obj.isClass()) {
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = owner->properties.find(mangledName);
+        if (it != owner->properties.end()) {
+            if (it->second.val.isFunctionClosure()) {
+                result = bindPrivate(it->second.val.asFunction(), owner, Value::none());
+            } else {
+                result = it->second.val;
+            }
+        } else {
+            throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
+        }
+    } else {
+        throw std::runtime_error("VM Error: Cannot get private property on this type.");
+    }
+
+    frame->jitReturnSlot = result;
+    return result.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = inst->properties.find(mangledName);
+        if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+        it->second.val = val;
+    } else if (obj.isClass()) {
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = owner->properties.find(mangledName);
+        if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
+        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyVal.asString() + "'.");
+        it->second.val = val;
+    } else {
+        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = inst->properties.find(mangledName);
+        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+        inst->properties[mangledName] = {val, false, true};
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
+        auto it = cls->properties.find(mangledName);
+        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' already defined.");
+        cls->properties[mangledName] = {val, false, true};
+    } else {
+        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    CallFrame* frame = vm->getCurrentFrame();
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
+        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+        auto it = inst->properties.find(mangledName);
+        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+        inst->properties[mangledName] = {val, true, true};
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
+        auto it = cls->properties.find(mangledName);
+        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' already defined.");
+        cls->properties[mangledName] = {val, true, true};
+    } else {
+        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        std::string keyStr = keyVal.asString();
+        auto it = inst->properties.find(keyStr);
+        if (it != inst->properties.end()) {
+            if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+            throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
+        }
+        inst->properties[keyStr] = {val, false, false};
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        std::string keyStr = keyVal.asString();
+        auto it = cls->properties.find(keyStr);
+        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+        cls->properties[keyStr] = {val, false, false};
+    } else {
+        throw std::runtime_error("VM Error: Cannot define property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
+    Value keyVal = chunk->constants[ic.nameIdx];
+    Value obj = Value::fromRawBits(obj_bits);
+    Value val = Value::fromRawBits(val_bits);
+
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        inst->checkModify();
+        std::string keyStr = keyVal.asString();
+        auto it = inst->properties.find(keyStr);
+        if (it != inst->properties.end()) {
+            if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
+            throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
+        }
+        inst->properties[keyStr] = {val, true, false};
+    } else if (obj.isClass()) {
+        auto cls = static_cast<ObjClass*>(obj.asObj());
+        std::string keyStr = keyVal.asString();
+        auto it = cls->properties.find(keyStr);
+        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+        cls->properties[keyStr] = {val, true, false};
+    } else {
+        throw std::runtime_error("VM Error: Cannot define property on this type.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx, const Chunk* chunk, int kind) {
+    JIT_CALLOUT_TRY
+    const std::string& methodName = chunk->constants[nameIdx].asString();
+    Value classVal = Value::fromRawBits(class_bits);
+    Value closureVal = Value::fromRawBits(closure_bits);
+    if (!classVal.isClass()) throw std::runtime_error("VM Error: METHOD requires a class.");
+    auto cls = static_cast<ObjClass*>(classVal.asObj());
+    if (closureVal.isFunctionClosure()) {
+        ObjClosure* fn = closureVal.asFunction();
+        bool isPrivate = (kind & 1) != 0;
+        bool isConst = (kind & 2) != 0;
+        if (isPrivate) {
+            fn->is_local = true;
+            fn->owner_class = cls;
+            std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
+            if (cls) cls->properties[mangledName] = {closureVal, isConst, true};
+        } else {
+            if (cls) cls->properties[methodName] = {closureVal, isConst, false};
+        }
+    } else {
+        throw std::runtime_error("VM Error: Invalid closure type for method.");
+    }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_matrix_comp_append(uint64_t acc_bits, uint64_t elem_bits) {
+    JIT_CALLOUT_TRY
+    Value elem = Value::fromRawBits(elem_bits);
+    Value m;
+    if (elem.isObjType(ObjType::REAL_MATRIX) || elem.isObjType(ObjType::COMPLEX_MATRIX) || elem.isObjType(ObjType::SYM_MATRIX)) {
+        m = elem;
+    } else if (elem.isSymbolic()) {
+        m = Value(SymMatrix(1, 1, { elem.asSymbolic() }));
+    } else if (elem.isComplex()) {
+        m = Value(ComplexMatrix(1, 1, { elem.asComplex() }));
+    } else if (elem.isNumber() || elem.isBigInt() || elem.isObjType(ObjType::FRACTION)) {
+        try {
+            m = Value(RealMatrix(1, 1, { elem.asDouble() }));
+        } catch (...) {
+            throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+        }
+    } else {
+        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+    }
+    GcValueGuard mGuard(m);
+    static_cast<ObjList*>(Value::fromRawBits(acc_bits).asObj())->vec.push_back(m);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+uint64_t jc2_jit_matrix_comp_end(uint64_t acc_bits) {
+    JIT_CALLOUT_TRY
+    Value accVal = Value::fromRawBits(acc_bits);
+    auto l = static_cast<ObjList*>(accVal.asObj());
+    auto& vec = l->vec;
+    Value rowResult;
+    if (vec.empty()) {
+        rowResult = Value(RealMatrix(1, 0));
+    } else {
+        bool hasComplex = false, hasSymbolic = false;
+        for (const auto& v : vec) {
+            if (v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
+            if (v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
+        }
+        try {
+            for (int j = 0; j < static_cast<int>(vec.size()); ++j) {
+                Value cell = vec[j];
+                if (hasSymbolic) {
+                    if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
+                        cell = Value(cell.asSymMatrix());
+                    }
+                } else if (hasComplex && cell.isObjType(ObjType::REAL_MATRIX)) {
+                    cell = Value(cell.asComplexMatrix());
+                }
+                if (rowResult.isNone()) {
+                    rowResult = cell;
+                } else {
+                    if (hasSymbolic)
+                        rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
+                    else if (hasComplex)
+                        rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
+                    else
+                        rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
+                }
+            }
+        } catch (...) {
+            throw std::runtime_error("VM Error: Dimension mismatch during matrix comprehension concatenation.");
+        }
+    }
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = rowResult;
+    return rowResult.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
+uint64_t jc2_jit_match_shape(uint64_t b_bits, uint32_t shapeIdx, const Chunk* chunk) {
+    JIT_CALLOUT_TRY
+    const auto& sp = chunk->shapePatterns[shapeIdx];
+    uint32_t minRows = sp.minRows, maxRows = sp.maxRows, minCols = sp.minCols, maxCols = sp.maxCols;
+    uint8_t exactMask = sp.exactMask;
+    Value val = Value::fromRawBits(b_bits);
+    bool matched = false;
+    bool is1DPattern = (exactMask & 2) != 0;
+
+    if (val.isObjType(ObjType::LIST)) {
+        if (is1DPattern) {
+            uint32_t len = static_cast<uint32_t>(static_cast<ObjList*>(val.asObj())->vec.size());
+            matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
+        }
+    } else if (val.isString()) {
+        if (is1DPattern) {
+            uint32_t len = static_cast<uint32_t>(val.asObjString()->charLength);
+            matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
+        }
+    } else if (val.isObjType(ObjType::REAL_MATRIX)) {
+        const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
+        if (is1DPattern) {
+            matched = false;
+        } else {
+            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+            else matched = rMatch && cMatch;
+        }
+    } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
+        const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
+        if (is1DPattern) {
+            matched = false;
+        } else {
+            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+            else matched = rMatch && cMatch;
+        }
+    } else if (val.isObjType(ObjType::SYM_MATRIX)) {
+        const auto& m = static_cast<ObjSymMatrix*>(val.asObj())->mat;
+        if (is1DPattern) {
+            matched = false;
+        } else {
+            bool rMatch = (static_cast<uint32_t>(m.getRows()) >= minRows && (maxRows == 0xFFFFFFFF || static_cast<uint32_t>(m.getRows()) <= maxRows));
+            bool cMatch = (static_cast<uint32_t>(m.getCols()) >= minCols && (maxCols == 0xFFFFFFFF || static_cast<uint32_t>(m.getCols()) <= maxCols));
+            if (minRows == 1 && minCols == 0 && m.getRows() == 0 && m.getCols() == 0) matched = true;
+            else matched = rMatch && cMatch;
+        }
+    }
+
+    Value res = Value(matched);
+    VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
 } // namespace jc

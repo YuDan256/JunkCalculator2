@@ -304,7 +304,7 @@ public:
 
                     case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
                     case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
-                    case OpCode::MATRIX_COMP_APPEND:
+                    case OpCode::MATRIX_COMP_APPEND: case OpCode::MAKE_SPREAD:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
                     case OpCode::IMPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
                     case OpCode::BUILD_SLICE: case OpCode::MATCH_INIT:
@@ -1254,6 +1254,241 @@ public:
                         auto fs = captureFrameState(currentIp);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_is_subset), JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
                         setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::SET_GLOBAL_REF: {
+                        auto fs = captureFrameState(currentIp);
+                        auto icIdxNode = builder_.createInt32Constant(bx);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        if (val->type() != JITType::TaggedValue) {
+                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                        }
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_global_ref), JITType::Effect, 3, {icIdxNode, val, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DEFINE_CONST_GLOBAL: {
+                        auto fs = captureFrameState(currentIp);
+                        auto icIdxNode = builder_.createInt32Constant(bx);
+                        HIRNode* val = builder_.getLocal(registerOffset_ + a);
+                        if (val->type() != JITType::TaggedValue) {
+                            if (val->type() == JITType::Int32) val = builder_.createBoxInt32(val);
+                            else if (val->type() == JITType::Double) val = builder_.createBoxDouble(val);
+                            else if (val->type() == JITType::Bool) val = builder_.createBoxBool(val);
+                        }
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_define_const_global), JITType::Effect, 3, {icIdxNode, val, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DELETE_GLOBAL: {
+                        auto fs = captureFrameState(currentIp);
+                        auto bxNode = builder_.createInt32Constant(bx);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_delete_global), JITType::Effect, 2, {bxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::GET_PRIVATE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(b);
+                        auto icIdxNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_private), JITType::TaggedValue, 3, {objVal, icIdxNode, chunkNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::SET_PRIVATE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(a);
+                        HIRNode* valVal = getBoxedRKNode(c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_private), JITType::Effect, 4, {objVal, valVal, icIdxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DEFINE_PRIVATE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(a);
+                        HIRNode* valVal = getBoxedRKNode(c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_define_private), JITType::Effect, 4, {objVal, valVal, icIdxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DEFINE_PRIVATE_CONST: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(a);
+                        HIRNode* valVal = getBoxedRKNode(c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_define_private_const), JITType::Effect, 4, {objVal, valVal, icIdxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DEFINE_PROP: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(a);
+                        HIRNode* valVal = getBoxedRKNode(c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_define_prop), JITType::Effect, 4, {objVal, valVal, icIdxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::DEFINE_PROP_CONST: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* objVal = getBoxedRKNode(a);
+                        HIRNode* valVal = getBoxedRKNode(c);
+                        auto icIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_define_prop_const), JITType::Effect, 4, {objVal, valVal, icIdxNode, chunkNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::METHOD: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(0);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::METHOD_PRIVATE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(1);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::METHOD_CONST: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(2);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::METHOD_PRIVATE_CONST: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(3);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::INHERIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_inherit), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::LIST_INIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_list_init), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::LIST_APPEND: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_list_append), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::SET_INIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_init), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::SET_APPEND: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_set_append), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::MATRIX_COMP_INIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_matrix_comp_init), JITType::TaggedValue, 0, {}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::MATRIX_COMP_APPEND: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_matrix_comp_append), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::MATRIX_COMP_END: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_matrix_comp_end), JITType::TaggedValue, 1, {getBoxedRKNode(a)}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::MAKE_SPREAD: {
+                        auto fs = captureFrameState(currentIp);
+                        auto cNode = builder_.createInt32Constant(c);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_make_spread), JITType::TaggedValue, 2, {getBoxedRKNode(b), cNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::STRINGIFY: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_stringify), JITType::TaggedValue, 1, {getBoxedRKNode(b)}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::ASSERT_RETURN_TYPE: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_assert_return_type), JITType::Effect, 1, {getBoxedRKNode(a)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::MATCH_SHAPE: {
+                        auto fs = captureFrameState(currentIp);
+                        auto cNode = builder_.createInt32Constant(c);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_match_shape), JITType::TaggedValue, 3, {getBoxedRKNode(b), cNode, chunkNode}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::MATCH_INIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_match_init), JITType::TaggedValue, 1, {getBoxedRKNode(b)}, fs);
+                        setLocalSync(a, callout);
+                        break;
+                    }
+                    case OpCode::THROW: {
+                        auto fs = captureFrameState(currentIp);
+                        builder_.createDeoptimize(fs);
+                        break;
+                    }
+                    case OpCode::DEFER: {
+                        auto fs = captureFrameState(currentIp);
+                        builder_.createDeoptimize(fs);
+                        break;
+                    }
+                    case OpCode::RUN_DEFERS: {
+                        auto fs = captureFrameState(currentIp);
+                        builder_.createDeoptimize(fs);
                         break;
                     }
                     default:

@@ -254,6 +254,16 @@ public:
         return Value::none();
     }
 
+    // ★ JIT callout 用：精确判断全局名是否存在（含值为 none 的已定义全局）
+    bool hasGlobal(const std::string& name) const {
+        return globalNames.find(name) != globalNames.end();
+    }
+
+    // ★ JIT callout 用：DEFINE_CONST_GLOBAL 标记 const 全局
+    void setConstGlobal(const std::string& name) {
+        constGlobals.insert(name);
+    }
+
     // 读全局变量，含 builtin 回退；不存在则抛 undefined（state standalone 定义时捕获用）
     Value getGlobalChecked(const std::string& name);
 
@@ -443,6 +453,34 @@ uint64_t jc2_jit_cmp_lt(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_le(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_gt(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_ge(uint64_t lhs_bits, uint64_t rhs_bits);
+
+// 全局变量（ref/const/delete）
+void jc2_jit_set_global_ref(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk);
+void jc2_jit_define_const_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk);
+void jc2_jit_delete_global(uint32_t bx, const Chunk* chunk);
+// 私有属性访问
+uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
+void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx, const Chunk* chunk, int kind);
+void jc2_jit_inherit(uint64_t sub_bits, uint64_t super_bits);
+// 容器构建与操作
+uint64_t jc2_jit_list_init();
+void jc2_jit_list_append(uint64_t list_bits, uint64_t val_bits);
+uint64_t jc2_jit_set_init();
+void jc2_jit_set_append(uint64_t set_bits, uint64_t val_bits);
+uint64_t jc2_jit_matrix_comp_init();
+void jc2_jit_matrix_comp_append(uint64_t acc_bits, uint64_t elem_bits);
+uint64_t jc2_jit_matrix_comp_end(uint64_t acc_bits);
+uint64_t jc2_jit_make_spread(uint64_t val_bits, uint32_t isKeyword);
+uint64_t jc2_jit_stringify(uint64_t val_bits);
+// 断言与匹配
+void jc2_jit_assert_return_type(uint64_t a_bits);
+uint64_t jc2_jit_match_shape(uint64_t b_bits, uint32_t shapeIdx, const Chunk* chunk);
+uint64_t jc2_jit_match_init(uint64_t b_bits);
 
 } // namespace jc
 

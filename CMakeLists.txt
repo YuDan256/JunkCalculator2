@@ -36,7 +36,7 @@ set(JC2_HEADERS
     "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h" "src/lib/decimal/Decimal.h"
-    "src/vm/HelpRouter.h" "src/vm/GeneratedHelpText.h" "src/vm/Bytecode.h" "src/vm/BytecodeSerializer.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
+    "src/vm/HelpRouter.h" "src/vm/Bytecode.h" "src/vm/BytecodeSerializer.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"
     "src/cas/Symbolic.h" "src/cas/Integration.h" "src/cas/Factorization.h" "src/cas/Groebner.h" "src/cas/SymMatrix.h"
     "src/compiler/Resolver.h" "src/compiler/IR.h" "src/compiler/IRBuilder.h" "src/compiler/IROptimizer.h" "src/compiler/RegisterAllocator.h" "src/compiler/Emitter.h"
     "src/lib/ExtensionBridge.h"
@@ -171,6 +171,12 @@ function(add_symbol_collector mod)
     if(WIN32)
         target_link_libraries(collect_${mod} PRIVATE ws2_32 User32 Gdi32 imm32)
     endif()
+    # 收集器是构建时工具，产物放到 collector/ 子目录，不污染主输出目录
+    set_target_properties(collect_${mod} PROPERTIES
+        EXCLUDE_FROM_ALL TRUE
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/collector"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/collector"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/collector")
     add_custom_command(TARGET ${mod} POST_BUILD
         COMMAND $<TARGET_FILE:collect_${mod}> "${mod}" "$<TARGET_FILE_DIR:${mod}>/${mod}.json"
         DEPENDS collect_${mod}

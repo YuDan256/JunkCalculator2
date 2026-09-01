@@ -173,16 +173,14 @@ class Relation {
     init(S: set, pairs: any = none) = {
         self.S = S
         self.R = set()
-        self._pt = "List"
 
         if (pairs != none) {
             src = isinstance(pairs, Set) ? pairs.toList() : pairs
-            if (src.len() > 0) self._pt = (src[0] in list) ? "List" : "Matrix"
             for (p in src) self.addPair(p[0], p[1])
         }
     }
 
-    _mp(a: any, b: any) -> any = return self._pt == "List" ? @[a, b] : [a, b]
+    _mp(a: any, b: any) -> any = return copy(@[a, b], true)
 
     // ── Public Facing API (Safe CRUD) ──
 
@@ -217,17 +215,17 @@ class Relation {
         return true
     }
     isSymmetric() -> bool = {
-        for (p in self.R) { [a, b] = p; if (!self.hasPair(b, a)) return false }
+        for (p in self.R) { @[a, b] = p; if (!self.hasPair(b, a)) return false }
         return true
     }
     isAntiSymmetric() -> bool = {
-        for (p in self.R) { [a, b] = p; if (a != b && self.hasPair(b, a)) return false }
+        for (p in self.R) { @[a, b] = p; if (a != b && self.hasPair(b, a)) return false }
         return true
     }
     isTransitive() -> bool = {
         for (p1 in self.R) {
             for (p2 in self.R) {
-                [a, b] = p1; [c, d] = p2
+                @[a, b] = p1; @[c, d] = p2
                 if (b == c && !self.hasPair(a, d)) return false
             }
         }
@@ -250,16 +248,16 @@ class Relation {
 
     // ── Algebraic Operations ──
     inverse() -> Relation = {
-        r = Relation(self.S); r._pt = self._pt
-        for (p in self.R) { [a, b] = p; r.R.add(r._mp(b, a)) }
+        r = Relation(self.S)
+        for (p in self.R) { @[a, b] = p; r.R.add(r._mp(b, a)) }
         return r
     }
 
     compose(other: Relation) -> Relation = {
-        r = Relation(self.S); r._pt = self._pt
+        r = Relation(self.S)
         for (p1 in self.R) {
             for (p2 in other.R) {
-                [a, b] = p1; [c, d] = p2
+                @[a, b] = p1; @[c, d] = p2
                 if (b == c) r.R.add(r._mp(a, d))
             }
         }
@@ -268,15 +266,15 @@ class Relation {
 
     // ── Closure Operations ──
     reflexiveClosure() -> Relation = {
-        r = Relation(self.S); r._pt = self._pt
+        r = Relation(self.S)
         for (p in self.R) r.R.add(p)
         for (x in self.S) r.R.add(r._mp(x, x))
         return r
     }
 
     symmetricClosure() -> Relation = {
-        r = Relation(self.S); r._pt = self._pt
-        for (p in self.R) { [a, b] = p; r.R.add(p); r.R.add(r._mp(b, a)) }
+        r = Relation(self.S)
+        for (p in self.R) { @[a, b] = p; r.R.add(p); r.R.add(r._mp(b, a)) }
         return r
     }
 
@@ -290,7 +288,7 @@ class Relation {
             toAdd = set()
             for (p1 in current) {
                 for (p2 in current) {
-                    [a, b] = p1; [c, d] = p2
+                    @[a, b] = p1; @[c, d] = p2
                     if (b == c) {
                         np = self._mp(a, d)
                         if (!(np in current) && !(np in toAdd)) toAdd.add(np)
@@ -302,7 +300,7 @@ class Relation {
                 changed = true
             }
         }
-        r = Relation(self.S); r._pt = self._pt; r.R = current
+        r = Relation(self.S); r.R = current
         return r
     }
 

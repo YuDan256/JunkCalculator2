@@ -132,7 +132,7 @@ class Counter {
     mostCommon(n: int | double = 1) -> list = {
         n = round(n)
         L = @[]
-        for ([k, v] in self.data) L.push([k, v])
+        for (@[k, v] in self.data) L.push(@[k, v])
         sorted = L.sort((a, b) => a[1] > b[1])
         return sorted.slice(0, n)
     }

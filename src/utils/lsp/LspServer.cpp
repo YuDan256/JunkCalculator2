@@ -285,11 +285,11 @@ namespace lsp {
                             md += "\n```";
                         } else if (nr->origin == NameRes::Builtin && nr->builtin) {
                             const BuiltinSymbol& b = *nr->builtin;
-                            std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : "built-in function";
+                            std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : "builtin_function";
                             md = "```jc2\n(" + kindStr + ") " + (b.signatureText.empty() ? b.name : b.signatureText) + "\n```";
                             if (!b.desc.empty()) md += "\n---\n" + b.desc;
                         } else if (nr->origin == NameRes::Imported && nr->member) {
-                            md = "```jc2\n(module member) " + nr->moduleName + "." + nr->member->name + "\n```";
+                            md = "```jc2\n(module_member) " + nr->moduleName + "." + nr->member->name + "\n```";
                             if (!nr->member->desc.empty()) md += "\n---\n" + nr->member->desc;
                         }
                         if (!md.empty()) {
@@ -327,7 +327,7 @@ namespace lsp {
                                 for (const auto& cat : categories) {
                                     if (helpAst.has(cat) && helpAst[cat].has(word)) {
                                         targetData = helpAst[cat][word];
-                                        kindStr = (cat == "global_functions") ? "built-in function" : "built-in method";
+                                        kindStr = (cat == "global_functions") ? "builtin_function" : "builtin_method";
                                         break;
                                     }
                                 }

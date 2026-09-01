@@ -3,6 +3,7 @@
 #include "../../frontend/Parser.h"
 #include "NameResolver.h"
 #include "TypeChecker.h"
+#include "TypeInferrer.h"
 #include "../../utils/fmt/Formatter.h"
 #include "../../vm/HelpRouter.h"
 #include "../../frontend/Utf8.h"
@@ -257,6 +258,8 @@ namespace lsp {
                     
                     NameResolver resolver(doc, builtinIndex);
                     resolver.resolve(ast.get());
+                    TypeInferrer inferrer(doc, resolver, builtinIndex);
+                    inferrer.infer(ast.get());
                     
                     const NameRes* nr = resolver.resolveAtPos(pos);
                     if (nr) {
@@ -276,6 +279,9 @@ namespace lsp {
                             else if (nr->user->kind == UserSymbol::Namespace) kindStr = "namespace";
                             md = "```jc2\n(" + kindStr + ") " + nr->user->name;
                             if (!nr->user->typeHint.empty()) md += ": " + nr->user->typeHint;
+                            else if (!nr->user->inferredType.isNever() && !nr->user->inferredType.isAny()) {
+                                md += ": " + nr->user->inferredType.toString();
+                            }
                             md += "\n```";
                         } else if (nr->origin == NameRes::Builtin && nr->builtin) {
                             const BuiltinSymbol& b = *nr->builtin;
@@ -441,6 +447,8 @@ namespace lsp {
                     
                     NameResolver resolver(doc, builtinIndex);
                     resolver.resolve(ast.get());
+                    TypeInferrer inferrer(doc, resolver, builtinIndex);
+                    inferrer.infer(ast.get());
                     
                     std::vector<Json> items;
                     
@@ -494,7 +502,7 @@ namespace lsp {
                         if (!objectName.empty()) {
                             for (auto* s : resolver.visibleSymbolsAt(pos)) {
                                 if (s->name == objectName) {
-                                    targetType = s->inferredType;
+                                    targetType = s->inferredType.toString();
                                     if (targetType.empty() && !s->typeHint.empty()) targetType = s->typeHint;
                                     break;
                                 }
@@ -584,8 +592,8 @@ namespace lsp {
                             
                             if (!sym->typeHint.empty()) {
                                 item["detail"] = Json(sym->typeHint);
-                            } else if (!sym->inferredType.empty()) {
-                                item["detail"] = Json(sym->inferredType);
+                            } else if (!sym->inferredType.isNever()) {
+                                item["detail"] = Json(sym->inferredType.toString());
                             }
                             
                             if (!sym->docstring.empty()) {
@@ -1157,9 +1165,11 @@ namespace lsp {
             parser.isLspMode = true;
             auto ast = parser.parse();
 
-            // 3. 语义分析（NameResolver + TypeChecker：未定义函数/方法、参数数量、shadowing）
+            // 3. 语义分析（NameResolver + TypeInferrer + TypeChecker）
             NameResolver resolver(doc, builtinIndex);
             resolver.resolve(ast.get());
+            TypeInferrer inferrer(doc, resolver, builtinIndex);
+            inferrer.infer(ast.get());
             TypeChecker checker(doc, resolver, builtinIndex);
             checker.check(ast.get());
 

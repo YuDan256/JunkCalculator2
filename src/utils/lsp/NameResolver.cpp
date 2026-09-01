@@ -35,11 +35,11 @@ namespace lsp {
         globalScope.name = "<global>";
         current = &globalScope;
         // 可覆盖的预置全局变量（当普通变量，不报 shadowing）
-        declare("PI", UserSymbol::Variable, 0, 0, "", "double");
-        declare("E", UserSymbol::Variable, 0, 0, "", "double");
-        declare("i", UserSymbol::Variable, 0, 0, "", "complex");
-        declare("I", UserSymbol::Variable, 0, 0, "", "complex");
-        declare("ANS", UserSymbol::Variable, 0, 0, "", "any");
+        declare("PI", UserSymbol::Variable, 0, 0, "double");
+        declare("E", UserSymbol::Variable, 0, 0, "double");
+        declare("i", UserSymbol::Variable, 0, 0, "complex");
+        declare("I", UserSymbol::Variable, 0, 0, "complex");
+        declare("ANS", UserSymbol::Variable, 0, 0, "any");
     }
 
     void NameResolver::resolve(Expr* root) {
@@ -85,7 +85,7 @@ namespace lsp {
     }
 
     UserSymbol* NameResolver::declare(const std::string& name, UserSymbol::Kind kind, int startPos, int endPos,
-                                      const std::string& typeHint, const std::string& inferredType) {
+                                      const std::string& typeHint) {
         if (!current) return nullptr;
         // shadowing 检查（排除可覆盖的预置变量 PI/E/I/ANS，排除内部名 <...>）
         static const std::unordered_set<std::string> overridable = {"PI", "E", "i", "I", "ANS"};
@@ -100,7 +100,6 @@ namespace lsp {
         sym.defPos = doc->offsetToPosition(startPos);
         sym.defEndPos = doc->offsetToPosition(endPos);
         sym.typeHint = typeHint;
-        sym.inferredType = inferredType;
         auto [it, inserted] = current->symbols.emplace(name, std::move(sym));
         UserSymbol* ptr = &it->second;
         // 记录声明位置（函数名/变量名等非 Expr 节点），供 hover / semanticTokens 查询

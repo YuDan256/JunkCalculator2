@@ -7,6 +7,7 @@
 #include <map>
 #include <unordered_map>
 #include "BuiltinIndex.h"
+#include "Type.h"
 #include "Workspace.h"
 #include "../../frontend/Expr.h"
 #include "../../frontend/Token.h"
@@ -21,7 +22,7 @@ namespace lsp {
         Position defPos;
         Position defEndPos;
         std::string typeHint;
-        std::string inferredType;   // 类型推导（TypeChecker 填）
+        Type inferredType;   // 类型推导（TypeInferrer 填）
         std::string docstring;
     };
 
@@ -101,7 +102,7 @@ namespace lsp {
         void enterScope(Scope* parent, Range range, bool isFunction = false, bool isNamespace = false, bool isClass = false);
         void leaveScope();
         UserSymbol* declare(const std::string& name, UserSymbol::Kind kind, int startPos, int endPos,
-                            const std::string& typeHint = "", const std::string& inferredType = "");
+                            const std::string& typeHint = "");
         UserSymbol* findUser(const std::string& name) const;   // 沿作用域链找用户符号
 
         // 名字解析

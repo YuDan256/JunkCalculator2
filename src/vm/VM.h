@@ -90,6 +90,8 @@ private:
     std::unordered_map<std::string, std::string> builtinKwargsName;
     std::unordered_map<std::string, int> builtinKwargDefaultCount;
     std::unordered_map<std::string, std::vector<std::string>> builtinKwargDefaultValueTexts;
+    std::unordered_map<std::string, std::vector<TypeSig>> builtinParamTypes;
+    std::unordered_map<std::string, TypeSig> builtinReturnType;
     std::unordered_map<std::string, Value> builtinClosures;
     std::unordered_map<std::string, Value> builtinValues;
 
@@ -273,7 +275,7 @@ public:
         }
     }
 
-    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {});
+    void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
     void injectModule(const std::string& name, const Value& moduleVal) { 
@@ -293,6 +295,8 @@ public:
     const std::unordered_map<std::string, std::string>& getBuiltinKwargsName() const { return builtinKwargsName; }
     const std::unordered_map<std::string, int>& getBuiltinKwargDefaultCount() const { return builtinKwargDefaultCount; }
     const std::unordered_map<std::string, Value>& getBuiltinModules() const { return builtinModules; }
+    const std::unordered_map<std::string, std::vector<TypeSig>>& getBuiltinParamTypes() const { return builtinParamTypes; }
+    const std::unordered_map<std::string, TypeSig>& getBuiltinReturnType() const { return builtinReturnType; }
 
     void* getJitEntryPoint(int fnIdx) const {
         auto it = jitEntryPoints.find(fnIdx);

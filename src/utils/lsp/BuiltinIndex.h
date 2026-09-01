@@ -6,6 +6,7 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include "../../vm/BuiltinRegistry.h"  // TypeSig
 
 namespace jc {
 namespace lsp {
@@ -33,6 +34,8 @@ namespace lsp {
         std::string signatureText;        // 文档签名文本（hover 用）
         std::string desc;
         std::string owner;                // 所属模块名 / 类型名，空 = 全局
+        std::vector<TypeSig> paramTypes;  // 参数类型签名
+        TypeSig returnType;               // 返回类型签名
     };
 
     // 内置符号库：单一权威索引，从 BuiltinRegistry(VM) + documentation.json 合成

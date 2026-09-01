@@ -305,7 +305,7 @@ Value VM::makeTokenInstance(const Token& t) {
     return Value(inst);
 }
 
-void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
+void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts, std::vector<TypeSig> paramTypes, TypeSig returnType) {
     nativeBuiltins[name] = fn;
     builtinArity[name] = arity;
     builtinParamNames[name] = paramNames;
@@ -314,6 +314,8 @@ void VM::registerBuiltin(const std::string& name, NativeCallable fn, std::set<in
     builtinKwargsName[name] = std::move(kwargsName);
     builtinKwargDefaultCount[name] = kwargDefaultCount;
     builtinKwargDefaultValueTexts[name] = std::move(kwargDefaultValueTexts);
+    builtinParamTypes[name] = std::move(paramTypes);
+    builtinReturnType[name] = std::move(returnType);
 }
 
 Value VM::getBuiltinClosure(const std::string& name) {

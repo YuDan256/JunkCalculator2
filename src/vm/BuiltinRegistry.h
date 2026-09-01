@@ -349,6 +349,18 @@ namespace helpers {
 } // namespace helpers
 
 // ═══════════════════════════════════════════
+// TypeSig — 函数类型签名（参数/返回类型，「或」集合）
+// ═══════════════════════════════════════════
+struct TypeSig {
+    std::vector<std::variant<BuiltinType, std::string>> types;  // 空 = 无约束(any)
+    int sameAsParam = -1;  // >=0: 返回类型 = 第 N 个参数的类型
+    TypeSig() = default;
+    static TypeSig bt(BuiltinType t) { TypeSig s; s.types.push_back(t); return s; }
+    static TypeSig cls(const std::string& n) { TypeSig s; s.types.push_back(n); return s; }
+    static TypeSig sameAs(int n) { TypeSig s; s.sameAsParam = n; return s; }
+};
+
+// ═══════════════════════════════════════════
 // BuiltinRegistry — 纯无状态函数注册表
 // ═══════════════════════════════════════════
 class BuiltinRegistry {
@@ -371,6 +383,10 @@ public:
     const std::map<std::string, std::string>& getKwargsName() const { return builtinKwargsName; }
     const std::map<std::string, int>& getKwargDefaultCount() const { return builtinKwargDefaultCount; }
     const std::map<std::string, std::vector<std::string>>& getKwargDefaultValueTexts() const { return builtinKwargDefaultValueTexts; }
+    std::map<std::string, std::vector<TypeSig>>& getParamTypes() { return builtinParamTypes; }
+    std::map<std::string, TypeSig>& getReturnType() { return builtinReturnType; }
+    const std::map<std::string, std::vector<TypeSig>>& getParamTypes() const { return builtinParamTypes; }
+    const std::map<std::string, TypeSig>& getReturnType() const { return builtinReturnType; }
 
 private:
     std::map<std::string, NativeCallable> builtins;
@@ -381,11 +397,14 @@ private:
     std::map<std::string, std::string> builtinKwargsName;
     std::map<std::string, int> builtinKwargDefaultCount;
     std::map<std::string, std::vector<std::string>> builtinKwargDefaultValueTexts;
+    std::map<std::string, std::vector<TypeSig>> builtinParamTypes;
+    std::map<std::string, TypeSig> builtinReturnType;
 
     void reg(const std::string& name, std::set<int> arity, NativeCallable fn,
         std::vector<std::string> paramNames = {}, std::string restName = "",
         std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0,
-        std::vector<std::string> kwargDefaultValueTexts = {}) {
+        std::vector<std::string> kwargDefaultValueTexts = {},
+        std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig()) {
         builtins[name] = std::move(fn);
         builtinArity[name] = std::move(arity);
         builtinParamNames[name] = std::move(paramNames);
@@ -394,6 +413,8 @@ private:
         builtinKwargsName[name] = std::move(kwargsName);
         builtinKwargDefaultCount[name] = kwargDefaultCount;
         builtinKwargDefaultValueTexts[name] = std::move(kwargDefaultValueTexts);
+        builtinParamTypes[name] = std::move(paramTypes);
+        builtinReturnType[name] = std::move(returnType);
     }
 
     void registerMath();
@@ -428,8 +449,8 @@ private:
     ObjNamespace* math_ns = nullptr;
     ObjNamespace* random_ns = nullptr;
 
-    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {});
-    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {});
+    void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());
+    void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());
 };
 
 void registerPredefinedClasses();

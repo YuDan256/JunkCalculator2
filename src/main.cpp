@@ -520,7 +520,9 @@ int main(int argc, char* argv[]) {
         const auto& kwargsName = registry.getKwargsName().find(name)->second;
         int kwargDefaultCount = registry.getKwargDefaultCount().find(name)->second;
         const auto& kwargDefaultValueTexts = registry.getKwargDefaultValueTexts().find(name)->second;
-        vm.registerBuiltin(name, fn, arities, paramNames, restName, kwargNames, kwargsName, kwargDefaultCount, kwargDefaultValueTexts);
+        const auto& paramTypes = registry.getParamTypes().find(name)->second;
+        const auto& returnType = registry.getReturnType().find(name)->second;
+        vm.registerBuiltin(name, fn, arities, paramNames, restName, kwargNames, kwargsName, kwargDefaultCount, kwargDefaultValueTexts, paramTypes, returnType);
         // ★ 我们把内置方法只留给原生表处理！彻底释放 Globals 字典空间供用户自由重载调用！
     }
 

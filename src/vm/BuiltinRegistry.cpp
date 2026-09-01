@@ -316,7 +316,7 @@ namespace jc {
 
 using namespace helpers;
 
-void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
+void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts, std::vector<TypeSig> paramTypes, TypeSig returnType) {
     if (!proto) return;
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
@@ -328,9 +328,12 @@ void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::v
         closure->defaultValues.push_back(Value::uninit());
     }
     proto->properties[name] = {Value(closure), false, false};
+    std::string key = (proto->name.empty() ? "" : proto->name + ".") + name;
+    builtinParamTypes[key] = std::move(paramTypes);
+    builtinReturnType[key] = std::move(returnType);
 }
 
-void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts) {
+void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames, std::string restName, std::vector<std::string> kwargNames, std::string kwargsName, int kwargDefaultCount, std::vector<std::string> kwargDefaultValueTexts, std::vector<TypeSig> paramTypes, TypeSig returnType) {
     if (!ns) return;
     auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr, restName);
     closure->nativeFn = std::make_any<NativeCallable>(fn);
@@ -352,6 +355,9 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
         }
     }
     ns->setField(name, Value(closure));
+    std::string key = (ns->name.empty() ? "" : ns->name + ".") + name;
+    builtinParamTypes[key] = std::move(paramTypes);
+    builtinReturnType[key] = std::move(returnType);
 }
 
 void BuiltinRegistry::registerAll() {

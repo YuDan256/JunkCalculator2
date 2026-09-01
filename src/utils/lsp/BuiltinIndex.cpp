@@ -25,6 +25,33 @@ namespace lsp {
         return aliases;
     }
 
+    // 类型名 → 返回类型签名（类型构造函数的返回类型）
+    static TypeSig typeSigFromName(const std::string& name) {
+        if (name == "int") return TypeSig::bt(BuiltinType::INT);
+        if (name == "double") return TypeSig::bt(BuiltinType::FLOAT);
+        if (name == "string") return TypeSig::bt(BuiltinType::STRING);
+        if (name == "bool") return TypeSig::bt(BuiltinType::BOOL);
+        if (name == "none_type") return TypeSig::bt(BuiltinType::NONE_TYPE);
+        if (name == "list") return TypeSig::bt(BuiltinType::LIST);
+        if (name == "dict") return TypeSig::bt(BuiltinType::DICT);
+        if (name == "set") return TypeSig::bt(BuiltinType::SET);
+        if (name == "fraction") return TypeSig::bt(BuiltinType::FRACTION);
+        if (name == "complex") return TypeSig::bt(BuiltinType::COMPLEX);
+        if (name == "symbolic") return TypeSig::bt(BuiltinType::SYMBOLIC);
+        if (name == "matrix") { TypeSig s; s.types = { BuiltinType::REALMAT, BuiltinType::COMPLEXMAT, BuiltinType::SYMMAT }; return s; }
+        if (name == "realmatrix") return TypeSig::bt(BuiltinType::REALMAT);
+        if (name == "complexmatrix") return TypeSig::bt(BuiltinType::COMPLEXMAT);
+        if (name == "symmatrix") return TypeSig::bt(BuiltinType::SYMMAT);
+        if (name == "function") return TypeSig::bt(BuiltinType::FUNC);
+        if (name == "class_type") return TypeSig::bt(BuiltinType::CLASS);
+        if (name == "instance") return TypeSig::bt(BuiltinType::INSTANCE);
+        if (name == "namespace_type") return TypeSig::bt(BuiltinType::NAMESPACE);
+        if (name == "type") return TypeSig::bt(BuiltinType::TYPE_DEF);
+        if (name == "slice") return TypeSig::bt(BuiltinType::SLICE);
+        if (name == "any") return TypeSig::bt(BuiltinType::ANY);
+        return TypeSig();
+    }
+
     BuiltinIndex::BuiltinIndex() {
         buildGlobals();
         buildModules();
@@ -46,6 +73,8 @@ namespace lsp {
         const auto& kwargNames = VM::activeVM->getBuiltinKwargNames();
         const auto& kwargsNames = VM::activeVM->getBuiltinKwargsName();
         const auto& kwargDefaults = VM::activeVM->getBuiltinKwargDefaultCount();
+        const auto& paramTypesMap = VM::activeVM->getBuiltinParamTypes();
+        const auto& returnTypeMap = VM::activeVM->getBuiltinReturnType();
 
         for (const auto& [name, arity] : arities) {
             BuiltinSymbol sym;
@@ -62,6 +91,10 @@ namespace lsp {
             if (itKs != kwargsNames.end()) sym.kwargsName = itKs->second;
             auto itD = kwargDefaults.find(name);
             if (itD != kwargDefaults.end()) sym.kwargDefaultCount = itD->second;
+            auto itPT = paramTypesMap.find(name);
+            if (itPT != paramTypesMap.end()) sym.paramTypes = itPT->second;
+            auto itRT = returnTypeMap.find(name);
+            if (itRT != returnTypeMap.end()) sym.returnType = itRT->second;
 
             if (funcsNode && funcsNode->isObject() && funcsNode->has(name)) {
                 const Json& e = (*funcsNode)[name];
@@ -176,6 +209,7 @@ namespace lsp {
             BuiltinSymbol sym;
             sym.name = n;
             sym.kind = BuiltinKind::Type;
+            sym.returnType = typeSigFromName(n);  // 类型构造函数的返回类型
             globals[n] = std::move(sym);
         }
     }

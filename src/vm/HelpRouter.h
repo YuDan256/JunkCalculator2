@@ -8,7 +8,9 @@
 #include <map>
 #include <any>
 #include <vector>
-#include "GeneratedHelpText.h"
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 #include "../frontend/Highlight.h"
 #include "../utils/json/Json.h"
 
@@ -20,20 +22,41 @@ namespace jc {
         static inline Json helpAst;
         static inline bool initialized = false;
 
+        static std::filesystem::path exeDirPath() {
+#ifdef _WIN32
+            wchar_t buf[MAX_PATH];
+            DWORD n = GetModuleFileNameW(NULL, buf, MAX_PATH);
+            if (n > 0 && n < MAX_PATH) {
+                return std::filesystem::path(std::wstring(buf, n)).parent_path();
+            }
+#endif
+            return std::filesystem::current_path();
+        }
+
         static void init() {
             if (initialized) return;
-            // 1. 将 CMake 生成的字节数组转为标准 C++ 字符串
-            // 使用 sizeof 确保即使中间有 \0 也不会被截断
-            std::string jsonStr(reinterpret_cast<const char*>(RAW_HELP_JSON), sizeof(RAW_HELP_JSON) - 1);
+            // 读 exe 旁 data/documentation.json（外部数据文件，不嵌入 exe）
+            std::string jsonStr;
+            std::filesystem::path docPath = exeDirPath() / "data" / "documentation.json";
+            std::ifstream f(docPath);
+            if (f.is_open()) {
+                std::stringstream ss;
+                ss << f.rdbuf();
+                jsonStr = ss.str();
+                f.close();
+            }
+            if (jsonStr.empty()) {
+                initialized = true;
+                return;
+            }
             
-            // 2. 擦除所有的 UTF-8 BOM 头（如果存在）
+            // 擦除所有的 UTF-8 BOM 头（如果存在）
             size_t pos = 0;
             while ((pos = jsonStr.find("\xEF\xBB\xBF", pos)) != std::string::npos) {
                 jsonStr.erase(pos, 3);
             }
             
-            // 3. 净化所有的控制字符 (解决纯手写 JSON 解析器对不可见字符处理不严格的 Bug)
-            // JSON 规范允许在内部任意添加空白，将 \r, \t, \0 等替换为空格绝对安全
+            // 净化所有的控制字符 (解决纯手写 JSON 解析器对不可见字符处理不严格的 Bug)
             for (char& c : jsonStr) {
                 unsigned char uc = static_cast<unsigned char>(c);
                 if (uc < 32 && uc != '\n') {

@@ -54,6 +54,9 @@ namespace lsp {
         // 按位置查询解析结果（hover/definition 用）
         const NameRes* resolveAtPos(const Position& pos) const;
 
+        // sidecar 里的类方法名（TypeChecker 用，不报未知方法）
+        bool isImportedMethod(const std::string& name) const { return importedMethods.count(name) > 0; }
+
         // 作用域符号查询（completion 用）：位置处可见的用户符号
         std::vector<UserSymbol*> visibleSymbolsAt(const Position& pos) const;
 
@@ -84,8 +87,9 @@ namespace lsp {
         Scope globalScope;
         Scope* current = nullptr;
 
-        // 已 import 的模块名 → 命名空间符号（从 VM execImport 收集）
+        // 已 import 的模块名 → 命名空间符号（从 sidecar json 读取）
         std::unordered_map<std::string, std::unordered_map<std::string, BuiltinSymbol>> importedModules;
+        std::unordered_set<std::string> importedMethods;  // sidecar 里的类方法名（不报未知方法）
 
         std::unordered_map<Expr*, NameRes> nameRes;
         std::vector<ShadowWarning> shadowWarn;

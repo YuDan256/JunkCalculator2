@@ -108,7 +108,7 @@ namespace lsp {
             checkMemberArity(*res->member, positionalArgCount(e->arguments), e->method);
             return;
         }
-        if (!index.isMethodName(e->method.lexeme)) {
+        if (!index.isMethodName(e->method.lexeme) && !resolver.isImportedMethod(e->method.lexeme)) {
             std::string msg = "Warning: Unknown method '" + e->method.lexeme + "'.";
             std::string dym = didYouMean(e->method.lexeme);
             if (!dym.empty()) msg += " Did you mean '" + dym + "'?";

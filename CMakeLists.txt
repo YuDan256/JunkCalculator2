@@ -19,24 +19,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 # ==============================================================================
-# Generate HelpText header from JSON (Configure Time)
 # ==============================================================================
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "data/documentation.json")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data/documentation.json")
-    # 读取文件为十六进制字符串 (例如 "7b2274...")
-    file(READ "data/documentation.json" HEX_CONTENT HEX)
-    # 使用正则将每两个字符替换为 "0xXX, " 格式
-    string(REGEX REPLACE "(..)" "0x\\1, " BYTE_ARRAY "${HEX_CONTENT}")
-    # 生成 C 风格的字节数组，彻底绕过 MSVC 字符串字面量 16KB 长度限制
-    file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/src/vm/GeneratedHelpText.h"
-        "// Auto-generated from documentation.json\n"
-        "namespace jc {\n"
-        "inline constexpr const unsigned char RAW_HELP_JSON[] = {\n"
-        "${BYTE_ARRAY}0x00\n"
-        "};\n"
-        "} // namespace jc\n"
-    )
-endif()
+# 文档数据外部化：documentation.json 由运行时从 bin/data/ 读取，不再嵌入 exe
+# （复制逻辑在 add_executable 之后）
+# ==============================================================================
 
 # ==============================================================================
 # Core Sources & Headers Collection
@@ -81,6 +67,16 @@ set(JC2_SOURCES
 add_executable(JunkCalculator2 ${JC2_HEADERS} ${JC2_SOURCES})
 set_target_properties(JunkCalculator2 PROPERTIES OUTPUT_NAME "jc2")
 target_include_directories(JunkCalculator2 PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# ★ 文档数据外部化：构建后复制 documentation.json 到 bin/data/
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data/documentation.json")
+    add_custom_command(TARGET JunkCalculator2 POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:JunkCalculator2>/data"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_CURRENT_SOURCE_DIR}/data/documentation.json"
+            "$<TARGET_FILE_DIR:JunkCalculator2>/data/documentation.json"
+        COMMENT "Copying documentation.json to bin/data/")
+endif()
 
 # ★ 本地调试测试 (JIT 单测，源文件在 local/，不上传仓库)
 # 只有 local/ 目录存在时才构建这些测试目标
@@ -163,6 +159,27 @@ set_target_properties(decimal PROPERTIES PREFIX "") # Output decimal.dll instead
 add_library(regex SHARED "src/lib/regex/regex_module.cpp")
 target_include_directories(regex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(regex PROPERTIES PREFIX "") # Output regex.dll instead of libregex.dll
+
+# ★ Symbol collector: 离线收集每个 dll 模块符号 → sidecar json（不 LoadLibrary）
+function(add_symbol_collector mod)
+    add_executable(collect_${mod} "src/lib/collect_main.cpp" "src/lib/collect_api.cpp")
+    target_include_directories(collect_${mod} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+    target_compile_definitions(collect_${mod} PRIVATE "JC2_MODULE_SOURCE=\"${mod}/${mod}_module.cpp\"")
+    if(MSVC)
+        target_compile_options(collect_${mod} PRIVATE /utf-8 /EHsc)
+    endif()
+    if(WIN32)
+        target_link_libraries(collect_${mod} PRIVATE ws2_32 User32 Gdi32 imm32)
+    endif()
+    add_custom_command(TARGET ${mod} POST_BUILD
+        COMMAND $<TARGET_FILE:collect_${mod}> "${mod}" "$<TARGET_FILE_DIR:${mod}>/${mod}.json"
+        DEPENDS collect_${mod}
+        COMMENT "Collecting symbols: ${mod}.json")
+endfunction()
+
+foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex)
+    add_symbol_collector(${mod})
+endforeach()
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)

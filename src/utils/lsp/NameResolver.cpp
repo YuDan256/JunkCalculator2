@@ -1,24 +1,19 @@
 #include "NameResolver.h"
 #include "../../vm/VM.h"
+#include "../../vm/BuiltinRegistry.h"
 #include "../../memory/Value.h"
 #include "../../vm/HelpRouter.h"
 #include "../../utils/json/Json.h"
 #include <filesystem>
 #include <climits>
+#include <fstream>
+#include <sstream>
 
 namespace jc {
 namespace lsp {
 
     static std::string objectNameOf(Expr* obj) {
         if (auto* v = dynamic_cast<Variable*>(obj)) return v->name.lexeme;
-        return "";
-    }
-
-    static std::string jstr(const Json& e, const char* key) {
-        if (!e.isObject() || !e.has(key)) return "";
-        const Json& v = e[key];
-        if (v.isString()) return v.strVal;
-        if (v.isArray() && !v.arrVal.empty() && v.arrVal[0].isString()) return v.arrVal[0].strVal;
         return "";
     }
 
@@ -125,7 +120,7 @@ namespace lsp {
         nameRes[node] = res;
     }
 
-    // ---------- import：dll 惰性加载 ----------
+    // ---------- import：读 sidecar json（不 LoadLibrary） ----------
     void NameResolver::handleImport(ImportExpr* expr) {
         std::string moduleName;
         if (auto* lit = dynamic_cast<Literal*>(expr->path.get())) {
@@ -136,62 +131,69 @@ namespace lsp {
         if (moduleName.empty()) return;
         if (importedModules.count(moduleName)) return;
 
-        // .jc2 脚本模块：第一版静态不执行，仅记录（符号未知，不报未定义）
-        std::filesystem::path jc2p(moduleName + ".jc2");
-        if (std::filesystem::is_regular_file(jc2p)) {
-            importedModules[moduleName] = {};
+        // 找 sidecar json（lib/xxx.json，与 xxx.dll 成对）
+        std::string jsonPath = helpers::safeResolvePath(moduleName + ".json");
+        std::filesystem::path p(jsonPath);
+        if (!std::filesystem::is_regular_file(p)) {
+            importedModules[moduleName] = {};  // 无 sidecar（.jc2 脚本 / 老 dll），符号未知
             return;
         }
 
-        // dll 模块：惰性加载收集符号
-        if (!VM::activeVM) { importedModules[moduleName] = {}; return; }
+        std::ifstream f(jsonPath);
+        if (!f.is_open()) { importedModules[moduleName] = {}; return; }
+        std::stringstream ss;
+        ss << f.rdbuf();
+        f.close();
+
+        Json root;
         try {
-            Value nsVal = VM::activeVM->importModule(moduleName);
-            std::unordered_map<std::string, BuiltinSymbol> members;
-            if (nsVal.isObjType(ObjType::NAMESPACE)) {
-                auto* ns = static_cast<ObjNamespace*>(nsVal.asObj());
-                for (const auto& [fnName, field] : ns->fields) {
-                    if (!field.upval) continue;
-                    Value fnVal = field.upval->closed;
-                    if (!fnVal.isFunctionClosure()) continue;
-                    auto* cl = fnVal.asFunction();
-                    BuiltinSymbol sym;
-                    sym.name = fnName;
-                    sym.kind = BuiltinKind::ModuleMember;
-                    sym.owner = moduleName;
-                    int minA = cl->minArgs();
-                    int maxA = cl->maxArgs();
-                    for (int i = minA; i <= maxA; ++i) sym.arity.insert(i);
-                    sym.paramNames = cl->paramNames;
-                    if (!cl->restName.empty()) sym.restName = cl->restName;
-                    sym.kwargNames = cl->kwargNames;
-                    sym.kwargsName = cl->kwargsName;
-                    members[fnName] = std::move(sym);
+            root = Json::parse(ss.str());
+        } catch (...) {
+            importedModules[moduleName] = {};
+            return;
+        }
+        if (!root.isObject()) { importedModules[moduleName] = {}; return; }
+
+        std::unordered_map<std::string, BuiltinSymbol> members;
+
+        // 模块函数
+        if (root.has("functions") && root["functions"].isArray()) {
+            for (const auto& fn : root["functions"].arrVal) {
+                if (!fn.isObject() || !fn.has("name") || !fn["name"].isString()) continue;
+                BuiltinSymbol sym;
+                sym.name = fn["name"].strVal;
+                sym.kind = BuiltinKind::ModuleMember;
+                sym.owner = moduleName;
+                int minA = fn.has("minArity") && fn["minArity"].isNumber() ? static_cast<int>(fn["minArity"].numVal) : 0;
+                int maxA = fn.has("maxArity") && fn["maxArity"].isNumber() ? static_cast<int>(fn["maxArity"].numVal) : 0;
+                for (int i = minA; i <= maxA; ++i) sym.arity.insert(i);
+                if (fn.has("params") && fn["params"].isArray()) {
+                    for (const auto& prm : fn["params"].arrVal) if (prm.isString()) sym.paramNames.push_back(prm.strVal);
                 }
+                if (fn.has("rest") && fn["rest"].isString()) sym.restName = fn["rest"].strVal;
+                members[sym.name] = std::move(sym);
             }
-            // 从 helpAst 收集带前缀名（register_function_help 注册的 "module.Member"，如 image.Image）
-            HelpRouter::init();
-            const Json& helpAst = HelpRouter::helpAst;
-            if (helpAst.isObject() && helpAst.has("global_functions") && helpAst["global_functions"].isObject()) {
-                std::string prefix = moduleName + ".";
-                for (const auto& [fullName, entry] : helpAst["global_functions"].objVal) {
-                    if (fullName.rfind(prefix, 0) == 0 && fullName.size() > prefix.size()) {
-                        std::string memberName = fullName.substr(prefix.size());
-                        if (members.count(memberName)) continue;
-                        BuiltinSymbol sym;
-                        sym.name = memberName;
-                        sym.kind = BuiltinKind::ModuleMember;
-                        sym.owner = moduleName;
-                        sym.signatureText = jstr(entry, "signature");
-                        sym.desc = jstr(entry, "desc");
-                        members[memberName] = std::move(sym);
+        }
+
+        // 类（类名是模块成员）+ 方法名（收集到 importedMethods，不报未知方法）
+        if (root.has("classes") && root["classes"].isArray()) {
+            for (const auto& cls : root["classes"].arrVal) {
+                if (!cls.isObject() || !cls.has("name") || !cls["name"].isString()) continue;
+                std::string clsName = cls["name"].strVal;
+                BuiltinSymbol clsSym;
+                clsSym.name = clsName;
+                clsSym.kind = BuiltinKind::ModuleMember;
+                clsSym.owner = moduleName;
+                members[clsName] = std::move(clsSym);
+                if (cls.has("methods") && cls["methods"].isArray()) {
+                    for (const auto& m : cls["methods"].arrVal) {
+                        if (m.isObject() && m.has("name") && m["name"].isString()) importedMethods.insert(m["name"].strVal);
                     }
                 }
             }
-            importedModules[moduleName] = std::move(members);
-        } catch (...) {
-            importedModules[moduleName] = {};
         }
+
+        importedModules[moduleName] = std::move(members);
     }
 
     std::string NameResolver::extractDocstring(int) { return ""; }

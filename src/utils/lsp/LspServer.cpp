@@ -4,6 +4,7 @@
 #include "SemanticAnalyzer.h"
 #include "../../utils/fmt/Formatter.h"
 #include "../../vm/HelpRouter.h"
+#include "../../frontend/Utf8.h"
 #include <iostream>
 #include <string>
 #include <vector>
@@ -125,6 +126,15 @@ namespace lsp {
             result.capabilities.completionProvider.resolveProvider = false;
             result.capabilities.completionProvider.triggerCharacters = { ".", ":" };
 
+            result.capabilities.semanticTokensProvider.legend.tokenTypes = {
+                "namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"
+            };
+            result.capabilities.semanticTokensProvider.legend.tokenModifiers = {
+                "declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"
+            };
+            result.capabilities.semanticTokensProvider.full.delta = false;
+            result.capabilities.semanticTokensProvider.range = false;
+
             // 3. 发送响应
             ResponseMessage res;
             res.id = req.id;
@@ -157,6 +167,9 @@ namespace lsp {
         }
         else if (req.method == "textDocument/documentSymbol") {
             handleDocumentSymbol(req);
+        }
+        else if (req.method == "textDocument/semanticTokens/full") {
+            handleSemanticTokens(req);
         }
     }
 
@@ -818,6 +831,208 @@ namespace lsp {
                         symJsons.push_back(sym.toJson());
                     }
                     res.result = Json(symJsons);
+                } catch (...) {}
+            }
+        }
+        sendMessage(res.toJson().serialize());
+    }
+
+    void LspServer::handleSemanticTokens(const RequestMessage& req) {
+        ResponseMessage res;
+        res.id = req.id;
+        res.result = Json(nullptr);
+
+        if (req.params.has("textDocument")) {
+            std::string uri = req.params["textDocument"]["uri"].strVal;
+            Document* doc = workspace.getDocument(uri);
+            if (doc) {
+                try {
+                    Lexer lexer(doc->content, uri);
+                    lexer.keepComments = true;
+                    auto tokens = lexer.tokenize();
+                    
+                    std::vector<uint32_t> data;
+                    int prevLine = 0;
+                    int prevChar = 0;
+
+                    auto addToken = [&](int line, int startChar, int length, int tokenType, int tokenModifiers) {
+                        int deltaLine = line - prevLine;
+                        int deltaStartChar = (deltaLine == 0) ? (startChar - prevChar) : startChar;
+                        data.push_back(deltaLine);
+                        data.push_back(deltaStartChar);
+                        data.push_back(length);
+                        data.push_back(tokenType);
+                        data.push_back(tokenModifiers);
+                        prevLine = line;
+                        prevChar = startChar;
+                    };
+
+                    // 简单结合 SemanticAnalyzer 获取更精确的符号类型
+                    SemanticAnalyzer analyzer(doc, tokens);
+                    std::vector<Token> parserTokens;
+                    for (const auto& t : tokens) {
+                        if (t.type != TokenType::COMMENT) parserTokens.push_back(t);
+                    }
+                    Parser parser(parserTokens, uri);
+                    parser.isLspMode = true;
+                    auto ast = parser.parse();
+                    analyzer.analyze(ast.get());
+
+                    for (const auto& t : tokens) {
+                        int tokenType = -1;
+                        int tokenModifiers = 0;
+
+                        switch (t.type) {
+                            case TokenType::CLASS:
+                            case TokenType::ENUM:
+                            case TokenType::NAMESPACE:
+                            case TokenType::IF:
+                            case TokenType::ELSE:
+                            case TokenType::WHILE:
+                            case TokenType::FOR:
+                            case TokenType::IN:
+                            case TokenType::IS:
+                            case TokenType::AS:
+                            case TokenType::BREAK:
+                            case TokenType::CONTINUE:
+                            case TokenType::RETURN:
+                            case TokenType::SWITCH:
+                            case TokenType::CASE:
+                            case TokenType::DEFAULT:
+                            case TokenType::THROW:
+                            case TokenType::TRY:
+                            case TokenType::CATCH:
+                            case TokenType::MATCH:
+                            case TokenType::DEFER:
+                            case TokenType::IMPORT:
+                            case TokenType::MACRO:
+                            case TokenType::SYNTAX:
+                            case TokenType::QUOTE:
+                            case TokenType::TRUE_KW:
+                            case TokenType::FALSE_KW:
+                            case TokenType::NONE_KW:
+                                tokenType = 15; // keyword
+                                break;
+                            case TokenType::STATIC:
+                            case TokenType::LOCAL:
+                            case TokenType::CONST:
+                            case TokenType::REF:
+                            case TokenType::STATE:
+                            case TokenType::DELETE:
+                            case TokenType::EXTENDS:
+                                tokenType = 16; // modifier
+                                break;
+                            case TokenType::IDENTIFIER: {
+                                tokenType = 8; // variable
+                                Position pos = doc->offsetToPosition(t.position);
+                                auto sym = analyzer.getSymbolAt(pos);
+                                if (sym) {
+                                    if (sym->kind == SymbolKind::Function) tokenType = 12; // function
+                                    else if (sym->kind == SymbolKind::Class) tokenType = 2; // class
+                                    else if (sym->kind == SymbolKind::Parameter) tokenType = 7; // parameter
+                                    else if (sym->kind == SymbolKind::Property) tokenType = 9; // property
+                                    else if (sym->kind == SymbolKind::Namespace) tokenType = 0; // namespace
+                                }
+                                break;
+                            }
+                            case TokenType::NUMBER:
+                            case TokenType::IMAGINARY:
+                                tokenType = 19; // number
+                                break;
+                            case TokenType::STRING:
+                            case TokenType::FSTRING:
+                            case TokenType::RSTRING:
+                                tokenType = 18; // string
+                                break;
+                            case TokenType::COMMENT:
+                                tokenType = 17; // comment
+                                break;
+                            case TokenType::PLUS:
+                            case TokenType::MINUS:
+                            case TokenType::STAR:
+                            case TokenType::SLASH:
+                            case TokenType::CARET:
+                            case TokenType::PERCENT:
+                            case TokenType::ASSIGN:
+                            case TokenType::EQUAL:
+                            case TokenType::BANG_EQUAL:
+                            case TokenType::LESS:
+                            case TokenType::LESS_EQUAL:
+                            case TokenType::GREATER:
+                            case TokenType::GREATER_EQUAL:
+                            case TokenType::AND_AND:
+                            case TokenType::OR_OR:
+                            case TokenType::BANG:
+                            case TokenType::BIT_AND:
+                            case TokenType::BIT_OR:
+                            case TokenType::BIT_XOR:
+                            case TokenType::TILDE:
+                            case TokenType::SHIFT_LEFT:
+                            case TokenType::SHIFT_RIGHT:
+                            case TokenType::PLUS_ASSIGN:
+                            case TokenType::MINUS_ASSIGN:
+                            case TokenType::STAR_ASSIGN:
+                            case TokenType::SLASH_ASSIGN:
+                            case TokenType::CARET_ASSIGN:
+                            case TokenType::PERCENT_ASSIGN:
+                            case TokenType::BIT_AND_ASSIGN:
+                            case TokenType::BIT_OR_ASSIGN:
+                            case TokenType::BIT_XOR_ASSIGN:
+                            case TokenType::SHIFT_LEFT_ASSIGN:
+                            case TokenType::SHIFT_RIGHT_ASSIGN:
+                            case TokenType::TILDE_SLASH:
+                            case TokenType::TILDE_SLASH_ASSIGN:
+                            case TokenType::BACKSLASH:
+                            case TokenType::BACKSLASH_ASSIGN:
+                            case TokenType::PIPE:
+                            case TokenType::ARROW:
+                            case TokenType::ELLIPSIS:
+                            case TokenType::QUESTION:
+                            case TokenType::SUBSET:
+                                tokenType = 21; // operator
+                                break;
+                            default:
+                                break;
+                        }
+
+                        if (tokenType != -1) {
+                            Position pos = doc->offsetToPosition(t.position);
+                            std::string lexeme = t.lexeme;
+                            int currentLine = pos.line;
+                            int currentChar = pos.character;
+                            
+                            size_t startIdx = 0;
+                            while (startIdx < lexeme.length()) {
+                                size_t nlIdx = lexeme.find('\n', startIdx);
+                                std::string lineStr;
+                                if (nlIdx == std::string::npos) {
+                                    lineStr = lexeme.substr(startIdx);
+                                } else {
+                                    lineStr = lexeme.substr(startIdx, nlIdx - startIdx);
+                                }
+                                
+                                int len = static_cast<int>(jc::utf8::charIndex(lineStr, lineStr.length()));
+                                if (len > 0) {
+                                    addToken(currentLine, currentChar, len, tokenType, tokenModifiers);
+                                }
+                                
+                                if (nlIdx == std::string::npos) break;
+                                
+                                currentLine++;
+                                currentChar = 0;
+                                startIdx = nlIdx + 1;
+                            }
+                        }
+                    }
+
+                    Json result;
+                    result.type = JsonType::Object;
+                    std::vector<Json> dataJson;
+                    for (uint32_t v : data) {
+                        dataJson.push_back(Json(static_cast<double>(v)));
+                    }
+                    result["data"] = Json(dataJson);
+                    res.result = result;
                 } catch (...) {}
             }
         }

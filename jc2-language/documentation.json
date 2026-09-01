@@ -567,12 +567,6 @@
     "setElement": {
       "signature": "A.setElement(r, c, val)"
     },
-    "getItem": {
-      "signature": "A.getItem(i)"
-    },
-    "setItem": {
-      "signature": "A.setItem(i, val)"
-    },
     "getSlice": {
       "signature": "A.getSlice(sr, sc)"
     },
@@ -1237,6 +1231,9 @@
     },
     "sysinfo": {
       "signature": "sys.sysinfo()"
+    },
+    "vars": {
+      "signature": "sys.vars()"
     },
     "symconfig": {
       "signature": "sys.symconfig([dict_or_default])"

@@ -123,6 +123,34 @@ namespace lsp {
         return j;
     }
 
+    Json ServerCapabilities::SemanticTokensOptions::Legend::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        std::vector<Json> types;
+        for (const auto& t : tokenTypes) types.push_back(Json(t));
+        j["tokenTypes"] = Json(types);
+        std::vector<Json> modifiers;
+        for (const auto& m : tokenModifiers) modifiers.push_back(Json(m));
+        j["tokenModifiers"] = Json(modifiers);
+        return j;
+    }
+
+    Json ServerCapabilities::SemanticTokensOptions::Full::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        j["delta"] = Json(delta);
+        return j;
+    }
+
+    Json ServerCapabilities::SemanticTokensOptions::toJson() const {
+        Json j;
+        j.type = JsonType::Object;
+        j["legend"] = legend.toJson();
+        j["range"] = Json(range);
+        j["full"] = full.toJson();
+        return j;
+    }
+
     Json ServerCapabilities::CompletionOptions::toJson() const {
         Json j;
         j.type = JsonType::Object;
@@ -143,6 +171,7 @@ namespace lsp {
         j["documentSymbolProvider"] = Json(documentSymbolProvider);
         j["signatureHelpProvider"] = signatureHelpProvider.toJson();
         j["completionProvider"] = completionProvider.toJson();
+        j["semanticTokensProvider"] = semanticTokensProvider.toJson();
         return j;
     }
 

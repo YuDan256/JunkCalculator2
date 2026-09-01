@@ -25,9 +25,6 @@
             "include": "#function-def"
         },
         {
-            "include": "#modifiers"
-        },
-        {
             "include": "#enum-block"
         },
         {
@@ -423,21 +420,6 @@
                 }
             ]
         },
-        "modifiers": {
-            "patterns": [
-                {
-                    "match": "\\b(static|local|const|ref|state)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
-                    "captures": {
-                        "1": {
-                            "name": "keyword.declaration.modifier.jc2"
-                        },
-                        "2": {
-                            "name": "variable.other.declaration.jc2"
-                        }
-                    }
-                }
-            ]
-        },
         "enum-block": {
             "patterns": [
                 {
@@ -725,7 +707,7 @@
             "patterns": [
                 {
                     "name": "support.function.builtin.jc2",
-                    "match": "\\b(pi|e|i|complex|double|int|abs|sqrt|cbrt|root|sqrtD|cbrtD|rootD|pow|log|ln|round|floor|ceil|trunc|sgn|deg|rad|idiv|sin|cos|tan|sec|csc|cot|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|erf|fresnel_s|fresnel_c|Si|Ci|Ei|Li|Re|Im|arg|conj|frac|toFrac|num|den|matrix|symmatrix|det|inv|trans|ctrans|gauss|rank|tr|norm|cond|adj|sum|prod|null|orth|mpow|charPoly|kron|jacobian|hessian|id|ones|zeros|eig|eigvec|diag|lsolve|lstsq|dim|dot|vnorm|normalize|cross|angle|sproj|vproj|triple|isperp|isparallel|mean|var|svar|std|sstd|max|min|span|perc|median|mode|cov|corr|rsq|regress|str|string|len|length|size|format|type|list|dict|set|print|assert|help|sym|symbolics|clear|add|remove|discard|eval|concat|chr|range|fill|linspace|toList|toArray|toMatrix|zip|cat|isinstance|getClass|getParent|freeze|isFrozen|hash|copy|isalpha|isdigit|isalnum|isspace|isupper|islower|iscallable|ishashable|isindexable|isiterable|isempty|isnan|isinf|isfinite|isprime|iseven|isodd|ispositive|isnegative|isapprox|iszero|addE|subE|mulE|divE|idivE|powE|modE|eqE|neqE|ltE|leE|gtE|geE|maxE|minE|andE|orE|xorE|atan2E|hypotE|whereE|perm|getElement|setElement|getItem|setItem|getSlice|setSlice|getR|getC|delR|delC|swapR|swapC|multiR|multiC|addR|addC|sub|cof|Acof|blkdiag|qr|lu|residual|gcinfo|bool|not|and|or|seq|error|input|table|matpow|toSet|init|finalize|gensym)\\b(?=\\()"
+                    "match": "\\b(pi|e|i|complex|double|int|abs|sqrt|cbrt|root|sqrtD|cbrtD|rootD|pow|log|ln|round|floor|ceil|trunc|sgn|deg|rad|idiv|sin|cos|tan|sec|csc|cot|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|erf|fresnel_s|fresnel_c|Si|Ci|Ei|Li|Re|Im|arg|conj|frac|toFrac|num|den|matrix|symmatrix|det|inv|trans|ctrans|gauss|rank|tr|norm|cond|adj|sum|prod|null|orth|mpow|charPoly|kron|jacobian|hessian|id|ones|zeros|eig|eigvec|diag|lsolve|lstsq|dim|dot|vnorm|normalize|cross|angle|sproj|vproj|triple|isperp|isparallel|mean|var|svar|std|sstd|max|min|span|perc|median|mode|cov|corr|rsq|regress|str|string|len|length|size|format|type|list|dict|set|print|assert|help|sym|symbolics|clear|add|remove|discard|eval|concat|chr|range|fill|linspace|toList|toArray|toMatrix|zip|cat|isinstance|getClass|getParent|freeze|isFrozen|hash|copy|isalpha|isdigit|isalnum|isspace|isupper|islower|iscallable|ishashable|isindexable|isiterable|isempty|isnan|isinf|isfinite|isprime|iseven|isodd|ispositive|isnegative|isapprox|iszero|addE|subE|mulE|divE|idivE|powE|modE|eqE|neqE|ltE|leE|gtE|geE|maxE|minE|andE|orE|xorE|atan2E|hypotE|whereE|perm|getElement|setElement|getSlice|setSlice|getR|getC|delR|delC|swapR|swapC|multiR|multiC|addR|addC|sub|cof|Acof|blkdiag|qr|lu|residual|gcinfo|bool|not|and|or|seq|error|input|table|matpow|toSet|init|finalize|gensym)\\b(?=\\()"
                 }
             ]
         }

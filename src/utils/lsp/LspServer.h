@@ -52,6 +52,7 @@ namespace lsp {
         void handleFormatting(const RequestMessage& req);
         void handleSignatureHelp(const RequestMessage& req);
         void handleDocumentSymbol(const RequestMessage& req);
+        void handleSemanticTokens(const RequestMessage& req);
 
         bool isRunning = false;
         ServerState state = ServerState::Uninitialized;

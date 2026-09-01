@@ -112,6 +112,20 @@ namespace lsp {
             Json toJson() const;
         } completionProvider;
 
+        struct SemanticTokensOptions {
+            struct Legend {
+                std::vector<std::string> tokenTypes;
+                std::vector<std::string> tokenModifiers;
+                Json toJson() const;
+            } legend;
+            bool range = false;
+            struct Full {
+                bool delta = false;
+                Json toJson() const;
+            } full;
+            Json toJson() const;
+        } semanticTokensProvider;
+
         Json toJson() const;
     };
 

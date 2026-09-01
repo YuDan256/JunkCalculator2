@@ -136,7 +136,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
         if (callee.isType()) {
             ObjTypeDef* td = static_cast<ObjTypeDef*>(callee.asObj());
             if (td->converter) {
-                Value res = td->converter(args);
+                Value res = VM::activeVM->callTypeConverter(td, static_cast<int>(argc), 0, args.data());
                 VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                 return res.as_bits;
             }

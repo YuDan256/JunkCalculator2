@@ -72,9 +72,11 @@ namespace lsp {
 
     const NameRes* NameResolver::resolveAtPos(const Position& pos) const {
         int offset = doc->positionToOffset(pos);
-        // 先查声明位置（函数名/变量名等非 Expr 节点，如 `test() = {...}` 的 test）
-        auto it = declaredAt.find(offset);
-        if (it != declaredAt.end()) return &it->second;
+        // 声明名范围匹配（函数名/变量名等非 Expr 节点，如 `test() = {...}` 的 test，整名有效）
+        for (const auto& [startPos, res] : declaredAt) {
+            int endPos = res.user ? startPos + (int)res.user->name.size() : startPos + 1;
+            if (startPos <= offset && offset < endPos) return &res;
+        }
         const NameRes* best = nullptr;
         int bestLen = INT_MAX;
         for (const auto& [node, res] : nameRes) {
@@ -626,6 +628,19 @@ namespace lsp {
         for (auto& p : e->params) declare(p.lexeme, UserSymbol::Parameter, p.position, p.position + (int)p.lexeme.size());
         if (e->body) e->body->accept(*this);
         leaveScope();
+    }
+    void NameResolver::visitMacroCallExpr(MacroCallExpr* e) {
+        for (auto& arg : e->arguments) if (arg) arg->accept(*this);
+        NameRes res = resolveName(e->macroName.lexeme);
+        record(e, res);
+        // 宏名位置 → 解析结果（hover 用，整名范围匹配）
+        declaredAt[e->macroName.position] = res;
+    }
+    void NameResolver::visitQuoteExpr(QuoteExpr* e) {
+        if (e->body) e->body->accept(*this);
+    }
+    void NameResolver::visitUnquoteExpr(UnquoteExpr* e) {
+        if (e->expr) e->expr->accept(*this);
     }
     void NameResolver::visitExprAssign(ExprAssign* e) {
         if (e->target) e->target->accept(*this);

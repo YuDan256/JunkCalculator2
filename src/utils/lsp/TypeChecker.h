@@ -89,9 +89,9 @@ namespace lsp {
         void visitMatchExpr(MatchExpr* e) override;
         void visitGroupingExpr(GroupingExpr* e) override;
         void visitMacroDefExpr(MacroDefExpr* e) override;
-        void visitMacroCallExpr(MacroCallExpr*) override {}
-        void visitQuoteExpr(QuoteExpr*) override {}
-        void visitUnquoteExpr(UnquoteExpr*) override {}
+        void visitMacroCallExpr(MacroCallExpr* e) override;
+        void visitQuoteExpr(QuoteExpr* e) override;
+        void visitUnquoteExpr(UnquoteExpr* e) override;
         void visitExprAssign(ExprAssign* e) override;
         void visitDeferExpr(DeferExpr* e) override;
         void visitKeywordArgExpr(KeywordArgExpr* e) override;

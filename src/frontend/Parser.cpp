@@ -283,6 +283,7 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::parse() {
+        if (isLspMode) disableMacroExpansion = true;  // LSP 只做静态分析，不执行宏展开
         if (VM::activeVM) VM::activeVM->parsingDepth++;
         try {
             std::vector<std::unique_ptr<Expr>> stmts;

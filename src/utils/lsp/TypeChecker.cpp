@@ -358,6 +358,22 @@ namespace lsp {
     void TypeChecker::visitMacroDefExpr(MacroDefExpr* e) {
         if (e->body) e->body->accept(*this);
     }
+    void TypeChecker::visitMacroCallExpr(MacroCallExpr* e) {
+        for (auto& arg : e->arguments) if (arg) arg->accept(*this);
+        const NameRes* res = resolver.resolveAt(e);
+        if (res && res->origin == NameRes::Undefined) {
+            std::string msg = "Warning: Undefined macro '" + e->macroName.lexeme + "'.";
+            std::string dym = didYouMean(e->macroName.lexeme);
+            if (!dym.empty()) msg += " Did you mean '" + dym + "'?";
+            addDiag(msg, e->macroName.position, e->macroName.position + (int)e->macroName.lexeme.size());
+        }
+    }
+    void TypeChecker::visitQuoteExpr(QuoteExpr* e) {
+        if (e->body) e->body->accept(*this);
+    }
+    void TypeChecker::visitUnquoteExpr(UnquoteExpr* e) {
+        if (e->expr) e->expr->accept(*this);
+    }
     void TypeChecker::visitExprAssign(ExprAssign* e) {
         if (e->target) e->target->accept(*this);
         if (e->value) e->value->accept(*this);

@@ -31,6 +31,25 @@ namespace lsp {
         return "";
     }
 
+    // sidecar 返回类型名 → TypeSig（内置类型 + 类名）
+    static TypeSig nameToTypeSig(const std::string& name) {
+        if (name == "int") return TypeSig::bt(BuiltinType::INT);
+        if (name == "double") return TypeSig::bt(BuiltinType::FLOAT);
+        if (name == "string") return TypeSig::bt(BuiltinType::STRING);
+        if (name == "bool") return TypeSig::bt(BuiltinType::BOOL);
+        if (name == "list") return TypeSig::bt(BuiltinType::LIST);
+        if (name == "dict") return TypeSig::bt(BuiltinType::DICT);
+        if (name == "set") return TypeSig::bt(BuiltinType::SET);
+        if (name == "fraction") return TypeSig::bt(BuiltinType::FRACTION);
+        if (name == "complex") return TypeSig::bt(BuiltinType::COMPLEX);
+        if (name == "symbolic") return TypeSig::bt(BuiltinType::SYMBOLIC);
+        if (name == "matrix") return TypeSig::of({ BuiltinType::REALMAT, BuiltinType::COMPLEXMAT, BuiltinType::SYMMAT });
+        if (name == "function") return TypeSig::bt(BuiltinType::FUNC);
+        if (name == "type") return TypeSig::bt(BuiltinType::TYPE_DEF);
+        if (name == "slice") return TypeSig::bt(BuiltinType::SLICE);
+        return TypeSig::cls(name);  // 用户类名（Image/Bytes 等）
+    }
+
     NameResolver::NameResolver(Document* doc, BuiltinIndex& index) : doc(doc), index(index) {
         globalScope.name = "<global>";
         current = &globalScope;
@@ -193,6 +212,7 @@ namespace lsp {
                     for (const auto& prm : fn["params"].arrVal) if (prm.isString()) sym.paramNames.push_back(prm.strVal);
                 }
                 if (fn.has("rest") && fn["rest"].isString()) sym.restName = fn["rest"].strVal;
+                if (fn.has("returnType") && fn["returnType"].isString()) sym.returnType = nameToTypeSig(fn["returnType"].strVal);
                 members[sym.name] = std::move(sym);
             }
         }

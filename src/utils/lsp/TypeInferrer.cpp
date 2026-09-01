@@ -217,6 +217,15 @@ namespace lsp {
             } else {
                 result = Type::any();
             }
+        } else if (auto* mc = dynamic_cast<MethodCallExpr*>(e)) {
+            const NameRes* nr = resolver.resolveAt(e);
+            if (nr && nr->origin == NameRes::Imported && nr->member) {
+                std::vector<Type> argTypes;
+                for (auto& a : mc->arguments) if (a) argTypes.push_back(inferExpr(a.get()));
+                result = returnTypeOf(*nr->member, argTypes);
+            } else {
+                result = Type::any();
+            }
         } else if (auto* g = dynamic_cast<GroupingExpr*>(e)) {
             result = inferExpr(g->expression.get());
         } else if (auto* ife = dynamic_cast<IfExpr*>(e)) {

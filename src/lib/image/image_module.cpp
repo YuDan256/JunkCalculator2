@@ -173,7 +173,7 @@ int jc2_init(Module& mod) {
 
     g_imageClass->set_allocator(create_image);
 
-    mod.register_function("img", create_image, 2, 3, {"width", "height", "bg_color"});
+    mod.register_function("img", create_image, 2, 3, {"width", "height", "bg_color"}, "", {}, "", 0, "Image");
 
     mod.register_function_help("image.Image", "image.Image(width, height, [bg_color])", "Allocates a new image surface in RAM. Colors can be hex strings (e.g., \"#FF0000\") or names (e.g., \"red\").", "im = image.Image(800, 600, \"black\")");
     mod.register_function_help("image.img", "image.img(width, height, [bg_color])", "Legacy alias for image.Image.", "im = image.img(800, 600, \"black\")");

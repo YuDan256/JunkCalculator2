@@ -365,12 +365,13 @@ public:
         const std::vector<std::string>& kwarg_names = {},
         const std::string& kwargs_name = "",
         int kwarg_default_count = 0,
+        const std::string& return_type = "",
         void* user_data = nullptr) {
         std::vector<const char*> c_param_names;
         for (const auto& p : param_names) c_param_names.push_back(p.c_str());
         std::vector<const char*> c_kwarg_names;
         for (const auto& p : kwarg_names) c_kwarg_names.push_back(p.c_str());
-        Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, c_param_names.data(), static_cast<int>(c_param_names.size()), rest_name.c_str(), c_kwarg_names.data(), static_cast<int>(c_kwarg_names.size()), kwargs_name.c_str(), kwarg_default_count, user_data);
+        Env::api->register_function(Env::ctx, mod, name.c_str(), fn, min_arity, max_arity, c_param_names.data(), static_cast<int>(c_param_names.size()), rest_name.c_str(), c_kwarg_names.data(), static_cast<int>(c_kwarg_names.size()), kwargs_name.c_str(), kwarg_default_count, return_type.empty() ? nullptr : return_type.c_str(), user_data);
     }
 
     void register_int(const std::string& name, int32_t val) {

@@ -41,7 +41,7 @@ namespace jcsym {
     static void cb_register_function(JC2_VMContext, JC2_ModuleHandle, const char* name, JC2_NativeFunc,
         int min_arity, int max_arity, const char** param_names, int param_count,
         const char* rest_name, const char** kwarg_names, int kwarg_count,
-        const char* kwargs_name, int, void*) {
+        const char* kwargs_name, int, const char* return_type, void*) {
         Func f;
         f.name = name;
         f.minArity = min_arity;
@@ -50,6 +50,7 @@ namespace jcsym {
         if (rest_name) f.restName = rest_name;
         for (int i = 0; i < kwarg_count; ++i) if (kwarg_names[i]) f.kwargNames.push_back(kwarg_names[i]);
         if (kwargs_name) f.kwargsName = kwargs_name;
+        if (return_type) f.returnType = return_type;
         g_collected.functions.push_back(std::move(f));
     }
 
@@ -277,6 +278,7 @@ namespace jcsym {
             }
             f << "]";
             if (!fn.restName.empty()) f << ", \"rest\": \"" << escapeJson(fn.restName) << "\"";
+            if (!fn.returnType.empty()) f << ", \"returnType\": \"" << escapeJson(fn.returnType) << "\"";
             if (!fn.kwargNames.empty()) {
                 f << ", \"kwargs\": [";
                 for (size_t j = 0; j < fn.kwargNames.size(); ++j) {

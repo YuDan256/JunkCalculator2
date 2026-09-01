@@ -264,7 +264,8 @@ static void host_register_function_help(JC2_VMContext, const char* name, const c
     jc::HelpRouter::addFunctionHelp(name, signature, desc, example);
 }
 
-static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, void* user_data) {
+static void host_register_function(JC2_VMContext, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, const char* return_type, void* user_data) {
+    (void)return_type;  // 返回类型仅供 LSP 离线收集，运行时类型检查用不到
     ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {

@@ -20,6 +20,7 @@ namespace jcsym {
         std::string restName;
         std::vector<std::string> kwargNames;
         std::string kwargsName;
+        std::string returnType;  // 返回类型名（空 = any）
     };
 
     struct Class {

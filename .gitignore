@@ -372,3 +372,6 @@ data/Prime.bin
 
 # 本地调试文件（不上传仓库）
 local/
+
+# 提交信息临时文件
+.commit_msg.txt

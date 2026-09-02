@@ -37,7 +37,7 @@ class VisualSorter {
     }
 
     shuffle() = {
-        self.data = [x for (x in range(1, self.N + 1))].toList()
+        self.data = @[x for (x in range(1, self.N + 1))]
         for (i = self.N - 1; i > 0; i -= 1) {
             j = random.randint(0, i)
             tmp = self.data[i]; self.data[i] = self.data[j]; self.data[j] = tmp

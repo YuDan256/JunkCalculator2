@@ -409,14 +409,23 @@ private:
             if (!useBlock) continue;
 
             if (use->opcode() == HIROp::Phi) {
+                // 一个值可能被同一个 Phi 在多个回边位置引用（例如循环体内不随 if 改变的变量，
+                // 其回边值同时来自多个回边块）。不能只取第一个回边块（break），否则 LCA 会算到
+                // 某个回边块而非真正的公共支配块，导致循环变量（如 side_dist += 0.5）被错误地
+                // 移到单个回边分支上，另一个分支上就丢了这条计算。
+                LIRBlock* phiBlock = nullptr;
                 for (size_t i = 1; i < use->inputs().size(); ++i) {
                     if (use->inputs()[i] == node) {
                         HIRNode* mergeNode = use->inputs()[0];
                         HIRNode* ctrlIn = (i - 1 < mergeNode->inputs().size()) ? mergeNode->inputs()[i - 1] : nullptr;
-                        useBlock = ctrlIn ? nodeToBlock_[ctrlIn] : nullptr;
-                        break;
+                        LIRBlock* ub = ctrlIn ? nodeToBlock_[ctrlIn] : nullptr;
+                        if (ub) {
+                            if (phiBlock == nullptr) phiBlock = ub;
+                            else phiBlock = intersect(phiBlock, ub);
+                        }
                     }
                 }
+                if (phiBlock != nullptr) useBlock = phiBlock;
             }
 
             if (lca == nullptr) {

@@ -127,16 +127,29 @@ public:
                 builder_.setCurrentControl(merge);
 
                 std::vector<int> predsToCheck;
-                if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) {
-                    predsToCheck.push_back(-1);
-                }
-                for (int p : block.predecessors) {
-                    // OSR 编译时，位于 OSR 头之前的前驱边在 handleBranchTarget 中走 deopt 路径、
-                    // 不会写入 entryControls，因此这里也要一并排除，保持 predsToCheck 与 entryControls 对齐。
-                    if (isOSR_ && cfg_.blocks[p].startIp < osrLoopHeaderIp_) {
-                        continue;
+                if (isLoopHeader) {
+                    // 循环头：入口（-1）+ 回边块。回边控制要等到回边块处理完（Step 56）才会追加到
+                    // entryControls，因此这里不能按 entryControls 排列，只能沿用 CFG 的 predecessors。
+                    if (block.id == 0 || (isOSR_ && block.startIp == osrLoopHeaderIp_)) {
+                        predsToCheck.push_back(-1);
                     }
-                    predsToCheck.push_back(p);
+                    for (int p : block.predecessors) {
+                        if (isOSR_ && cfg_.blocks[p].startIp < osrLoopHeaderIp_) {
+                            continue;
+                        }
+                        predsToCheck.push_back(p);
+                    }
+                } else {
+                    // 非循环头的 merge 块：按 entryControls 的顺序排列 predsToCheck，保证 phi 输入顺序与
+                    // merge 控制输入顺序一致。block.predecessors 是 CFG 的 ip 顺序（跳转目标先于 fallthrough），
+                    // 而 entryControls 是抽象解释的 RPO 顺序，两者可能相反（如三元表达式 else 分支在 true
+                    // 分支之前），直接按 predecessors 顺序会给 phi 填反分支。
+                    for (HIRNode* ctrl : entryControls) {
+                        auto it = controlToBlockId_.find(ctrl);
+                        if (it != controlToBlockId_.end()) {
+                            predsToCheck.push_back(it->second);
+                        }
+                    }
                 }
 
                 // 构建 Effect Phi
@@ -789,6 +802,7 @@ public:
                                 builder_.createDeoptimize(fs);
                             } else if (cfg_.ipToBlockId.count(targetIp)) {
                                 blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(branchCtrl);
+                                controlToBlockId_[branchCtrl] = block.id;
                             }
                         };
                         
@@ -815,6 +829,7 @@ public:
                             builder_.createDeoptimize(fs);
                         } else if (cfg_.ipToBlockId.count(targetIp)) {
                             blockEntryControls_[cfg_.ipToBlockId[targetIp]].push_back(builder_.currentControl());
+                            controlToBlockId_[builder_.currentControl()] = block.id;
                         }
                         builder_.setCurrentControl(nullptr);
                         break;
@@ -1507,6 +1522,7 @@ public:
                 int nextIp = block.endIp;
                 if (cfg_.ipToBlockId.count(nextIp)) {
                     blockEntryControls_[cfg_.ipToBlockId[nextIp]].push_back(builder_.currentControl());
+                    controlToBlockId_[builder_.currentControl()] = block.id;
                 }
             }
 
@@ -1603,6 +1619,8 @@ private:
     std::map<int, std::vector<HIRNode*>> blockEntryControls_;
     std::map<int, std::vector<HIRNode*>> blockExitStates_;
     std::map<int, HIRNode*> blockExitEffects_;
+    // 控制节点 → 其来源块（前驱块）的 id，用于让 merge 块的 phi 输入顺序与 merge 控制输入顺序对齐。
+    std::map<HIRNode*, int> controlToBlockId_;
 
     bool isInline_ = false;
     bool isOSR_ = false;

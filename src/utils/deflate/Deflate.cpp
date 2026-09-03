@@ -487,11 +487,18 @@ void compressBlock(BitWriter& bw, const uint8_t* data, size_t n, bool isFinal) {
     Matcher matcher;
     matcher.init(data, n);
     // 懒匹配（zlib deflate_slow 风格）：找到匹配后，比较下一位置是否有更长的匹配。
+    // 若连续大量位置找不到匹配（如随机/高熵数据），说明不可压缩，直接回退 stored 块，
+    // 避免 LZ77 对不可压缩数据空转（这是大矩阵存档耗时的主要来源）。
+    constexpr int INCOMPRESSIBLE_MISS = 4096;
     size_t pos = 0;
+    int consecutiveMiss = 0;
     while (pos < n) {
         int dist;
         int len = matcher.tryMatchAt(pos, dist);
         if (len >= Matcher::MIN_MATCH) {
+            // len >= 4 才算有效压缩（重置计数）；len == 3 的噪声匹配在随机/高熵数据中高频出现，
+            // 不计入有效匹配，避免它们反复重置不可压缩计数导致回退永不触发。
+            if (len >= 4) consecutiveMiss = 0;
             int dist2 = 0;
             int len2 = (pos + 1 < n) ? matcher.tryMatchAt(pos + 1, dist2) : 0;
             if (len2 > len) {
@@ -505,6 +512,19 @@ void compressBlock(BitWriter& bw, const uint8_t* data, size_t n, bool isFinal) {
                 pos += len;
             }
         } else {
+            if (++consecutiveMiss > INCOMPRESSIBLE_MISS) {
+                // 不可压缩，直接写 stored 块
+                bw.writeBits(isFinal ? 1 : 0, 1);
+                bw.writeBits(0, 2);
+                bw.align();
+                bw.out.push_back(static_cast<uint8_t>(n & 0xFF));
+                bw.out.push_back(static_cast<uint8_t>((n >> 8) & 0xFF));
+                uint16_t nlen = static_cast<uint16_t>(~n);
+                bw.out.push_back(static_cast<uint8_t>(nlen & 0xFF));
+                bw.out.push_back(static_cast<uint8_t>((nlen >> 8) & 0xFF));
+                bw.out.insert(bw.out.end(), data, data + n);
+                return;
+            }
             tokens.push_back(Token::lit(data[pos]));
             matcher.insertAt(pos);
             pos += 1;

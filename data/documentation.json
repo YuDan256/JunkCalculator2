@@ -26,6 +26,7 @@
       "      • .jc2 / .jcb files are pure scripts: Use them to write and store your code logic.",
       "      • .jcw files are REPL interactive archives: Use them to save and restore your REPL session state.",
       "",
+      "    /run <script>          Execute a .jc2 / .jcb script in the current REPL session",
       "    /ws save [name]        Snapshot variables  → [name].jcw (default if omitted)",
       "    /ws load [name/path]   Restore a workspace (clears current environment)",
       "    /ws merge [name/path]  Merge a workspace into current environment (keeps existing vars)",

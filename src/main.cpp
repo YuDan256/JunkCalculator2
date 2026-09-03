@@ -1180,6 +1180,18 @@ int main(int argc, char* argv[]) {
                 std::cout << "  Workspace dir: " << getWorkspaceDir() << std::endl;
                 continue;
             }
+            if (input == "/run") {
+                std::cout << "Usage: /run <script.jc2>\n";
+                continue;
+            }
+            if (input.substr(0, 5) == "/run ") {
+                std::string path = input.substr(5);
+                size_t ps = path.find_first_not_of(" \t");
+                if (ps == std::string::npos) { std::cout << "Usage: /run <script.jc2>\n"; continue; }
+                path = path.substr(ps);
+                runScript(path);
+                continue;
+            }
             if (input.substr(0, 4) == "/ws ") {
                 std::string cmd = input.substr(4);
                 size_t s = cmd.find_first_not_of(" \t");

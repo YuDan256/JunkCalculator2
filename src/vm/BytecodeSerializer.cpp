@@ -1,7 +1,9 @@
 #include "BytecodeSerializer.h"
 #include "VM.h"
 #include "../jit/frontend/BytecodeCFG.h"
+#include "../utils/deflate/Deflate.h"
 #include <fstream>
+#include <sstream>
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
@@ -396,11 +398,6 @@ void BytecodeSerializer::writeFunction(std::ostream& os, const CompiledFunction*
     for (const auto& name : fn->paramNames) writeString(os, name);
 
     write32(os, static_cast<uint32_t>(fn->refCount));
-
-    write16(os, static_cast<uint16_t>(fn->paramTypeRegs.size()));
-    for (int reg : fn->paramTypeRegs) write32(os, static_cast<uint32_t>(reg));
-
-    write32(os, static_cast<uint32_t>(fn->returnTypeReg));
 }
 
 void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, int baseIdx) {
@@ -456,17 +453,10 @@ void BytecodeSerializer::readFunction(std::istream& is, CompiledFunction* fn, in
     for (uint16_t i = 0; i < pnSize; ++i) fn->paramNames[i] = readString(is);
 
     fn->refCount = static_cast<int>(read32(is));
-
-    uint16_t ptrSize = read16(is);
-    fn->paramTypeRegs.resize(ptrSize);
-    for (uint16_t i = 0; i < ptrSize; ++i) fn->paramTypeRegs[i] = static_cast<int>(read32(is));
-
-    fn->returnTypeReg = static_cast<int>(read32(is));
 }
 
 void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug) {
-    std::ofstream os(path, std::ios::binary);
-    if (!os) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    std::ostringstream os(std::ios::binary);
 
     write32(os, MAGIC_NUMBER);
     write32(os, VERSION);
@@ -476,11 +466,32 @@ void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex
         auto fn = vm->getCompiledFunctions()[startIndex + i];
         writeFunction(os, fn.get(), startIndex, stripDebug);
     }
+
+    // DEFLATE 压缩后写盘
+    std::string raw = os.str();
+    std::vector<uint8_t> compressed;
+    if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
+        throw std::runtime_error("JCB_COMPRESS_FAILED");
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
 }
 
 std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string& path, VM* vm) {
-    std::ifstream is(path, std::ios::binary);
-    if (!is) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    file.seekg(0, std::ios::end);
+    std::streamsize fsize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::string compressed(static_cast<size_t>(fsize), '\0');
+    if (fsize > 0) file.read(&compressed[0], fsize);
+    std::vector<uint8_t> decompressed;
+    if (!jc::deflateDecompress(reinterpret_cast<const uint8_t*>(compressed.data()), compressed.size(), decompressed)) {
+        throw std::runtime_error("JCB_DECOMPRESS_FAILED");
+    }
+    std::string raw(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
+    std::istringstream is(raw, std::ios::binary);
 
     uint32_t magic = read32(is);
     if (magic != MAGIC_NUMBER) throw std::runtime_error("JCB_MAGIC_MISMATCH");
@@ -501,10 +512,9 @@ std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string&
 }
 
 void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
-    std::ofstream os(path, std::ios::binary);
-    if (!os) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    std::ostringstream os(std::ios::binary);
 
-    write32(os, 0x4A435701); // JCW1
+    write32(os, JCW_MAGIC);
     write32(os, VERSION);
 
     auto& fns = vm->getCompiledFunctions();
@@ -764,14 +774,35 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
         writeString(os, name);
         writeRuntimeValue(val, writeRuntimeValue);
     }
+
+    // DEFLATE 压缩后写盘
+    std::string raw = os.str();
+    std::vector<uint8_t> compressed;
+    if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
+        throw std::runtime_error("JCW_COMPRESS_FAILED");
+    }
+    std::ofstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
 }
 
 void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bool infoOnly) {
-    std::ifstream is(path, std::ios::binary);
-    if (!is) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    std::ifstream file(path, std::ios::binary);
+    if (!file) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    file.seekg(0, std::ios::end);
+    std::streamsize fsize = file.tellg();
+    file.seekg(0, std::ios::beg);
+    std::string compressed(static_cast<size_t>(fsize), '\0');
+    if (fsize > 0) file.read(&compressed[0], fsize);
+    std::vector<uint8_t> decompressed;
+    if (!jc::deflateDecompress(reinterpret_cast<const uint8_t*>(compressed.data()), compressed.size(), decompressed)) {
+        throw std::runtime_error("JCW_DECOMPRESS_FAILED");
+    }
+    std::string raw(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
+    std::istringstream is(raw, std::ios::binary);
 
     uint32_t magic = read32(is);
-    if (magic != 0x4A435701) throw std::runtime_error("JCW_MAGIC_MISMATCH");
+    if (magic != JCW_MAGIC) throw std::runtime_error("JCW_MAGIC_MISMATCH");
     uint32_t version = read32(is);
     if (version != VERSION) throw std::runtime_error("JCW_VERSION_MISMATCH");
 

@@ -44,6 +44,11 @@
 #*.png   binary
 #*.gif   binary
 
+# JC2 存档/字节码是压缩后的二进制流（DEFLATE），含 0x0A/0x0D 字节但可能不含 0x00，
+# 必须显式标记为 binary，否则 text=auto 会误判为文本并做 CRLF 转换，损坏数据。
+*.jcw   binary
+*.jcb   binary
+
 ###############################################################################
 # diff behavior for common document formats
 # 

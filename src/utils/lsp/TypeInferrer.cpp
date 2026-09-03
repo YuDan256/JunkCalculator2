@@ -154,6 +154,7 @@ namespace lsp {
                 result = nr->user->inferredType;
             } else if (nr && nr->origin == NameRes::Builtin && nr->builtin) {
                 if (nr->builtin->kind == BuiltinKind::Type) result = Type(BuiltinType::TYPE_DEF);
+                else if (nr->builtin->kind == BuiltinKind::Class) result = Type(BuiltinType::CLASS);
                 else if (nr->builtin->kind == BuiltinKind::Function) result = Type(BuiltinType::FUNC);
                 else result = Type::any();
             } else {

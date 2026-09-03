@@ -88,6 +88,7 @@ namespace lsp {
             bool isFunction = false;
             bool isNamespace = false;
             bool isClass = false;
+            bool hasSuper = false;  // 类是否有 extends（父类方法静态无法解析）
         };
 
         Scope globalScope;

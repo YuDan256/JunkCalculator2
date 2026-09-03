@@ -14,6 +14,7 @@ namespace lsp {
     // 内置符号类别
     enum class BuiltinKind {
         Type,          // 类型对象（int/double/matrix/...），callable
+        Class,         // 内置类（range/Exception/BaseNum 等 PredefinedClasses 类），callable
         Function,      // 全局内置函数（sin/print/...）
         Module,        // 模块（sys/cas/math/random）
         ModuleMember,  // 模块成员函数（sys.xxx）

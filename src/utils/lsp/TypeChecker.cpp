@@ -134,13 +134,15 @@ namespace lsp {
         if (e->object) e->object->accept(*this);
         for (auto& arg : e->arguments) if (arg) arg->accept(*this);
         const NameRes* res = resolver.resolveAt(e);
+        // self.xxx 等已解析为用户符号（类方法）的方法调用，不再报 Unknown method。
+        if (res && res->origin == NameRes::User) return;
         if (res && res->origin == NameRes::Imported && res->member) {
             checkMemberArity(*res->member, positionalArgCount(e->arguments), e->method);
             return;
         }
         // UFCS：x.f(y) 等价 f(x, y)，method 是全局函数时检查参数类型（接收者为第 1 参）
         const BuiltinSymbol* gf = index.findGlobal(e->method.lexeme);
-        if (gf && gf->kind == BuiltinKind::Function) {
+        if (gf && (gf->kind == BuiltinKind::Function || gf->kind == BuiltinKind::Type || gf->kind == BuiltinKind::Class)) {
             std::vector<Type> argTypes;
             if (e->object) argTypes.push_back(inferrer.typeOf(e->object.get()));
             for (auto& a : e->arguments) if (a) argTypes.push_back(inferrer.typeOf(a.get()));
@@ -155,10 +157,14 @@ namespace lsp {
             return;
         }
         if (!index.isMethodName(e->method.lexeme) && !resolver.isImportedMethod(e->method.lexeme)) {
-            std::string msg = "Warning: Unknown method '" + e->method.lexeme + "'.";
-            std::string dym = didYouMean(e->method.lexeme);
-            if (!dym.empty()) msg += " Did you mean '" + dym + "'?";
-            addDiag(msg, e->method.position, e->method.position + (int)e->method.lexeme.size());
+            // 只对 self.xxx 报 Unknown method（self 的类型已知，方法在类里定义，typo 可报）。
+            // 其它对象（参数/属性访问/调用结果）类型动态，静态无法判断方法是否存在，不报。
+            if (e->object && dynamic_cast<SelfExpr*>(e->object.get())) {
+                std::string msg = "Warning: Unknown method '" + e->method.lexeme + "'.";
+                std::string dym = didYouMean(e->method.lexeme);
+                if (!dym.empty()) msg += " Did you mean '" + dym + "'?";
+                addDiag(msg, e->method.position, e->method.position + (int)e->method.lexeme.size());
+            }
         }
     }
 

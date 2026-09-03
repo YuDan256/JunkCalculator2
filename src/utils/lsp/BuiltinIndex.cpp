@@ -212,6 +212,17 @@ namespace lsp {
             sym.returnType = typeSigFromName(n);  // 类型构造函数的返回类型
             globals[n] = std::move(sym);
         }
+        // PredefinedClasses 里 registerBuiltinValue 注册的自定义类（callable 类构造器），
+        // 不在 BuiltinType 枚举里，单独注册避免 range(...) / Exception(...) 被误报 Undefined function。
+        static const std::vector<std::string> extraClasses = {
+            "range", "Exception", "BaseNum", "ASTNode", "Token", "TokenStream"
+        };
+        for (const auto& n : extraClasses) {
+            BuiltinSymbol sym;
+            sym.name = n;
+            sym.kind = BuiltinKind::Class;
+            globals[n] = std::move(sym);
+        }
     }
 
     void BuiltinIndex::buildKeywords() {

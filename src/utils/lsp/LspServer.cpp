@@ -285,7 +285,7 @@ namespace lsp {
                             md += "\n```";
                         } else if (nr->origin == NameRes::Builtin && nr->builtin) {
                             const BuiltinSymbol& b = *nr->builtin;
-                            std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : "builtin_function";
+                            std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : (b.kind == BuiltinKind::Class) ? "class" : "builtin_function";
                             md = "```jc2\n(" + kindStr + ") " + (b.signatureText.empty() ? b.name : b.signatureText) + "\n```";
                             if (!b.desc.empty()) md += "\n---\n" + b.desc;
                         } else if (nr->origin == NameRes::Imported && nr->member) {
@@ -1010,6 +1010,7 @@ namespace lsp {
                                 if (nr) {
                                     if (nr->origin == NameRes::Builtin && nr->builtin) {
                                         if (nr->builtin->kind == BuiltinKind::Type) tokenType = 1; // type
+                                        else if (nr->builtin->kind == BuiltinKind::Class) tokenType = 2; // class
                                         else tokenType = 12; // function
                                     } else if (nr->origin == NameRes::Imported) {
                                         tokenType = nr->isMethod ? 13 : 12; // method / function

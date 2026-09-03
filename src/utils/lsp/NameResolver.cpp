@@ -390,6 +390,24 @@ namespace lsp {
                 }
             }
         }
+        // self.xxx：self 是 SelfExpr（不是 Variable），objectNameOf 返回空，需单独识别为当前类的方法。
+        if (res.origin == NameRes::Undefined && e->object && dynamic_cast<SelfExpr*>(e->object.get())) {
+            for (Scope* s = current; s; s = s->parent) {
+                if (!s->isClass) continue;
+                auto it = s->symbols.find(e->method.lexeme);
+                if (it != s->symbols.end()) {
+                    res.origin = NameRes::User;
+                    res.user = &it->second;
+                    break;
+                }
+                // 找不到方法但类有 extends（父类方法，如 engine.GameEngine 的 isKeyDown），
+                // 静态无法解析，识别为 User 避免误报 Unknown method。
+                if (s->hasSuper) {
+                    res.origin = NameRes::User;
+                    break;
+                }
+            }
+        }
         if (res.origin == NameRes::Undefined && index.isMethodName(e->method.lexeme)) {
             res.origin = NameRes::Builtin;  // 方法名已知
         }
@@ -421,13 +439,20 @@ namespace lsp {
         range.start = doc->offsetToPosition(e->startPos);
         range.end = doc->offsetToPosition(e->endPos);
         enterScope(current, range, false, false, true);
+        current->hasSuper = (e->superClassExpr != nullptr);
+        // 先 declare 所有属性（含方法），再 visit 值：方法体里的 self.xxx 需要能先看到同类的其它方法，
+        // 否则 self.generateLevel / self.tryMove / self.drawCentered 会被误报 Unknown method。
         for (auto& p : e->staticProperties) {
-            if (p.value) p.value->accept(*this);
             declare(p.name.lexeme, UserSymbol::Property, p.name.position, p.name.position + (int)p.name.lexeme.size());
         }
         for (auto& p : e->instanceProperties) {
-            if (p.value) p.value->accept(*this);
             declare(p.name.lexeme, UserSymbol::Property, p.name.position, p.name.position + (int)p.name.lexeme.size());
+        }
+        for (auto& p : e->staticProperties) {
+            if (p.value) p.value->accept(*this);
+        }
+        for (auto& p : e->instanceProperties) {
+            if (p.value) p.value->accept(*this);
         }
         leaveScope();
     }

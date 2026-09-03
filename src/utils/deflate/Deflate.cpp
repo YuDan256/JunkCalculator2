@@ -281,6 +281,7 @@ struct Matcher {
     static const int MIN_MATCH = 3;
     static const int MAX_MATCH = 258;
     static const int NICE_MATCH = 258;
+    static const int GOOD_MATCH = 32;
     static const int MAX_CHAIN = 128;
 
     const uint8_t* data;
@@ -295,11 +296,10 @@ struct Matcher {
         prev.assign(len, -1);
     }
 
+    // zlib 风格滚动 hash：(((c0 << 5) ^ c1) << 5) ^ c2，减少冲突
     int hash3(size_t p) const {
-        uint32_t h = static_cast<uint32_t>(data[p]) |
-                     (static_cast<uint32_t>(data[p + 1]) << 8) |
-                     (static_cast<uint32_t>(data[p + 2]) << 16);
-        h = (h * 2654435761u) >> 16;
+        uint32_t h = (static_cast<uint32_t>(data[p]) << 5) ^ data[p + 1];
+        h = (h << 5) ^ data[p + 2];
         return static_cast<int>(h & 0xFFFF);
     }
 
@@ -310,16 +310,25 @@ struct Matcher {
         int bestLen = 0, bestDist = 0;
         int cand = head[h];
         int chain = 0;
+        int chainLimit = MAX_CHAIN;
         int maxLen = static_cast<int>(std::min<size_t>(MAX_MATCH, n - pos));
-        while (cand >= 0 && chain < MAX_CHAIN) {
+        while (cand >= 0 && chain < chainLimit) {
             int d = static_cast<int>(pos) - cand;
             if (d > WINDOW_SIZE) break;
-            int len = 0;
+            // 先快速比较前 3 字节，跳过 hash 冲突的假候选
+            if (data[cand] != data[pos] || data[cand + 1] != data[pos + 1] || data[cand + 2] != data[pos + 2]) {
+                cand = prev[cand];
+                chain++;
+                continue;
+            }
+            int len = 3;
             while (len < maxLen && data[cand + len] == data[pos + len]) len++;
             if (len > bestLen) {
                 bestLen = len;
                 bestDist = d;
                 if (len >= NICE_MATCH) break;
+                // 找到 good match 后，剩余链长减到 1/4（zlib 风格）
+                if (len >= GOOD_MATCH) chainLimit = chain + ((chainLimit - chain) >> 2);
             }
             cand = prev[cand];
             chain++;

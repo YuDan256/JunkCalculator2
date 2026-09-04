@@ -147,7 +147,7 @@
       "    d1 - @{\"a\"}                    dict key omission",
       "    f(x, y = 0) = x + y            function with default parameter",
       "    f(10, y = 5)                   keyword arguments (named parameters)",
-      "    f(a, ...rest) = sum(rest)      variadic (rest) parameters",
+      "    f(a, ...rest) = rest.sum()      variadic (rest) parameters",
       "    f(a, b; c, ...kw) = ...        ';' splits keyword-only (c) and kwargs (...kw)",
       "    (x) => x^2                     lambda expression",
       "    math_func(_, 10)               partial application (auto-currying)",
@@ -341,8 +341,8 @@
       "      as a direct argument in a function or method call.",
       "",
       "    Rest Parameters `...`: Packs extra arguments into a list",
-      "      sum_all(prefix, ...nums) = prefix + str(sum(nums))",
-      "      sum_all(\"Total\", 1, 2, 3)    → \"Total3\"",
+      "      sum_all(prefix, ...nums) = prefix + str(nums.sum())",
+      "      sum_all(\"Total\", 1, 2, 3)    → \"Total6\"",
       "",
       "    Keyword-Only & kwargs: A `;` splits the parameter list",
       "      f(a, ...rest; b, ...kw) = ...  // ';' before: positional (incl. ...rest)",
@@ -1114,7 +1114,7 @@
       "  ──────────────────────",
       "    cas.evalf(expr)              Force evaluate to floating point",
       "    cas.evalv(expr)              Evaluate preserving exact types (fraction/complex)",
-      "    f = cas.toFunc(x^2 + y, [\"x\", \"y\"]) Compile AST to blazing-fast VM closure",
+      "    f = cas.toFunc(x^2 + y, @[\"x\", \"y\"]) Compile AST to blazing-fast VM closure",
       "    f(3, 4)                      → 13"
     ],
     "function": [
@@ -1150,7 +1150,7 @@
       "      dist({x: 3, y: 4})                 → 5",
       "",
       "      // Works with default values, rest patterns, and modifiers!",
-      "      process([a, b = 10, ...rest]) = a + b + sum(rest)",
+      "      process([a, b = 10, ...rest]) = a + b + rest.sum()",
       "      process([5])                       → 15",
       "      process([5, 20, 1, 2])             → 28",
       "",
@@ -2168,15 +2168,15 @@
       "  ──────────────────────",
       "    v.map(f)            Apply f to each element, returns same container type",
       "                          [1,2,3].map((x) => x*2)               → [2,4,6]",
-      "                          [\"a\",\"b\"].map((s) => s.upper())       → [\"A\",\"B\"]",
+      "                          @[\"a\",\"b\"].map((s) => s.upper())       → @[\"A\",\"B\"]",
       "                          [1+1i, 2+2i].map((z) => z*2)          → [2+2i, 4+4i]",
       "                          list(1,2,3).map((x) => x*10)          → list(10,20,30)",
       "    v.filter(f)         Keep elements where f returns truthy",
       "                          [1,2,3,4].filter((x) => x > 2)        → [3,4]",
-      "                          [\"hi\",\"hello\"].filter((s) => s.len() > 3) → [\"hello\"]",
+      "                          @[\"hi\",\"hello\"].filter((s) => s.len() > 3) → @[\"hello\"]",
       "    v.reduce(f, init)   Left fold",
       "                          [1,2,3,4].reduce((a,b) => a+b)        → 10",
-      "                          [\"x\",\"y\",\"z\"].reduce((a,b) => a+\"+\"+b)  → \"x+y+z\"",
+      "                          @[\"x\",\"y\",\"z\"].reduce((a,b) => a+\"+\"+b)  → \"x+y+z\"",
       "    v.any(f)            true if any f(x) is truthy",
       "    v.all(f)            true if all f(x) are truthy",
       "    v.countIf(f)        Count elements where f(x) is truthy",
@@ -2191,15 +2191,15 @@
       "  ──────────────────────",
       "    v.sort()            Stable natural sort (numeric or lexicographic)",
       "                          [3,1,4].sort()                 → [1,3,4]",
-      "                          [\"banana\",\"apple\"].sort()      → [\"apple\",\"banana\"]",
+      "                          @[\"banana\",\"apple\"].sort()      → @[\"apple\",\"banana\"]",
       "    v.sort(cmp)         Stable sort with custom comparator function",
       "                          [3,1,4].sort((a,b) => a > b)   → [4,3,1]  (descending)",
-      "                          [\"bb\",\"a\"].sort((a,b) => a.len() < b.len()) → [\"a\",\"bb\"]",
+      "                          @[\"bb\",\"a\"].sort((a,b) => a.len() < b.len()) → @[\"a\",\"bb\"]",
       "",
       "  Accumulation",
       "  ──────────────────────",
-      "    sum(v)              Sum of all elements",
-      "    prod(v)             Product of all elements",
+      "    v.sum()              Sum of all elements",
+      "    v.prod()             Product of all elements",
       "    v.cumsum()          Cumulative sum     [1,2,3] → [1,3,6]",
       "    v.cumprod()         Cumulative product  [1,2,3] → [1,2,6]",
       "    v.diffs()           Adjacent differences [10,20,35] → [10,15]",
@@ -2209,13 +2209,13 @@
       "    cat(a, b, ...)      Concatenate multiple arrays/lists",
       "    v.join(delim)       Join elements into a string with delimiter",
       "                          [1,2,3].join(\"-\")              → \"1-2-3\"",
-      "                          [\"a\",\"b\",\"c\"].join(\", \")        → \"a, b, c\"",
+      "                          @[\"a\",\"b\",\"c\"].join(\", \")        → \"a, b, c\"",
       "    zip(a, b)           Pair-wise merge → N×2 matrix or list of pairs",
       "",
       "  Iteration Helpers",
       "  ──────────────────────",
       "    v.enumerate([st])   Returns a list of @[index, value] pairs.",
-      "                          [\"a\", \"b\"].enumerate()       → @[@[0, \"a\"], @[1, \"b\"]]",
+      "                          @[\"a\", \"b\"].enumerate()       → @[@[0, \"a\"], @[1, \"b\"]]",
       "    v.groupBy(f)        Groups elements by f(x) into a dict.",
       "                          [1,2,3,4].groupBy((x)=>x%2)  → {1: @[1,3], 0: @[2,4]}",
       "",
@@ -2441,7 +2441,7 @@
       "    d[\"key\"]                            Read / Write the value ",
       "    d[\"key\"] += 1                       Compound assignment directly on the value",
       "    d - @{\"key1\", \"key2\"}               Key omission (returns a NEW dict without the specified keys)",
-      "    d - [\"key1\", \"key2\"]                Key omission using a list",
+      "    d - @[\"key1\", \"key2\"]               Key omission using a list",
       "    d - {key1: 1}                       Key omission using another dict (ignores values)",
       "    ",
       "    * Note: d[a] evaluates the variable 'a' and uses its value as the key. ",
@@ -3001,11 +3001,12 @@
       "        x => \"Positive or zero\"",
       "    }",
       "",
-      "  3. Array & Matrix Polymorphic Destructuring",
+      "  3. Array & Matrix Destructuring",
       "  ──────────────────────",
-      "    Matches lists, realmatrices, complexmatrices, stringmatrices, and symmatrices.",
-      "    Uses `,` for rows and `;` for columns to strictly match dimensions.",
-      "      [x, y]       // Matches 1x2 row vector or List of length 2",
+      "    `@[...]` matches lists; `[...]` matches matrices (real/complex/sym).",
+      "    Uses `,` for columns and `;` for rows to strictly match dimensions.",
+      "      @[x, y]      // Matches a List of length 2",
+      "      [x, y]       // Matches a 1x2 row vector (matrix)",
       "      [x; y]       // Matches 2x1 column vector",
       "      [a, b; c, d] // Matches 2x2 matrix",
       "",
@@ -4175,14 +4176,14 @@
       "signature": "A.jacobian(vars)",
       "desc": "Returns the Jacobian matrix of a symbolic matrix with respect to a list of variables.",
       "examples": [
-        "M.jacobian([\"x\", \"y\"])"
+        "M.jacobian(@[\"x\", \"y\"])"
       ]
     },
     "hessian": {
       "signature": "A.hessian(vars)",
       "desc": "Returns the Hessian matrix of a scalar symbolic function with respect to a list of variables.",
       "examples": [
-        "M.hessian([\"x\", \"y\"])"
+        "M.hessian(@[\"x\", \"y\"])"
       ]
     },
     "id": {
@@ -4778,13 +4779,13 @@
     },
     "eqE": {
       "signature": "A.eqE(B)",
-      "desc": "Element-wise equality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["[1, 2].eqE(1)", "[\"a\", \"b\"].eqE(\"a\")"]
+      "desc": "Element-wise equality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
+      "examples": ["[1, 2].eqE(1)"]
     },
     "neqE": {
       "signature": "A.neqE(B)",
-      "desc": "Element-wise inequality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports strings.",
-      "examples": ["[1, 2].neqE(1)", "[\"a\", \"b\"].neqE(\"a\")"]
+      "desc": "Element-wise inequality comparison. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
+      "examples": ["[1, 2].neqE(1)"]
     },
     "ltE": {
       "signature": "A.ltE(B)",
@@ -6094,7 +6095,7 @@
     "enumerate": {
       "signature": "v.enumerate([start=0])",
       "desc": "Returns a list of @[index, value] pairs from an iterable.",
-      "examples": ["[\"a\", \"b\", \"c\"].enumerate()"]
+      "examples": ["@[\"a\", \"b\", \"c\"].enumerate()"]
     },
     "groupBy": {
       "signature": "v.groupBy(f)",
@@ -6688,7 +6689,7 @@
     "toFunc": {
       "signature": "cas.toFunc(expr, vars)",
       "desc": "Compiles a symbolic AST to a blazing-fast VM closure.",
-      "examples": ["f = cas.toFunc(x^2 + y, [\"x\", \"y\"])"]
+      "examples": ["f = cas.toFunc(x^2 + y, @[\"x\", \"y\"])"]
     },
     "evalv": {
       "signature": "cas.evalv(expr)",

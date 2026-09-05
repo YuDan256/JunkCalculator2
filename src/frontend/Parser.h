@@ -77,7 +77,7 @@ namespace jc {
         std::unique_ptr<Expr> classDefExpr();  // ★
         std::unique_ptr<Expr> namespaceExpr(); // ★ 新增
         std::unique_ptr<Expr> enumExpr();      // ★ 新增
-        std::unique_ptr<Expr> parseFString(const std::string& raw);  // ★
+        std::unique_ptr<Expr> parseFString(const std::string& raw, int baseOffset);  // ★
         std::vector<CompClause> parseCompClauses();
         std::unique_ptr<Expr> parseComp(std::unique_ptr<Expr> valueExpr, bool forceList);  // ★
         std::unique_ptr<Expr> pipe();

@@ -1518,7 +1518,7 @@ namespace jc {
         }
         if (match({ TokenType::FSTRING })) {
             int startPos = previous().position;
-            auto fstr = parseFString(previous().lexeme);
+            auto fstr = parseFString(previous().lexeme, startPos + 2);
             int endPos = startPos + static_cast<int>(previous().lexeme.length());
             return withPos(std::move(fstr), startPos, endPos);
         }
@@ -3833,7 +3833,7 @@ namespace jc {
         return classExpr;
     }
 
-    std::unique_ptr<Expr> Parser::parseFString(const std::string& raw) {
+    std::unique_ptr<Expr> Parser::parseFString(const std::string& raw, int baseOffset) {
         std::vector<std::string> literals;
         std::vector<std::unique_ptr<Expr>> exprs;
         std::vector<std::string> specs;
@@ -3843,6 +3843,7 @@ namespace jc {
 
         while (i < raw.size()) {
             if (raw[i] == '{') {
+                int bracePos = static_cast<int>(i);  // '{' 在 raw 里的位置
                 i++; // skip opening {
 
                 // ★ 提取到匹配的 } 之间的原始内容
@@ -3901,8 +3902,10 @@ namespace jc {
                 literals.push_back(currentLit);
                 currentLit.clear();
 
-                // ★ 子词法分析 + 子语法分析
-                Lexer subLexer(exprStr, sourceFile);
+                // ★ 子词法分析 + 子语法分析（前导空格补齐，使子 AST 的 startPos 对齐文档偏移）
+                int paddedOffset = baseOffset + bracePos + 1;  // '{' 之后的内容在文档里的偏移
+                std::string padded = std::string(paddedOffset, ' ') + exprStr;
+                Lexer subLexer(padded, sourceFile);
                 auto subTokens = subLexer.tokenize();
                 Parser subParser(subTokens, sourceFile);
                 auto exprAst = subParser.parse();

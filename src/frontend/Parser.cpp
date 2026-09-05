@@ -1694,7 +1694,8 @@ namespace jc {
 
         if (match({ TokenType::LPAREN })) {
             // ★ 推测性 lambda 解析：(params) => body  [兼容了类型签名侦测]
-            int savedPos = current;
+            int savedPos = current;       // token 索引，仅用于回退
+            int lpPos = previous().position; // '(' 的字符偏移，用作 lambda 的 startPos
             bool isLambda = false;
 
             int peekPos = current;
@@ -1902,7 +1903,7 @@ namespace jc {
                     paramTypes, retType,  // ★
                     rawBody,
                     std::move(finalBody),
-                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName), savedPos, endPos);
+                    kwargParams, kwargIsRef, kwargIsConst, kwargDefaultExprs, kwargTypes, kwargsName), lpPos, endPos);
             }
             else {
                 current = savedPos;

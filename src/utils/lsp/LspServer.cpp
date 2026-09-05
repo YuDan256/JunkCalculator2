@@ -129,7 +129,7 @@ namespace lsp {
             result.capabilities.completionProvider.triggerCharacters = { ".", ":" };
 
             result.capabilities.semanticTokensProvider.legend.tokenTypes = {
-                "namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "keyword", "modifier", "comment", "string", "number", "regexp", "operator", "decorator"
+                "namespace", "type", "class", "enum", "interface", "struct", "typeParameter", "parameter", "variable", "property", "enumMember", "event", "function", "method", "macro", "controlFlow", "keyword", "comment", "string", "number", "regexp", "operator", "decorator"
             };
             result.capabilities.semanticTokensProvider.legend.tokenModifiers = {
                 "declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"
@@ -946,33 +946,33 @@ namespace lsp {
                         }
 
                         bool isKeyword = false;
-                        bool isModifier = false;
+                        bool isControlFlow = false;
 
                         switch (t.type) {
+                            // 控制流关键字（controlFlow，紫）
                             case TokenType::IF: case TokenType::ELSE: case TokenType::WHILE:
-                            case TokenType::FOR: case TokenType::IN: case TokenType::IS:
-                            case TokenType::AS: case TokenType::BREAK: case TokenType::CONTINUE:
+                            case TokenType::FOR: case TokenType::BREAK: case TokenType::CONTINUE:
                             case TokenType::RETURN: case TokenType::SWITCH: case TokenType::CASE:
                             case TokenType::DEFAULT: case TokenType::THROW: case TokenType::TRY:
                             case TokenType::CATCH: case TokenType::MATCH: case TokenType::DEFER:
-                            case TokenType::TRUE_KW: case TokenType::FALSE_KW:
-                            case TokenType::NONE_KW:
-                                isKeyword = true;
+                                isControlFlow = true;
                                 break;
-                            // 声明关键字 + 修饰符（与 tmLanguage 的 keyword.declaration 对齐，深蓝）
+                            // 其余关键字 + 常量 + 声明（keyword，蓝）
+                            case TokenType::IN: case TokenType::IS: case TokenType::AS:
+                            case TokenType::TRUE_KW: case TokenType::FALSE_KW: case TokenType::NONE_KW:
                             case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
                             case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
                             case TokenType::QUOTE:
                             case TokenType::STATIC: case TokenType::LOCAL: case TokenType::CONST:
                             case TokenType::REF: case TokenType::STATE: case TokenType::DELETE:
                             case TokenType::EXTENDS:
-                                isModifier = true;
+                                isKeyword = true;
                                 break;
                             default:
                                 break;
                         }
 
-                        if (isKeyword || isModifier || t.type == TokenType::IDENTIFIER) {
+                        if (isControlFlow || isKeyword || t.type == TokenType::IDENTIFIER) {
                             if (isAfterDot) {
                                 tokenType = 9; // property（默认）
                                 Position dotPos = doc->offsetToPosition(t.position);
@@ -997,12 +997,12 @@ namespace lsp {
                                 if (isEnumMember) {
                                     tokenType = 10; // enumMember
                                 } else {
-                                    tokenType = isKeyword ? 15 : (isModifier ? 16 : 8);
+                                    tokenType = isControlFlow ? 15 : (isKeyword ? 16 : 8);
                                 }
+                            } else if (isControlFlow) {
+                                tokenType = 15; // controlFlow
                             } else if (isKeyword) {
-                                tokenType = 15; // keyword
-                            } else if (isModifier) {
-                                tokenType = 16; // modifier
+                                tokenType = 16; // keyword
                             } else {
                                 tokenType = 8; // variable
                                 Position pos = doc->offsetToPosition(t.position);

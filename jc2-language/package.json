@@ -39,6 +39,25 @@
                 "path": "./syntaxes/jc2.tmLanguage.json"
             }
         ],
+        "semanticTokenTypes": [
+            {
+                "id": "controlFlow",
+                "superType": "keyword",
+                "description": "控制流关键字"
+            }
+        ],
+        "semanticTokenScopes": [
+            {
+                "scopes": {
+                    "keyword": [
+                        "constant.language"
+                    ],
+                    "controlFlow": [
+                        "keyword.control"
+                    ]
+                }
+            }
+        ],
         "snippets": [
             {
                 "language": "jc2",

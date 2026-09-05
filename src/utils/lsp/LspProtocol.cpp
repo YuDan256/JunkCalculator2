@@ -148,16 +148,6 @@ namespace lsp {
         j["legend"] = legend.toJson();
         j["range"] = Json(range);
         j["full"] = full.toJson();
-        if (!semanticTokenScopes.empty()) {
-            Json scopes;
-            scopes.type = JsonType::Object;
-            for (const auto& [type, scopeList] : semanticTokenScopes) {
-                std::vector<Json> arr;
-                for (const auto& s : scopeList) arr.push_back(Json(s));
-                scopes[type] = Json(arr);
-            }
-            j["semanticTokenScopes"] = scopes;
-        }
         return j;
     }
 

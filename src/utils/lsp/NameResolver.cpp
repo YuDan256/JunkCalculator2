@@ -426,7 +426,9 @@ namespace lsp {
     void NameResolver::visitImportExpr(ImportExpr* e) { handleImport(e); }
 
     void NameResolver::visitLambdaExpr(LambdaExpr* e) {
-        if (!e->name.empty()) declare(e->name, UserSymbol::Function, e->startPos, e->startPos + (int)e->name.size());
+        // 匿名 lambda 的内部占位名（"<lambda>"）不对应源码位置，不能 declare：
+        // 否则其声明范围 [lpPos, lpPos+8) 会覆盖 '(' 后的参数，导致参数被误判为 Function（黄色）。
+        if (!e->name.empty() && e->name[0] != '<') declare(e->name, UserSymbol::Function, e->startPos, e->startPos + (int)e->name.size());
         Range range;
         range.start = doc->offsetToPosition(e->startPos);
         range.end = doc->offsetToPosition(e->endPos);

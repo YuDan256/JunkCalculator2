@@ -1030,10 +1030,11 @@ namespace lsp {
                                     tokenType = 19; // number
                                     break;
                                 case TokenType::STRING:
-                                case TokenType::FSTRING:
                                 case TokenType::RSTRING:
                                     tokenType = 18; // string
                                     break;
+                                // FSTRING 不标记 semantic token：交给 tmLanguage 的 fstrings/fstring-interpolation，
+                                // 否则整个 f-string（含 {} 内部）被整体标为 string，覆盖插值高亮。
                                 case TokenType::COMMENT:
                                     tokenType = 17; // comment
                                     break;
@@ -1124,7 +1125,11 @@ namespace lsp {
                     }
                     result["data"] = Json(dataJson);
                     res.result = result;
-                } catch (...) {}
+                } catch (const std::exception& e) {
+                    std::cerr << "[LSP] semanticTokens error: " << e.what() << std::endl;
+                } catch (...) {
+                    std::cerr << "[LSP] semanticTokens error: unknown" << std::endl;
+                }
             }
         }
         sendMessage(res.toJson().serialize());

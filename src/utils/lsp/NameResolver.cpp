@@ -285,8 +285,12 @@ namespace lsp {
         // 先声明函数/类/命名空间/局部声明（支持先引用后声明）
         for (auto& stmt : e->statements) {
             if (auto* a = dynamic_cast<Assign*>(stmt.get())) {
-                if (dynamic_cast<LambdaExpr*>(a->value.get()) || dynamic_cast<ClassDefExpr*>(a->value.get())) {
+                if (dynamic_cast<LambdaExpr*>(a->value.get())) {
                     declare(a->name.lexeme, UserSymbol::Function, a->name.position, a->name.position + (int)a->name.lexeme.size());
+                } else if (dynamic_cast<ClassDefExpr*>(a->value.get())) {
+                    // class Foo {...} 被 Parser 解析成 Assign(name, ClassDefExpr)，必须声明为 Class 而非 Function，
+                    // 否则 hover/高亮会把类识别成函数。
+                    declare(a->name.lexeme, UserSymbol::Class, a->name.position, a->name.position + (int)a->name.lexeme.size());
                 }
             } else if (auto* ld = dynamic_cast<LocalDecl*>(stmt.get())) {
                 declare(ld->name.lexeme, UserSymbol::Variable, ld->name.position, ld->name.position + (int)ld->name.lexeme.size());

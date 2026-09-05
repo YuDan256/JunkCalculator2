@@ -19,10 +19,43 @@
             "include": "#numbers"
         },
         {
+            "include": "#property-access"
+        },
+        {
+            "include": "#function-def"
+        },
+        {
+            "include": "#enum-block"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#class-def"
+        },
+        {
+            "include": "#function-call"
+        },
+        {
+            "include": "#constants"
+        },
+        {
+            "include": "#builtin-types"
+        },
+        {
+            "include": "#builtin-functions"
+        },
+        {
             "include": "#operators"
         },
         {
             "include": "#punctuation"
+        },
+        {
+            "include": "#macros"
+        },
+        {
+            "include": "#identifiers"
         }
     ],
     "repository": {
@@ -375,6 +408,171 @@
                 }
             ]
         },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.jc2",
+                    "match": "\\b(if|else|while|for|in|is|as|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b"
+                },
+                {
+                    "name": "keyword.declaration.jc2",
+                    "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b"
+                }
+            ]
+        },
+        "enum-block": {
+            "patterns": [
+                {
+                    "begin": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.declaration.enum.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.enum.jc2"
+                        }
+                    },
+                    "end": "\\}",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.bracket.curly.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
+                            "name": "variable.other.enummember.jc2"
+                        },
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#punctuation"
+                        }
+                    ]
+                },
+                {
+                    "begin": "\\b(enum)\\s*(?=\\{)",
+                    "beginCaptures": {
+                        "1": {
+                            "name": "keyword.declaration.enum.jc2"
+                        }
+                    },
+                    "end": "\\}",
+                    "endCaptures": {
+                        "0": {
+                            "name": "punctuation.bracket.curly.jc2"
+                        }
+                    },
+                    "patterns": [
+                        {
+                            "include": "#comments"
+                        },
+                        {
+                            "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\b",
+                            "name": "variable.other.enummember.jc2"
+                        },
+                        {
+                            "include": "#numbers"
+                        },
+                        {
+                            "include": "#strings"
+                        },
+                        {
+                            "include": "#operators"
+                        },
+                        {
+                            "include": "#punctuation"
+                        }
+                    ]
+                }
+            ]
+        },
+        "class-def": {
+            "patterns": [
+                {
+                    "match": "\\b(class)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(extends)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.class.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.class.jc2"
+                        },
+                        "3": {
+                            "name": "keyword.declaration.extends.jc2"
+                        },
+                        "4": {
+                            "name": "entity.other.inherited-class.jc2"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b(namespace)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.namespace.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.namespace.jc2"
+                        }
+                    }
+                }
+            ]
+        },
+        "function-def": {
+            "patterns": [
+                {
+                    "match": "\\b(__[A-Za-z_][A-Za-z0-9_]*__)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "support.function.magic.jc2"
+                        }
+                    }
+                },
+                {
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\([^)]*\\)(?:\\s*->\\s*[A-Za-z_][A-Za-z0-9_]*)?\\s*=)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.definition.jc2"
+                        }
+                    }
+                }
+            ]
+        },
+        "function-call": {
+            "patterns": [
+                {
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.function.call.jc2"
+                        }
+                    }
+                }
+            ]
+        },
+        "constants": {
+            "patterns": [
+                {
+                    "name": "constant.language.jc2",
+                    "match": "\\b(true|false|none)\\b"
+                },
+                {
+                    "name": "variable.language.jc2",
+                    "match": "\\b(self|super|_)\\b"
+                }
+            ]
+        },
         "operators": {
             "patterns": [
                 {
@@ -444,6 +642,68 @@
                 {
                     "name": "punctuation.accessor.jc2",
                     "match": "\\."
+                }
+            ]
+        },
+        "macros": {
+            "patterns": [
+                {
+                    "name": "entity.name.function.macro.jc2",
+                    "match": "@[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                },
+                {
+                    "name": "variable.other.unquote.jc2",
+                    "match": "\\$[a-zA-Z_][a-zA-Z0-9_]*\\b"
+                }
+            ]
+        },
+        "identifiers": {
+            "patterns": [
+                {
+                    "name": "variable.other.quoted.jc2",
+                    "match": "`[^`\\n]*`"
+                }
+            ]
+        },
+        "property-access": {
+            "patterns": [
+                {
+                    "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.accessor.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.function.call.jc2"
+                        }
+                    }
+                },
+                {
+                    "match": "(\\.)\\s*(\\$?[a-zA-Z_][a-zA-Z0-9_]*)",
+                    "captures": {
+                        "1": {
+                            "name": "punctuation.accessor.jc2"
+                        },
+                        "2": {
+                            "name": "variable.other.property.jc2"
+                        }
+                    }
+                }
+            ]
+        },
+        "builtin-types": {
+            "patterns": [
+                {
+                    "name": "support.type.jc2",
+                    "match": "\\b(int|double|string|bool|list|dict|set|fraction|complex|realmatrix|complexmatrix|symmatrix|function|class_type|instance|namespace_type|type|slice)\\b"
+                }
+            ]
+        },
+        "builtin-functions": {
+            "patterns": [
+                {
+                    "name": "support.function.builtin.jc2",
+                    "match": "\\b(pi|e|i|complex|double|int|abs|sqrt|cbrt|root|sqrtD|cbrtD|rootD|pow|log|ln|round|floor|ceil|trunc|sgn|deg|rad|idiv|sin|cos|tan|sec|csc|cot|asin|acos|atan|atan2|sinh|cosh|tanh|asinh|acosh|atanh|exp|erf|fresnel_s|fresnel_c|Si|Ci|Ei|Li|Re|Im|arg|conj|frac|toFrac|num|den|matrix|symmatrix|det|inv|trans|ctrans|gauss|rank|tr|norm|cond|adj|sum|prod|null|orth|mpow|charPoly|kron|jacobian|hessian|id|ones|zeros|eig|eigvec|diag|lsolve|lstsq|dim|dot|vnorm|normalize|cross|angle|sproj|vproj|triple|isperp|isparallel|mean|var|svar|std|sstd|max|min|span|perc|median|mode|cov|corr|rsq|regress|str|string|len|length|size|format|type|list|dict|set|print|assert|help|sym|symbolics|clear|add|remove|discard|eval|concat|chr|range|fill|linspace|toList|toArray|toMatrix|zip|cat|isinstance|getClass|getParent|freeze|isFrozen|hash|copy|isalpha|isdigit|isalnum|isspace|isupper|islower|iscallable|ishashable|isindexable|isiterable|isempty|isnan|isinf|isfinite|isprime|iseven|isodd|ispositive|isnegative|isapprox|iszero|addE|subE|mulE|divE|idivE|powE|modE|eqE|neqE|ltE|leE|gtE|geE|maxE|minE|andE|orE|xorE|atan2E|hypotE|whereE|perm|getElement|setElement|getSlice|setSlice|getR|getC|delR|delC|swapR|swapC|multiR|multiC|addR|addC|sub|cof|Acof|blkdiag|qr|lu|residual|gcinfo|bool|not|and|or|seq|error|input|table|matpow|toSet|init|finalize|gensym)\\b(?=\\()"
                 }
             ]
         }

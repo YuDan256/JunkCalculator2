@@ -152,7 +152,7 @@ namespace lsp {
                 { "method",        { "entity.name.function.member" } },
                 { "macro",         { "entity.name.function.macro" } },
                 { "controlFlow",   { "keyword.control" } },
-                { "keyword",       { "storage.modifier" } },
+                { "keyword",       { "constant.language" } },
                 { "comment",       { "comment" } },
                 { "string",        { "string" } },
                 { "number",        { "constant.numeric" } },

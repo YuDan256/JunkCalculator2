@@ -134,6 +134,32 @@ namespace lsp {
             result.capabilities.semanticTokensProvider.legend.tokenModifiers = {
                 "declaration", "definition", "readonly", "static", "deprecated", "abstract", "async", "modification", "documentation", "defaultLibrary"
             };
+            // tokenType → TextMate scope，客户端 fallback 用（开箱即用，用户无需自己配颜色）
+            result.capabilities.semanticTokensProvider.semanticTokenScopes = {
+                { "namespace",     { "entity.name.namespace" } },
+                { "type",          { "entity.name.type" } },
+                { "class",         { "entity.name.type.class" } },
+                { "enum",          { "entity.name.type.enum" } },
+                { "interface",     { "entity.name.type.interface" } },
+                { "struct",        { "entity.name.type.struct" } },
+                { "typeParameter", { "entity.name.type.parameter" } },
+                { "parameter",     { "variable.parameter" } },
+                { "variable",      { "variable.other.readwrite" } },
+                { "property",      { "variable.other.property" } },
+                { "enumMember",    { "variable.other.enummember" } },
+                { "event",         { "variable.other.event" } },
+                { "function",      { "entity.name.function" } },
+                { "method",        { "entity.name.function.member" } },
+                { "macro",         { "entity.name.function.macro" } },
+                { "controlFlow",   { "keyword.control" } },
+                { "keyword",       { "storage.modifier" } },
+                { "comment",       { "comment" } },
+                { "string",        { "string" } },
+                { "number",        { "constant.numeric" } },
+                { "regexp",        { "string.regexp" } },
+                { "operator",      { "keyword.operator" } },
+                { "decorator",     { "entity.name.function.decorator" } }
+            };
             result.capabilities.semanticTokensProvider.full.delta = false;
             result.capabilities.semanticTokensProvider.range = false;
 

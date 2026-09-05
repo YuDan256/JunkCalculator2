@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <map>
 #include <unordered_map>
 #include <stdexcept>
 #include <optional>
@@ -123,6 +124,8 @@ namespace lsp {
                 bool delta = false;
                 Json toJson() const;
             } full;
+            // tokenType 名 → TextMate scope 列表（客户端 fallback 用，开箱即用无需用户配颜色）
+            std::map<std::string, std::vector<std::string>> semanticTokenScopes;
             Json toJson() const;
         } semanticTokensProvider;
 

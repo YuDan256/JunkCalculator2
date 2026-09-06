@@ -189,12 +189,23 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                 VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                 return res.as_bits;
             } else if (cl->isNative()) {
+                // ★ 与解释器 execCall 的 native 分支保持一致：只要声明了 rest/仅关键字/kwargs，
+                //   一律走 alignArguments，把 rest 收集成 list（否则 print 等变参函数收到未打包的字符串）。
+                const std::vector<Value>* argPtr = &args;
+                std::vector<Value> aligned;
+                bool hasRest = !cl->restName.empty() || !cl->kwargNames.empty() || !cl->kwargsName.empty();
+                if (hasRest) {
+                    aligned = VM::activeVM->alignArguments(static_cast<int>(argc), 0, args.data(),
+                        cl->paramNames, cl->restName, cl->kwargNames, cl->kwargsName,
+                        cl->isUFCS ? cl->boundSelf : Value::none(), cl->kwargHasDefault);
+                    argPtr = &aligned;
+                }
                 helpers::nativeSelfStack.push_back(cl->boundSelf);
                 helpers::nativeClassStack.push_back(cl->boundClass);
                 Value res;
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
-                    res = fn(args);
+                    res = fn(*argPtr);
                 } catch (...) {
                     helpers::nativeSelfStack.pop_back();
                     helpers::nativeClassStack.pop_back();

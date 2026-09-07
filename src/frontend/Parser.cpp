@@ -515,7 +515,8 @@ namespace jc {
                                     if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
                                     restName = paramTok.lexeme;
                                 }
-                            } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                            } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET) ||
+                                       (check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET)) {
                                 if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                                 patNode = parsePrimaryPattern();
@@ -1794,7 +1795,8 @@ namespace jc {
                                 if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
                                 restName = paramTok.lexeme;
                             }
-                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET) ||
+                                   (check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET)) {
                             if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                             if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();

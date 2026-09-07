@@ -515,8 +515,7 @@ namespace jc {
                                     if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
                                     restName = paramTok.lexeme;
                                 }
-                            } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET) ||
-                                       (check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET)) {
+                            } else if (atDestructPattern()) {
                                 if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                                 patNode = parsePrimaryPattern();
@@ -627,8 +626,7 @@ namespace jc {
         }
 
         // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
-        bool isListPatternStart = check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET;
-        if (check(TokenType::LBRACKET) || check(TokenType::LBRACE) || isListPatternStart) {
+        if (atDestructPattern()) {
             int destructPeekPos = current;
             if (check(TokenType::AT)) destructPeekPos++;
             int depth = 0;
@@ -1233,6 +1231,14 @@ namespace jc {
         return withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos);
     }
 
+    // 当前位置是否为解构模式开头：dict { ... }、矩阵 [ ... ]、list @[ ... ]。
+    // 统一供参数解构、赋值解构等场景复用，避免各处重复且遗漏 @[ 前缀。
+    bool Parser::atDestructPattern() const {
+        if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) return true;
+        return check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) &&
+            tokens[current + 1].type == TokenType::LBRACKET;
+    }
+
     bool Parser::isDictLiteralLookahead(int startPos) {
         int peekPos = startPos;
         while (peekPos < static_cast<int>(tokens.size()) &&
@@ -1795,8 +1801,7 @@ namespace jc {
                                 if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
                                 restName = paramTok.lexeme;
                             }
-                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET) ||
-                                   (check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::LBRACKET)) {
+                        } else if (atDestructPattern()) {
                             if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                             if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
@@ -3707,7 +3712,7 @@ namespace jc {
                                 if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
                                 restName = paramTok.lexeme;
                             }
-                        } else if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) {
+                        } else if (atDestructPattern()) {
                             if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
                             if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();

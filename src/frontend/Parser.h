@@ -85,6 +85,7 @@ namespace jc {
         std::unique_ptr<Expr> parseSetLiteral();   // ★ 新增
 
         bool isDictLiteralLookahead(int startPos);
+        bool atDestructPattern() const;  // ★ 当前位置是否为解构模式开头（{ / [ / @[）
         void synchronize();
 
         // --- 游标工具 ---

@@ -1339,7 +1339,7 @@ void IRBuilder::build(Expr* ast) {
         currentControl = assertNode;
     }
 
-    if (currentControl->op != IROp::Return && currentControl->op != IROp::Throw) {
+    if (currentControl->op != IROp::Return && currentControl->op != IROp::Throw && currentControl->op != IROp::ThrowTyped) {
         IRNode* retNode = graph->createNode(IROp::Return);
         retNode->setControl(currentControl);
         retNode->addData(retVal);
@@ -4476,11 +4476,14 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
     
     if (!failMerge->dataInputs.empty()) {
-        IRNode* throwNode = graph->createNode(IROp::Throw);
+        IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
         throwNode->setControl(failMerge);
-        IRNode* errStr = graph->createConstant(Value("TypeError: Destructuring pattern match failed."));
+        IRNode* errStr = graph->createConstant(Value("Destructuring pattern match failed."));
         errStr->setControl(failMerge);
         throwNode->addData(errStr);
+        IRNode* typeStr = graph->createConstant(Value(jc::err::TypeError));
+        typeStr->setControl(failMerge);
+        throwNode->addData(typeStr);
         recordExitNode(throwNode);
     }
     

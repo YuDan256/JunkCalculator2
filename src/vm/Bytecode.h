@@ -136,6 +136,7 @@ enum class OpCode : uint8_t {
     TRY_BEGIN,      // Push Try Handler (catch PC = PC + sBx, errReg = A)
     TRY_END,        // Pop Try Handler
     THROW,          // Throw R(A)
+    THROW_TYPED,    // Throw wrapException(type = Kst(Bx), value = R(A)) [Ext A, Bx]
 
     // 迭代器与包含
     ITER_INIT,      // R(A) := Iter(R(B), destruct = C)
@@ -259,6 +260,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::TRY_BEGIN: return "TRY_BEGIN";
         case OpCode::TRY_END: return "TRY_END";
         case OpCode::THROW: return "THROW";
+        case OpCode::THROW_TYPED: return "THROW_TYPED";
         case OpCode::ITER_INIT: return "ITER_INIT";
         case OpCode::ITER_NEXT: return "ITER_NEXT";
         case OpCode::IN: return "IN";
@@ -594,6 +596,13 @@ public:
                 break;
 
             case OpCode::LOADK:
+                std::cout << "R(" << a << ") " << bx;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
+                    std::cout << "  ; " << formatConstant(bx);
+                }
+                break;
+
+            case OpCode::THROW_TYPED:
                 std::cout << "R(" << a << ") " << bx;
                 if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
                     std::cout << "  ; " << formatConstant(bx);

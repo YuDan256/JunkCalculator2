@@ -102,6 +102,7 @@ public:
                 case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
                 case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS:
                 case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
+                case OpCode::THROW_TYPED:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     if (bx == ESCAPE_NORMAL_16) fetchExtra();
                     break;
@@ -137,7 +138,7 @@ public:
                     break;
             }
 
-            if (op == OpCode::RETURN || op == OpCode::THROW || op == OpCode::TAIL_CALL || 
+            if (op == OpCode::RETURN || op == OpCode::THROW || op == OpCode::THROW_TYPED || op == OpCode::TAIL_CALL || 
                 op == OpCode::TAIL_INVOKE || op == OpCode::TAIL_INVOKE_PRIVATE || 
                 op == OpCode::TAIL_INVOKE_FALLBACK || op == OpCode::TAIL_SUPER_INVOKE) {
                 isTerminal = true;

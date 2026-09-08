@@ -335,6 +335,7 @@ public:
                     case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
                     case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS:
                     case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
+                    case OpCode::THROW_TYPED:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (bx == ESCAPE_NORMAL_16) bx = fetchExtra();
                         break;
@@ -1491,7 +1492,8 @@ public:
                         setLocalSync(a, callout);
                         break;
                     }
-                    case OpCode::THROW: {
+                    case OpCode::THROW:
+                    case OpCode::THROW_TYPED: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);
                         break;

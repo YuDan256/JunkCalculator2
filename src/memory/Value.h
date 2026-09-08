@@ -946,6 +946,28 @@ namespace jc {
         properties.clear();
     }
 
+    // ★ 统一异常类型标签（显式类型化，取代字符串前缀编码）
+    namespace err {
+        // 运行时错误（可被 try/catch 捕获）
+        constexpr const char* TypeError = "TypeError";
+        constexpr const char* ValueError = "ValueError";
+        constexpr const char* MathError = "MathError";
+        constexpr const char* IOError = "IOError";
+        constexpr const char* RuntimeError = "RuntimeError";
+        constexpr const char* OverflowError = "OverflowError";
+        constexpr const char* FFIError = "FFIError";
+        constexpr const char* TensorError = "TensorError";
+        constexpr const char* CalculusError = "CalculusError";
+        constexpr const char* SymbolicError = "SymbolicError";
+        // 编译期错误（不进运行时）
+        constexpr const char* SyntaxError = "SyntaxError";
+        constexpr const char* ParserError = "ParserError";
+        constexpr const char* LexerError = "LexerError";
+        constexpr const char* EmitterError = "EmitterError";
+        // 内部错误（不变量破坏，用户不该触发）
+        constexpr const char* InternalError = "InternalError";
+    }
+
     struct RuntimeError : public std::exception {
         std::string type;
         Value message;
@@ -966,6 +988,9 @@ namespace jc {
             return whatBuffer.c_str();
         }
     };
+
+    // ★ 统一抛出入口：类型与消息显式分离，替代 throw std::runtime_error("前缀: 消息")
+    #define JC2_THROW(T, msg) throw ::jc::RuntimeError(::jc::err::T, ::jc::Value(msg))
 
     struct ObjUpVal : public Obj {
         Value* location = nullptr;

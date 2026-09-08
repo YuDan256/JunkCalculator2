@@ -36,6 +36,7 @@ enum class IROp {
     Catch,      // 捕获异常对象
     TryEnd,
     Throw,
+    ThrowTyped, // 带显式类型抛出（type 常量索引存 payload1，消息存 dataInput[0]）
 
     // 算术与逻辑运算
     Add, Sub, Mul, Div, IDiv, Mod, Pow, LeftDivide,
@@ -163,6 +164,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Catch: return "Catch";
         case IROp::TryEnd: return "TryEnd";
         case IROp::Throw: return "Throw";
+        case IROp::ThrowTyped: return "ThrowTyped";
         case IROp::Add: return "Add";
         case IROp::Sub: return "Sub";
         case IROp::Mul: return "Mul";

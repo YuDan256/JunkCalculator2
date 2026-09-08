@@ -12,7 +12,7 @@ namespace jc {
 static bool isControlSpine(IROp op) {
     switch (op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
-        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw:
+        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw: case IROp::ThrowTyped:
         case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
         case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs: case IROp::UpdateCaptured:
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
@@ -527,7 +527,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         
         bool hasTerminal = false;
         for (IRNode* inst : bb->instructions) {
-            if (inst->op == IROp::Return || inst->op == IROp::Throw || 
+            if (inst->op == IROp::Return || inst->op == IROp::Throw || inst->op == IROp::ThrowTyped || 
                 inst->op == IROp::TailCall || inst->op == IROp::TailInvoke || 
                 inst->op == IROp::TailInvokeFallback || inst->op == IROp::TailSuperInvoke) {
                 hasTerminal = true;

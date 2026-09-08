@@ -603,7 +603,7 @@ void registerPredefinedClasses() {
         auto inst = self.asInstance();
         
         if (args.size() == 1) {
-            inst->properties["type"] = {Value("Exception"), false, false};
+            inst->properties["type"] = {Value(inst->classDef->name), false, false};
             inst->properties["message"] = {args[0], false, false};
         } else {
             inst->properties["type"] = {args[0], false, false};

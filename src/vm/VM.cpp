@@ -105,6 +105,15 @@ static std::string manglePrivate(uint64_t classId, const std::string& name) {
 
 namespace jc {
 
+// 判断值是否是 Exception（含子类）的实例：沿 parent 链找名为 "Exception" 的祖先类。
+static bool isExceptionInstance(const Value& v) {
+    if (!v.isInstance()) return false;
+    for (ObjClass* c = v.asInstance()->classDef; c; c = c->parent) {
+        if (c->name == "Exception") return true;
+    }
+    return false;
+}
+
 // 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
 static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
 
@@ -2833,7 +2842,7 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
 }
 
 Value VM::wrapException(const std::string& type, Value val) {
-    if (val.isInstance() && val.asInstance()->classDef->name == "Exception") {
+    if (isExceptionInstance(val)) {
         auto inst = val.asInstance();
         auto it = inst->properties.find("traceback");
         if (it != inst->properties.end()) {
@@ -2871,7 +2880,7 @@ Value VM::wrapException(const std::string& type, Value val) {
 }
 
 std::string VM::formatException(const Value& errVal) {
-    if (errVal.isInstance() && errVal.asInstance()->classDef->name == "Exception") {
+    if (isExceptionInstance(errVal)) {
         auto [dunderStr, owner] = findDunder(errVal, "__str__");
         if (dunderStr) {
             try {
@@ -6295,6 +6304,15 @@ Value VM::run(int targetFrameDepth) {
                 Value errVal = getReg(a);
                 frame->ip = ip;
                 errVal = wrapException("Exception", errVal);
+                throw ValueException(errVal);
+            }
+            case OpCode::THROW_TYPED: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                Value errVal = getReg(a);
+                std::string type = chunk->constants.data()[bx].asString();
+                frame->ip = ip;
+                errVal = wrapException(type, errVal);
                 throw ValueException(errVal);
             }
             case OpCode::CLASS: {

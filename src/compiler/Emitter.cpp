@@ -700,6 +700,13 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), thr.begin(), thr.end());
                         break;
                     }
+                    case IROp::ThrowTyped: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int typeIdx = chunk.addConstant(node->dataInputs[1]->constVal);
+                        auto thr = buildInstABx(OpCode::THROW_TYPED, a, typeIdx);
+                        inst.words.insert(inst.words.end(), thr.begin(), thr.end());
+                        break;
+                    }
                     case IROp::TryEnd: {
                         auto w = buildInstA(OpCode::TRY_END, 0);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
@@ -790,7 +797,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     insts.push_back(jmpInst);
                 }
             }
-            else if (cNode->op != IROp::Return && cNode->op != IROp::Throw) {
+            else if (cNode->op != IROp::Return && cNode->op != IROp::Throw && cNode->op != IROp::ThrowTyped) {
                 if (!bb->succs.empty() && bb->succs[0] != nextBb) {
                     EncodedInst jmpInst;
                     jmpInst.isJump = true;

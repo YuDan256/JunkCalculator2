@@ -3351,11 +3351,11 @@ VM::VM() {
             // 1×1 矩阵 → 取元素降维
             if (val.isObjType(ObjType::REAL_MATRIX)) {
                 const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: int() only accepts a 1x1 matrix.");
+                if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "int() only accepts a 1x1 matrix.");
                 val = Value(m(0, 0));
             } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                 const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: int() only accepts a 1x1 matrix.");
+                if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "int() only accepts a 1x1 matrix.");
                 val = Value(m(0, 0));
             }
             // 截断取整（向零方向）
@@ -3368,13 +3368,13 @@ VM::VM() {
             if (val.isComplex()) {
                 const auto& c = val.asComplex();
                 if (!Tol::isEq(c.imag, 0.0))
-                    throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to int.");
+                    JC2_THROW(TypeError, "Cannot convert complex with nonzero imaginary part to int.");
                 return Value(BigInt(static_cast<int64_t>(std::trunc(c.real))));
             }
             if (val.isDouble()) {
                 double v = val.asDoubleRaw();
                 if (!std::isfinite(v))
-                    throw std::runtime_error("Type Error: Cannot convert non-finite value to int.");
+                    JC2_THROW(TypeError, "Cannot convert non-finite value to int.");
                 return Value(BigInt(static_cast<int64_t>(std::trunc(v))));
             }
             if (val.isString()) {
@@ -3406,7 +3406,7 @@ VM::VM() {
                         return Value(BigInt(trimmed));
                     } catch (...) {}
                 }
-                throw std::runtime_error("Type Error: Cannot parse '" + val.asString() + "' as integer.");
+                JC2_THROW(TypeError, "Cannot parse '" + val.asString() + "' as integer.");
             }
             return Value(val.asBigInt());
         });
@@ -3416,17 +3416,17 @@ VM::VM() {
             // 1×1 矩阵 → 取元素降维
             if (val.isObjType(ObjType::REAL_MATRIX)) {
                 const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: double() only accepts a 1x1 matrix.");
+                if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "double() only accepts a 1x1 matrix.");
                 val = Value(m(0, 0));
             } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                 const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: double() only accepts a 1x1 matrix.");
+                if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "double() only accepts a 1x1 matrix.");
                 val = Value(m(0, 0));
             }
             if (val.isComplex()) {
                 const auto& c = val.asComplex();
                 if (!Tol::isEq(c.imag, 0.0))
-                    throw std::runtime_error("Type Error: Cannot convert complex with nonzero imaginary part to double.");
+                    JC2_THROW(TypeError, "Cannot convert complex with nonzero imaginary part to double.");
                 return Value(c.real);
             }
             return Value(val.asDouble());
@@ -3438,11 +3438,11 @@ VM::VM() {
                 // 1×1 矩阵 → 取元素降维
                 if (val.isObjType(ObjType::REAL_MATRIX)) {
                     const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
-                    if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: complex() only accepts a 1x1 matrix.");
+                    if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "complex() only accepts a 1x1 matrix.");
                     val = Value(m(0, 0));
                 } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
                     const auto& m = static_cast<ObjComplexMatrix*>(val.asObj())->mat;
-                    if (m.getRows() != 1 || m.getCols() != 1) throw std::runtime_error("Type Error: complex() only accepts a 1x1 matrix.");
+                    if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "complex() only accepts a 1x1 matrix.");
                     val = Value(m(0, 0));
                 }
                 if (val.isComplex())
@@ -3526,7 +3526,7 @@ VM::VM() {
             auto checkArg = [](const Value& v, const std::string& name) -> int {
                 if (v.isNone()) return ObjSlice::SLICE_NONE;
                 if (!v.isNumber() && !v.isBigInt()) {
-                    throw std::runtime_error("Type Error: slice " + name + " must be a number or none.");
+                    JC2_THROW(TypeError, "slice " + name + " must be a number or none.");
                 }
                 int64_t val64 = 0;
                 if (v.isInt32()) {
@@ -4651,7 +4651,7 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int32_t num = vb.asInt32();
                     int32_t den = vc.asInt32();
-                    if (den == 0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (den == 0) errDivByZero();
                     if (num % den == 0) {
                         if (num == -2147483648 && den == -1) {
                             const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
@@ -4666,7 +4666,7 @@ Value VM::run(int targetFrameDepth) {
                     break;
                 } else if (vb.isDouble() && vc.isDouble()) { 
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (vc.asDoubleRaw() == 0.0) errDivByZero();
                     getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
                 }
                 if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
@@ -4686,7 +4686,7 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int32_t num = vb.asInt32();
                     int32_t den = vc.asInt32();
-                    if (den == 0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (den == 0) errDivByZero();
                     if (num == -2147483648 && den == -1) { 
                         const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
                         getReg(a) = Value(BigInt(2147483648LL)); 
@@ -4695,7 +4695,7 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value::fromInt32(num / den); break;
                 } else if (vb.isDouble() && vc.isDouble()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (vc.asDoubleRaw() == 0.0) errDivByZero();
                     getReg(a) = Value::fromDouble(std::trunc(vb.asDoubleRaw() / vc.asDoubleRaw())); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
@@ -4711,12 +4711,12 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; // Monomorphic Int32
                     int32_t num = vb.asInt32();
                     int32_t den = vc.asInt32();
-                    if (den == 0) throw std::runtime_error("Math Error: Modulo by zero.");
+                    if (den == 0) errModByZero();
                     if (num == -2147483648 && den == -1) { getReg(a) = Value::fromInt32(0); break; }
                     getReg(a) = Value::fromInt32(num % den); break;
                 } else if (vb.isDouble() && vc.isDouble()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+                    if (vc.asDoubleRaw() == 0.0) errModByZero();
                     getReg(a) = Value::fromDouble(std::fmod(vb.asDoubleRaw(), vc.asDoubleRaw())); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other

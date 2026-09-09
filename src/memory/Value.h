@@ -98,6 +98,10 @@ namespace jc {
     [[noreturn]] inline void errUnhashable() { JC2_THROW(TypeError, "unhashable type."); }
     [[noreturn]] inline void errDeleteConstProp(const std::string& key) { JC2_THROW(RuntimeError, "Cannot delete const property '" + key + "'."); }
     [[noreturn]] inline void errModifyConstProp(const std::string& key) { JC2_THROW(RuntimeError, "Cannot modify const property '" + key + "'."); }
+    [[noreturn]] inline void errModifyPrivateProp(const std::string& key) { JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'."); }
+    [[noreturn]] inline void errAccessPrivateDynamic() { JC2_THROW(RuntimeError, "Cannot access private or lifecycle properties dynamically."); }
+    [[noreturn]] inline void errMatImmutableSetItem() { JC2_THROW(RuntimeError, "Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix."); }
+    [[noreturn]] inline void errMatImmutableSetElement() { JC2_THROW(RuntimeError, "Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix."); }
 
     struct ValueHasher {
         size_t operator()(const Value& v) const;

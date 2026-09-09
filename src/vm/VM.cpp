@@ -555,7 +555,7 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
             bool isConstRefParam = i < static_cast<int>(fn->paramIsConst.size()) && fn->paramIsConst[i];
             if (providedIsConst && !isConstRefParam) {
                 std::string paramName = i < static_cast<int>(fn->paramNames.size()) ? fn->paramNames[i] : "?";
-                throw std::runtime_error("Runtime Error: Cannot pass const variable to ref parameter '" + paramName + "'.");
+                JC2_THROW(RuntimeError, "Cannot pass const variable to ref parameter '" + paramName + "'.");
             }
             if (providedRef) {
                 registers[newFrame.refParamsBase + refIdx] = Value(providedRef);
@@ -719,7 +719,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     for (size_t i = 0; i < kwargNames.size(); ++i) {
         bool hasDefault = i < kwargHasDefault.size() && kwargHasDefault[i];
         if (!hasDefault && alignedArgs[kwStart + i].isUninit()) {
-            throw std::runtime_error("Runtime Error: Missing required keyword-only argument '" + kwargNames[i] + "'.");
+            JC2_THROW(RuntimeError, "Missing required keyword-only argument '" + kwargNames[i] + "'.");
         }
     }
     
@@ -751,7 +751,7 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
                 if (aIt != td->converterArity.begin()) expected += " or ";
                 expected += std::to_string(*aIt);
             }
-            throw std::runtime_error("Runtime Error: Function '" + td->name() + "' expects " + expected + " arguments, got " + std::to_string(actual) + ".");
+            JC2_THROW(RuntimeError, "Function '" + td->name() + "' expects " + expected + " arguments, got " + std::to_string(actual) + ".");
         }
     }
     return td->converter(args);
@@ -1032,7 +1032,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int expected = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
                 for (int i = 0; i < expected; ++i) {
                     if (args[i].isUninit()) {
-                        throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + "' requires at least " + std::to_string(closure->minArgs()) + " arguments.");
+                        JC2_THROW(RuntimeError, "Function '" + closure->rawBody + "' requires at least " + std::to_string(closure->minArgs()) + " arguments.");
                     }
                 }
             } else {
@@ -1205,7 +1205,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     
                     for (int i = 0; i < static_cast<int>(initMethod->minArgs()); ++i) {
                         if (args[i].isUninit()) {
-                            throw std::runtime_error("Runtime Error: Method 'init' requires at least " + std::to_string(initMethod->minArgs()) + " arguments.");
+                            JC2_THROW(RuntimeError, "Method 'init' requires at least " + std::to_string(initMethod->minArgs()) + " arguments.");
                         }
                     }
                 } else {
@@ -1352,7 +1352,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     
                     for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                         if (args[i].isUninit()) {
-                            throw std::runtime_error("Runtime Error: Method '__call__' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                            JC2_THROW(RuntimeError, "Method '__call__' requires at least " + std::to_string(method->minArgs()) + " arguments.");
                         }
                     }
                 } else {
@@ -1996,7 +1996,7 @@ invoke_method:
                         if (aIt != ait->second.begin()) expected += " or ";
                         expected += std::to_string(*aIt - 1);
                     }
-                    throw std::runtime_error("Runtime Error: Method '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
+                    JC2_THROW(RuntimeError, "Method '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                 }
 
                 std::vector<Value> argsVec;
@@ -2106,7 +2106,7 @@ invoke_method:
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
-                    throw std::runtime_error("Runtime Error: Method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                    JC2_THROW(RuntimeError, "Method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
                 }
             }
         } else {
@@ -2271,7 +2271,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
             
             for (int i = 0; i < static_cast<int>(method->minArgs()); ++i) {
                 if (args[i].isUninit()) {
-                    throw std::runtime_error("Runtime Error: Super method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
+                    JC2_THROW(RuntimeError, "Super method '" + methodName + "' requires at least " + std::to_string(method->minArgs()) + " arguments.");
                 }
             }
         } else {
@@ -4257,18 +4257,18 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
-                if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
-                if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
+                if (name == "<class>") JC2_THROW(SyntaxError, "cannot override context keyword 'class'.");
+                if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot override context keyword 'namespace'.");
                 
                 if (constGlobals.count(name) && op != OpCode::DEFINE_CONST_GLOBAL) {
-                    throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
+                    JC2_THROW(RuntimeError, "Cannot modify const variable '" + name + "'.");
                 }
                 if (op == OpCode::DEFINE_CONST_GLOBAL && constGlobals.count(name)) {
-                    throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+                    JC2_THROW(RuntimeError, "Cannot redefine const variable '" + name + "'.");
                 }
                 if (op == OpCode::SET_GLOBAL_REF) {
                     if (globalNames.find(name) == globalNames.end() && nativeBuiltins.find(name) == nativeBuiltins.end() && builtinValues.find(name) == builtinValues.end()) {
-                        throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
+                        JC2_THROW(RuntimeError, "Undefined variable '" + name + "'.");
                     }
                 }
 
@@ -5496,7 +5496,7 @@ Value VM::run(int targetFrameDepth) {
                         std::string keyStr = args[0].asString();
                         if (isReservedInternalName(keyStr)) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                            else errAccessPrivateDynamic();
                             getReg(a) = result;
                             break;
                         }
@@ -5626,7 +5626,7 @@ Value VM::run(int targetFrameDepth) {
                             std::string key = idx.asString();
                             if (isReservedInternalName(key)) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                                else errAccessPrivateDynamic();
                             } else {
                                 bool foundStatic = false;
                                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
@@ -5799,7 +5799,7 @@ Value VM::run(int targetFrameDepth) {
                     if (dims == 1 && args[0].isString()) {
                         std::string keyStr = args[0].asString();
                         if (isReservedInternalName(keyStr)) {
-                            throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                            errAccessPrivateDynamic();
                         }
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
@@ -5844,7 +5844,7 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                     } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix.");
+                        errMatImmutableSetItem();
                     } else if (obj.isObjType(ObjType::DICT)) {
                         if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -5867,7 +5867,7 @@ Value VM::run(int targetFrameDepth) {
                         if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
                         std::string key = idx.asString();
                         if (isReservedInternalName(key)) {
-                            throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                            errAccessPrivateDynamic();
                         }
                         
                         bool found = false;
@@ -5911,7 +5911,7 @@ Value VM::run(int targetFrameDepth) {
                     Value rowIdx = args[0];
                     Value colIdx = args[1];
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-                        throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix.");
+                        errMatImmutableSetElement();
                     } else {
                         throw std::runtime_error("VM Error: Unsupported 2D index set.");
                     }
@@ -7334,8 +7334,8 @@ Value VM::run(int targetFrameDepth) {
                         inst->checkModify();
                         auto it = inst->properties.find(keyStr);
                         if (it != inst->properties.end()) {
-                            if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
-                            if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
+                            if (it->second.is_local) errModifyPrivateProp(keyStr);
+                            if (it->second.is_const) errModifyConstProp(keyStr);
                         }
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
@@ -10290,7 +10290,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             std::string keyStr = args[0].asString();
             if (isReservedInternalName(keyStr)) {
                 if (noThrow) result = Value::uninit();
-                else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                else errAccessPrivateDynamic();
             } else {
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 bool foundPrivate = false;
@@ -10420,7 +10420,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                 std::string key = idx.asString();
                 if (isReservedInternalName(key)) {
                     if (noThrow) result = Value::uninit();
-                    else throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                    else errAccessPrivateDynamic();
                 } else {
                     bool foundStatic = false;
                     ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
@@ -10579,7 +10579,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
         } else if (args.size() == 1 && args[0].isString()) {
             std::string keyStr = args[0].asString();
             if (isReservedInternalName(keyStr)) {
-                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                errAccessPrivateDynamic();
             }
             ObjClass* ctxOwner = vm->getCurrentFrame()->classContext.isClass() ? static_cast<ObjClass*>(vm->getCurrentFrame()->classContext.asObj()) : nullptr;
             bool foundPrivate = false;
@@ -10621,7 +10621,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 }
             }
         } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix.");
+            errMatImmutableSetItem();
         } else if (obj.isObjType(ObjType::DICT)) {
             if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
             auto dict = static_cast<ObjDict*>(obj.asObj());
@@ -10644,7 +10644,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
             std::string key = idx.asString();
             if (isReservedInternalName(key)) {
-                throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+                errAccessPrivateDynamic();
             }
             
             bool found = false;
@@ -10688,7 +10688,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
         Value rowIdx = args[0];
         Value colIdx = args[1];
         if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
-            throw std::runtime_error("Runtime Error: Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix.");
+            errMatImmutableSetElement();
         } else {
             throw std::runtime_error("VM Error: Unsupported 2D index set.");
         }
@@ -10898,8 +10898,8 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             inst->checkModify();
             auto it = inst->properties.find(keyStr);
             if (it != inst->properties.end()) {
-                if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + keyStr + "'.");
-                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + keyStr + "'.");
+                if (it->second.is_local) errModifyPrivateProp(keyStr);
+                if (it->second.is_const) errModifyConstProp(keyStr);
             }
             vm->callDunder(obj, setattrMethod, owner, {keyVal, val});
         } else {

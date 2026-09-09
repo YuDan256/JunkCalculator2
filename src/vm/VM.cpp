@@ -70,6 +70,10 @@ extern bool g_enableJit;
         VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
         jit::g_jit_pending_exception = 1; \
         return 0; \
+    } catch (const Jc2Error& e) { \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, Value(e.message)); \
+        jit::g_jit_pending_exception = 1; \
+        return 0; \
     } catch (const std::exception& e) { \
         VM::activeVM->jit_exception_value = Value(std::string(e.what())); \
         jit::g_jit_pending_exception = 1; \
@@ -87,6 +91,10 @@ extern bool g_enableJit;
         return; \
     } catch (const RuntimeError& e) { \
         VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
+        jit::g_jit_pending_exception = 1; \
+        return; \
+    } catch (const Jc2Error& e) { \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, Value(e.message)); \
         jit::g_jit_pending_exception = 1; \
         return; \
     } catch (const std::exception& e) { \
@@ -8092,6 +8100,17 @@ Value VM::run(int targetFrameDepth) {
         } catch (const RuntimeError& ex) {
             frame->ip = ip;
             Value errVal = wrapException(ex.type, ex.message);
+            if (!handleExceptionUnwind(&errVal)) {
+                throw ValueException(errVal);
+            }
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
+        } catch (const Jc2Error& ex) {
+            frame->ip = ip;
+            Value errVal = wrapException(ex.type, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

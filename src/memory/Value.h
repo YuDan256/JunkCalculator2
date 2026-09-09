@@ -45,6 +45,60 @@ namespace jc {
     class Value;
     std::string setValueKey(const Value& v);
 
+    // ★ 统一异常类型标签（显式类型化，取代字符串前缀编码）
+    namespace err {
+        // 运行时错误（可被 try/catch 捕获）
+        constexpr const char* TypeError = "TypeError";
+        constexpr const char* ValueError = "ValueError";
+        constexpr const char* MathError = "MathError";
+        constexpr const char* IOError = "IOError";
+        constexpr const char* RuntimeError = "RuntimeError";
+        constexpr const char* OverflowError = "OverflowError";
+        constexpr const char* FFIError = "FFIError";
+        constexpr const char* TensorError = "TensorError";
+        constexpr const char* CalculusError = "CalculusError";
+        constexpr const char* SymbolicError = "SymbolicError";
+        // 编译期错误（不进运行时）
+        constexpr const char* SyntaxError = "SyntaxError";
+        constexpr const char* ParserError = "ParserError";
+        constexpr const char* LexerError = "LexerError";
+        constexpr const char* EmitterError = "EmitterError";
+        // 内部错误（不变量破坏，用户不该触发）
+        constexpr const char* InternalError = "InternalError";
+    }
+
+    // ★ 轻量异常：type + message 都是 std::string，不依赖 Value 完整定义，
+    // 因此 Value 类的内联方法也能抛出；VM 层 catch 后包装成 Exception 对象。
+    struct Jc2Error : public std::exception {
+        std::string type;
+        std::string message;
+        mutable std::string whatBuffer;
+        Jc2Error(std::string t, std::string msg) : type(std::move(t)), message(std::move(msg)) {}
+        const char* what() const noexcept override {
+            if (whatBuffer.empty()) {
+                whatBuffer = type.empty() ? message : type + ": " + message;
+            }
+            return whatBuffer.c_str();
+        }
+    };
+
+    // ★ 统一抛出入口：类型与消息显式分离，替代 throw std::runtime_error("前缀: 消息")
+    #define JC2_THROW(T, msg) throw ::jc::Jc2Error(::jc::err::T, (msg))
+
+    // ★ 重复错误 helper：消除同一错误在多处重复抛出（后续新代码也直接复用）
+    [[noreturn]] inline void errDivByZero() { JC2_THROW(MathError, "Division by zero."); }
+    [[noreturn]] inline void errModByZero() { JC2_THROW(MathError, "Modulo by zero."); }
+    [[noreturn]] inline void errMatScalarAddSquare() { JC2_THROW(MathError, "Matrix-scalar addition requires a square matrix."); }
+    [[noreturn]] inline void errMatScalarSubSquare() { JC2_THROW(MathError, "Matrix-scalar subtraction requires a square matrix."); }
+    [[noreturn]] inline void errNegShift() { JC2_THROW(MathError, "Negative shift count."); }
+    [[noreturn]] inline void errExpectMatrix() { JC2_THROW(TypeError, "Expected a matrix."); }
+    [[noreturn]] inline void errKeyNotFound() { JC2_THROW(RuntimeError, "Key not found."); }
+    [[noreturn]] inline void errIndexAbsTooLarge() { JC2_THROW(ValueError, "Index absolute value exceeds 2^31-1."); }
+    [[noreturn]] inline void errStrRepeatNeg() { JC2_THROW(TypeError, "String repeat count must be non-negative."); }
+    [[noreturn]] inline void errUnhashable() { JC2_THROW(TypeError, "unhashable type."); }
+    [[noreturn]] inline void errDeleteConstProp(const std::string& key) { JC2_THROW(RuntimeError, "Cannot delete const property '" + key + "'."); }
+    [[noreturn]] inline void errModifyConstProp(const std::string& key) { JC2_THROW(RuntimeError, "Cannot modify const property '" + key + "'."); }
+
     struct ValueHasher {
         size_t operator()(const Value& v) const;
     };
@@ -391,7 +445,7 @@ namespace jc {
         bool isString() const { return isObjType(ObjType::STRING); }
         ObjString* asObjString() const {
             if (isString()) return static_cast<ObjString*>(asObj());
-            throw std::runtime_error("Type Error: Expected a string.");
+            JC2_THROW(TypeError, "Expected a string.");
         }
 
         const std::string& asString() const {
@@ -405,7 +459,7 @@ namespace jc {
             if (isNumber()) return asNumber();
             if (isObjType(ObjType::BIGINT)) return static_cast<ObjBigInt*>(asObj())->num.toDouble();
             if (isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(asObj())->frac.toDouble();
-            throw std::runtime_error("Type Error: Expected a real number.");
+            JC2_THROW(TypeError, "Expected a real number.");
         }
 
         Complex asComplex() const {
@@ -413,7 +467,7 @@ namespace jc {
             if (isNumber()) return Complex(asNumber());
             if (isObjType(ObjType::BIGINT)) return Complex(static_cast<ObjBigInt*>(asObj())->num.toDouble());
             if (isObjType(ObjType::FRACTION)) return Complex(static_cast<ObjFraction*>(asObj())->frac.toDouble());
-            throw std::runtime_error("Type Error: Expected a number or complex.");
+            JC2_THROW(TypeError, "Expected a number or complex.");
         }
 
         BigInt asBigInt() const {
@@ -423,23 +477,23 @@ namespace jc {
             if (isDouble()) {
                 double val = asDoubleRaw();
                 if (std::abs(val) > 9.22337e18) {
-                    throw std::runtime_error("Math Error: Value too massively large to be safely converted to an exact layout integer.");
+                    JC2_THROW(MathError, "Value too massively large to be safely converted to an exact layout integer.");
                 }
                 return BigInt(static_cast<int64_t>(std::round(val)));
             }
             if (isObjType(ObjType::FRACTION)) {
                 const auto& f = static_cast<ObjFraction*>(asObj())->frac;
                 if (f.getDen() == BigInt(1)) return f.getNum();
-                throw std::runtime_error("Type Error: Fraction is not an integer (" + f.toString() + ").");
+                JC2_THROW(TypeError, "Fraction is not an integer (" + f.toString() + ").");
             }
-            throw std::runtime_error("Type Error: Expected an integer.");
+            JC2_THROW(TypeError, "Expected an integer.");
         }
 
         bool isBigInt() const { return isObjType(ObjType::BIGINT); }
 
         RealMatrix asRealMatrix() const {
             if (isObjType(ObjType::REAL_MATRIX)) return static_cast<ObjRealMatrix*>(asObj())->mat;
-            throw std::runtime_error("Type Error: Expected a real matrix.");
+            JC2_THROW(TypeError, "Expected a real matrix.");
         }
 
         ComplexMatrix asComplexMatrix() const {
@@ -454,7 +508,7 @@ namespace jc {
                 }
                 return ComplexMatrix(m.getRows(), m.getCols(), flat);
             }
-            throw std::runtime_error("Type Error: Expected a matrix.");
+            errExpectMatrix();
         }
 
         bool isSymMatrix() const { return isObjType(ObjType::SYM_MATRIX); }
@@ -481,7 +535,7 @@ namespace jc {
                 }
                 return SymMatrix(m.getRows(), m.getCols(), flat);
             }
-            throw std::runtime_error("Type Error: Expected a matrix.");
+            errExpectMatrix();
         }
 
         // ==========================================
@@ -678,15 +732,15 @@ namespace jc {
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
         ObjInstance() { type = ObjType::INSTANCE; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Instance."); }
+        void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Instance."); }
         void clear() override { clearProperties(); }
         void clearTotal() override;
 
         void removeProperty(const std::string& key) {
             checkModify();
             auto it = properties.find(key);
-            if (it == properties.end() || it->second.is_local) throw std::runtime_error("Runtime Error: Key not found.");
-            if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+            if (it == properties.end() || it->second.is_local) errKeyNotFound();
+            if (it->second.is_const) errDeleteConstProp(key);
             properties.erase(it);
         }
 
@@ -694,7 +748,7 @@ namespace jc {
             checkModify();
             auto it = properties.find(key);
             if (it != properties.end() && !it->second.is_local) {
-                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+                if (it->second.is_const) errDeleteConstProp(key);
                 properties.erase(it);
             }
         }
@@ -702,7 +756,7 @@ namespace jc {
         void clearProperties() {
             checkModify();
             for (const auto& [k, prop] : properties) {
-                if (!prop.is_local && prop.is_const) throw std::runtime_error("Runtime Error: Cannot delete const property '" + k + "'.");
+                if (!prop.is_local && prop.is_const) errDeleteConstProp(k);
             }
             for (auto it = properties.begin(); it != properties.end(); ) {
                 if (!it->second.is_local) {
@@ -717,8 +771,8 @@ namespace jc {
             checkModify();
             auto it = properties.find(key);
             if (it != properties.end()) {
-                if (it->second.is_local) throw std::runtime_error("Runtime Error: Cannot modify private property '" + key + "'.");
-                if (it->second.is_const) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
+                if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'.");
+                if (it->second.is_const) errModifyConstProp(key);
                 it->second.val = val;
             } else {
                 properties[key] = {val, false, false};
@@ -752,7 +806,7 @@ namespace jc {
 
         SliceInfo compute(int dimSize) const {
             int s = (step == SLICE_NONE) ? 1 : step;
-            if (s == 0) throw std::runtime_error("ValueError: slice step cannot be zero.");
+            if (s == 0) JC2_THROW(ValueError, "slice step cannot be zero.");
 
             int st, en;
             if (s > 0) {
@@ -823,22 +877,22 @@ namespace jc {
         if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
         if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
         if (isObjType(ObjType::COMPLEX)) return SymExpr(static_cast<ObjComplex*>(asObj())->comp);
-        if (isObjType(ObjType::SYM_MATRIX)) throw std::runtime_error("TypeError: Cannot convert a symbolic matrix to a scalar symbolic expression.");
-        throw std::runtime_error("TypeError: Expected a symbolic expression or exact number.");
+        if (isObjType(ObjType::SYM_MATRIX)) JC2_THROW(TypeError, "Cannot convert a symbolic matrix to a scalar symbolic expression.");
+        JC2_THROW(TypeError, "Expected a symbolic expression or exact number.");
     }
 
     inline ObjInstance* Value::asInstance() const {
-        if (!isInstance()) throw std::runtime_error("Type Error: Expected an instance.");
+        if (!isInstance()) JC2_THROW(TypeError, "Expected an instance.");
         return static_cast<ObjInstance*>(asObj());
     }
 
     inline ObjSuper* Value::asSuperProxy() const {
-        if (!isSuperProxy()) throw std::runtime_error("Type Error: Expected super proxy.");
+        if (!isSuperProxy()) JC2_THROW(TypeError, "Expected super proxy.");
         return static_cast<ObjSuper*>(asObj());
     }
 
     inline ObjSlice* Value::asSlice() const {
-        if (!isSlice()) throw std::runtime_error("Type Error: Expected a slice.");
+        if (!isSlice()) JC2_THROW(TypeError, "Expected a slice.");
         return static_cast<ObjSlice*>(asObj());
     }
 
@@ -852,13 +906,13 @@ namespace jc {
             } else if (isDouble()) {
                 val64 = static_cast<int64_t>(std::round(asDoubleRaw()));
             } else if (isBigInt()) {
-                try { val64 = asBigInt().toInt64(); } catch (...) { throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1."); }
+                try { val64 = asBigInt().toInt64(); } catch (...) { errIndexAbsTooLarge(); }
             } else {
                 val64 = static_cast<int64_t>(std::round(asDouble()));
             }
             
             if (val64 > 2147483647LL || val64 < -2147483647LL) {
-                throw std::runtime_error("Value Error: Index absolute value exceeds 2^31-1.");
+                errIndexAbsTooLarge();
             }
             
             int i = static_cast<int>(val64);
@@ -946,28 +1000,6 @@ namespace jc {
         properties.clear();
     }
 
-    // ★ 统一异常类型标签（显式类型化，取代字符串前缀编码）
-    namespace err {
-        // 运行时错误（可被 try/catch 捕获）
-        constexpr const char* TypeError = "TypeError";
-        constexpr const char* ValueError = "ValueError";
-        constexpr const char* MathError = "MathError";
-        constexpr const char* IOError = "IOError";
-        constexpr const char* RuntimeError = "RuntimeError";
-        constexpr const char* OverflowError = "OverflowError";
-        constexpr const char* FFIError = "FFIError";
-        constexpr const char* TensorError = "TensorError";
-        constexpr const char* CalculusError = "CalculusError";
-        constexpr const char* SymbolicError = "SymbolicError";
-        // 编译期错误（不进运行时）
-        constexpr const char* SyntaxError = "SyntaxError";
-        constexpr const char* ParserError = "ParserError";
-        constexpr const char* LexerError = "LexerError";
-        constexpr const char* EmitterError = "EmitterError";
-        // 内部错误（不变量破坏，用户不该触发）
-        constexpr const char* InternalError = "InternalError";
-    }
-
     struct RuntimeError : public std::exception {
         std::string type;
         Value message;
@@ -989,9 +1021,6 @@ namespace jc {
         }
     };
 
-    // ★ 统一抛出入口：类型与消息显式分离，替代 throw std::runtime_error("前缀: 消息")
-    #define JC2_THROW(T, msg) throw ::jc::RuntimeError(::jc::err::T, ::jc::Value(msg))
-
     struct ObjUpVal : public Obj {
         Value* location = nullptr;
         Value closed;
@@ -1011,15 +1040,15 @@ namespace jc {
         std::unordered_map<std::string, NamespaceField> fields;
         bool is_frozen = false;
         ObjNamespace() { type = ObjType::NAMESPACE; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Namespace."); }
+        void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Namespace."); }
         void clear() override { clearFields(); }
         void clearTotal() override { fields.clear(); }
 
         void removeField(const std::string& key) {
             checkModify();
             auto it = fields.find(key);
-            if (it == fields.end()) throw std::runtime_error("Runtime Error: Key not found.");
-            if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+            if (it == fields.end()) errKeyNotFound();
+            if (it->second.isConst) errDeleteConstProp(key);
             fields.erase(it);
         }
 
@@ -1027,7 +1056,7 @@ namespace jc {
             checkModify();
             auto it = fields.find(key);
             if (it != fields.end()) {
-                if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + key + "'.");
+                if (it->second.isConst) errDeleteConstProp(key);
                 fields.erase(it);
             }
         }
@@ -1035,7 +1064,7 @@ namespace jc {
         void clearFields() {
             checkModify();
             for (const auto& [k, field] : fields) {
-                if (field.isConst) throw std::runtime_error("Runtime Error: Cannot delete const property '" + k + "'.");
+                if (field.isConst) errDeleteConstProp(k);
             }
             fields.clear();
         }
@@ -1044,7 +1073,7 @@ namespace jc {
             checkModify();
             auto it = fields.find(key);
             if (it != fields.end()) {
-                if (it->second.isConst) throw std::runtime_error("Runtime Error: Cannot modify const property '" + key + "'.");
+                if (it->second.isConst) errModifyConstProp(key);
                 *(it->second.upval->location) = val;
             } else {
                 auto uv = GcHeap::get().allocate<ObjUpVal>();
@@ -1062,7 +1091,7 @@ namespace jc {
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
         ObjList() { type = ObjType::LIST; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen List."); }
+        void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen List."); }
         std::vector<Value>& mut() { checkModify(); return vec; }
         void clear() override { checkModify(); clearTotal(); }
         void clearTotal() override { vec.clear(); }
@@ -1075,7 +1104,7 @@ namespace jc {
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
         ObjDict() { type = ObjType::DICT; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Dict."); }
+        void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Dict."); }
         void clear() override { checkModify(); clearTotal(); }
         void clearTotal() override { elements.clear(); keyMap.clear(); }
         void set(const Value& key, const Value& val) {
@@ -1091,7 +1120,7 @@ namespace jc {
         void remove(const Value& key) {
             checkModify();
             auto it = keyMap.find(key);
-            if (it == keyMap.end()) throw std::runtime_error("Runtime Error: Key not found.");
+            if (it == keyMap.end()) errKeyNotFound();
             size_t idx = it->second;
             keyMap.erase(it);
             elements.erase(elements.begin() + idx);
@@ -1120,7 +1149,7 @@ namespace jc {
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
         ObjSet() { type = ObjType::SET; }
-        void checkModify() const { if (is_frozen) throw std::runtime_error("Runtime Error: Cannot modify frozen Set."); }
+        void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Set."); }
         void clear() override { checkModify(); clearTotal(); }
         void clearTotal() override { elements.clear(); keys.clear(); }
         void add(const Value& val) {
@@ -1133,7 +1162,7 @@ namespace jc {
         void remove(const Value& val) {
             checkModify();
             auto it = keys.find(val);
-            if (it == keys.end()) throw std::runtime_error("Runtime Error: Element not found in Set.");
+            if (it == keys.end()) JC2_THROW(RuntimeError, "Element not found in Set.");
             keys.erase(it);
             auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
             if (eIt != elements.end()) elements.erase(eIt);
@@ -1149,7 +1178,7 @@ namespace jc {
         }
         Value pop() {
             checkModify();
-            if (elements.empty()) throw std::runtime_error("Runtime Error: setPop() on empty Set.");
+            if (elements.empty()) JC2_THROW(RuntimeError, "setPop() on empty Set.");
             Value result = elements.back();
             keys.erase(result);
             elements.pop_back();
@@ -1204,7 +1233,7 @@ namespace jc {
             
             if (lhs.isObjType(ObjType::STRING) && (rhs.isNumber() || rhs.isObjType(ObjType::BIGINT))) {
                 int n = static_cast<int>(rhs.asDouble());
-                if (n < 0) throw std::runtime_error("Type Error: String repeat count must be non-negative.");
+                if (n < 0) errStrRepeatNeg();
                 std::string result;
                 const std::string& s = static_cast<ObjString*>(lhs.asObj())->str;
                 result.reserve(s.size() * n);
@@ -1213,7 +1242,7 @@ namespace jc {
             }
             if ((lhs.isNumber() || lhs.isObjType(ObjType::BIGINT)) && rhs.isObjType(ObjType::STRING)) {
                 int n = static_cast<int>(lhs.asDouble());
-                if (n < 0) throw std::runtime_error("Type Error: String repeat count must be non-negative.");
+                if (n < 0) errStrRepeatNeg();
                 std::string result;
                 const std::string& s = static_cast<ObjString*>(rhs.asObj())->str;
                 result.reserve(s.size() * n);
@@ -1254,7 +1283,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() * rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Cannot multiply '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot multiply '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator/(const Value& lhs, const Value& rhs) {
@@ -1263,7 +1292,7 @@ namespace jc {
         if (lIsInt && rIsInt) {
             int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
             int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
-            if (b == 0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0) errDivByZero();
             if (a % b == 0) {
                 if (a == -2147483648 && b == -1) return Value(BigInt(2147483648LL));
                 return Value::fromInt32(a / b);
@@ -1272,7 +1301,7 @@ namespace jc {
         }
         if (lhs.isNumber() && rhs.isNumber()) {
             double b = rhs.asNumber();
-            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0.0) errDivByZero();
             return Value(lhs.asNumber() / b);
         }
         
@@ -1297,11 +1326,11 @@ namespace jc {
             if (lhsIsMat && rhsIsScalar) {
                 if (rhs.isComplex()) {
                     Complex c = rhs.asComplex();
-                    if (c == 0.0) throw std::runtime_error("Math Error: Division by zero complex number.");
+                    if (c == 0.0) JC2_THROW(MathError, "Division by zero complex number.");
                     return Value(lhs.asComplexMatrix() / c);
                 } else {
                     double d = rhs.asDouble();
-                    if (d == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                    if (d == 0.0) errDivByZero();
                     if (lhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat / d);
                     return Value(lhs.asComplexMatrix() / Complex(d, 0.0));
                 }
@@ -1315,7 +1344,7 @@ namespace jc {
             if (lhsIsExactInt && rhsIsExactInt) {
                 BigInt a = lhs.asBigInt();
                 BigInt b = rhs.asBigInt();
-                if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+                if (b.isZero()) errDivByZero();
                 if ((a % b).isZero()) return Value(a / b);
                 return Value(Fraction(a, b));
             }
@@ -1325,16 +1354,16 @@ namespace jc {
 
             if (lhs.isObjType(ObjType::COMPLEX) || rhs.isObjType(ObjType::COMPLEX)) {
                 Complex b = rhs.asComplex();
-                if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                if (b == 0.0) errDivByZero();
                 return Value(lhs.asComplex() / b);
             }
             if (lhs.isDouble() || rhs.isDouble()) {
                 double b = rhs.asDouble();
-                if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+                if (b == 0.0) errDivByZero();
                 return Value(lhs.asDouble() / b);
             }
         
-        throw std::runtime_error("Type Error: Cannot divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
     }
 
     inline Value operator^(const Value& lhs, const Value& rhs) {
@@ -1349,7 +1378,7 @@ namespace jc {
                     if (rhs.isInt32()) n = rhs.asInt32();
                     else if (rhs.isDouble() && std::floor(rhs.asDouble()) == rhs.asDouble()) n = static_cast<int>(rhs.asDouble());
                     else if (rhs.isBigInt()) n = static_cast<int>(rhs.asBigInt().toInt64());
-                    else throw std::runtime_error("SymMatrix Error: Matrix power requires an integer exponent.");
+                    else JC2_THROW(SymbolicError, "Matrix power requires an integer exponent.");
                     return Value(lhs.asSymMatrix().power(n));
                 }
             }
@@ -1449,7 +1478,7 @@ namespace jc {
             double res = std::pow(a, b);
             return Value(res);
 
-        throw std::runtime_error("Type Error: Power operation not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Power operation not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline bool operator<(const Value& a, const Value& b) {
@@ -1510,20 +1539,20 @@ namespace jc {
         if (lIsInt && rIsInt) {
             int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
             int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
-            if (b == 0) throw std::runtime_error("Math Error: Modulo by zero.");
+            if (b == 0) errModByZero();
             if (a == -2147483648 && b == -1) return Value::fromInt32(0);
             return Value::fromInt32(a % b);
         }
         if (lhs.isNumber() && rhs.isNumber()) {
             double b = rhs.asNumber();
-            if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+            if (b == 0.0) errModByZero();
             return Value(std::fmod(lhs.asNumber(), b));
         }
         
         bool rhsIsRealScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION);
             if (lhs.isObjType(ObjType::REAL_MATRIX) && rhsIsRealScalar) {
                 double b = rhs.asDouble();
-                if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+                if (b == 0.0) errModByZero();
                 const auto& a = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
                 RealMatrix res(a.getRows(), a.getCols());
                 for (int i = 0; i < a.getRows(); ++i)
@@ -1533,7 +1562,7 @@ namespace jc {
             }
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhsIsRealScalar) {
                 double b = rhs.asDouble();
-                if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+                if (b == 0.0) errModByZero();
                 const auto& a = static_cast<ObjComplexMatrix*>(lhs.asObj())->mat;
                 ComplexMatrix res(a.getRows(), a.getCols());
                 for (int i = 0; i < a.getRows(); ++i)
@@ -1550,7 +1579,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac % Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) % static_cast<ObjFraction*>(rhs.asObj())->frac);
         
-        throw std::runtime_error("Type Error: Modulo not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Modulo not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator&(const Value& lhs, const Value& rhs) {
@@ -1595,12 +1624,12 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitAnd(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set AND '&' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise/Set AND '&' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator<<(const Value& lhs, const Value& rhs) {
         int shift = static_cast<int>(std::round(rhs.asDouble()));
-        if (shift < 0) throw std::runtime_error("Math Error: Negative shift count.");
+        if (shift < 0) errNegShift();
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
             if (v == 0) return Value::fromInt32(0);
@@ -1616,12 +1645,12 @@ namespace jc {
             BigInt lVal = lhs.isBool() ? BigInt(lhs.asBool() ? 1 : 0) : lhs.asBigInt();
             return Value(lVal * BigInt(2).pow(shift));
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT LEFT '<<' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise SHIFT LEFT '<<' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator>>(const Value& lhs, const Value& rhs) {
         int shift = static_cast<int>(std::round(rhs.asDouble()));
-        if (shift < 0) throw std::runtime_error("Math Error: Negative shift count.");
+        if (shift < 0) errNegShift();
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
             if (shift < 31) return Value::fromInt32(v >> shift);
@@ -1637,7 +1666,7 @@ namespace jc {
             }
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise SHIFT RIGHT '>>' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise SHIFT RIGHT '>>' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator|(const Value& lhs, const Value& rhs) {
@@ -1675,7 +1704,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitOr(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set OR '|' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise/Set OR '|' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value bitXor(const Value& lhs, const Value& rhs) {
@@ -1706,7 +1735,7 @@ namespace jc {
             BigInt res = BaseNum(lVal, 2).bitXor(BaseNum(rVal, 2)).getValue();
             return Value(res);
         }
-        throw std::runtime_error("Type Error: Bitwise/Set XOR '^^' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise/Set XOR '^^' not supported for '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value ldivide(const Value& lhs, const Value& rhs) {
@@ -1728,13 +1757,13 @@ namespace jc {
         if (lIsInt && rIsInt) {
             int32_t a = lhs.isInt32() ? lhs.asInt32() : (lhs.asBool() ? 1 : 0);
             int32_t b = rhs.isInt32() ? rhs.asInt32() : (rhs.asBool() ? 1 : 0);
-            if (b == 0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0) errDivByZero();
             if (a == -2147483648 && b == -1) return Value(BigInt(2147483648LL));
             return Value::fromInt32(a / b);
         }
         if (lhs.isNumber() && rhs.isNumber()) {
             double b = rhs.asNumber();
-            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0.0) errDivByZero();
             return Value(std::trunc(lhs.asNumber() / b));
         }
         
@@ -1743,17 +1772,17 @@ namespace jc {
         if (lhsIsExactInt && rhsIsExactInt) {
             BigInt a = lhs.asBigInt();
             BigInt b = rhs.asBigInt();
-            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            if (b.isZero()) errDivByZero();
             return Value(a / b);
         }
         
         if (lhs.isDouble() || rhs.isDouble() || lhs.isObjType(ObjType::FRACTION) || rhs.isObjType(ObjType::FRACTION)) {
             double b = rhs.asDouble();
-            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0.0) errDivByZero();
             return Value(std::trunc(lhs.asDouble() / b));
         }
         
-        throw std::runtime_error("Type Error: Cannot integer divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot integer divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
     }
 
     struct ObjClosure : public Obj {
@@ -2301,7 +2330,7 @@ namespace jc {
         if (isInt32()) return Value::fromInt32(~asInt32());
         if (isBool()) return Value::fromInt32(~(asBool() ? 1 : 0));
         if (isBigInt()) return Value(-asBigInt() - BigInt(1));
-        throw std::runtime_error("Type Error: Bitwise NOT '~' not supported for '" + typeName() + "'.");
+        JC2_THROW(TypeError, "Bitwise NOT '~' not supported for '" + typeName() + "'.");
     }
 
     inline Value Value::operator-() const {
@@ -2325,7 +2354,7 @@ namespace jc {
                 default: break;
             }
         }
-        throw std::runtime_error("Type Error: Cannot negate '" + typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot negate '" + typeName() + "'.");
     }
 
     inline Value operator+(const Value& lhs, const Value& rhs) {
@@ -2389,13 +2418,13 @@ namespace jc {
             if (lhsIsMat && rhsIsScalar) {
                 if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
-                    if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar addition requires a square matrix.");
+                    if (m.getRows() != m.getCols()) errMatScalarAddSquare();
                     double c = rhs.asDouble();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) += c;
                     return Value(m);
                 }
                 ComplexMatrix m = lhs.asComplexMatrix();
-                if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar addition requires a square matrix.");
+                if (m.getRows() != m.getCols()) errMatScalarAddSquare();
                 Complex c = rhs.asComplex();
                 for (int i = 0; i < m.getRows(); ++i) m(i, i) = m(i, i) + c;
                 return Value(m);
@@ -2403,13 +2432,13 @@ namespace jc {
             if (lhsIsScalar && rhsIsMat) {
                 if (rhs.isObjType(ObjType::REAL_MATRIX) && !lhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(rhs.asObj())->mat;
-                    if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar addition requires a square matrix.");
+                    if (m.getRows() != m.getCols()) errMatScalarAddSquare();
                     double c = lhs.asDouble();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) += c;
                     return Value(m);
                 }
                 ComplexMatrix m = rhs.asComplexMatrix();
-                if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar addition requires a square matrix.");
+                if (m.getRows() != m.getCols()) errMatScalarAddSquare();
                 Complex c = lhs.asComplex();
                 for (int i = 0; i < m.getRows(); ++i) m(i, i) = m(i, i) + c;
                 return Value(m);
@@ -2430,7 +2459,7 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() + rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Cannot add '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot add '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
 
     inline Value operator-(const Value& lhs, const Value& rhs) {
@@ -2470,7 +2499,7 @@ namespace jc {
                 }
                 return Value(res);
             }
-            throw std::runtime_error("Type Error: Dict subtraction requires a Set, List, or Dict on the right side.");
+            JC2_THROW(TypeError, "Dict subtraction requires a Set, List, or Dict on the right side.");
         }
 
         if (lhs.isObjType(ObjType::SYM_MATRIX) || rhs.isObjType(ObjType::SYM_MATRIX)) {
@@ -2498,13 +2527,13 @@ namespace jc {
             if (lhsIsMat && rhsIsScalar) {
                 if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
-                    if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar subtraction requires a square matrix.");
+                    if (m.getRows() != m.getCols()) errMatScalarSubSquare();
                     double c = rhs.asDouble();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) -= c;
                     return Value(m);
                 }
                 ComplexMatrix m = lhs.asComplexMatrix();
-                if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar subtraction requires a square matrix.");
+                if (m.getRows() != m.getCols()) errMatScalarSubSquare();
                 Complex c = rhs.asComplex();
                 for (int i = 0; i < m.getRows(); ++i) m(i, i) = m(i, i) - c;
                 return Value(m);
@@ -2512,7 +2541,7 @@ namespace jc {
             if (lhsIsScalar && rhsIsMat) {
                 if (rhs.isObjType(ObjType::REAL_MATRIX) && !lhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(rhs.asObj())->mat;
-                    if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar subtraction requires a square matrix.");
+                    if (m.getRows() != m.getCols()) errMatScalarSubSquare();
                     double c = lhs.asDouble();
                     RealMatrix res(m.getRows(), m.getCols());
                     for (int i = 0; i < m.getRows(); ++i) {
@@ -2523,7 +2552,7 @@ namespace jc {
                     return Value(res);
                 }
                 ComplexMatrix m = rhs.asComplexMatrix();
-                if (m.getRows() != m.getCols()) throw std::runtime_error("Math Error: Matrix-scalar subtraction requires a square matrix.");
+                if (m.getRows() != m.getCols()) errMatScalarSubSquare();
                 Complex c = lhs.asComplex();
                 ComplexMatrix res(m.getRows(), m.getCols());
                 for (int i = 0; i < m.getRows(); ++i) {
@@ -2560,12 +2589,12 @@ namespace jc {
             
             if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() - rhs.asDouble());
         
-        throw std::runtime_error("Type Error: Cannot subtract '" + rhs.typeName() + "' from '" + lhs.typeName() + "'.");
+        JC2_THROW(TypeError, "Cannot subtract '" + rhs.typeName() + "' from '" + lhs.typeName() + "'.");
     }
 
 inline ObjClosure* Value::asFunction() const {
     if (isObjType(ObjType::CLOSURE)) return static_cast<ObjClosure*>(asObj());
-    throw std::runtime_error("Type Error: Expected a function.");
+    JC2_THROW(TypeError, "Expected a function.");
 }
 
 inline std::ostream& operator<<(std::ostream& os, const Value& val) {
@@ -2875,7 +2904,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         }
         case ObjType::LIST: {
             auto l = static_cast<ObjList*>(obj);
-            if (!l->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
+            if (!l->is_frozen) errUnhashable();
             if (l->has_cached_hash) return l->cached_hash;
             size_t sz = l->vec.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x6F2D8A4E1C5B7093ULL;
@@ -2888,7 +2917,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         }
         case ObjType::DICT: {
             auto d = static_cast<ObjDict*>(obj);
-            if (!d->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
+            if (!d->is_frozen) errUnhashable();
             if (d->has_cached_hash) return d->cached_hash;
             size_t sz = d->elements.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x3B8E7A1F5D2C6049ULL;
@@ -2906,7 +2935,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         }
         case ObjType::SET: {
             auto s = static_cast<ObjSet*>(obj);
-            if (!s->is_frozen) throw std::runtime_error("TypeError: unhashable type.");
+            if (!s->is_frozen) errUnhashable();
             if (s->has_cached_hash) return s->cached_hash;
             size_t sz = s->elements.size();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x5C9D2E4F1A8B7063ULL;
@@ -2954,7 +2983,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 inst->has_cached_hash = true;
                 return seed;
             }
-            throw std::runtime_error("TypeError: unhashable type.");
+            errUnhashable();
         }
         default: return sipHash24(&obj, sizeof(void*));
     }

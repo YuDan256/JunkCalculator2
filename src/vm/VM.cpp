@@ -308,7 +308,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                 }
             }
         }
-        throw std::runtime_error("JIT Error: Target is not callable.");
+        JC2_THROW(InternalError, "Target is not callable.");
     }
     JIT_CALLOUT_CATCH
 }
@@ -404,7 +404,7 @@ Value VM::getGlobalChecked(const std::string& name) {
     Value builtinVal = getBuiltinValue(name);
     if (builtinVal.isNone()) builtinVal = getBuiltinClosure(name);
     if (!builtinVal.isNone()) return builtinVal;
-    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+    JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
 }
 
 ObjUpVal* VM::captureUpvalue(int regIndex) {
@@ -580,9 +580,9 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
             if (argsBase[i].isSpread()) {
                 anySpread = true;
                 auto* sp = static_cast<ObjSpread*>(argsBase[i].asObj());
-                if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in positional position.");
+                if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in positional position.");
                 if (!helpers::spreadPositional(sp->value, spreadPos)) {
-                    throw std::runtime_error("TypeError: positional spread expects a list, set, matrix, string, or an instance with __unpack__().");
+                    JC2_THROW(TypeError, "positional spread expects a list, set, matrix, string, or an instance with __unpack__().");
                 }
             } else {
                 spreadPos.push_back(argsBase[i]);
@@ -594,19 +594,19 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
             if (kwNameVal.isSpread()) {
                 anySpread = true;
                 auto* sp = static_cast<ObjSpread*>(kwNameVal.asObj());
-                if (!sp->isKeyword) throw std::runtime_error("TypeError: positional spread not allowed in keyword position.");
+                if (!sp->isKeyword) JC2_THROW(TypeError, "positional spread not allowed in keyword position.");
                 Value kwDictVal = kwVal;
                 std::unique_ptr<GcValueGuard> upGuard;
                 if (!kwDictVal.isObjType(ObjType::DICT)) {
-                    if (!kwDictVal.isInstance()) throw std::runtime_error("TypeError: keyword spread expects a dict or an instance with __mapping__().");
+                    if (!kwDictVal.isInstance()) JC2_THROW(TypeError, "keyword spread expects a dict or an instance with __mapping__().");
                     auto [upMethod, upOwner] = findDunder(kwDictVal, "__mapping__");
-                    if (!upMethod) throw std::runtime_error("TypeError: keyword spread expects a dict or an instance with __mapping__().");
+                    if (!upMethod) JC2_THROW(TypeError, "keyword spread expects a dict or an instance with __mapping__().");
                     kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
-                    if (!kwDictVal.isObjType(ObjType::DICT)) throw std::runtime_error("TypeError: __mapping__() must return a dict for keyword spread.");
+                    if (!kwDictVal.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "__mapping__() must return a dict for keyword spread.");
                     upGuard = std::make_unique<GcValueGuard>(kwDictVal);
                 }
                 for (auto& [k, v] : static_cast<ObjDict*>(kwDictVal.asObj())->elements) {
-                    if (!k.isString()) throw std::runtime_error("TypeError: keyword spread key must be a string.");
+                    if (!k.isString()) JC2_THROW(TypeError, "keyword spread key must be a string.");
                     spreadKwNames.push_back(k);
                     spreadKwVals.push_back(v);
                 }
@@ -675,7 +675,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
         for (int j = 0; j < totalExpected; ++j) {
             if (paramNames[j] == kwName) {
                 if (j < dstIdx || !alignedArgs[j].isUninit()) {
-                    throw std::runtime_error("TypeError: Multiple values for argument '" + kwName + "'.");
+                    JC2_THROW(TypeError, "Multiple values for argument '" + kwName + "'.");
                 }
                 alignedArgs[j] = kwVal;
                 found = true;
@@ -687,7 +687,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
                 if (kwargNames[j] == kwName) {
                     int slot = kwStart + static_cast<int>(j);
                     if (!alignedArgs[slot].isUninit()) {
-                        throw std::runtime_error("TypeError: Multiple values for argument '" + kwName + "'.");
+                        JC2_THROW(TypeError, "Multiple values for argument '" + kwName + "'.");
                     }
                     alignedArgs[slot] = kwVal;
                     found = true;
@@ -699,7 +699,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
             if (kwargs) {
                 kwargs->set(Value(kwName), kwVal);
             } else {
-                throw std::runtime_error("TypeError: Unexpected keyword argument '" + kwName + "'.");
+                JC2_THROW(TypeError, "Unexpected keyword argument '" + kwName + "'.");
             }
         }
     }
@@ -732,7 +732,7 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
     bool hasRest = !td->converterRestName.empty() || !td->converterKwargNames.empty() || !td->converterKwargsName.empty();
     if (kwArgc > 0 || hasRest) {
         if (td->converterParamNames.empty() && td->converterRestName.empty() && td->converterKwargNames.empty() && td->converterKwargsName.empty()) {
-            throw std::runtime_error("TypeError: This type object does not support keyword arguments.");
+            JC2_THROW(TypeError, "This type object does not support keyword arguments.");
         }
         std::vector<bool> kwargHasDefault(td->converterKwargNames.size(), false);
         int n = static_cast<int>(td->converterKwargNames.size());
@@ -810,7 +810,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
             BuiltinType bt = std::get<BuiltinType>(td->types[0]);
             if (bt == BuiltinType::TYPE_DEF) {
-                if (kwArgc > 0) throw std::runtime_error("TypeError: type() does not accept keyword arguments.");
+                if (kwArgc > 0) JC2_THROW(TypeError, "type() does not accept keyword arguments.");
                 if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
                 Value v = registers[currentFrame->registerBase + calleeReg + 1];
                 std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
@@ -905,7 +905,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 newFrame.classContext = closure->boundClass;
                 populateRefParams(newFrame, fnDef.get());
                 
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
                 profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
 
@@ -1012,7 +1012,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             
             populateRefParams(newFrame, fnDef.get());
             
-            if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+            if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
             profileFrameStart(&newFrame);
             frames[frameCount++] = newFrame;
         } else if (closure->isNative()) {
@@ -1025,7 +1025,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             bool hasRest = !closure->restName.empty() || !closure->kwargNames.empty() || !closure->kwargsName.empty();
             if (kwArgc > 0 || hasRest) {
                 if (closure->paramNames.empty() && closure->restName.empty() && closure->kwargNames.empty() && closure->kwargsName.empty()) {
-                    throw std::runtime_error("TypeError: Native function '" + closure->rawBody + "' does not support keyword arguments.");
+                    JC2_THROW(TypeError, "Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
                 args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
                 
@@ -1092,7 +1092,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto cls = static_cast<ObjClass*>(callee.asObj());
         
         if (cls->native_allocator) {
-            if (kwArgc > 0) throw std::runtime_error("TypeError: Native class allocator does not support keyword arguments.");
+            if (kwArgc > 0) JC2_THROW(TypeError, "Native class allocator does not support keyword arguments.");
             std::vector<Value> args;
             args.reserve(argc);
             for (int i = 0; i < argc; ++i) {
@@ -1190,7 +1190,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 
                 populateRefParams(newFrame, fnDef.get());
                 
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
                 profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
             } else if (initMethod->isNative()) {
@@ -1199,7 +1199,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 
                 if (kwArgc > 0) {
                     if (initMethod->paramNames.empty()) {
-                        throw std::runtime_error("TypeError: Native method 'init' does not support keyword arguments.");
+                        JC2_THROW(TypeError, "Native method 'init' does not support keyword arguments.");
                     }
                     args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault);
                     
@@ -1239,11 +1239,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         } else {
             if (cls->is_native) {
                 pendingCallRefs.clear();
-                throw std::runtime_error("TypeError: Cannot instantiate native class '" + cls->name + "' directly.");
+                JC2_THROW(TypeError, "Cannot instantiate native class '" + cls->name + "' directly.");
             }
             if (argc > 0) {
                 pendingCallRefs.clear();
-                throw std::runtime_error("TypeError: Class takes no arguments directly.");
+                JC2_THROW(TypeError, "Class takes no arguments directly.");
             }
             registers[currentFrame->registerBase + dstReg] = Value(instance);
             pendingCallRefs.clear();
@@ -1335,7 +1335,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 
                 populateRefParams(newFrame, fnDef.get());
                 
-                if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+                if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
                 profileFrameStart(&newFrame);
                 frames[frameCount++] = newFrame;
             } else if (method->isNative()) {
@@ -1346,7 +1346,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
                 if (kwArgc > 0 || hasRest) {
                     if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
-                        throw std::runtime_error("TypeError: Native method '__call__' does not support keyword arguments.");
+                        JC2_THROW(TypeError, "Native method '__call__' does not support keyword arguments.");
                     }
                     args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
                     
@@ -1377,10 +1377,10 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 helpers::nativeClassStack.pop_back();
             }
         } else {
-            throw std::runtime_error("VM Error: Target is not callable.");
+            errTargetNotCallable();
         }
     } else {
-        throw std::runtime_error("VM Error: Target is not callable.");
+        errTargetNotCallable();
     }
 }
 
@@ -1582,7 +1582,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
             throw;
         }
     }
-    throw std::runtime_error("VM Error: Dunder method is not callable.");
+    JC2_THROW(RuntimeError, "Dunder method is not callable.");
 }
 
 bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
@@ -1645,17 +1645,17 @@ void VM::assertTypeMatches(const Value& val, const Value& typeObj, AssertContext
             }
         }
         if (!matched) {
-            if (isReturn) throw std::runtime_error("TypeError: Function '" + name + "' expected to return '" + expectedClass->name + "', but returned '" + getTypeName(val) + "'.");
-            throw std::runtime_error("TypeError: " + subject + " expected type '" + expectedClass->name + "', got '" + getTypeName(val) + "'.");
+            if (isReturn) JC2_THROW(TypeError, "Function '" + name + "' expected to return '" + expectedClass->name + "', but returned '" + getTypeName(val) + "'.");
+            JC2_THROW(TypeError, "" + subject + " expected type '" + expectedClass->name + "', got '" + getTypeName(val) + "'.");
         }
         return;
     }
 
-    if (!typeObj.isType()) throw std::runtime_error("TypeError: Expected a type object for type assertion.");
+    if (!typeObj.isType()) JC2_THROW(TypeError, "Expected a type object for type assertion.");
 
     if (!checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj()))) {
-        if (isReturn) throw std::runtime_error("TypeError: Function '" + name + "' expected to return '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', but returned '" + getTypeName(val) + "'.");
-        throw std::runtime_error("TypeError: " + subject + " expected type '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', got '" + getTypeName(val) + "'.");
+        if (isReturn) JC2_THROW(TypeError, "Function '" + name + "' expected to return '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', but returned '" + getTypeName(val) + "'.");
+        JC2_THROW(TypeError, "" + subject + " expected type '" + static_cast<ObjTypeDef*>(typeObj.asObj())->name() + "', got '" + getTypeName(val) + "'.");
     }
 }
 
@@ -1702,7 +1702,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         if (obj.isInstance()) {
             auto inst = obj.asInstance();
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
-            if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
+            if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
             std::string mangledName = manglePrivate(owner->classId, methodName);
             auto it = inst->properties.find(mangledName);
@@ -1733,10 +1733,10 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 }
             }
             
-            throw std::runtime_error("VM Error: Private method '" + methodName + "' not found.");
+            JC2_THROW(RuntimeError, "Private method '" + methodName + "' not found.");
         } else if (obj.isClass()) {
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
-            if (!owner) throw std::runtime_error("VM Error: Cannot access private method outside of class context.");
+            if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
             std::string mangledName = manglePrivate(owner->classId, methodName);
             auto it = owner->properties.find(mangledName);
@@ -1752,9 +1752,9 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                     return;
                 }
             }
-            throw std::runtime_error("VM Error: Private static method '" + methodName + "' not found.");
+            JC2_THROW(RuntimeError, "Private static method '" + methodName + "' not found.");
         }
-        throw std::runtime_error("VM Error: Cannot invoke private method on this type.");
+        JC2_THROW(RuntimeError, "Cannot invoke private method on this type.");
     }
 
     if (obj.isObjType(ObjType::LIST)) objBt = BuiltinType::LIST;
@@ -2015,7 +2015,7 @@ invoke_method:
             }
         }
         
-        throw std::runtime_error("VM Error: Cannot invoke method '" + methodName + "' on this type.");
+        JC2_THROW(RuntimeError, "Cannot invoke method '" + methodName + "' on this type.");
     }
 
     if (method->isBytecode()) {
@@ -2089,7 +2089,7 @@ invoke_method:
         
         populateRefParams(newFrame, fnDef.get());
         
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
         profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
@@ -2148,14 +2148,14 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
     const Value& selfVal = registers[currentFrame->registerBase + a];
     int argc = b;
     
-    if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
+    if (!selfVal.isInstance()) errSuperInstanceContext();
     auto inst = selfVal.asInstance();
     
     Value classVal = currentFrame->classContext;
-    if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
+    if (!classVal.isClass()) errSuperClassContext();
     auto currentClass = static_cast<ObjClass*>(classVal.asObj());
     auto parentClass = currentClass->parent;
-    if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
+    if (!parentClass) errNoParentClass();
     
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
@@ -2254,7 +2254,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         
         populateRefParams(newFrame, fnDef.get());
         
-        if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+        if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
         profileFrameStart(&newFrame);
         frames[frameCount++] = newFrame;
     } else if (method->isNative()) {
@@ -2378,7 +2378,7 @@ Value VM::execImport(const std::string& name) {
 
     if (resolved.empty() && jcbPath.empty() && jc2Path.empty()) {
         loadedModules.erase(name);
-        throw std::runtime_error("VM Error: Cannot find library or module '" + name + "'.");
+        JC2_THROW(RuntimeError, "Cannot find library or module '" + name + "'.");
     }
 
     importedModules.insert(name);
@@ -2399,7 +2399,7 @@ Value VM::execImport(const std::string& name) {
 #endif
         if (!init_fn) {
             loadedModules.erase(name);
-            throw std::runtime_error("VM Error: Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
+            JC2_THROW(RuntimeError, "Dynamic library '" + resolved + "' does not export 'jc2_extension_init'.");
         }
 
         std::unordered_map<std::string, Value> tempGlobals;
@@ -2418,7 +2418,7 @@ Value VM::execImport(const std::string& name) {
         jc::nativeTempRefs.resize(old_size);
         if (res != 0) {
             loadedModules.erase(name);
-            throw std::runtime_error("VM Error: Extension initialization failed with code " + std::to_string(res));
+            JC2_THROW(RuntimeError, "Extension initialization failed with code " + std::to_string(res));
         }
 
         for (const auto& kv : tempGlobals) {
@@ -2485,7 +2485,7 @@ Value VM::execImport(const std::string& name) {
                     jc2Path = helpers::safeResolvePath(name + ".jc2");
                     if (!std::filesystem::is_regular_file(jc2Path)) {
                         loadedModules.erase(name);
-                        throw std::runtime_error("VM Error: Bytecode version mismatch and source file not found for '" + name + "'.");
+                        JC2_THROW(RuntimeError, "Bytecode version mismatch and source file not found for '" + name + "'.");
                     }
                 }
             } else {
@@ -2570,7 +2570,7 @@ Value VM::execImport(const std::string& name) {
     
     populateRefParams(newFrame, modFn.get());
     
-    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
     int targetDepth = frameCount;
     profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
@@ -2604,7 +2604,7 @@ Value VM::execImport(const std::string& name) {
 
     if (!nsVal.isObjType(ObjType::NAMESPACE)) {
         loadedModules.erase(name);
-        throw std::runtime_error("VM Error: Module script must not use top-level 'return'.");
+        JC2_THROW(RuntimeError, "Module script must not use top-level 'return'.");
     }
     ns = static_cast<ObjNamespace*>(nsVal.asObj());
     loadedModules[name] = Value(ns);
@@ -2627,7 +2627,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     }
 
     if (resolved.empty() || !std::filesystem::is_regular_file(to_path(resolved))) {
-        throw std::runtime_error("VM Error: Cannot find compile-time module '" + name + "'.");
+        JC2_THROW(RuntimeError, "Cannot find compile-time module '" + name + "'.");
     }
 
     std::ifstream file(to_path(resolved));
@@ -2700,7 +2700,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     
     populateRefParams(newFrame, modFn.get());
     
-    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
     
     int targetDepth = frameCount;
     profileFrameStart(&newFrame);
@@ -2791,7 +2791,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     helpers::g_scriptDirStack.pop_back();
 
     if (!nsVal.isObjType(ObjType::NAMESPACE)) {
-        throw std::runtime_error("VM Error: Compile-time module script must not use top-level 'return'.");
+        JC2_THROW(RuntimeError, "Compile-time module script must not use top-level 'return'.");
     }
     ObjNamespace* ns = static_cast<ObjNamespace*>(nsVal.asObj());
     
@@ -3476,7 +3476,7 @@ VM::VM() {
         bind("dict", {}, {}, [](const std::vector<Value>& args) -> Value {
             // ★ 统一调用约定：args = [rest_list]
             const std::vector<Value>& items = static_cast<ObjList*>(args[0].asObj())->vec;
-            if (items.size() % 2 != 0) throw std::runtime_error("Runtime Error: dict() expects even number of arguments.");
+            if (items.size() % 2 != 0) JC2_THROW(RuntimeError, "dict() expects even number of arguments.");
             ObjDict* d = GcHeap::get().allocate<ObjDict>();
             GcObjGuard guard(d);
             for (size_t i = 0; i < items.size(); i += 2) {
@@ -3505,7 +3505,7 @@ VM::VM() {
             int r = static_cast<int>(std::round(args[0].asDouble()));
             int c = static_cast<int>(std::round(args[1].asDouble()));
             if (r <= 0 || c <= 0)
-                throw std::runtime_error("Runtime Error: symmatrix() dimensions must be positive.");
+                JC2_THROW(RuntimeError, "symmatrix() dimensions must be positive.");
             const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
             if (items.empty())
                 return Value(SymMatrix(r, c));
@@ -3560,7 +3560,7 @@ VM::VM() {
             int r = static_cast<int>(std::round(args[0].asDouble()));
             int c = static_cast<int>(std::round(args[1].asDouble()));
             if (r <= 0 || c <= 0)
-                throw std::runtime_error("Runtime Error: matrix() dimensions must be positive.");
+                JC2_THROW(RuntimeError, "matrix() dimensions must be positive.");
             const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
             if (items.empty())
                 return Value(RealMatrix(r, c));
@@ -3823,7 +3823,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     mainFrame.returnRegister = 0;
     mainFrame.deferBase = static_cast<int>(deferStack.size());
     
-    if (frameCount >= MAX_FRAMES) throw std::runtime_error("VM Error: CallFrame stack overflow.");
+    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
     
     int targetDepth = frameCount;
     profileFrameStart(&mainFrame);
@@ -4236,8 +4236,8 @@ Value VM::run(int targetFrameDepth) {
                             ic.cachedGlobalSlot = newSlot;
                             getReg(a) = builtinVal;
                         } else {
-                            if (name == "<namespace>") throw std::runtime_error("VM Error: 'namespace' accessed outside of context.");
-                            throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+                            if (name == "<namespace>") JC2_THROW(RuntimeError, "'namespace' accessed outside of context.");
+                            JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
                         }
                     }
                 }
@@ -4308,7 +4308,7 @@ Value VM::run(int targetFrameDepth) {
                     globalNames.erase(it);
                     clearAllGlobalICs();
                 } else {
-                    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+                    JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
                 }
                 break;
             }
@@ -4502,7 +4502,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
-                    throw std::runtime_error("VM Error: Invalid upvalue index.");
+                    errInvalidUpvalueIndex();
                 getReg(a) = *(frame->closure->upvalues[b]->location);
                 break;
             }
@@ -4510,21 +4510,21 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
-                    throw std::runtime_error("VM Error: Invalid upvalue index.");
+                    errInvalidUpvalueIndex();
                 *(frame->closure->upvalues[b]->location) = getReg(a);
                 break;
             }
             case OpCode::GET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
-                if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+                if (frame->refParamsBase == -1) errInvalidRefParamIndex();
                 getReg(a) = *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location);
                 break;
             }
             case OpCode::SET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
-                if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+                if (frame->refParamsBase == -1) errInvalidRefParamIndex();
                 *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location) = getReg(a);
                 break;
             }
@@ -5939,7 +5939,7 @@ Value VM::run(int targetFrameDepth) {
                             state->vec.push_back(Value::none());
                         } else {
                             auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
-                            if (!nextMethod) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
+                            if (!nextMethod) JC2_THROW(RuntimeError, "Iterator missing __next__ method.");
                             state->vec.push_back(Value(nextMethod));
                             state->vec.push_back(Value(nextOwner));
                         }
@@ -6344,7 +6344,7 @@ Value VM::run(int targetFrameDepth) {
                 Value classVal = getReg(a);
                 Value closureVal = getReg(c);
                 
-                if (!classVal.isClass()) throw std::runtime_error("VM Error: METHOD requires a class.");
+                if (!classVal.isClass()) JC2_THROW(RuntimeError, "METHOD requires a class.");
                 auto cls = static_cast<ObjClass*>(classVal.asObj());
                 
                 if (closureVal.isFunctionClosure()) {
@@ -6388,7 +6388,7 @@ Value VM::run(int targetFrameDepth) {
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                    if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+                    if (!owner) errAccessPrivateOutsideClass();
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = inst->properties.find(mangledName);
@@ -6438,7 +6438,7 @@ Value VM::run(int targetFrameDepth) {
                     throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
                 } else if (obj.isClass()) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                    if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+                    if (!owner) errAccessPrivateOutsideClass();
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = owner->properties.find(mangledName);
@@ -7245,7 +7245,7 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     inst->checkModify();
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                    if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+                    if (!owner) errAccessPrivateOutsideClass();
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = inst->properties.find(mangledName);
@@ -7262,7 +7262,7 @@ Value VM::run(int targetFrameDepth) {
                     std::string keyStr = keyVal.asString();
                     if (op == OpCode::SET_PRIVATE) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+                        if (!owner) errAccessPrivateOutsideClass();
                         std::string mangledName = manglePrivate(owner->classId, keyStr);
                         auto it = owner->properties.find(mangledName);
                         if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
@@ -7863,14 +7863,14 @@ Value VM::run(int targetFrameDepth) {
                 
                 const std::string& field = chunk->constants.data()[c].asString();
                 Value selfVal = getReg(b);
-                if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
+                if (!selfVal.isInstance()) errSuperInstanceContext();
                 auto inst = selfVal.asInstance();
                 
                 Value classVal = frame->classContext;
-                if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
+                if (!classVal.isClass()) errSuperClassContext();
                 auto currentClass = static_cast<ObjClass*>(classVal.asObj());
                 auto parentClass = currentClass->parent;
-                if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
+                if (!parentClass) errNoParentClass();
                 
                 ObjClosure* rawMethod = nullptr;
                 ObjClass* ownerClass = nullptr;
@@ -8442,7 +8442,7 @@ uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk) {
         return builtinVal.as_bits;
     }
     
-    throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+    JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
     JIT_CALLOUT_CATCH
 }
 
@@ -9814,7 +9814,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
                 state->vec.push_back(Value::none());
             } else {
                 auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
-                if (!nextMethod) throw std::runtime_error("VM Error: Iterator missing __next__ method.");
+                if (!nextMethod) JC2_THROW(RuntimeError, "Iterator missing __next__ method.");
                 state->vec.push_back(Value(nextMethod));
                 state->vec.push_back(Value(nextOwner));
             }
@@ -10824,14 +10824,14 @@ uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chu
     
     const std::string& field = chunk->constants[nameIdx].asString();
     Value selfVal = Value::fromRawBits(obj_bits);
-    if (!selfVal.isInstance()) throw std::runtime_error("VM Error: 'super' requires an instance context.");
+    if (!selfVal.isInstance()) errSuperInstanceContext();
     auto inst = selfVal.asInstance();
     
     Value classVal = frame->classContext;
-    if (!classVal.isClass()) throw std::runtime_error("VM Error: 'super' requires class context.");
+    if (!classVal.isClass()) errSuperClassContext();
     auto currentClass = static_cast<ObjClass*>(classVal.asObj());
     auto parentClass = currentClass->parent;
-    if (!parentClass) throw std::runtime_error("VM Error: No parent class.");
+    if (!parentClass) errNoParentClass();
     
     ObjClosure* rawMethod = nullptr;
     ObjClass* ownerClass = nullptr;
@@ -11668,7 +11668,7 @@ void jc2_jit_delete_global(uint32_t bx, const Chunk* chunk) {
     if (name == "<class>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'class'.");
     if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'namespace'.");
     if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
-    if (!vm->hasGlobal(name)) throw std::runtime_error("VM Error: Undefined global variable '" + name + "'.");
+    if (!vm->hasGlobal(name)) JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
     vm->removeGlobal(name);
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11718,7 +11718,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
         if (it != inst->properties.end()) {
@@ -11737,7 +11737,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         }
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = owner->properties.find(mangledName);
         if (it != owner->properties.end()) {
@@ -11771,7 +11771,7 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         auto inst = obj.asInstance();
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
         if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
@@ -11779,7 +11779,7 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         it->second.val = val;
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = owner->properties.find(mangledName);
         if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
@@ -11804,7 +11804,7 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         auto inst = obj.asInstance();
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
         if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
@@ -11834,7 +11834,7 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         auto inst = obj.asInstance();
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-        if (!owner) throw std::runtime_error("VM Error: Cannot access private property outside of class context.");
+        if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
         if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");

@@ -102,6 +102,21 @@ namespace jc {
     [[noreturn]] inline void errAccessPrivateDynamic() { JC2_THROW(RuntimeError, "Cannot access private or lifecycle properties dynamically."); }
     [[noreturn]] inline void errMatImmutableSetItem() { JC2_THROW(RuntimeError, "Matrices are immutable. Use setItem(i, x) / setSlice(sr, sc, x) to get a new matrix."); }
     [[noreturn]] inline void errMatImmutableSetElement() { JC2_THROW(RuntimeError, "Matrices are immutable. Use setElement(r, c, x) / setSlice(sr, sc, x) to get a new matrix."); }
+    [[noreturn]] inline void errAccessPrivateOutsideClass() { JC2_THROW(RuntimeError, "Cannot access private property outside of class context."); }
+    [[noreturn]] inline void errCallFrameOverflow() { JC2_THROW(RuntimeError, "CallFrame stack overflow."); }
+    [[noreturn]] inline void errMatrixElementType() { JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists."); }
+    [[noreturn]] inline void errInvalidRefParamIndex() { JC2_THROW(RuntimeError, "Invalid ref param index."); }
+    [[noreturn]] inline void errInvalidUpvalueIndex() { JC2_THROW(RuntimeError, "Invalid upvalue index."); }
+    [[noreturn]] inline void errSetPrivateOnType() { JC2_THROW(RuntimeError, "Cannot set private property on this type."); }
+    [[noreturn]] inline void errUnsupportedIndexDim() { JC2_THROW(RuntimeError, "Unsupported index dimensionality."); }
+    [[noreturn]] inline void errSuperInstanceContext() { JC2_THROW(RuntimeError, "'super' requires an instance context."); }
+    [[noreturn]] inline void errSuperClassContext() { JC2_THROW(RuntimeError, "'super' requires class context."); }
+    [[noreturn]] inline void errNoParentClass() { JC2_THROW(RuntimeError, "No parent class."); }
+    [[noreturn]] inline void errUndefinedGlobal(const std::string& name) { JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'."); }
+    [[noreturn]] inline void errRequiresAtLeast(const std::string& name, const std::string& arity) { JC2_THROW(RuntimeError, "'" + name + "' requires at least " + arity + " arguments."); }
+    [[noreturn]] inline void errExpectsAtMost(const std::string& name, const std::string& arity) { JC2_THROW(RuntimeError, "'" + name + "' expects at most " + arity + " arguments."); }
+    [[noreturn]] inline void errCannotIterate() { JC2_THROW(RuntimeError, "Cannot iterate over this type."); }
+    [[noreturn]] inline void errTargetNotCallable() { JC2_THROW(RuntimeError, "Target is not callable."); }
 
     struct ValueHasher {
         size_t operator()(const Value& v) const;

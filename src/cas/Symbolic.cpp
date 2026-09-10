@@ -5451,7 +5451,7 @@ namespace jc {
         }
         
         AsympSeries inverse() const {
-            if (terms.empty()) throw std::runtime_error("Division by zero in asymptotic expansion.");
+            if (terms.empty()) JC2_THROW(MathError, "Division by zero in asymptotic expansion.");
             auto lead = *terms.begin();
             Fraction leadDeg = lead.first;
             SymExpr leadCoeff = lead.second;

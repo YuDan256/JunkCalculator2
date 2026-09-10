@@ -271,7 +271,7 @@ namespace jc {
                                 }
                                 return it->second(fnArgs);
                             }
-                            throw std::runtime_error("Function not found");
+                            JC2_THROW(RuntimeError, "Function not found");
                         };
                         vals.push_back(evalUniversal(collapsed.ptr, emptyEnv, resolver));
                     } catch (const jc::EngineInterruptError&) {
@@ -1674,7 +1674,7 @@ void BuiltinRegistry::registerLinearSolvers() {
 // [8] 向量引擎
 // =================================================================
 void BuiltinRegistry::registerVectors() {
-    auto assertVec = [](const Value& v, const std::string& f) { if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != 1) throw std::runtime_error(f + "() expects Nx1 column vector."); } else throw std::runtime_error(f + "() requires a matrix."); };
+    auto assertVec = [](const Value& v, const std::string& f) { if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != 1) JC2_THROW(TypeError, f + "() expects Nx1 column vector."); } else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != 1) JC2_THROW(TypeError, f + "() expects Nx1 column vector."); } else JC2_THROW(TypeError, f + "() requires a matrix."); };
 
     auto dimFn = [assertVec](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -2060,7 +2060,7 @@ void BuiltinRegistry::registerSystemUtils() {
         std::string uniqueName = prefix + "#" + std::to_string(counter++);
         
         auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
-        if (!clsVal.isClass()) throw std::runtime_error("ASTNode class not found");
+        if (!clsVal.isClass()) JC2_THROW(RuntimeError, "ASTNode class not found");
         
         ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
         GcObjGuard instGuard(inst);
@@ -2589,10 +2589,10 @@ void BuiltinRegistry::registerStringFunctions() {
         return helpers::evalCallback(args[0].asString());
         }, {"expr"});
 
-    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) throw std::runtime_error("Runtime Error: substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) throw std::runtime_error("Runtime Error: substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
+    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) JC2_THROW(RuntimeError, "substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) JC2_THROW(RuntimeError, "substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "substr", {"start", "length"}, substrFn, 1);
 
-    auto charAtFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "charAt() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[0].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) throw std::runtime_error("Runtime Error: charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); };
+    auto charAtFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "charAt() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[0].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) JC2_THROW(RuntimeError, "charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "charAt", {"i"}, charAtFn);
 
     auto upperFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "upper() expects a string."); std::string s = self.asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); };
@@ -2613,7 +2613,7 @@ void BuiltinRegistry::registerStringFunctions() {
     auto replaceFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()||!args[1].isString()) JC2_THROW(TypeError, "replace() expects two strings."); std::string s=self.asString(); const std::string& from=args[0].asString(); const std::string& to=args[1].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); };
     regMethod(VM::activeVM->stringProto, "replace", {"old", "new"}, replaceFn);
 
-    auto repeatFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "repeat() expects a string."); const std::string& s = self.asString(); int n=static_cast<int>(std::round(args[0].asDouble())); if (n<0) throw std::runtime_error("Runtime Error: repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); };
+    auto repeatFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "repeat() expects a string."); const std::string& s = self.asString(); int n=static_cast<int>(std::round(args[0].asDouble())); if (n<0) JC2_THROW(RuntimeError, "repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); };
     regMethod(VM::activeVM->stringProto, "repeat", {"n"}, repeatFn);
 
     reg("concat", {}, [](const std::vector<Value>& args) -> Value {
@@ -2642,15 +2642,15 @@ void BuiltinRegistry::registerStringFunctions() {
     auto endsWithFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "endsWith() expects a string."); const std::string& s=self.asString(); const std::string& suffix=args[0].asString(); return Value(s.size()>=suffix.size()&&s.compare(s.size()-suffix.size(),suffix.size(),suffix)==0); };
     regMethod(VM::activeVM->stringProto, "endsWith", {"suffix"}, endsWithFn);
 
-    auto splitFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "split() expects a string."); const std::string& s=self.asString(); const std::string& delim=args[0].asString(); if (delim.empty()) throw std::runtime_error("Runtime Error: split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); };
+    auto splitFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "split() expects a string."); const std::string& s=self.asString(); const std::string& delim=args[0].asString(); if (delim.empty()) JC2_THROW(RuntimeError, "split() delimiter cannot be empty."); ObjList* result = GcHeap::get().allocate<ObjList>(); GcObjGuard guard(result); size_t start=0,pos; while ((pos=s.find(delim,start))!=std::string::npos) { result->vec.push_back(Value(s.substr(start,pos-start))); start=pos+delim.size(); } result->vec.push_back(Value(s.substr(start))); return Value(result); };
     regMethod(VM::activeVM->stringProto, "split", {"delim"}, splitFn);
 
-    auto ordFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "ord() expects a string."); const std::string& s=self.asString(); if (s.empty()) throw std::runtime_error("Runtime Error: ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); };
+    auto ordFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "ord() expects a string."); const std::string& s=self.asString(); if (s.empty()) JC2_THROW(RuntimeError, "ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); };
     regMethod(VM::activeVM->stringProto, "ord", {}, ordFn);
 
     reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>0x10FFFF) JC2_THROW(RuntimeError, "chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
 
-    auto parseNumFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string."); const std::string& s=self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) throw std::runtime_error("Math Error: Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { throw std::runtime_error("Math Error: Cannot parse '"+trimmed+"' as a number."); } };
+    auto parseNumFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string."); const std::string& s=self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { JC2_THROW(MathError, "Cannot parse '"+trimmed+"' as a number."); } };
     regMethod(VM::activeVM->stringProto, "parseNum", {}, parseNumFn);
 }
 
@@ -3772,7 +3772,7 @@ void BuiltinRegistry::registerFormatType() {
         std::string fmt = args[0].asString(); std::string result; size_t argIdx = 0;
         for (size_t i = 0; i < fmt.size(); ++i) {
             if (fmt[i] == '{' && i + 1 < fmt.size() && fmt[i + 1] == '}') { if (argIdx >= pa.size()) JC2_THROW(RuntimeError, "format() too few arguments."); std::ostringstream oss; oss << pa[argIdx++]; result += oss.str(); i += 1; }
-            else if (fmt[i] == '{' && i + 2 < fmt.size() && fmt[i + 1] == ':' && fmt[i + 2] == ':') { size_t close = fmt.find('}', i); if (close == std::string::npos) JC2_THROW(RuntimeError, "format() unclosed '{'."); std::string spec = fmt.substr(i + 3, close - i - 3); if (argIdx >= pa.size()) throw std::runtime_error("Runtime Error: format() too few arguments."); result += applyFormatSpec(pa[argIdx++], spec); i = close; }
+            else if (fmt[i] == '{' && i + 2 < fmt.size() && fmt[i + 1] == ':' && fmt[i + 2] == ':') { size_t close = fmt.find('}', i); if (close == std::string::npos) JC2_THROW(RuntimeError, "format() unclosed '{'."); std::string spec = fmt.substr(i + 3, close - i - 3); if (argIdx >= pa.size()) JC2_THROW(RuntimeError, "format() too few arguments."); result += applyFormatSpec(pa[argIdx++], spec); i = close; }
             else { result += fmt[i]; }
         }
         return Value(result);
@@ -4485,8 +4485,8 @@ void BuiltinRegistry::registerCalculus() {
         if (items.size() == static_cast<size_t>(k)) {
             int N = -1;
             for (int i = 0; i < k; ++i) {
-                if (items[i].isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getCols() != 1) JC2_THROW(MathError, "Arguments must be column vectors."); if (N == -1) N = static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
-                else if (items[i].isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getCols() != 1) JC2_THROW(MathError, "Arguments must be column vectors."); if (N == -1) N = static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows()) throw std::runtime_error("Math Error: Vectors must have same length."); }
+                if (items[i].isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getCols() != 1) JC2_THROW(MathError, "Arguments must be column vectors."); if (N == -1) N = static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjRealMatrix*>(items[i].asObj())->mat.getRows()) JC2_THROW(MathError, "Vectors must have same length."); }
+                else if (items[i].isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getCols() != 1) JC2_THROW(MathError, "Arguments must be column vectors."); if (N == -1) N = static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows(); else if (N != static_cast<ObjComplexMatrix*>(items[i].asObj())->mat.getRows()) JC2_THROW(MathError, "Vectors must have same length."); }
                 else JC2_THROW(TypeError, "Expected column vectors.");
             }
             if (N <= 0) return Value(RealMatrix(0, 0));
@@ -4506,7 +4506,7 @@ void BuiltinRegistry::registerErrorHandling() {
 
     reg("assert", { 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
         if (args.size() == 1) {
-            if (!args[0].truthy()) throw std::runtime_error("Assertion Failed.");
+            if (!args[0].truthy()) JC2_THROW(RuntimeError, "Assertion Failed.");
             return Value(true);
         }
         if (args.size() == 2) {
@@ -4515,7 +4515,7 @@ void BuiltinRegistry::registerErrorHandling() {
                 if (args[1].isString())
                     msg += ": " + args[1].asString();
                 else { std::ostringstream oss; oss << args[1]; msg += ": " + oss.str(); }
-                throw std::runtime_error(msg);
+                JC2_THROW(RuntimeError, msg);
             }
             return Value(true);
         }
@@ -4530,7 +4530,7 @@ void BuiltinRegistry::registerErrorHandling() {
             oss << "Assertion Failed: [" << name << "]\n"
                 << "       Expected: " << expected << "\n"
                 << "       Got:      " << got;
-            throw std::runtime_error(oss.str());
+            JC2_THROW(RuntimeError, oss.str());
         }
         return Value(true);
         }, {"cond_or_name", "msg_or_got", "expected"});
@@ -5388,7 +5388,7 @@ void BuiltinRegistry::registerCAS() {
                         }
                         return it->second(fnArgs);
                     }
-                    throw std::runtime_error("Function not found");
+                    JC2_THROW(RuntimeError, "Function not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);
             } catch (const jc::EngineInterruptError&) {
@@ -5458,7 +5458,7 @@ void BuiltinRegistry::registerCAS() {
         }
 
         if (vars.size() != vals.size())
-            throw std::runtime_error("TypeError: subs() variable count (" + std::to_string(vars.size()) +
+            JC2_THROW(TypeError, "subs() variable count (" + std::to_string(vars.size()) +
                 ") and value count (" + std::to_string(vals.size()) + ") must match.");
 
         if (isMat) {
@@ -5500,7 +5500,7 @@ void BuiltinRegistry::registerCAS() {
             varNames.push_back(static_cast<SymVar*>(args[1].asSymbolic().ptr)->name);
         }
         else {
-            throw std::runtime_error("toFunc(): 2nd argument must be a string, symbol, or List of variable names.");
+            JC2_THROW(TypeError, "toFunc(): 2nd argument must be a string, symbol, or List of variable names.");
         }
         int argCount = static_cast<int>(varNames.size());
         std::vector<bool> pRefs(argCount, false);
@@ -5528,7 +5528,7 @@ void BuiltinRegistry::registerCAS() {
             };
         auto jc_caller = [ast, varNames, resolver](const std::vector<jc::Value>& call_args) -> jc::Value {
             if (call_args.size() != varNames.size()) {
-                throw std::runtime_error("Compiled function expects " + std::to_string(varNames.size()) + " arguments.");
+                JC2_THROW(RuntimeError, "Compiled function expects " + std::to_string(varNames.size()) + " arguments.");
             }
             bool isPureReal = true;
             for (const auto& arg : call_args) {
@@ -5579,7 +5579,7 @@ void BuiltinRegistry::registerCAS() {
                         }
                         return it->second(fnArgs);
                     }
-                    throw std::runtime_error("Function not found");
+                    JC2_THROW(RuntimeError, "Function not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);
             } catch (const jc::EngineInterruptError&) {

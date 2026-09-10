@@ -391,12 +391,12 @@ void registerPredefinedClasses() {
         std::string errMsg = args[1].isString() ? args[1].asString() : args[1].toRepr();
         
         if (cursor >= static_cast<int>(list->vec.size())) {
-            throw std::runtime_error(errMsg);
+            JC2_THROW(RuntimeError, errMsg);
         }
         
         Value tokVal = list->vec[cursor];
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
-            throw std::runtime_error(errMsg);
+            JC2_THROW(RuntimeError, errMsg);
         }
         
         auto tokInst = tokVal.asInstance();
@@ -407,7 +407,7 @@ void registerPredefinedClasses() {
             inst->properties["cursor"].val = Value::fromInt32(cursor + 1);
             return tokVal;
         }
-        throw std::runtime_error(errMsg);
+        JC2_THROW(RuntimeError, errMsg);
     });
     tokenStreamClass->properties["consume"] = {Value(tsConsume), false, false};
 

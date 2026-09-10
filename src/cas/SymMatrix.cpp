@@ -915,7 +915,7 @@ namespace jc {
                 }
                 if (all_zero) return res;
             }
-            throw std::runtime_error(std::string("SymMatrix Error: Matrix exponential failed (matrix may not be diagonalizable and is not nilpotent). Inner error: ") + e.what());
+            JC2_THROW(SymbolicError, std::string("Matrix exponential failed (matrix may not be diagonalizable and is not nilpotent). Inner error: ") + e.what());
         }
     }
 

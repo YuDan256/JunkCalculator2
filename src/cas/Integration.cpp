@@ -816,12 +816,12 @@ namespace jc {
                         SymExpr c(BigInt(0));
                         SymExpr B_n(BigInt(0));
                         if (coeffs_intAn.empty()) {
-                            if (!intAn_t.isZero()) throw std::runtime_error("Non-elementary integral.");
+                            if (!intAn_t.isZero()) JC2_THROW(MathError, "Non-elementary integral.");
                         } else if (coeffs_intAn.size() > 1) {
                             c = simplifyCore(coeffs_intAn[1] / SymExpr(BigInt(n + 1)));
                             B_n = coeffs_intAn[0];
                             if (coeffs_intAn.size() > 2) {
-                                throw std::runtime_error("Non-elementary integral.");
+                                JC2_THROW(MathError, "Non-elementary integral.");
                             }
                             if (containsVar(c.ptr, var)) {
                                 JC2_THROW(MathError, "residue is not constant.");
@@ -845,10 +845,10 @@ namespace jc {
                             
                             auto coeffs_int_i = extractCoeffs(int_i_t, topExt.name);
                             if (coeffs_int_i.empty()) {
-                                if (!int_i_t.isZero()) throw std::runtime_error("Non-elementary integral.");
+                                if (!int_i_t.isZero()) JC2_THROW(MathError, "Non-elementary integral.");
                                 B[i] = SymExpr(BigInt(0));
                             } else if (coeffs_int_i.size() > 2) {
-                                throw std::runtime_error("Non-elementary integral.");
+                                JC2_THROW(MathError, "Non-elementary integral.");
                             } else if (coeffs_int_i.size() == 2) {
                                 SymExpr c_i = coeffs_int_i[1];
                                 if (containsVar(c_i.ptr, var)) {
@@ -1385,11 +1385,11 @@ namespace jc {
     // =================================================================
     SymExpr rischIntegrate(const SymExpr& expr, const std::string& var, int depth) {
         if (depth > SymConfig::maxDepth) {
-            throw std::runtime_error("Integration depth limit exceeded in Risch algorithm.");
+            JC2_THROW(MathError, "Integration depth limit exceeded in Risch algorithm.");
         }
 
         if (getAstNodeCount(expr) > 300) {
-            throw std::runtime_error("Integration AST size limit exceeded in Risch algorithm.");
+            JC2_THROW(MathError, "Integration AST size limit exceeded in Risch algorithm.");
         }
 
         // Step -1 - 三角函数转复指数 (Trig to Exp)
@@ -3142,7 +3142,7 @@ namespace jc {
                             if (auto polyInt = doInteg(unboxed_poly, current_depth)) {
                                 res = res + *polyInt;
                             } else {
-                                throw std::runtime_error("polyPart integration failed");
+                                JC2_THROW(MathError, "polyPart integration failed");
                             }
                         }
                         
@@ -3653,8 +3653,8 @@ namespace jc {
     SymExpr defint(const SymExpr& expr, const std::string& var, const SymExpr& a, const SymExpr& b) {
         SymExpr antideriv = integrate(expr, var);
         if (hasMultiValuedFuncs(antideriv)) {
-            throw std::runtime_error(
-                "Calculus Error: The Newton-Leibniz formula requires the antiderivative to be continuous on the interval. "
+            JC2_THROW(CalculusError,
+                "The Newton-Leibniz formula requires the antiderivative to be continuous on the interval. "
                 "The generated antiderivative contains multi-valued functions (like RootSum or complex logarithms) "
                 "which introduce branch cuts and phase jumps. Direct substitution of limits is mathematically invalid here. "
                 "Please use numerical integration instead (e.g., pass a lambda function to integ)."

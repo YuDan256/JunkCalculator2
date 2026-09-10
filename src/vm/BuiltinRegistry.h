@@ -36,7 +36,7 @@ namespace helpers {
             std::vector<double> r(cd.size());
             for (size_t i = 0; i < cd.size(); ++i) {
                 if (std::abs(cd[i].imag) > 1e-15)
-                    throw std::runtime_error(f + "() requires real data.");
+                    JC2_THROW(TypeError, f + "() requires real data.");
                 r[i] = cd[i].real;
             }
             return r;
@@ -49,7 +49,7 @@ namespace helpers {
             }
             return r;
         }
-        throw std::runtime_error(f + "() requires a matrix/vector or list.");
+        JC2_THROW(TypeError, f + "() requires a matrix/vector or list.");
     }
 
     inline double computeMean(const std::vector<double>& d) {
@@ -83,12 +83,12 @@ namespace helpers {
             std::vector<double> r(cd.size());
             for (size_t i = 0; i < cd.size(); ++i) {
                 if (!Tol::isEq(cd[i].imag, 0.0))
-                    throw std::runtime_error(fn + "() requires real data.");
+                    JC2_THROW(TypeError, fn + "() requires real data.");
                 r[i] = cd[i].real;
             }
             return r;
         }
-        throw std::runtime_error(fn + "() expects a matrix/vector.");
+        JC2_THROW(TypeError, fn + "() expects a matrix/vector.");
     }
 
     inline Value toRowVec(const std::vector<double>& v) {
@@ -100,8 +100,7 @@ namespace helpers {
     inline Value callClosure(ObjClosure* cl,
         const std::vector<Value>& args) {
         if (!cl || !cl->isNative())
-            throw std::runtime_error(
-                "Runtime Error: Closure is not callable in this context.");
+            JC2_THROW(RuntimeError, "Closure is not callable in this context.");
         auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
         return fn(args);
     }

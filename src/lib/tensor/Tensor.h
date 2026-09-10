@@ -1590,7 +1590,7 @@ namespace jc {
         }
 
         int M = a.shape[0], K = a.shape[1], K2 = b.shape[0], N = b.shape[1];
-        if (K != K2) throw std::runtime_error("Tensor Error: matmul shape mismatch (" +
+        if (K != K2) JC2_THROW(TensorError, "matmul shape mismatch (" +
             std::to_string(K) + " vs " + std::to_string(K2) + ").");
 
         bool rg = (a.impl->requires_grad || b.impl->requires_grad) && grad_enabled();

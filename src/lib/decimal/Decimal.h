@@ -376,7 +376,7 @@ public:
     }
 
     static std::pair<DecInt, DecInt> divmod_knuth(const DecInt& a, const DecInt& b) {
-        if (b.isZero()) throw std::runtime_error("Division by zero");
+        if (b.isZero()) JC2_THROW(MathError, "Division by zero");
         DecInt absA = a.abs(), absB = b.abs();
         if (absA < absB) return {DecInt(0), absA};
         if (absB.data.size() == 1) {
@@ -845,7 +845,7 @@ public:
     }
 
     DecInt div_small(uint32_t v, uint32_t& rem_out) const {
-        if (v == 0) throw std::runtime_error("Division by zero");
+        if (v == 0) JC2_THROW(MathError, "Division by zero");
         DecInt res; res.data.resize(data.size(), 0);
         uint64_t r = 0;
         for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {

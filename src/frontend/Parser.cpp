@@ -517,7 +517,7 @@ namespace jc {
                                 }
                             } else if (atDestructPattern()) {
                                 if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
-                                if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                                if (isParamRef) JC2_THROW(SyntaxError, "Destructured parameter cannot be ref.");
                                 patNode = parsePrimaryPattern();
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                                 paramTok = Token(TokenType::IDENTIFIER, phName, funcName.line);
@@ -1500,7 +1500,7 @@ namespace jc {
             };
         if (isKeyword(peek().type) && current + 1 < static_cast<int>(tokens.size())
             && tokens[current + 1].type == TokenType::ASSIGN) {
-            throw std::runtime_error("Syntax Error: '" + peek().lexeme +
+            JC2_THROW(SyntaxError, "'" + peek().lexeme +
                 "' is a reserved keyword and cannot be used as a variable name.");
         }
 
@@ -1803,7 +1803,7 @@ namespace jc {
                             }
                         } else if (atDestructPattern()) {
                             if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
-                            if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                            if (isRef) JC2_THROW(SyntaxError, "Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                             paramTok = Token(TokenType::IDENTIFIER, phName, previous().line);
@@ -3714,7 +3714,7 @@ namespace jc {
                             }
                         } else if (atDestructPattern()) {
                             if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
-                            if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
+                            if (isParamRef) JC2_THROW(SyntaxError, "Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
                             paramTok = Token(TokenType::IDENTIFIER, phName, memberName.line);
@@ -4115,6 +4115,6 @@ namespace jc {
     }
 
     // ---- 辅助函数 (不变) ----
-    Token Parser::consume(TokenType type, const std::string& message) { if (check(type)) return advance(); throw std::runtime_error(message); }
+    Token Parser::consume(TokenType type, const std::string& message) { if (check(type)) return advance(); std::string m = message; const std::string p = "Parser Error: "; if (m.rfind(p, 0) == 0) m.erase(0, p.size()); JC2_THROW(ParserError, m); }
 
 } // namespace jc

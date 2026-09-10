@@ -226,7 +226,7 @@ namespace jc {
     bool MultiPoly::isZero() const { return terms.empty(); }
 
     Term MultiPoly::leadingTerm() const {
-        if (isZero()) throw std::runtime_error("Zero polynomial has no leading term.");
+        if (isZero()) JC2_THROW(MathError, "Zero polynomial has no leading term.");
         return terms.front();
     }
 

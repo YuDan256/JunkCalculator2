@@ -1799,8 +1799,8 @@ namespace jc {
                 Zinv = Z.inverse();
             }
             catch (...) {
-                throw std::runtime_error(
-                    "Math Error: Matrix square root failed (singular intermediate matrix).");
+                JC2_THROW(MathError,
+                    "Matrix square root failed (singular intermediate matrix).");
             }
             ComplexMatrix Ynew = (Y + Zinv) * Complex(0.5);
             ComplexMatrix Znew = (Z + Yinv) * Complex(0.5);
@@ -1810,8 +1810,8 @@ namespace jc {
             if (Tol::clean(diff, Y.norm(), 1e4) == 0.0)
                 return Y;
         }
-        throw std::runtime_error(
-            "Math Error: Matrix square root iteration did not converge.");
+        JC2_THROW(MathError,
+            "Matrix square root iteration did not converge.");
     }
 
 
@@ -1868,7 +1868,7 @@ namespace jc {
                 }
 
                 if ((B - I).norm() >= 1.0)
-                    throw std::runtime_error("convergence failed");
+                    JC2_THROW(MathError, "convergence failed");
 
                 // log(A) = 2^sqrtCount * log(B)
                 ComplexMatrix logB = B.matLogSeries();
@@ -1879,8 +1879,8 @@ namespace jc {
             }
             catch (...) {
                 // 所有路径都失败，给出清晰的最终诊断
-                throw std::runtime_error(
-                    "Math Error: Matrix logarithm failed. "
+                JC2_THROW(MathError,
+                    "Matrix logarithm failed. "
                     "The matrix may be non-diagonalizable or singular. "
                     "log(A) requires A to be invertible and diagonalizable, "
                     "or sufficiently close to the identity matrix."
@@ -1935,8 +1935,8 @@ namespace jc {
                 throw;
             }
             catch (...) {
-                throw std::runtime_error(
-                    "Math Error: Matrix square root failed. "
+                JC2_THROW(MathError,
+                    "Matrix square root failed. "
                     "The matrix may be non-diagonalizable or singular. "
                     "sqrt(A) requires A to be invertible."
                 );
@@ -1963,8 +1963,8 @@ namespace jc {
             // 如果 matLog 已经给出了清晰的诊断，直接传递
             if (msg.find("Matrix logarithm") != std::string::npos) throw;
             // 否则包装一层上下文
-            throw std::runtime_error(
-                "Math Error: Matrix power A^B failed. " + std::string(e.what())
+            JC2_THROW(MathError,
+                "Matrix power A^B failed. " + std::string(e.what())
             );
         }
     }

@@ -10,7 +10,7 @@ public:
 
     Value makeASTNode(const std::string& type, int line, const std::vector<std::pair<std::string, Value>>& props) {
         auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
-        if (!clsVal.isClass()) throw std::runtime_error("ASTNode class not found");
+        if (!clsVal.isClass()) JC2_THROW(RuntimeError, "ASTNode class not found");
         
         ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
         GcObjGuard instGuard(inst);

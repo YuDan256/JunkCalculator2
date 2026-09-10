@@ -330,7 +330,7 @@ static void host_register_value(JC2_VMContext, JC2_ModuleHandle mod, const char*
 }
 
 static void host_throw_error(JC2_VMContext, const char* msg) {
-    throw std::runtime_error(msg);
+    JC2_THROW(RuntimeError, msg);
 }
 
 static JC2_ValueHandle host_make_list(JC2_VMContext) {

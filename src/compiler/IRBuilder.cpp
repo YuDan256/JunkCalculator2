@@ -521,6 +521,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             }
             emitTypeAssert(valNode, vp->typeHint, vp->name.lexeme);
             assignVar(vp->name.lexeme, valNode, sym, mod, isExplicitConst);
+        } else {
+            // _ 丢弃符：不绑定变量，但类型注解（如 _: int）仍需生效
+            emitTypeAssert(valNode, vp->typeHint, vp->name.lexeme);
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);

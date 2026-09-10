@@ -108,8 +108,11 @@ JC2 standard libraries loaded via `import`:
 - **Bare `try`**: `try { ... }` without `catch` swallows errors and yields `none`.
 - **Format specs**: Python-aligned format specs with `::` separator (`f"{x::.2f}"`).
 
-### Matrix
-- **Column-major storage**: the matrix model is unified on a column-major 1D view; `toList`/`toMatrix` drop the vector-flatten special case; `getItem`/`setItem` are removed.
+### Matrix — Column-Major Unification
+- **Unified matrix model**: matrices are a single type with column-major semantics — `A[i]` returns the i-th column, iteration walks columns, and unpacking yields columns.
+- **No vector privileges**: row vectors (1×N) and column vectors (N×1) no longer get special treatment; 1×1 matrices multiply as matrices (explicit downcast via `.item()`).
+- **List vs matrix patterns**: `@[...]` destructures lists, `[...]` destructures matrices — no more ambiguity.
+- **Strict round-trip**: `toList`/`toMatrix` drop the vector-flatten special case, becoming exact inverses.
 
 ### Mathematics & Performance
 - **BigInt**: FFT multiplication, Newton-Raphson inverse/sqrt, divide-and-conquer conversion, and shift operators.

@@ -29,6 +29,9 @@ namespace jc {
         Bool
     };
 
+    // 打印保护：tensor 每个维度最多展示的元素数，超出截断为 "..."（防刷屏）
+    inline constexpr int kMaxPrintTensorDim = 10;
+
     inline std::string dtypeToString(DType d) {
         switch (d) {
             case DType::Float32: return "float32";
@@ -519,7 +522,8 @@ namespace jc {
                 return;
             }
             oss << "[";
-            for (int i = 0; i < shape[cur_dim]; ++i) {
+            int maxN = std::min(shape[cur_dim], kMaxPrintTensorDim);
+            for (int i = 0; i < maxN; ++i) {
                 if (i > 0) {
                     oss << ", ";
                     if (cur_dim < dim() - 1) {
@@ -529,6 +533,7 @@ namespace jc {
                 }
                 printRecursive(oss, cur_dim + 1, base_offset + i * strides[cur_dim], indent);
             }
+            if (shape[cur_dim] > maxN) oss << ", ...";
             oss << "]";
         }
     };

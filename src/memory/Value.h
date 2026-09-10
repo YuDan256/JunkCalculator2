@@ -2521,6 +2521,9 @@ inline ObjClosure* Value::asFunction() const {
     JC2_THROW(TypeError, "Expected a function.");
 }
 
+// 打印保护：顶层容器最多展示的元素数量，超出截断为 "..."（防刷屏）
+inline constexpr size_t kMaxPrintElements = 50;
+
 inline std::ostream& operator<<(std::ostream& os, const Value& val) {
     static thread_local std::vector<const void*> visited;
     auto printNested = [&os](const Value& v) {
@@ -2600,9 +2603,12 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             RecursionGuard guard(visited, list);
             if (guard.isCycle) { os << "@[...]"; break; }
             os << "@[";
+            size_t shown = 0;
             for (size_t i = 0; i < list->vec.size(); ++i) {
+                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (shown > 0) os << ", ";
                 try { printNested(list->vec[i]); } catch (...) { os << "?"; }
-                if (i < list->vec.size() - 1) os << ", ";
+                ++shown;
             }
             os << "]";
             break;
@@ -2612,11 +2618,14 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             RecursionGuard guard(visited, dict);
             if (guard.isCycle) { os << "{...}"; break; }
             os << "{";
+            size_t shown = 0;
             for (size_t i = 0; i < dict->elements.size(); ++i) {
+                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (shown > 0) os << ", ";
                 try { printNested(dict->elements[i].first); } catch (...) { os << "?"; }
                 os << ": ";
                 try { printNested(dict->elements[i].second); } catch (...) { os << "?"; }
-                if (i < dict->elements.size() - 1) os << ", ";
+                ++shown;
             }
             os << "}";
             break;
@@ -2626,9 +2635,12 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             RecursionGuard guard(visited, set);
             if (guard.isCycle) { os << "@{...}"; break; }
             os << "@{";
+            size_t shown = 0;
             for (size_t i = 0; i < set->elements.size(); ++i) {
+                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (shown > 0) os << ", ";
                 try { printNested(set->elements[i]); } catch (...) { os << "?"; }
-                if (i < set->elements.size() - 1) os << ", ";
+                ++shown;
             }
             os << "}";
             break;

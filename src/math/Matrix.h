@@ -17,6 +17,9 @@ namespace jc {
 
     inline bool g_printMatrix2D = false;
 
+// 打印保护：矩阵最多展示的行/列数，超出截断为 "..."（防刷屏）
+inline constexpr int kMaxPrintMatrixDim = 10;
+
     template <typename T>
     class Matrix {
     private:
@@ -566,29 +569,35 @@ namespace jc {
                 }
             }
 
+            int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
+            int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
             if (jc::g_printMatrix2D) {
                 // 保持排版输出不变 (2D)
-                for (int i = 0; i < m.rows; ++i) {
+                for (int i = 0; i < maxRows; ++i) {
                     out << "[";
-                    for (int j = 0; j < m.cols; ++j) {
+                    for (int j = 0; j < maxCols; ++j) {
                         size_t padding = colWidths[j] - strs[i][j].length();
                         for (size_t p = 0; p < padding; ++p) out << ' ';
                         out << strs[i][j];
-                        if (j < m.cols - 1) out << ", ";
+                        if (j < maxCols - 1) out << ", ";
                     }
+                    if (m.cols > maxCols) out << ", ...";
                     out << "]";
-                    if (i < m.rows - 1) out << "\n";
+                    if (i < maxRows - 1) out << "\n";
                 }
+                if (m.rows > maxRows) out << "[...]";
             } else {
                 // 嵌套时的一维紧凑输出 (1D)
                 out << "[";
-                for (int i = 0; i < m.rows; ++i) {
-                    for (int j = 0; j < m.cols; ++j) {
+                for (int i = 0; i < maxRows; ++i) {
+                    for (int j = 0; j < maxCols; ++j) {
                         out << strs[i][j];
-                        if (j < m.cols - 1) out << ", ";
+                        if (j < maxCols - 1) out << ", ";
                     }
-                    if (i < m.rows - 1) out << "; ";
+                    if (m.cols > maxCols) out << ", ...";
+                    if (i < maxRows - 1) out << "; ";
                 }
+                if (m.rows > maxRows) out << "; ...";
                 out << "]";
             }
             return out;

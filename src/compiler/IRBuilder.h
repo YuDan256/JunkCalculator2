@@ -116,11 +116,11 @@ private:
     void buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode* dictNode);
 
     [[noreturn]] void error(const std::string& message) const {
-        throw RuntimeError("SyntaxError", "[Line " + std::to_string(graph->currentLine) + "] " + message);
+        JC2_THROW(SyntaxError, "[Line " + std::to_string(graph->currentLine) + "] " + message);
     }
 
     [[noreturn]] void error(int line, const std::string& message) const {
-        throw RuntimeError("SyntaxError", "[Line " + std::to_string(line) + "] " + message);
+        JC2_THROW(SyntaxError, "[Line " + std::to_string(line) + "] " + message);
     }
 
     void recordExitNode(IRNode* node) {

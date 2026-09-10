@@ -947,27 +947,6 @@ namespace jc {
         properties.clear();
     }
 
-    struct RuntimeError : public std::exception {
-        std::string type;
-        Value message;
-        mutable std::string whatBuffer;
-
-        RuntimeError(std::string t, Value msg) 
-            : type(std::move(t)), message(std::move(msg)) {}
-
-        const char* what() const noexcept override {
-            if (whatBuffer.empty()) {
-                std::string msgStr = message.isString() ? message.asString() : message.toString();
-                if (type.empty()) {
-                    whatBuffer = msgStr;
-                } else {
-                    whatBuffer = type + ": " + msgStr;
-                }
-            }
-            return whatBuffer.c_str();
-        }
-    };
-
     struct ObjUpVal : public Obj {
         Value* location = nullptr;
         Value closed;

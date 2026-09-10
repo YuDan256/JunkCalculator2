@@ -66,10 +66,6 @@ extern bool g_enableJit;
         VM::activeVM->jit_exception_value = e.val; \
         jit::g_jit_pending_exception = 1; \
         return 0; \
-    } catch (const RuntimeError& e) { \
-        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
-        jit::g_jit_pending_exception = 1; \
-        return 0; \
     } catch (const Jc2Error& e) { \
         VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, Value(e.message)); \
         jit::g_jit_pending_exception = 1; \
@@ -87,10 +83,6 @@ extern bool g_enableJit;
 #define JIT_CALLOUT_CATCH_VOID \
     } catch (const ValueException& e) { \
         VM::activeVM->jit_exception_value = e.val; \
-        jit::g_jit_pending_exception = 1; \
-        return; \
-    } catch (const RuntimeError& e) { \
-        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, e.message); \
         jit::g_jit_pending_exception = 1; \
         return; \
     } catch (const Jc2Error& e) { \
@@ -442,22 +434,6 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
         } catch (const ValueException& ex) {
             if (currentException) {
                 Value deferEx = wrapException("Exception", ex.val);
-                auto inst = currentException->asInstance();
-                if (inst) {
-                    auto it = inst->properties.find("suppressed");
-                    if (it != inst->properties.end()) {
-                        Value suppList = it->second.val;
-                        if (suppList.isObjType(ObjType::LIST)) {
-                            static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
-                        }
-                    }
-                }
-            } else {
-                throw;
-            }
-        } catch (const RuntimeError& ex) {
-            if (currentException) {
-                Value deferEx = wrapException(ex.type, ex.message);
                 auto inst = currentException->asInstance();
                 if (inst) {
                     auto it = inst->properties.find("suppressed");
@@ -2724,31 +2700,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         }
         pendingCallRefs.clear();
         helpers::g_scriptDirStack.pop_back();
-        throw RuntimeError("", errVal);
-    } catch (RuntimeError& ex) {
-        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
-            exceptionHandlers.pop_back();
-        }
-        Value errVal = wrapException(ex.type, ex.message);
-        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
-        while (frameCount > targetDepth) {
-            CallFrame* f = &frames[frameCount - 1];
-            profileFrameEnd(f);
-            int clearBase = f->registerBase;
-            int clearCount = f->function->localCount + f->function->refCount;
-            for (int i = 0; i < clearCount; ++i) {
-                registers[clearBase + i] = Value::none();
-            }
-            f->selfContext = Value::none();
-            f->classContext = Value::none();
-            f->jitReturnSlot = Value::none();
-            f->closure = nullptr;
-            f->refParamsBase = -1;
-            frameCount--;
-        }
-        pendingCallRefs.clear();
-        helpers::g_scriptDirStack.pop_back();
-        throw;
+        throw ValueException(errVal);
     } catch (...) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -3844,29 +3796,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
             frameCount--;
         }
         pendingCallRefs.clear();
-        throw RuntimeError("", errVal);
-    } catch (RuntimeError& ex) {
-        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
-            exceptionHandlers.pop_back();
-        }
-        Value errVal = wrapException(ex.type, ex.message);
-        try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
-        while (frameCount > targetDepth) {
-            CallFrame* f = &frames[frameCount - 1];
-            int clearBase = f->registerBase;
-            int clearCount = f->function->localCount + f->function->refCount;
-            for (int i = 0; i < clearCount; ++i) {
-                registers[clearBase + i] = Value::none();
-            }
-            f->selfContext = Value::none();
-            f->classContext = Value::none();
-            f->jitReturnSlot = Value::none();
-            f->closure = nullptr;
-            f->refParamsBase = -1;
-            frameCount--;
-        }
-        pendingCallRefs.clear();
-        throw;
+        throw ValueException(errVal);
     } catch (...) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
@@ -8074,17 +8004,6 @@ Value VM::run(int targetFrameDepth) {
         } catch (const ValueException& ex) {
             frame->ip = ip;
             Value errVal = wrapException("Exception", ex.val);
-            if (!handleExceptionUnwind(&errVal)) {
-                throw ValueException(errVal);
-            }
-            frame = &frames[frameCount - 1];
-            chunk = frame->chunk;
-            code = chunk->code.data();
-            frameRegs = &registers[frame->registerBase];
-            ip = frame->ip;
-        } catch (const RuntimeError& ex) {
-            frame->ip = ip;
-            Value errVal = wrapException(ex.type, ex.message);
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

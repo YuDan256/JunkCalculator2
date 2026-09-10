@@ -80,28 +80,6 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/data/documentation.json")
         COMMENT "Copying documentation.json to bin/data/")
 endif()
 
-# ★ 本地调试测试 (JIT 单测，源文件在 local/，不上传仓库)
-# 只有 local/ 目录存在时才构建这些测试目标
-set(JC2_JIT_TEST_TARGETS "")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/local/test_jit_deopt.cpp")
-    set(JC2_LIB_SOURCES ${JC2_SOURCES})
-    list(REMOVE_ITEM JC2_LIB_SOURCES "src/main.cpp")
-
-    add_executable(test_jit_deopt local/test_jit_deopt.cpp ${JC2_HEADERS} ${JC2_LIB_SOURCES})
-    target_include_directories(test_jit_deopt PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-    add_executable(test_jit_advanced local/test_jit_advanced.cpp ${JC2_HEADERS} ${JC2_LIB_SOURCES})
-    target_include_directories(test_jit_advanced PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-    add_executable(test_jit_basic local/test_jit_basic.cpp ${JC2_HEADERS} ${JC2_LIB_SOURCES})
-    target_include_directories(test_jit_basic PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-    add_executable(test_jit_optimizations local/test_jit_optimizations.cpp ${JC2_HEADERS} ${JC2_LIB_SOURCES})
-    target_include_directories(test_jit_optimizations PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-
-    set(JC2_JIT_TEST_TARGETS test_jit_deopt test_jit_advanced test_jit_basic test_jit_optimizations)
-endif()
-
 # ★ Build Image Module as a standalone DLL
 add_library(image SHARED "src/lib/image/image_module.cpp")
 target_include_directories(image PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -193,9 +171,6 @@ endforeach()
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
 if(WIN32)
     target_link_libraries(JunkCalculator2 PRIVATE ws2_32 User32 Gdi32 imm32)
-    foreach(t ${JC2_JIT_TEST_TARGETS})
-        target_link_libraries(${t} PRIVATE ws2_32 User32 Gdi32 imm32)
-    endforeach()
     target_link_libraries(socket PRIVATE ws2_32)
     target_link_libraries(window PRIVATE User32 Gdi32 imm32)
 endif()
@@ -215,7 +190,7 @@ endforeach()
 # ==============================================================================
 if(MSVC)
     # /utf-8: Prevent encoding corruption | /EHsc: Standard C++ exception handling
-    foreach(target JunkCalculator2 ${JC2_JIT_TEST_TARGETS} ${JC2_LIBS})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
     endforeach()
     
@@ -224,7 +199,7 @@ if(MSVC)
     set(CMAKE_EXE_LINKER_FLAGS_RELEASE "${CMAKE_EXE_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
     set(CMAKE_SHARED_LINKER_FLAGS_RELEASE "${CMAKE_SHARED_LINKER_FLAGS_RELEASE} /OPT:REF /OPT:ICF /LTCG")
 else()
-    foreach(target JunkCalculator2 ${JC2_JIT_TEST_TARGETS} ${JC2_LIBS})
+    foreach(target JunkCalculator2 ${JC2_LIBS})
         target_compile_options(${target} PRIVATE -Wall -Wextra -Werror -O3 -march=native)
         # Force static linking for MinGW to ensure portability (Green version)
         if(MINGW OR CYGWIN)
@@ -236,7 +211,7 @@ else()
     include(CheckIPOSupported)
     check_ipo_supported(RESULT ipo_supported)
     if(ipo_supported)
-        set_target_properties(JunkCalculator2 ${JC2_JIT_TEST_TARGETS} ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+        set_target_properties(JunkCalculator2 ${JC2_LIBS} PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
     endif()
 endif()
 

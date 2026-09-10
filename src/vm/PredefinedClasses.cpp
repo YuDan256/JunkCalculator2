@@ -101,7 +101,7 @@ void registerPredefinedClasses() {
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
         int64_t idx = static_cast<int64_t>(std::round(args[0].asDouble()));
         if (idx < 0) idx += data.length;
-        if (idx < 0 || idx >= data.length) JC2_THROW(ValueError, "range object index out of range");
+        if (idx < 0 || idx >= data.length) JC2_THROW(ValueError, "range object index " + std::to_string(idx) + " out of range (length " + std::to_string(data.length) + ")");
         
         double val = data.start + idx * data.step;
         if (data.isInt) return Value(BigInt(static_cast<int64_t>(val)));
@@ -422,7 +422,7 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx > static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Insert index out of bounds.");
+        if (idx < 0 || idx > static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Insert index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
         Value tokVal = args[1];
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
@@ -461,7 +461,7 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Set index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Set index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
         Value tokVal = args[1];
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
@@ -497,7 +497,7 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Remove index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Remove index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
         list->mut().erase(list->mut().begin() + idx);
         

@@ -686,7 +686,7 @@ namespace jc {
         void removeProperty(const std::string& key) {
             checkModify();
             auto it = properties.find(key);
-            if (it == properties.end() || it->second.is_local) errKeyNotFound();
+            if (it == properties.end() || it->second.is_local) errKeyNotFound(key);
             if (it->second.is_const) errDeleteConstProp(key);
             properties.erase(it);
         }
@@ -866,7 +866,7 @@ namespace jc {
             if (i < 0) i += dimSize;
             if (i < 0 || i >= dimSize) {
                 if (noThrow) return { false, -1, {0,0,0} };
-                JC2_THROW(ValueError, "Index out of bounds.");
+                JC2_THROW(ValueError, "Index " + std::to_string(i) + " out of bounds (size " + std::to_string(dimSize) + ").");
             }
             return { false, i, {0,0,0} };
         }
@@ -973,7 +973,7 @@ namespace jc {
         void removeField(const std::string& key) {
             checkModify();
             auto it = fields.find(key);
-            if (it == fields.end()) errKeyNotFound();
+            if (it == fields.end()) errKeyNotFound(key);
             if (it->second.isConst) errDeleteConstProp(key);
             fields.erase(it);
         }
@@ -1046,7 +1046,7 @@ namespace jc {
         void remove(const Value& key) {
             checkModify();
             auto it = keyMap.find(key);
-            if (it == keyMap.end()) errKeyNotFound();
+            if (it == keyMap.end()) errKeyNotFound(key.toRepr());
             size_t idx = it->second;
             keyMap.erase(it);
             elements.erase(elements.begin() + idx);
@@ -1088,7 +1088,7 @@ namespace jc {
         void remove(const Value& val) {
             checkModify();
             auto it = keys.find(val);
-            if (it == keys.end()) JC2_THROW(RuntimeError, "Element not found in Set.");
+            if (it == keys.end()) JC2_THROW(RuntimeError, "Element " + val.toRepr() + " not found in Set.");
             keys.erase(it);
             auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
             if (eIt != elements.end()) elements.erase(eIt);

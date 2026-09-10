@@ -2377,7 +2377,7 @@ namespace jc {
                 auto [isInt, val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                 if (isInt) k = static_cast<int>(val);
             }
-            if (k < 1 || k > n) JC2_THROW(MathError, "Root index out of bounds.");
+            if (k < 1 || k > n) JC2_THROW(MathError, "Root index " + std::to_string(k) + " out of bounds (1.." + std::to_string(n) + ").");
             auto root = roots[k - 1];
             if (std::abs(root.imag()) < 1e-12) return Value(root.real());
             return Value(Complex(root.real(), root.imag()));

@@ -3554,7 +3554,7 @@ VM::VM() {
             int locals = frame->function ? frame->function->localCount : 0;
             return (reg < locals) ? registers[frame->registerBase + reg] : registers[frame->refParamsBase + (reg - locals)];
         }
-        JC2_THROW(RuntimeError, "Register out of bounds.");
+        JC2_THROW(RuntimeError, "Register " + std::to_string(reg) + " out of bounds (0.." + std::to_string(maxRegs - 1) + ").");
     };
     builtinArity["__dbg_reg"] = {1};
 
@@ -5513,7 +5513,7 @@ Value VM::run(int targetFrameDepth) {
                         auto it = dict->keyMap.find(idx);
                         if (it == dict->keyMap.end()) {
                             if (noThrow) result = Value::uninit();
-                            else JC2_THROW(RuntimeError, "Key not found.");
+                            else JC2_THROW(RuntimeError, "Key '" + idx.toRepr() + "' not found.");
                         } else {
                             result = dict->elements[it->second].second;
                         }
@@ -5527,7 +5527,7 @@ Value VM::run(int targetFrameDepth) {
                             auto it = ns->fields.find(key);
                             if (it == ns->fields.end()) {
                                 if (noThrow) result = Value::uninit();
-                                else JC2_THROW(RuntimeError, "Key not found in namespace.");
+                                else JC2_THROW(RuntimeError, "Key '" + key + "' not found in namespace.");
                             } else {
                                 result = *(it->second.upval->location);
                             }
@@ -5630,7 +5630,7 @@ Value VM::run(int targetFrameDepth) {
                                 }
                                 if (!foundStatic) {
                                     if (noThrow) result = Value::uninit();
-                                    else JC2_THROW(RuntimeError, "Static field not found in class.");
+                                    else JC2_THROW(RuntimeError, "Static field '" + key + "' not found in class.");
                                 }
                             }
                         }
@@ -10282,7 +10282,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             auto it = dict->keyMap.find(idx);
             if (it == dict->keyMap.end()) {
                 if (noThrow) result = Value::uninit();
-                else JC2_THROW(RuntimeError, "Key not found.");
+                else JC2_THROW(RuntimeError, "Key '" + idx.toRepr() + "' not found.");
             } else {
                 result = dict->elements[it->second].second;
             }
@@ -10296,7 +10296,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                 auto it = ns->fields.find(key);
                 if (it == ns->fields.end()) {
                     if (noThrow) result = Value::uninit();
-                    else JC2_THROW(RuntimeError, "Key not found in namespace.");
+                    else JC2_THROW(RuntimeError, "Key '" + key + "' not found in namespace.");
                 } else {
                     result = *(it->second.upval->location);
                 }
@@ -10399,7 +10399,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                     }
                     if (!foundStatic) {
                         if (noThrow) result = Value::uninit();
-                        else JC2_THROW(RuntimeError, "Static field not found in class.");
+                        else JC2_THROW(RuntimeError, "Static field '" + key + "' not found in class.");
                     }
                 }
             }

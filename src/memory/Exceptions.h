@@ -59,7 +59,7 @@ namespace jc {
     [[noreturn]] inline void errMatScalarSubSquare() { JC2_THROW(MathError, "Matrix-scalar subtraction requires a square matrix."); }
     [[noreturn]] inline void errNegShift() { JC2_THROW(MathError, "Negative shift count."); }
     [[noreturn]] inline void errExpectMatrix() { JC2_THROW(TypeError, "Expected a matrix."); }
-    [[noreturn]] inline void errKeyNotFound() { JC2_THROW(RuntimeError, "Key not found."); }
+    [[noreturn]] inline void errKeyNotFound(const std::string& key) { JC2_THROW(RuntimeError, "Key '" + key + "' not found."); }
     [[noreturn]] inline void errIndexAbsTooLarge() { JC2_THROW(ValueError, "Index absolute value exceeds 2^31-1."); }
     [[noreturn]] inline void errStrRepeatNeg() { JC2_THROW(TypeError, "String repeat count must be non-negative."); }
     [[noreturn]] inline void errUnhashable() { JC2_THROW(TypeError, "unhashable type."); }

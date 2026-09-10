@@ -271,7 +271,7 @@ namespace jc {
                                 }
                                 return it->second(fnArgs);
                             }
-                            JC2_THROW(RuntimeError, "Function not found");
+                            JC2_THROW(RuntimeError, "Function '" + name + "' not found");
                         };
                         vals.push_back(evalUniversal(collapsed.ptr, emptyEnv, resolver));
                     } catch (const jc::EngineInterruptError&) {
@@ -887,7 +887,7 @@ void BuiltinRegistry::registerMatrixOps() {
         };
         getDims(a, r1, c1); getDims(b, r2, c2);
 
-        if (aMat && bMat && (r1 != r2 || c1 != c2)) JC2_THROW(MathError, "Dimension mismatch in " + opName + "().");
+        if (aMat && bMat && (r1 != r2 || c1 != c2)) JC2_THROW(MathError, "Dimension mismatch in " + opName + "() (" + std::to_string(r1) + "x" + std::to_string(c1) + " vs " + std::to_string(r2) + "x" + std::to_string(c2) + ").");
 
         int r = std::max(r1, r2);
         int c = std::max(c1, c2);
@@ -993,9 +993,9 @@ void BuiltinRegistry::registerMatrixOps() {
         updateDims(mask); updateDims(a); updateDims(b);
 
         auto checkDims = [&](const Value& v, const std::string& name) {
-            if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + "."); }
-            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + "."); }
-            else if (v.isObjType(ObjType::SYM_MATRIX)) { if (static_cast<ObjSymMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjSymMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + "."); }
+            if (v.isObjType(ObjType::REAL_MATRIX)) { if (static_cast<ObjRealMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjRealMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + " (expected " + std::to_string(r) + "x" + std::to_string(c) + ")."); }
+            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) { if (static_cast<ObjComplexMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjComplexMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + " (expected " + std::to_string(r) + "x" + std::to_string(c) + ")."); }
+            else if (v.isObjType(ObjType::SYM_MATRIX)) { if (static_cast<ObjSymMatrix*>(v.asObj())->mat.getRows() != r || static_cast<ObjSymMatrix*>(v.asObj())->mat.getCols() != c) JC2_THROW(MathError, "Dimension mismatch in whereE() for " + name + " (expected " + std::to_string(r) + "x" + std::to_string(c) + ")."); }
         };
         checkDims(mask, "mask"); checkDims(a, "true_val"); checkDims(b, "false_val");
 
@@ -1243,7 +1243,7 @@ void BuiltinRegistry::registerMatrixOps() {
                 }
                 int idx = static_cast<int>(std::round(v.asDouble()));
                 if (idx < 0) idx += n;
-                if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "getSlice() index out of bounds.");
+                if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "getSlice() index " + std::to_string(idx) + " out of bounds (size " + std::to_string(n) + ").");
                 isSlice = false;
                 return idx;
             };
@@ -1293,7 +1293,7 @@ void BuiltinRegistry::registerMatrixOps() {
                 }
                 int idx = static_cast<int>(std::round(v.asDouble()));
                 if (idx < 0) idx += n;
-                if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "setSlice() index out of bounds.");
+                if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "setSlice() index " + std::to_string(idx) + " out of bounds (size " + std::to_string(n) + ").");
                 isSlice = false;
                 return idx;
             };
@@ -1618,7 +1618,7 @@ void BuiltinRegistry::registerLinearSolvers() {
         }
 
         ComplexMatrix A = self.asComplexMatrix(), b = args[0].asComplexMatrix();
-        if (A.getRows() != b.getRows()) JC2_THROW(MathError, "Row count mismatch.");
+        if (A.getRows() != b.getRows()) JC2_THROW(MathError, "Row count mismatch (" + std::to_string(A.getRows()) + " vs " + std::to_string(b.getRows()) + ").");
         if (b.getCols() != 1) JC2_THROW(MathError, "b must be Nx1.");
         int n = A.getCols();
         ComplexMatrix aug = A.integR(b);
@@ -1693,7 +1693,7 @@ void BuiltinRegistry::registerVectors() {
     regMethod(VM::activeVM->listProto, "dim", {}, dimFn);
     regMethod(VM::activeVM->matrixProto, "dim", {}, dimFn);
 
-    auto dotFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "dot"); assertVec(args[0], "dot"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != b.getRows()) JC2_THROW(MathError, "Dimension mismatch."); return Value((a.conjugateTranspose() * b)(0, 0)); };
+    auto dotFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "dot"); assertVec(args[0], "dot"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != b.getRows()) JC2_THROW(MathError, "Dimension mismatch (" + std::to_string(a.getRows()) + " vs " + std::to_string(b.getRows()) + ")."); return Value((a.conjugateTranspose() * b)(0, 0)); };
     regMethod(VM::activeVM->matrixProto, "dot", {"b"}, dotFn);
 
     auto vnormFn = [assertVec](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "vnorm"); ComplexMatrix v = self.asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); };
@@ -2470,7 +2470,7 @@ void BuiltinRegistry::registerControlFlow() {
             auto l = static_cast<ObjList*>(args[0].asObj());
             int idx = static_cast<int>(std::round(args[1].asDouble()));
             if (idx < 0) idx += static_cast<int>(l->vec.size());
-            if (idx < 0 || idx >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "Index out of bounds.");
+            if (idx < 0 || idx >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(l->vec.size()) + ").");
             l->mut().erase(l->mut().begin() + idx);
             return args[0];
         }
@@ -2744,7 +2744,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             int i = idx < 0 ? static_cast<int>(l->vec.size()) + idx : idx;
-            if (i < 0 || i > static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "insert() index out of range.");
+            if (i < 0 || i > static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "insert() index " + std::to_string(idx) + " out of range (size " + std::to_string(l->vec.size()) + ").");
             l->mut().insert(l->mut().begin() + i, args[1]);
             return self;
         }
@@ -2758,7 +2758,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             int i = idx < 0 ? static_cast<int>(l->vec.size()) + idx : idx;
-            if (i < 0 || i >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "removeAt() index out of range.");
+            if (i < 0 || i >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "removeAt() index " + std::to_string(idx) + " out of range (size " + std::to_string(l->vec.size()) + ").");
             l->mut().erase(l->mut().begin() + i);
             return self;
         }
@@ -5393,7 +5393,7 @@ void BuiltinRegistry::registerCAS() {
                         }
                         return it->second(fnArgs);
                     }
-                    JC2_THROW(RuntimeError, "Function not found");
+                    JC2_THROW(RuntimeError, "Function '" + name + "' not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);
             } catch (const jc::EngineInterruptError&) {
@@ -5584,7 +5584,7 @@ void BuiltinRegistry::registerCAS() {
                         }
                         return it->second(fnArgs);
                     }
-                    JC2_THROW(RuntimeError, "Function not found");
+                    JC2_THROW(RuntimeError, "Function '" + name + "' not found");
                 };
                 return evalUniversal(expr.ptr, emptyEnv, resolver);
             } catch (const jc::EngineInterruptError&) {

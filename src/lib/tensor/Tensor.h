@@ -346,7 +346,7 @@ namespace jc {
         // ====================================================================
         Tensor transpose(int dim0, int dim1) const {
             if (dim0 < 0 || dim0 >= dim() || dim1 < 0 || dim1 >= dim())
-                JC2_THROW(TensorError, "transpose dimension out of range.");
+                JC2_THROW(TensorError, "transpose dimension out of range (dim0=" + std::to_string(dim0) + ", dim1=" + std::to_string(dim1) + ", ndim=" + std::to_string(dim()) + ").");
             Tensor t = make_view();
             std::swap(t.shape[dim0], t.shape[dim1]);
             std::swap(t.strides[dim0], t.strides[dim1]);
@@ -365,7 +365,7 @@ namespace jc {
         // ====================================================================
         Tensor slice_dim(int dimension, int start, int end, int step) const {
             if (dimension < 0 || dimension >= dim())
-                JC2_THROW(TensorError, "slice dimension out of range.");
+                JC2_THROW(TensorError, "slice dimension " + std::to_string(dimension) + " out of range (ndim=" + std::to_string(dim()) + ").");
             if (step == 0) JC2_THROW(TensorError, "slice step cannot be zero.");
 
             int dim_size = shape[dimension];
@@ -399,10 +399,10 @@ namespace jc {
 
         Tensor select(int dimension, int index) const {
             if (dimension < 0 || dimension >= dim())
-                JC2_THROW(TensorError, "select dimension out of range.");
+                JC2_THROW(TensorError, "select dimension " + std::to_string(dimension) + " out of range (ndim=" + std::to_string(dim()) + ").");
             if (index < 0) index += shape[dimension];
             if (index < 0 || index >= shape[dimension])
-                JC2_THROW(TensorError, "select index out of range.");
+                JC2_THROW(TensorError, "select index " + std::to_string(index) + " out of range (size " + std::to_string(shape[dimension]) + ").");
             Tensor t = make_view();
             t.offset = offset + index * strides[dimension];
             t.shape.clear();
@@ -422,7 +422,7 @@ namespace jc {
         Tensor unsqueeze(int dimension) const {
             if (dimension < 0) dimension += dim() + 1;
             if (dimension < 0 || dimension > dim())
-                JC2_THROW(TensorError, "unsqueeze dimension out of range.");
+                JC2_THROW(TensorError, "unsqueeze dimension " + std::to_string(dimension) + " out of range (ndim=" + std::to_string(dim()) + ").");
             Tensor t = make_view();
             t.shape.insert(t.shape.begin() + dimension, 1);
             int stride_val = (dimension < static_cast<int>(strides.size())) ? strides[dimension] : 1;
@@ -435,7 +435,7 @@ namespace jc {
             t.shape.clear();
             t.strides.clear();
             if (dimension >= 0) {
-                if (dimension >= dim()) JC2_THROW(TensorError, "squeeze dimension out of range.");
+                if (dimension >= dim()) JC2_THROW(TensorError, "squeeze dimension " + std::to_string(dimension) + " out of range (ndim=" + std::to_string(dim()) + ").");
                 if (shape[dimension] == 1) {
                     for (int i = 0; i < dim(); ++i) {
                         if (i != dimension) {
@@ -1692,7 +1692,7 @@ namespace jc {
             }
             return out;
         }
-        if (axis >= a.dim()) JC2_THROW(TensorError, "sum axis out of range.");
+        if (axis >= a.dim()) JC2_THROW(TensorError, "sum axis " + std::to_string(axis) + " out of range (ndim=" + std::to_string(a.dim()) + ").");
         std::vector<int> out_shape;
         for (int d = 0; d < a.dim(); ++d) {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
@@ -1731,7 +1731,7 @@ namespace jc {
             }
             return out;
         }
-        if (axis >= a.dim()) JC2_THROW(TensorError, "mean axis out of range.");
+        if (axis >= a.dim()) JC2_THROW(TensorError, "mean axis " + std::to_string(axis) + " out of range (ndim=" + std::to_string(a.dim()) + ").");
         std::vector<int> out_shape;
         for (int d = 0; d < a.dim(); ++d) {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
@@ -1866,7 +1866,7 @@ namespace jc {
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(a.shape[0]) + ").");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 out.setFlat(i * inner_size + j, a.getFlat(idx * inner_size + j));
@@ -1886,7 +1886,7 @@ namespace jc {
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(a.shape[0]) + ").");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 a.setFlat(idx * inner_size + j, val);
@@ -1911,7 +1911,7 @@ namespace jc {
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(a.shape[0]) + ").");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 a.setFlat(idx * inner_size + j, vals.getFlat(i * inner_size + j));
@@ -2069,11 +2069,11 @@ namespace jc {
         if (tensors.empty()) JC2_THROW(TensorError, "cat requires at least one tensor.");
         int ndim = tensors[0].dim();
         if (axis < 0) axis += ndim;
-        if (axis < 0 || axis >= ndim) JC2_THROW(TensorError, "cat axis out of range.");
+        if (axis < 0 || axis >= ndim) JC2_THROW(TensorError, "cat axis " + std::to_string(axis) + " out of range (ndim=" + std::to_string(ndim) + ").");
 
         // Validate shapes
         for (size_t ti = 1; ti < tensors.size(); ++ti) {
-            if (tensors[ti].dim() != ndim) JC2_THROW(TensorError, "cat dimension mismatch.");
+            if (tensors[ti].dim() != ndim) JC2_THROW(TensorError, "cat dimension mismatch (" + std::to_string(tensors[ti].dim()) + " vs " + std::to_string(ndim) + ").");
             for (int d = 0; d < ndim; ++d) {
                 if (d != axis && tensors[ti].shape[d] != tensors[0].shape[d])
                     JC2_THROW(TensorError, "cat shape mismatch on dim " + std::to_string(d) + ".");
@@ -2121,7 +2121,7 @@ namespace jc {
         if (t.dim() < 2) JC2_THROW(TensorError, "getrow requires at least 2D tensor.");
         if (row < 0) row += t.shape[0];
         if (row < 0 || row >= t.shape[0])
-            JC2_THROW(TensorError, "getrow index out of range.");
+            JC2_THROW(TensorError, "getrow index " + std::to_string(row) + " out of range (size " + std::to_string(t.shape[0]) + ").");
         
         std::vector<int> row_shape(t.shape.begin() + 1, t.shape.end());
         Tensor result(row_shape, t.dtype(), false);
@@ -2138,7 +2138,7 @@ namespace jc {
         int rows = t.shape[0], cols = t.shape[1];
         if (col < 0) col += cols;
         if (col < 0 || col >= cols)
-            JC2_THROW(TensorError, "getcol index out of range.");
+            JC2_THROW(TensorError, "getcol index " + std::to_string(col) + " out of range (size " + std::to_string(cols) + ").");
         
         Tensor result({rows}, t.dtype(), false);
         for (int i = 0; i < rows; ++i) {
@@ -2154,7 +2154,7 @@ namespace jc {
         
         if (row < 0) row += t.shape[0];
         if (row < 0 || row >= t.shape[0])
-            JC2_THROW(TensorError, "deleterow index out of range.");
+            JC2_THROW(TensorError, "deleterow index " + std::to_string(row) + " out of range (size " + std::to_string(t.shape[0]) + ").");
         
         int rows = t.shape[0], cols = t.shape[1];
         Tensor result({rows - 1, cols}, t.dtype(), false);
@@ -2176,7 +2176,7 @@ namespace jc {
         
         if (col < 0) col += t.shape[1];
         if (col < 0 || col >= t.shape[1])
-            JC2_THROW(TensorError, "deletecol index out of range.");
+            JC2_THROW(TensorError, "deletecol index " + std::to_string(col) + " out of range (size " + std::to_string(t.shape[1]) + ").");
         
         int rows = t.shape[0], cols = t.shape[1];
         Tensor result({rows, cols - 1}, t.dtype(), false);
@@ -2198,7 +2198,7 @@ namespace jc {
         if (r1 < 0) r1 += rows;
         if (r2 < 0) r2 += rows;
         if (r1 < 0 || r1 >= rows || r2 < 0 || r2 >= rows)
-            JC2_THROW(TensorError, "swaprows index out of range.");
+            JC2_THROW(TensorError, "swaprows index out of range (r1=" + std::to_string(r1) + ", r2=" + std::to_string(r2) + ", size=" + std::to_string(rows) + ").");
         
         Tensor result = t.clone();
         for (int j = 0; j < cols; ++j) {

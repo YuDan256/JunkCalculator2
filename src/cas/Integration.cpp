@@ -3495,7 +3495,7 @@ namespace jc {
                 risch_score = 0; // 剪枝
             }
 
-            std::optional<std::string> risch_error;
+            std::optional<jc::Jc2Error> risch_error;
 
             strats.push_back({"Risch Algorithm", risch_score, [&]() -> std::optional<SymExpr> {
                 if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "-> Trying Risch Algorithm" << std::endl;
@@ -3505,13 +3505,17 @@ namespace jc {
                     return rischRes;
                 } catch (const EngineInterruptError&) {
                     throw;
+                } catch (const jc::Jc2Error& e) {
+                    if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Risch Algorithm Failed" << std::endl;
+                    risch_error = e;
+                    return std::nullopt;
                 } catch (const std::runtime_error& e) {
                     if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Risch Algorithm Failed" << std::endl;
-                    risch_error = e.what();
+                    risch_error = jc::Jc2Error(jc::err::MathError, e.what());
                     return std::nullopt;
                 } catch (...) {
                     if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Risch Algorithm Failed" << std::endl;
-                    risch_error = "Unknown Risch Error";
+                    risch_error = jc::Jc2Error(jc::err::MathError, "Unknown Risch Error");
                     return std::nullopt;
                 }
             }});
@@ -3530,7 +3534,7 @@ namespace jc {
             }
 
             if (current_depth == start_depth && risch_error) {
-                throw std::runtime_error(*risch_error);
+                throw *risch_error;
             }
 
             return std::nullopt;
@@ -3566,8 +3570,8 @@ namespace jc {
                 JC2_THROW(CalculusError, "Function integration not supported or complex power.");
             } catch (const EngineInterruptError&) {
                 throw;
-            } catch (const std::runtime_error& e) {
-                std::string msg = e.what();
+            } catch (const jc::Jc2Error& e) {
+                jc::Jc2Error err = e;
                 SymExpr expanded;
                 try { expanded = expand_core(expr, SymConfig::maxExpandTerms * 2); } catch (const EngineInterruptError&) { throw; } catch (...) { expanded = expr; }
                 
@@ -3580,23 +3584,24 @@ namespace jc {
                         }
                     } catch (const EngineInterruptError&) {
                         throw;
-                    } catch (const std::runtime_error& e2) {
-                        std::string msg2 = e2.what();
-                        // 如果展开后再次失败，保留新的错误信息
-                        if (msg2.find("Integration depth limit exceeded") != std::string::npos ||
-                            msg2.find("Integration AST size limit exceeded") != std::string::npos) {
-                            msg = msg2;
+                    } catch (const jc::Jc2Error& e2) {
+                        // 如果展开后再次失败，保留新的资源限制错误
+                        if (e2.type == jc::err::MathError &&
+                            (e2.message.find("Integration depth limit exceeded") != std::string::npos ||
+                             e2.message.find("Integration AST size limit exceeded") != std::string::npos)) {
+                            err = e2;
                         }
                     } catch (...) {}
                 }
                 
                 // 资源限制类错误（深度/AST 超限），直接向外传递
-                if (msg.find("Integration depth limit exceeded") != std::string::npos ||
-                    msg.find("Integration AST size limit exceeded") != std::string::npos) {
-                    throw std::runtime_error(msg);
+                if (err.type == jc::err::MathError &&
+                    (err.message.find("Integration depth limit exceeded") != std::string::npos ||
+                     err.message.find("Integration AST size limit exceeded") != std::string::npos)) {
+                    throw err;
                 }
                 
-                JC2_THROW(CalculusError, "Function integration not supported or complex power. (" + msg + ")");
+                JC2_THROW(CalculusError, "Function integration not supported or complex power. (" + err.message + ")");
             } catch (...) {
                 JC2_THROW(CalculusError, "Function integration not supported or complex power.");
             }

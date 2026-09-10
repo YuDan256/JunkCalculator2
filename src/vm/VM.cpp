@@ -478,10 +478,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
                 size_t colonPos = msg.find(": ");
                 if (colonPos != std::string::npos) {
                     std::string prefix = msg.substr(0, colonPos);
-                    if (prefix.find(' ') == std::string::npos) {
-                        type = prefix;
-                        msg = msg.substr(colonPos + 2);
-                    } else if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
+                    if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
                         type = prefix;
                         type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
                         msg = msg.substr(colonPos + 2);
@@ -8125,10 +8122,7 @@ Value VM::run(int targetFrameDepth) {
             size_t colonPos = msg.find(": ");
             if (colonPos != std::string::npos) {
                 std::string prefix = msg.substr(0, colonPos);
-                if (prefix.find(' ') == std::string::npos) {
-                    type = prefix;
-                    msg = msg.substr(colonPos + 2);
-                } else if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
+                if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
                     type = prefix;
                     type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
                     msg = msg.substr(colonPos + 2);

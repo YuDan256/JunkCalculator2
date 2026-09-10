@@ -5249,8 +5249,10 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         result = matResult;
+                    } catch (const jc::Jc2Error& e) {
+                        JC2_THROW(RuntimeError, "Block matrix concatenation failed: " + e.message);
                     } catch (...) {
-                        JC2_THROW(RuntimeError, "Dimension mismatch during block matrix concatenation.");
+                        JC2_THROW(RuntimeError, "Block matrix concatenation failed.");
                     }
                 }
                 getReg(a) = result;
@@ -7464,8 +7466,10 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                     getReg(a) = rowResult;
+                } catch (const jc::Jc2Error& e) {
+                    JC2_THROW(RuntimeError, "Matrix comprehension concatenation failed: " + e.message);
                 } catch (...) {
-                    JC2_THROW(RuntimeError, "Dimension mismatch during matrix comprehension concatenation.");
+                    JC2_THROW(RuntimeError, "Matrix comprehension concatenation failed.");
                 }
                 break;
             }
@@ -8187,8 +8191,10 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
                 }
             }
             result = matResult;
+        } catch (const jc::Jc2Error& e) {
+            JC2_THROW(RuntimeError, "Block matrix concatenation failed: " + e.message);
         } catch (...) {
-            JC2_THROW(RuntimeError, "Dimension mismatch during block matrix concatenation.");
+            JC2_THROW(RuntimeError, "Block matrix concatenation failed.");
         }
     }
     vm->getCurrentFrame()->jitReturnSlot = result;
@@ -11883,8 +11889,10 @@ uint64_t jc2_jit_matrix_comp_end(uint64_t acc_bits) {
                         rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
                 }
             }
+        } catch (const jc::Jc2Error& e) {
+            JC2_THROW(RuntimeError, "Matrix comprehension concatenation failed: " + e.message);
         } catch (...) {
-            JC2_THROW(RuntimeError, "Dimension mismatch during matrix comprehension concatenation.");
+            JC2_THROW(RuntimeError, "Matrix comprehension concatenation failed.");
         }
     }
     VM::activeVM->getCurrentFrame()->jitReturnSlot = rowResult;

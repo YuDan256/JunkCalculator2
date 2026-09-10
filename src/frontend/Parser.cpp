@@ -1666,18 +1666,17 @@ namespace jc {
                     catchBranches.push_back(std::move(branch));
                 }
             }
-            if (catchBranches.empty()) {
-                // ★ 无 catch 或空 catch：语法糖，等价 catch { _ => none }，静默吞下
-                if (!hasCatch) {
-                    current = saved;  // 只有真正「无 catch」才回退换行；空 catch {} 已消费，不回退
-                }
+            if (!hasCatch) {
+                // ★ 只有真正「无 catch」才补默认分支 _ => none（语法糖，静默吞下）
+                current = saved;
                 Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
                 MatchBranch branch;
                 branch.patterns.push_back(std::make_unique<VariablePattern>(underscore));
                 branch.body = withPos(std::make_unique<Literal>("none", false, false, true), tryBody->endPos, tryBody->endPos);
                 catchBranches.push_back(std::move(branch));
             }
-            int endPos = catchBranches.back().body->endPos;
+            // ★ 空 catch {}（hasCatch=true 但无分支）：catchBranches 为空，异常不匹配 → rethrow
+            int endPos = catchBranches.empty() ? previous().position + 1 : catchBranches.back().body->endPos;
             return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchBranches)), tryTok.position, endPos);
         }
         if (match({ TokenType::IMPORT })) {

@@ -598,7 +598,7 @@ inline constexpr int kMaxPrintMatrixDim = 10;
                     out << "]";
                     if (i < maxRows - 1) out << "\n";
                 }
-                if (m.rows > maxRows) out << "[...]";
+                if (m.rows > maxRows) out << "\n[...]";
             }
         }
 

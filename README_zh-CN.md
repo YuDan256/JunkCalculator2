@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.3.0
+# Junk Calculator 2.6.3.1
 
-![Version](https://img.shields.io/badge/Version-v2.6.3.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.3.1-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -73,7 +73,7 @@
 
 ---
 
-## v2.6.3.0 版本更新说明
+## v2.6.3.1 版本更新说明
 
 ### try/catch 重构 — Catch 链
 - **catch 复用 `match` 语法**：`catch { pattern => body, ... }` 支持多个分支，按顺序匹配，命中即止。

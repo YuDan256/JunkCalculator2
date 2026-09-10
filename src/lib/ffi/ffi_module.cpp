@@ -32,7 +32,7 @@ public:
         if (memory == MAP_FAILED) memory = nullptr;
 #endif
         if (!memory) {
-            JC2_THROW(FFIError, "Failed to allocate executable memory.");
+            throw_error_typed("FFIError", "Failed to allocate executable memory.");
         }
     }
 
@@ -65,7 +65,7 @@ class ExecutableMemoryPool {
             memory = mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
             if (memory == MAP_FAILED) memory = nullptr;
 #endif
-            if (!memory) JC2_THROW(FFIError, "Failed to allocate executable memory page.");
+            if (!memory) throw_error_typed("FFIError", "Failed to allocate executable memory page.");
         }
         ~Page() {
 #ifdef _WIN32
@@ -171,7 +171,7 @@ FFITypeDesc parseType(const Value& v) {
     }
     if (v.is_list()) {
         List l(v.get_handle());
-        if (l.size() < 2) JC2_THROW(FFIError, "Array type list must have at least 2 elements [type, dim1, ...].");
+        if (l.size() < 2) throw_error_typed("FFIError", "Array type list must have at least 2 elements [type, dim1, ...].");
         FFITypeDesc desc = parseType(l.get(0));
         for (size_t i = 1; i < l.size(); ++i) {
             desc.array_dims.push_back(l.get(i).as_int());
@@ -206,7 +206,7 @@ FFITypeDesc parseType(const Value& v) {
         else if (t == "pointer") desc = { FFIType::POINTER, 8, 8, nullptr, {} };
         else if (t == "string") desc = { FFIType::STRING, 8, 8, nullptr, {} };
         else if (t == "...") desc = { FFIType::VARIADIC, 0, 1, nullptr, {} };
-        else JC2_THROW(FFIError, "Unsupported type '" + t + "'.");
+        else throw_error_typed("FFIError", "Unsupported type '" + t + "'.");
 
         if (!dims.empty()) {
             size_t total_elements = 1;
@@ -222,7 +222,7 @@ FFITypeDesc parseType(const Value& v) {
             return { FFIType::STRUCT, layout->size, layout->align, layout, {} };
         }
     }
-    JC2_THROW(FFIError, "Invalid type descriptor.");
+    throw_error_typed("FFIError", "Invalid type descriptor.");
 }
 
 Value read_memory(std::shared_ptr<std::vector<uint8_t>> shared_mem, uint8_t* ptr, const FFITypeDesc& t) {
@@ -275,7 +275,7 @@ void write_memory(uint8_t* ptr, const FFITypeDesc& t, const Value& v) {
         case FFIType::STRING: *reinterpret_cast<const char**>(ptr) = v.as_c_str(); break;
         case FFIType::STRUCT: {
             StructInstanceData* data = v.get_native_data<StructInstanceData>();
-            if (!data || data->layout != t.layout) JC2_THROW(FFIError, "Struct type mismatch.");
+            if (!data || data->layout != t.layout) throw_error_typed("FFIError", "Struct type mismatch.");
             std::memcpy(ptr, data->base_ptr, t.size);
             break;
         }
@@ -373,7 +373,7 @@ public:
                     current_type = FFIType::STRUCT;
                     current_desc = {FFIType::STRUCT, sdata->layout->size, sdata->layout->align, sdata->layout};
                 }
-                else JC2_THROW(FFIError, "Unsupported variadic argument type.");
+                else throw_error_typed("FFIError", "Unsupported variadic argument type.");
             }
 
             switch (current_type) {
@@ -414,7 +414,7 @@ public:
                 break;
             case FFIType::STRUCT: {
                 StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
-                if (!sdata || sdata->layout != current_desc.layout) JC2_THROW(FFIError, "Struct type mismatch.");
+                if (!sdata || sdata->layout != current_desc.layout) throw_error_typed("FFIError", "Struct type mismatch.");
                 if (current_desc.size == 1 || current_desc.size == 2 || current_desc.size == 4 || current_desc.size == 8) {
                     std::memcpy(&val64, sdata->base_ptr, current_desc.size);
                 } else {
@@ -424,7 +424,7 @@ public:
                 break;
             }
             default:
-                JC2_THROW(FFIError, "Unsupported argument type.");
+                throw_error_typed("FFIError", "Unsupported argument type.");
             }
             stack_data[arg_idx++] = val64;
         }
@@ -550,14 +550,14 @@ public:
                     current_type = FFIType::STRUCT;
                     current_desc = {FFIType::STRUCT, sdata->layout->size, sdata->layout->align, sdata->layout};
                 }
-                else JC2_THROW(FFIError, "Unsupported variadic argument type.");
+                else throw_error_typed("FFIError", "Unsupported variadic argument type.");
             }
 
             bool is_float = (current_type == FFIType::F32 || current_type == FFIType::F64);
             
             if (current_type == FFIType::STRUCT) {
                 StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
-                if (!sdata || sdata->layout != current_desc.layout) JC2_THROW(FFIError, "Struct type mismatch.");
+                if (!sdata || sdata->layout != current_desc.layout) throw_error_typed("FFIError", "Struct type mismatch.");
                 if (current_desc.size <= 16) {
                     uint64_t part1 = 0, part2 = 0;
                     std::memcpy(&part1, sdata->base_ptr, std::min((size_t)8, current_desc.size));
@@ -609,7 +609,7 @@ public:
                 val64 = reinterpret_cast<uint64_t>(args[i].as_c_str());
                 break;
             default:
-                JC2_THROW(FFIError, "Unsupported argument type.");
+                throw_error_typed("FFIError", "Unsupported argument type.");
             }
 
             if (is_float) {
@@ -909,7 +909,7 @@ std::unique_ptr<Class> g_callbackClass;
 JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
     if (argc < 2) {
-        throw_error("ffi.readMemory requires address and type.");
+        throw_error_typed("FFIError", "ffi.readMemory requires address and type.");
     }
     uint64_t addr = 0;
     size_t bsize = 0;
@@ -920,8 +920,8 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
     FFITypeDesc t;
     try {
         t = parseType(Value(argv[1]));
-    } catch (const std::exception& e) {
-        throw_error(e.what());
+    } catch (...) {
+        throw;
     }
     return read_memory(nullptr, reinterpret_cast<uint8_t*>(addr), t).get_handle();
 }
@@ -929,7 +929,7 @@ JC2_ValueHandle ffi_read_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* ar
 JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
     if (argc < 3) {
-        throw_error("ffi.writeMemory requires address, type, and value.");
+        throw_error_typed("FFIError", "ffi.writeMemory requires address, type, and value.");
     }
     uint64_t addr = 0;
     size_t bsize = 0;
@@ -940,8 +940,8 @@ JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* a
     FFITypeDesc t;
     try {
         t = parseType(Value(argv[1]));
-    } catch (const std::exception& e) {
-        throw_error(e.what());
+    } catch (...) {
+        throw;
     }
     write_memory(reinterpret_cast<uint8_t*>(addr), t, Value(argv[2]));
     return Value().get_handle();
@@ -950,19 +950,19 @@ JC2_ValueHandle ffi_write_memory(JC2_VMContext ctx, int argc, JC2_ValueHandle* a
 JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
     if (argc < 2) {
-        throw_error("ffi.Callback requires func, ret_type, and [arg_types...].");
+        throw_error_typed("FFIError", "ffi.Callback requires func, ret_type, and [arg_types...].");
     }
     
     Value func(argv[0]);
     if (!func.is_function()) {
-        throw_error("FFI Error: First argument must be a function.");
+        throw_error_typed("FFIError", "First argument must be a function.");
     }
     
     FFITypeDesc ret_type;
     try {
         ret_type = parseType(Value(argv[1]));
-    } catch (const std::exception& e) {
-        throw_error(e.what());
+    } catch (...) {
+        throw;
     }
     
     std::vector<FFITypeDesc> arg_types;
@@ -970,11 +970,11 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
         try {
             FFITypeDesc t = parseType(Value(argv[i]));
             if (t.type == FFIType::VARIADIC) {
-                throw_error("FFI Error: Variadic arguments not supported in callbacks.");
+                throw_error_typed("FFIError", "Variadic arguments not supported in callbacks.");
             }
             arg_types.push_back(t);
-        } catch (const std::exception& e) {
-            throw_error(e.what());
+        } catch (...) {
+            throw;
         }
     }
     
@@ -1012,7 +1012,7 @@ JC2_ValueHandle callback_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* arg
 JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
     if (argc < 1 || !Value(argv[0]).is_dict()) {
-        throw_error("ffi.Struct requires a dict.");
+        throw_error_typed("FFIError", "ffi.Struct requires a dict.");
     }
     Dict d(argv[0]);
     StructLayoutData* layout = new StructLayoutData();
@@ -1028,9 +1028,9 @@ JC2_ValueHandle struct_layout_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle
             layout->fields.push_back({k.as_string(), t, offset});
             layout->size = offset + t.size;
             layout->align = std::max(layout->align, field_align);
-        } catch (const std::exception& e) {
+        } catch (...) {
             delete layout;
-            throw_error(e.what());
+            throw;
         }
     }
     if (layout->align > 0) {
@@ -1065,7 +1065,7 @@ JC2_ValueHandle struct_inst_getattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
             return read_memory(data->shared_mem, data->base_ptr + f.offset, f.type).get_handle();
         }
     }
-    throw_error("Struct has no field '" + key + "'.");
+    throw_error_typed("FFIError", "Struct has no field '" + key + "'.");
 }
 
 JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -1079,12 +1079,12 @@ JC2_ValueHandle struct_inst_setattr(JC2_VMContext ctx, int argc, JC2_ValueHandle
             try {
                 write_memory(data->base_ptr + f.offset, f.type, val);
                 return Value().get_handle();
-            } catch (const std::exception& e) {
-                throw_error(e.what());
+            } catch (...) {
+                throw;
             }
         }
     }
-    throw_error("Struct has no field '" + key + "'.");
+    throw_error_typed("FFIError", "Struct has no field '" + key + "'.");
 }
 
 JC2_ValueHandle struct_inst_str(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
@@ -1113,7 +1113,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
         int start = s.start();
         int end = s.end();
         int step = s.step();
-        if (step != 1 && step != Slice::NONE) throw_error("FFI Error: Array view slicing only supports step=1.");
+        if (step != 1 && step != Slice::NONE) throw_error_typed("FFIError", "Array view slicing only supports step=1.");
         size_t dim0 = data->desc.array_dims[0];
         if (start == Slice::NONE) start = 0;
         if (end == Slice::NONE) end = static_cast<int>(dim0);
@@ -1135,7 +1135,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     }
 
     size_t num_indices = idx_list.size();
-    if (num_indices > data->desc.array_dims.size()) throw_error("FFI Error: Too many indices for array view.");
+    if (num_indices > data->desc.array_dims.size()) throw_error_typed("FFIError", "Too many indices for array view.");
 
     size_t flat_offset = 0;
     size_t current_stride = data->desc.size;
@@ -1145,7 +1145,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
         current_stride /= dim_size;
         int idx = idx_list.get(i).as_int();
         if (idx < 0) idx += static_cast<int>(dim_size);
-        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error_typed("FFIError", "Array index out of bounds.");
         flat_offset += idx * current_stride;
     }
 
@@ -1167,10 +1167,10 @@ JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     size_t num_indices = args_list.size() - 1;
 
     if (num_indices == 1 && args_list.get(0).is_slice()) {
-        throw_error("FFI Error: Slice assignment not yet supported on FFI arrays.");
+        throw_error_typed("FFIError", "Slice assignment not yet supported on FFI arrays.");
     }
 
-    if (num_indices > data->desc.array_dims.size()) throw_error("FFI Error: Too many indices for array view.");
+    if (num_indices > data->desc.array_dims.size()) throw_error_typed("FFIError", "Too many indices for array view.");
 
     size_t flat_offset = 0;
     size_t current_stride = data->desc.size;
@@ -1180,7 +1180,7 @@ JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
         current_stride /= dim_size;
         int idx = args_list.get(i).as_int();
         if (idx < 0) idx += static_cast<int>(dim_size);
-        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error("FFI Error: Array index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(dim_size)) throw_error_typed("FFIError", "Array index out of bounds.");
         flat_offset += idx * current_stride;
     }
 
@@ -1189,7 +1189,7 @@ JC2_ValueHandle array_view_setitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     sub_desc.size = current_stride;
 
     if (!sub_desc.array_dims.empty()) {
-        throw_error("FFI Error: Cannot assign to a multi-dimensional sub-array directly.");
+        throw_error_typed("FFIError", "Cannot assign to a multi-dimensional sub-array directly.");
     }
 
     write_memory(data->base_ptr + flat_offset, sub_desc, val);
@@ -1221,12 +1221,12 @@ JC2_ValueHandle lib_alloc(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     (void)ctx;
     (void)user_data;
     if (argc < 1 || !Value(argv[0]).is_string()) {
-        throw_error("FFILibrary requires a string path.");
+        throw_error_typed("FFIError", "FFILibrary requires a string path.");
     }
     std::string path = Value(argv[0]).as_string();
     LibHandle handle = LOAD_LIB(path.c_str());
     if (!handle) {
-        throw_error("FFI Error: Failed to load library '" + path + "'.");
+        throw_error_typed("FFIError", "Failed to load library '" + path + "'.");
     }
     
     Instance inst(*g_libClass);
@@ -1248,21 +1248,21 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
     Instance self(argv[0]);
     LibraryData* data = self.get_native_data<LibraryData>();
     if (!data || !data->handle) {
-        throw_error("FFI Error: Invalid library handle.");
+        throw_error_typed("FFIError", "Invalid library handle.");
     }
     
     // ★ 统一调用约定：argv = [self, func_name, ret_type, rest_list(arg_types)]
     std::string func_name = Value(argv[1]).as_string();
     void* func_ptr = (void*)GET_PROC(data->handle, func_name.c_str());
     if (!func_ptr) {
-        throw_error("FFI Error: Function '" + func_name + "' not found.");
+        throw_error_typed("FFIError", "Function '" + func_name + "' not found.");
     }
     
     FFITypeDesc ret_type;
     try {
         ret_type = parseType(Value(argv[2]));
-    } catch (const std::exception& e) {
-        throw_error(e.what());
+    } catch (...) {
+        throw;
     }
     
     std::vector<FFITypeDesc> arg_types;
@@ -1273,14 +1273,14 @@ JC2_ValueHandle lib_bind(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, voi
             FFITypeDesc t = parseType(arg_list.get(i));
             if (t.type == FFIType::VARIADIC) {
                 if (i != arg_list.size() - 1) {
-                    throw_error("FFI Error: '...' must be the last argument type.");
+                    throw_error_typed("FFIError", "'...' must be the last argument type.");
                 }
                 is_variadic = true;
             } else {
                 arg_types.push_back(t);
             }
-        } catch (const std::exception& e) {
-            throw_error(e.what());
+        } catch (...) {
+            throw;
         }
     }
     
@@ -1301,7 +1301,7 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     Instance self(argv[0]);
     FunctionData* data = self.get_native_data<FunctionData>();
     if (!data || !data->func_ptr) {
-        throw_error("FFI Error: Invalid function handle.");
+        throw_error_typed("FFIError", "Invalid function handle.");
     }
     
     // ★ 统一调用约定：argv = [self, rest_list(call_args)]
@@ -1309,11 +1309,11 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     size_t provided_args = arg_list.size();
     if (data->is_variadic) {
         if (provided_args < data->arg_types.size()) {
-            throw_error("FFI Error: Not enough arguments for variadic function. Expected at least " + std::to_string(data->arg_types.size()) + ".");
+            throw_error_typed("FFIError", "Not enough arguments for variadic function. Expected at least " + std::to_string(data->arg_types.size()) + ".");
         }
     } else {
         if (provided_args != data->arg_types.size()) {
-            throw_error("FFI Error: Argument count mismatch. Expected " + std::to_string(data->arg_types.size()) + ", got " + std::to_string(provided_args) + ".");
+            throw_error_typed("FFIError", "Argument count mismatch. Expected " + std::to_string(data->arg_types.size()) + ", got " + std::to_string(provided_args) + ".");
         }
     }
     
@@ -1325,8 +1325,8 @@ JC2_ValueHandle func_call(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, vo
     try {
         Value result = g_abiHandler->invoke(data->func_ptr, call_args, data->arg_types, data->ret_type);
         return result.get_handle();
-    } catch (const std::exception& e) {
-        throw_error(e.what());
+    } catch (...) {
+        throw;
     }
 }
 

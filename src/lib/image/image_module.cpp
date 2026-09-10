@@ -22,6 +22,34 @@ JC2_ValueHandle img_width(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle img_height(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return Value(getImg(argv)->height()).get_handle();
 }
+JC2_ValueHandle img_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+    jc::Image* img = getImg(argv);
+    std::string s = "<Image " + std::to_string(img->width()) + "x" + std::to_string(img->height()) + ">";
+    return Value(s).get_handle();
+}
+JC2_ValueHandle img_plot(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    jc::Image* im = getImg(argv);
+    Function fn_actual(argv[1]);
+    double xMin = Value(argv[2]).as_double(), xMax = Value(argv[3]).as_double();
+    double yMin = Value(argv[4]).as_double(), yMax = Value(argv[5]).as_double();
+    jc::Color c = parseColor(Value(argv[6]));
+    int thick = (argc == 8 && !Value(argv[7]).is_none()) ? static_cast<int>(std::round(Value(argv[7]).as_double())) : 2;
+    int plotW = im->width() - 50;
+    int prevPx = -1, prevPy = -1;
+
+    for (int px = 0; px <= plotW; ++px) {
+        double x = xMin + (static_cast<double>(px) / plotW) * (xMax - xMin);
+        double y = 0;
+        try { y = fn_actual.call({ Value(x) }).as_double(); }
+        catch (...) { prevPx = -1; prevPy = -1; continue; }
+        int screenX = im->mapPlotX(x, xMin, xMax);
+        int screenY = im->mapPlotY(y, yMin, yMax);
+        if (prevPx >= 0 && std::abs(screenY - prevPy) < im->height())
+            im->line(prevPx, prevPy, screenX, screenY, c, thick);
+        prevPx = screenX; prevPy = screenY;
+    }
+    return argv[0];
+}
 JC2_ValueHandle img_setPixel(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     getImg(argv)->setPixel(Value(argv[1]).as_int(), Value(argv[2]).as_int(), parseColor(Value(argv[3])));
     return argv[0];
@@ -159,6 +187,7 @@ int jc2_init(Module& mod) {
     
     g_imageClass->bind_method("width", img_width, 0, 0);
     g_imageClass->bind_method("height", img_height, 0, 0);
+    g_imageClass->bind_method("__str__", img_str, 0, 0);
     g_imageClass->bind_method("setPixel", img_setPixel, 3, 3, {"x", "y", "color"});
     g_imageClass->bind_method("getPixel", img_getPixel, 2, 2, {"x", "y"});
     g_imageClass->bind_method("clear", img_clear, 1, 1, {"color"});
@@ -174,6 +203,7 @@ int jc2_init(Module& mod) {
     g_imageClass->set_allocator(create_image);
 
     mod.register_function("img", create_image, 2, 3, {"width", "height", "bg_color"}, "", {}, "", 0, "Image");
+    mod.register_function("imgPlot", img_plot, 7, 8, {"inst", "f", "xMin", "xMax", "yMin", "yMax", "color", "thick"});
 
     mod.register_function_help("image.Image", "image.Image(width, height, [bg_color])", "Allocates a new image surface in RAM. Colors can be hex strings (e.g., \"#FF0000\") or names (e.g., \"red\").", "im = image.Image(800, 600, \"black\")");
     mod.register_function_help("image.img", "image.img(width, height, [bg_color])", "Legacy alias for image.Image.", "im = image.img(800, 600, \"black\")");

@@ -94,7 +94,7 @@ namespace jc {
         Image() : w(0), h(0) {}
         Image(int width, int height, Color bg = { 255,255,255 })
             : w(width), h(height), pixels(width* height * 3) {
-            if (w <= 0 || h <= 0) JC2_THROW(RuntimeError, "Dimensions must be positive.");
+            if (w <= 0 || h <= 0) jc2::throw_error_typed("RuntimeError", "Dimensions must be positive.");
             for (int i = 0; i < w * h; ++i) {
                 pixels[i * 3] = bg.r;
                 pixels[i * 3 + 1] = bg.g;

@@ -30,8 +30,6 @@
 #include "../math/Fraction.h"
 #include "../math/Base.h"
 #include "../math/Tolerance.h"
-#include "../lib/image/Image.h"
-#include "../lib/prob/Probability.h"
 #include "GcHeap.h"
 #include "Exceptions.h"
 #include "../cas/Symbolic.h" 
@@ -2657,20 +2655,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
                 }
             } catch (...) {}
 
-            bool printedNative = false;
-            if (inst->nativeData.has_value()) {
-                if (inst->nativeData.type() == typeid(std::shared_ptr<Image>)) {
-                    auto& img = std::any_cast<std::shared_ptr<Image>&>(inst->nativeData);
-                    os << "<Image " << img->width() << "x" << img->height() << ">";
-                    printedNative = true;
-                } else if (inst->nativeData.type() == typeid(std::shared_ptr<Distribution>)) {
-                    auto& dist = std::any_cast<std::shared_ptr<Distribution>&>(inst->nativeData);
-                    os << dist->toString();
-                    printedNative = true;
-                }
-            }
-            if (!printedNative) {
-                os << "<" << prefix << " {";
+            os << "<" << prefix << " {";
                 bool first = true;
                 std::map<std::string, PropertyDescriptor> sorted_props(inst->properties.begin(), inst->properties.end());
                 for (const auto& [k, prop] : sorted_props) {
@@ -2685,7 +2670,6 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
                     first = false;
                 }
                 os << "}>";
-            }
             break;
         }
     }

@@ -4779,33 +4779,6 @@ void BuiltinRegistry::registerSystemShell() {
         return Value(proxy);
         }, {"path"});
 
-    regModule(sys_ns, "imgPlot", { 7, 8 }, [](const std::vector<Value>& args) -> Value {
-        auto inst = args[0].asInstance();
-        auto& im = std::any_cast<std::shared_ptr<Image>&>(inst->nativeData);
-        auto fn_actual = args[1];
-        double xMin = args[2].asDouble(), xMax = args[3].asDouble();
-        double yMin = args[4].asDouble(), yMax = args[5].asDouble();
-        Color c = Color::parse(args[6].asString());
-        int thick = (args.size() == 8) ? static_cast<int>(std::round(args[7].asDouble())) : 2;
-        int plotW = im->width() - 50;
-        int prevPx = -1, prevPy = -1;
-
-        for (int px = 0; px <= plotW; ++px) {
-            jc::checkInterrupt();
-            double x = xMin + (static_cast<double>(px) / plotW) * (xMax - xMin);
-            double y = 0;
-            try { y = helpers::safeCallValue(fn_actual, { Value(x) }).asDouble(); }
-            catch (const jc::EngineInterruptError&) { throw; }
-            catch (...) { prevPx = -1; prevPy = -1; continue; }
-            int screenX = im->mapPlotX(x, xMin, xMax);
-            int screenY = im->mapPlotY(y, yMin, yMax);
-            if (prevPx >= 0 && std::abs(screenY - prevPy) < im->height())
-                im->line(prevPx, prevPy, screenX, screenY, c, thick);
-            prevPx = screenX; prevPy = screenY;
-        }
-        return args[0];
-        }, {"inst", "f", "xMin", "xMax", "yMin", "yMax", "color", "thick"});
-
     regModule(sys_ns, "breakpoint", { 0 }, [](const std::vector<Value>&) -> Value {
         if (VM::activeVM) {
             VM::activeVM->triggerDebugger();

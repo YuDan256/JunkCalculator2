@@ -41,6 +41,8 @@ METHOD(sample) {
     return mat.get_handle();
 }
 
+METHOD(str) { GET_SELF; return jc2::Value(d->toString()).get_handle(); }
+
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(gamma) { (void)argc; return jc2::Value(jc::prob::tgamma(jc2::Value(argv[0]).as_double())).get_handle(); }
@@ -187,6 +189,7 @@ int jc2_init(jc2::Module& mod) {
     g_distClass->bind_method("var", dist_var, 0, 0);
     g_distClass->bind_method("std", dist_std_dev, 0, 0);
     g_distClass->bind_method("sample", dist_sample, 1, 1, {"n"});
+    g_distClass->bind_method("__str__", dist_str, 0, 0);
 
     mod.register_function("gamma", global_gamma, 1, 1, {"x"});
     mod.register_function("lgamma", global_lgamma, 1, 1, {"x"});

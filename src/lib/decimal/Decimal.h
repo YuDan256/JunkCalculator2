@@ -376,7 +376,7 @@ public:
     }
 
     static std::pair<DecInt, DecInt> divmod_knuth(const DecInt& a, const DecInt& b) {
-        if (b.isZero()) JC2_THROW(MathError, "Division by zero");
+        if (b.isZero()) jc2::throw_error_typed("MathError", "Division by zero");
         DecInt absA = a.abs(), absB = b.abs();
         if (absA < absB) return {DecInt(0), absA};
         if (absB.data.size() == 1) {
@@ -845,7 +845,7 @@ public:
     }
 
     DecInt div_small(uint32_t v, uint32_t& rem_out) const {
-        if (v == 0) JC2_THROW(MathError, "Division by zero");
+        if (v == 0) jc2::throw_error_typed("MathError", "Division by zero");
         DecInt res; res.data.resize(data.size(), 0);
         uint64_t r = 0;
         for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
@@ -886,7 +886,7 @@ public:
         bool has_digits = false;
         for (; i < s.length(); ++i) {
             if (s[i] == '.') {
-                if (in_frac) JC2_THROW(ValueError, "Invalid decimal string (multiple decimal points).");
+                if (in_frac) jc2::throw_error_typed("ValueError", "Invalid decimal string (multiple decimal points).");
                 in_frac = true;
             } else if (s[i] >= '0' && s[i] <= '9') {
                 m_str += s[i];
@@ -896,19 +896,19 @@ public:
                 try {
                     e = std::stoll(s.substr(i + 1));
                 } catch (...) {
-                    JC2_THROW(ValueError, "Invalid exponent in decimal string.");
+                    jc2::throw_error_typed("ValueError", "Invalid exponent in decimal string.");
                 }
                 break;
             } else if (std::isspace(static_cast<unsigned char>(s[i]))) {
                 size_t j = i;
                 while (j < s.length() && std::isspace(static_cast<unsigned char>(s[j]))) j++;
                 if (j == s.length()) break;
-                JC2_THROW(ValueError, "Invalid character in decimal string.");
+                jc2::throw_error_typed("ValueError", "Invalid character in decimal string.");
             } else {
-                JC2_THROW(ValueError, "Invalid character in decimal string.");
+                jc2::throw_error_typed("ValueError", "Invalid character in decimal string.");
             }
         }
-        if (!has_digits) JC2_THROW(ValueError, "No digits found in decimal string.");
+        if (!has_digits) jc2::throw_error_typed("ValueError", "No digits found in decimal string.");
         if (m_str.empty() || m_str == "+" || m_str == "-") m_str += "0";
         return Decimal(DecInt(m_str), e - frac_count);
     }
@@ -1042,7 +1042,7 @@ public:
     }
 
     Decimal inverse() const {
-        if (mantissa.isZero()) JC2_THROW(MathError, "Decimal division by zero.");
+        if (mantissa.isZero()) jc2::throw_error_typed("MathError", "Decimal division by zero.");
         
         int64_t L = mantissa.digitCount();
         int64_t E = exp + L - 1;
@@ -1087,7 +1087,7 @@ public:
 
     Decimal div(const Decimal& other) const {
         if (other.mantissa.isZero()) {
-            JC2_THROW(MathError, "Decimal division by zero.");
+            jc2::throw_error_typed("MathError", "Decimal division by zero.");
         }
         if (mantissa.isZero()) return Decimal(DecInt(0), 0);
         
@@ -1167,7 +1167,7 @@ public:
     Decimal sqrt() const {
         if (mantissa.isZero()) return *this;
         if (mantissa.isNegative()) {
-            JC2_THROW(MathError, "sqrt of negative decimal.");
+            jc2::throw_error_typed("MathError", "sqrt of negative decimal.");
         }
         
         int64_t L = mantissa.digitCount();
@@ -1254,7 +1254,7 @@ public:
         }
 
         if (!std::isfinite(guess_val)) {
-            if (d > 0) JC2_THROW(OverflowError, "exp result too large.");
+            if (d > 0) jc2::throw_error_typed("OverflowError", "exp result too large.");
             return Decimal(DecInt(0), 0);
         }
 
@@ -1579,7 +1579,7 @@ public:
 
     Decimal ln_val() const {
         if (mantissa.isZero() || mantissa.isNegative()) {
-            JC2_THROW(MathError, "ln of non-positive decimal.");
+            jc2::throw_error_typed("MathError", "ln of non-positive decimal.");
         }
         if (this->eq(Decimal(DecInt(1), 0))) return Decimal(DecInt(0), 0);
 
@@ -1673,7 +1673,7 @@ public:
     Decimal asin_val() const {
         Decimal one(DecInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
-            JC2_THROW(MathError, "asin domain error.");
+            jc2::throw_error_typed("MathError", "asin domain error.");
         }
         double d;
         try {
@@ -1717,7 +1717,7 @@ public:
     Decimal acos_val() const {
         Decimal one(DecInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
-            JC2_THROW(MathError, "acos domain error.");
+            jc2::throw_error_typed("MathError", "acos domain error.");
         }
         double d;
         try {

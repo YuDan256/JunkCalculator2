@@ -1,4 +1,5 @@
 #include "Json.h"
+#include "../../memory/Exceptions.h"
 #include <cctype>
 #include <sstream>
 #include <iomanip>
@@ -93,7 +94,7 @@ namespace jc {
                 arr.push_back(parseValue());
                 skipWhitespace();
                 if (match(']')) break;
-                if (!match(',')) throw std::runtime_error("JSON Parse Error: Expected ',' or ']' in array");
+                if (!match(',')) JC2_THROW(ValueError, "Expected ',' or ']' in array");
             }
             return Json(arr);
         }
@@ -105,14 +106,14 @@ namespace jc {
             if (match('}')) return Json(obj);
             while (true) {
                 skipWhitespace();
-                if (peek() != '"') throw std::runtime_error("JSON Parse Error: Expected string key in object");
+                if (peek() != '"') JC2_THROW(ValueError, "Expected string key in object");
                 std::string key = parseString().strVal;
                 skipWhitespace();
-                if (!match(':')) throw std::runtime_error("JSON Parse Error: Expected ':' after key");
+                if (!match(':')) JC2_THROW(ValueError, "Expected ':' after key");
                 obj[key] = parseValue();
                 skipWhitespace();
                 if (match('}')) break;
-                if (!match(',')) throw std::runtime_error("JSON Parse Error: Expected ',' or '}' in object");
+                if (!match(',')) JC2_THROW(ValueError, "Expected ',' or '}' in object");
             }
             return Json(obj);
         }
@@ -130,7 +131,7 @@ namespace jc {
             if (str.compare(pos, 4, "true") == 0) { pos += 4; return Json(true); }
             if (str.compare(pos, 5, "false") == 0) { pos += 5; return Json(false); }
             if (str.compare(pos, 4, "null") == 0) { pos += 4; return Json(nullptr); }
-            throw std::runtime_error("JSON Parse Error: Unexpected character");
+            JC2_THROW(ValueError, "Unexpected character");
         }
     };
 

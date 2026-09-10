@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include "../memory/Exceptions.h"
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -389,7 +390,7 @@ namespace jc {
         }
 
         static std::pair<BigInt, BigInt> divmod_knuth(const BigInt& a, const BigInt& b) {
-            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            if (b.isZero()) JC2_THROW(MathError, "Division by zero.");
 
             BigInt absA = a.abs(), absB = b.abs();
 
@@ -545,7 +546,7 @@ namespace jc {
 
         // O(N log N) 极速除法 (结合分块 Barrett 约减)
         static std::pair<BigInt, BigInt> divmod(const BigInt& a, const BigInt& b) {
-            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            if (b.isZero()) JC2_THROW(MathError, "Division by zero.");
 
             BigInt absA = a.abs(), absB = b.abs();
             if (absA < absB) {
@@ -798,7 +799,7 @@ namespace jc {
         // --- 扩展质数表 (JCP1 差分编码 + 极速分段筛法) ---
         static void extendPrimeTable(int64_t count) {
             if (customPrimePath.empty()) {
-                throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
+                JC2_THROW(IOError, "No prime table mounted. Use mountPrimes() first.");
             }
             if (!fileIndexed) buildFileIndex();
             
@@ -868,7 +869,7 @@ namespace jc {
                     blockAnchors.push_back(base);
                 } else {
                     uint64_t gap = p_val - lastP_val;
-                    if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
+                    if (gap > 65535) JC2_THROW(MathError, "Prime gap exceeds 65535. Differential encoding failed.");
                     uint16_t gap16 = static_cast<uint16_t>(gap);
                     std::memcpy(blockBuf.data() + 8 + (primesInLastBlock - 1) * 2, &gap16, 2);
                     primesInLastBlock++;
@@ -939,10 +940,10 @@ namespace jc {
         // --- 转换旧版 TXT 质数表为 JCP1 格式 ---
         static void convertTxtToJCP1(const std::string& txtPath, const std::string& binPath) {
             std::ifstream in(txtPath);
-            if (!in.is_open()) throw std::runtime_error("IO Error: Cannot open source txt file '" + txtPath + "'.");
+            if (!in.is_open()) JC2_THROW(IOError, "Cannot open source txt file '" + txtPath + "'.");
             
             std::ofstream out(binPath, std::ios::binary);
-            if (!out.is_open()) throw std::runtime_error("IO Error: Cannot create target bin file '" + binPath + "'.");
+            if (!out.is_open()) JC2_THROW(IOError, "Cannot create target bin file '" + binPath + "'.");
             
             PrimeHeader header = {{'J', 'C', 'P', '1'}, 0, 0, 0};
             out.write(reinterpret_cast<char*>(&header), 24);
@@ -966,7 +967,7 @@ namespace jc {
                     primesInBlock = 1;
                 } else {
                     uint64_t gap = p - lastP;
-                    if (gap > 65535) throw std::runtime_error("Math Error: Prime gap exceeds 65535. Differential encoding failed.");
+                    if (gap > 65535) JC2_THROW(MathError, "Prime gap exceeds 65535. Differential encoding failed.");
                     uint16_t gap16 = static_cast<uint16_t>(gap);
                     std::memcpy(blockBuf.data() + 8 + (primesInBlock - 1) * 2, &gap16, 2);
                     primesInBlock++;
@@ -998,11 +999,11 @@ namespace jc {
         // --- 校验 JCP1 质数表完整性与准确性 (极速分段筛法) ---
         static bool verifyPrimeTable() {
             if (customPrimePath.empty() || !fileIndexed) {
-                throw std::runtime_error("IO Error: No prime table mounted. Use mountPrimes() first.");
+                JC2_THROW(IOError, "No prime table mounted. Use mountPrimes() first.");
             }
             std::ifstream file(customPrimePath, std::ios::binary);
             if (!file.is_open()) {
-                throw std::runtime_error("IO Error: Cannot open prime table for verification.");
+                JC2_THROW(IOError, "Cannot open prime table for verification.");
             }
 
             PrimeHeader header = {};
@@ -1197,7 +1198,7 @@ namespace jc {
 
         // 单个 limb(块) 的除法/取模
         std::pair<BigInt, uint32_t> divmod_small(uint32_t divisor) const {
-            if (divisor == 0) throw std::runtime_error("Math Error: Division by zero.");
+            if (divisor == 0) JC2_THROW(MathError, "Division by zero.");
 
             BigInt q;
             q.data.resize(data.size(), 0);
@@ -1245,13 +1246,13 @@ namespace jc {
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
                 result = result * 4294967296.0 + static_cast<double>(data[i]);
                 if (!std::isfinite(result))
-                    throw std::runtime_error("Math Error: BigInt too large to convert to double.");
+                    JC2_THROW(MathError, "BigInt too large to convert to double.");
             }
             return negative ? -result : result;
         }
 
         static double toDoubleRatio(const BigInt& num, const BigInt& den) {
-            if (den.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            if (den.isZero()) JC2_THROW(MathError, "Division by zero.");
             if (num.isZero()) return 0.0;
 
             int n_size = static_cast<int>(num.data.size());
@@ -1286,14 +1287,14 @@ namespace jc {
             }
             
             if (!std::isfinite(ratio)) {
-                throw std::runtime_error("Math Error: Fraction too large to convert to double.");
+                JC2_THROW(MathError, "Fraction too large to convert to double.");
             }
             return ratio;
         }
 
         int64_t toInt64() const {
             if (data.size() > 3)
-                throw std::runtime_error("Overflow: BigInt too large for int64.");
+                JC2_THROW(OverflowError, "BigInt too large for int64.");
 
             // ★ 用 uint64_t 累加，避免中间步骤的有符号溢出
             uint64_t result = 0;
@@ -1303,20 +1304,20 @@ namespace jc {
                 if (result > (LIMIT - static_cast<uint64_t>(data[i])) >> 32)
                     if (!(negative && i == 0 && (result << 32) + static_cast<uint64_t>(data[i])
                         == static_cast<uint64_t>(LIMIT) + 1ULL))
-                        throw std::runtime_error("Overflow: BigInt too large for int64.");
+                        JC2_THROW(OverflowError, "BigInt too large for int64.");
                 result = (result << 32) + static_cast<uint64_t>(data[i]);
             }
 
             if (!negative) {
                 if (result > LIMIT)
-                    throw std::runtime_error("Overflow: BigInt too large for int64.");
+                    JC2_THROW(OverflowError, "BigInt too large for int64.");
                 return static_cast<int64_t>(result);
             }
             else {
                 if (result == static_cast<uint64_t>(LIMIT) + 1ULL)
                     return std::numeric_limits<int64_t>::min();
                 if (result > LIMIT)
-                    throw std::runtime_error("Overflow: BigInt too large for int64.");
+                    JC2_THROW(OverflowError, "BigInt too large for int64.");
                 return -static_cast<int64_t>(result);
             }
         }
@@ -1419,7 +1420,7 @@ namespace jc {
         BigInt operator%(const BigInt& other) const { return divmod(*this, other).second; }
 
         BigInt operator<<(int shift) const {
-            if (shift < 0) throw std::runtime_error("Math Error: Negative shift.");
+            if (shift < 0) JC2_THROW(MathError, "Negative shift.");
             if (isZero() || shift == 0) return *this;
             BigInt res;
             int limbs = shift / 32;
@@ -1443,7 +1444,7 @@ namespace jc {
         }
 
         BigInt operator>>(int shift) const {
-            if (shift < 0) throw std::runtime_error("Math Error: Negative shift.");
+            if (shift < 0) JC2_THROW(MathError, "Negative shift.");
             if (isZero() || shift == 0) return *this;
             int limbs = shift / 32;
             int rem = shift % 32;
@@ -1467,17 +1468,17 @@ namespace jc {
         }
 
         BigInt operator<<(const BigInt& shift) const {
-            if (shift.isNegative()) throw std::runtime_error("Math Error: Negative shift.");
+            if (shift.isNegative()) JC2_THROW(MathError, "Negative shift.");
             return *this << static_cast<int>(shift.toInt64());
         }
 
         BigInt operator>>(const BigInt& shift) const {
-            if (shift.isNegative()) throw std::runtime_error("Math Error: Negative shift.");
+            if (shift.isNegative()) JC2_THROW(MathError, "Negative shift.");
             return *this >> static_cast<int>(shift.toInt64());
         }
 
         static BigInt mathMod(const BigInt& a, const BigInt& m) {
-            if (m.isZero()) throw std::runtime_error("Math Error: Modulo by zero.");
+            if (m.isZero()) JC2_THROW(MathError, "Modulo by zero.");
             BigInt r = a % m;
             if (r.isNegative()) r = r + m.abs();
             return r;
@@ -1491,7 +1492,7 @@ namespace jc {
 
         // 基础的 64 位整数幂
         BigInt pow(int64_t exp) const {
-            if (exp < 0) throw std::runtime_error("Math Error: BigInt negative exponent not supported directly here.");
+            if (exp < 0) JC2_THROW(MathError, "BigInt negative exponent not supported directly here.");
             BigInt result(1), base = *this;
             while (exp > 0) {
                 if (exp & 1) result = result * base;
@@ -1503,7 +1504,7 @@ namespace jc {
 
         // 接受 BigInt 指数的高阶包装
         BigInt pow(const BigInt& exp) const {
-            if (exp.isNegative()) throw std::runtime_error("Math Error: Positive exponent expected for BigInt return type.");
+            if (exp.isNegative()) JC2_THROW(MathError, "Positive exponent expected for BigInt return type.");
             // 安全截断：指数极大时转成 int64_t 肯定会溢出报错，但这是合理的，
             // 因为地球上没有计算机能算哪怕 2 甚至 10 的那么高次方的精确大数
             return this->pow(exp.toInt64());
@@ -1563,19 +1564,19 @@ namespace jc {
         friend double operator*(const BigInt& a, double b) { return a.toDouble() * b; }
         friend double operator*(double a, const BigInt& b) { return a * b.toDouble(); }
         friend double operator/(const BigInt& a, double b) {
-            if (b == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            if (b == 0.0) JC2_THROW(MathError, "Division by zero.");
             return a.toDouble() / b;
         }
         friend double operator/(double a, const BigInt& b) {
-            if (b.isZero()) throw std::runtime_error("Math Error: Division by zero.");
+            if (b.isZero()) JC2_THROW(MathError, "Division by zero.");
             return a / b.toDouble();
         }
         friend double operator%(const BigInt& a, double b) {
-            if (b == 0.0) throw std::runtime_error("Math Error: Modulo by zero.");
+            if (b == 0.0) JC2_THROW(MathError, "Modulo by zero.");
             return std::fmod(a.toDouble(), b);
         }
         friend double operator%(double a, const BigInt& b) {
-            if (b.isZero()) throw std::runtime_error("Math Error: Modulo by zero.");
+            if (b.isZero()) JC2_THROW(MathError, "Modulo by zero.");
             return std::fmod(a, b.toDouble());
         }
 
@@ -1627,13 +1628,13 @@ namespace jc {
 
     public:
         static BigInt factorial(int64_t n) {
-            if (n < 0) throw std::runtime_error("Math Error: Factorial undefined for negative numbers.");
+            if (n < 0) JC2_THROW(MathError, "Factorial undefined for negative numbers.");
             if (n == 0 || n == 1) return BigInt(1);
             return factorialRange(2, n);
         }
 
         static BigInt fibonacci(int64_t n) {
-            if (n < 0) throw std::runtime_error("Math Error: Fibonacci undefined for negative.");
+            if (n < 0) JC2_THROW(MathError, "Fibonacci undefined for negative.");
             if (n == 0) return BigInt(0);
             if (n == 1) return BigInt(1);
             BigInt a(0); 
@@ -1657,7 +1658,7 @@ namespace jc {
 
         static BigInt modPow(BigInt base, BigInt exp, const BigInt& mod) {
             if (mod == BigInt(1)) return BigInt(0);
-            if (mod.isNegative()) throw std::runtime_error("Math Error: Modulus must be positive.");
+            if (mod.isNegative()) JC2_THROW(MathError, "Modulus must be positive.");
 
             BigInt result(1);
             base = mathMod(base, mod);
@@ -1833,7 +1834,7 @@ namespace jc {
 
         // --- O(1) 索引空降与动态接力 ---
         static BigInt nthPrime(int64_t n) {
-            if (n < 1) throw std::runtime_error("Math Error: nthPrime requires n >= 1.");
+            if (n < 1) JC2_THROW(MathError, "nthPrime requires n >= 1.");
             
             if (fileIndexed && n <= totalPrimesInFile) {
                 int64_t p = getPrimeAt(n - 1);
@@ -2071,7 +2072,7 @@ namespace jc {
     public:
         std::vector<std::pair<BigInt, int>> factorize() const {
             BigInt n = this->abs();
-            if (n <= BigInt(1)) throw std::runtime_error("Math Error: Factorization requires n > 1.");
+            if (n <= BigInt(1)) JC2_THROW(MathError, "Factorization requires n > 1.");
 
             std::vector<std::pair<BigInt, int>> factors;
 
@@ -2132,7 +2133,7 @@ namespace jc {
 
         BigInt eulerPhi() const {
             BigInt n = this->abs();
-            if (n <= BigInt(0)) throw std::runtime_error("Math Error: n > 0 required.");
+            if (n <= BigInt(0)) JC2_THROW(MathError, "n > 0 required.");
             if (n == BigInt(1)) return BigInt(1);
             auto factors = n.factorize();
             BigInt result = n;
@@ -2142,7 +2143,7 @@ namespace jc {
 
         BigInt divisorCount() const {
             BigInt n = this->abs();
-            if (n <= BigInt(0)) throw std::runtime_error("Math Error: n > 0 required.");
+            if (n <= BigInt(0)) JC2_THROW(MathError, "n > 0 required.");
             if (n == BigInt(1)) return BigInt(1);
             auto factors = n.factorize();
             BigInt result(1);
@@ -2152,7 +2153,7 @@ namespace jc {
 
         BigInt divisorSum(int64_t k = 1) const {
             BigInt n = this->abs();
-            if (n <= BigInt(0)) throw std::runtime_error("Math Error: n > 0 required.");
+            if (n <= BigInt(0)) JC2_THROW(MathError, "n > 0 required.");
             if (n == BigInt(1)) return BigInt(1);
             auto factors = n.factorize();
             BigInt result(1);

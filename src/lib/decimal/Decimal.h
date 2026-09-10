@@ -886,7 +886,7 @@ public:
         bool has_digits = false;
         for (; i < s.length(); ++i) {
             if (s[i] == '.') {
-                if (in_frac) throw std::runtime_error("ValueError: Invalid decimal string (multiple decimal points).");
+                if (in_frac) JC2_THROW(ValueError, "Invalid decimal string (multiple decimal points).");
                 in_frac = true;
             } else if (s[i] >= '0' && s[i] <= '9') {
                 m_str += s[i];
@@ -896,19 +896,19 @@ public:
                 try {
                     e = std::stoll(s.substr(i + 1));
                 } catch (...) {
-                    throw std::runtime_error("ValueError: Invalid exponent in decimal string.");
+                    JC2_THROW(ValueError, "Invalid exponent in decimal string.");
                 }
                 break;
             } else if (std::isspace(static_cast<unsigned char>(s[i]))) {
                 size_t j = i;
                 while (j < s.length() && std::isspace(static_cast<unsigned char>(s[j]))) j++;
                 if (j == s.length()) break;
-                throw std::runtime_error("ValueError: Invalid character in decimal string.");
+                JC2_THROW(ValueError, "Invalid character in decimal string.");
             } else {
-                throw std::runtime_error("ValueError: Invalid character in decimal string.");
+                JC2_THROW(ValueError, "Invalid character in decimal string.");
             }
         }
-        if (!has_digits) throw std::runtime_error("ValueError: No digits found in decimal string.");
+        if (!has_digits) JC2_THROW(ValueError, "No digits found in decimal string.");
         if (m_str.empty() || m_str == "+" || m_str == "-") m_str += "0";
         return Decimal(DecInt(m_str), e - frac_count);
     }
@@ -1042,7 +1042,7 @@ public:
     }
 
     Decimal inverse() const {
-        if (mantissa.isZero()) throw std::runtime_error("DivisionByZero: Decimal division by zero.");
+        if (mantissa.isZero()) JC2_THROW(MathError, "Decimal division by zero.");
         
         int64_t L = mantissa.digitCount();
         int64_t E = exp + L - 1;
@@ -1087,7 +1087,7 @@ public:
 
     Decimal div(const Decimal& other) const {
         if (other.mantissa.isZero()) {
-            throw std::runtime_error("DivisionByZero: Decimal division by zero.");
+            JC2_THROW(MathError, "Decimal division by zero.");
         }
         if (mantissa.isZero()) return Decimal(DecInt(0), 0);
         
@@ -1167,7 +1167,7 @@ public:
     Decimal sqrt() const {
         if (mantissa.isZero()) return *this;
         if (mantissa.isNegative()) {
-            throw std::runtime_error("MathError: sqrt of negative decimal.");
+            JC2_THROW(MathError, "sqrt of negative decimal.");
         }
         
         int64_t L = mantissa.digitCount();
@@ -1254,7 +1254,7 @@ public:
         }
 
         if (!std::isfinite(guess_val)) {
-            if (d > 0) throw std::runtime_error("Overflow: exp result too large.");
+            if (d > 0) JC2_THROW(OverflowError, "exp result too large.");
             return Decimal(DecInt(0), 0);
         }
 
@@ -1579,7 +1579,7 @@ public:
 
     Decimal ln_val() const {
         if (mantissa.isZero() || mantissa.isNegative()) {
-            throw std::runtime_error("MathError: ln of non-positive decimal.");
+            JC2_THROW(MathError, "ln of non-positive decimal.");
         }
         if (this->eq(Decimal(DecInt(1), 0))) return Decimal(DecInt(0), 0);
 
@@ -1673,7 +1673,7 @@ public:
     Decimal asin_val() const {
         Decimal one(DecInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
-            throw std::runtime_error("MathError: asin domain error.");
+            JC2_THROW(MathError, "asin domain error.");
         }
         double d;
         try {
@@ -1717,7 +1717,7 @@ public:
     Decimal acos_val() const {
         Decimal one(DecInt(1), 0);
         if (this->abs().lt(one) == false && !this->abs().eq(one)) {
-            throw std::runtime_error("MathError: acos domain error.");
+            JC2_THROW(MathError, "acos domain error.");
         }
         double d;
         try {

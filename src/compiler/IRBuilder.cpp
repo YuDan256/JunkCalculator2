@@ -3926,7 +3926,7 @@ static Value evaluateConstantExpr(Expr* expr) {
         if (bin->op.type == TokenType::BIT_OR) return left | right;
         if (bin->op.type == TokenType::BIT_XOR) return bitXor(left, right);
     }
-    throw std::runtime_error("CompileError: Enum member value must be a compile-time constant.");
+    JC2_THROW(ParserError, "Enum member value must be a compile-time constant.");
 }
 
 void IRBuilder::visitEnumDefExpr(EnumDefExpr* expr) {

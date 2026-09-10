@@ -115,7 +115,7 @@ namespace jc {
             BigInt temp_r = r - quotient * newr;
             r = newr; newr = temp_r;
         }
-        if (r > BigInt(1)) throw std::runtime_error("Math Error: Not invertible in Zp");
+        if (r > BigInt(1)) JC2_THROW(MathError, "Not invertible in Zp");
         if (t.isNegative()) {
             t = t % p;
             if (t.isNegative()) t = t + p;
@@ -158,7 +158,7 @@ namespace jc {
     }
 
     static std::pair<PolyZp, PolyZp> divP(PolyZp a, const PolyZp& b, const BigInt& p) {
-        if (b.empty()) throw std::runtime_error("Math Error: Division by zero poly in Zp");
+        if (b.empty()) JC2_THROW(MathError, "Division by zero poly in Zp");
         trimP(a);
         if (a.size() < b.size()) return {{}, a};
         PolyZp q(a.size() - b.size() + 1, BigInt(0));
@@ -305,7 +305,7 @@ namespace jc {
             int64_t temp_r = r - quotient * newr;
             r = newr; newr = temp_r;
         }
-        if (r > 1) throw std::runtime_error("Math Error: Not invertible in Zp");
+        if (r > 1) JC2_THROW(MathError, "Not invertible in Zp");
         if (t < 0) {
             t = t % p;
             if (t < 0) t += p;
@@ -348,7 +348,7 @@ namespace jc {
     }
 
     static std::pair<PolyZp64, PolyZp64> divP64(PolyZp64 a, const PolyZp64& b, int64_t p) {
-        if (b.empty()) throw std::runtime_error("Math Error: Division by zero poly in Zp");
+        if (b.empty()) JC2_THROW(MathError, "Division by zero poly in Zp");
         trimP64(a);
         if (a.size() < b.size()) return {{}, a};
         PolyZp64 q(a.size() - b.size() + 1, 0);

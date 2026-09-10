@@ -156,7 +156,7 @@ static JC2_ValueHandle host_make_class(JC2_VMContext, const char* name) {
 
 static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_handle) {
     Value clsVal = from_handle(class_handle);
-    if (!clsVal.isClass()) throw std::runtime_error("Type Error: make_instance expects a Class handle.");
+    if (!clsVal.isClass()) JC2_THROW(TypeError, "make_instance expects a Class handle.");
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
     return protect(Value(inst));
@@ -164,7 +164,7 @@ static JC2_ValueHandle host_make_instance(JC2_VMContext, JC2_ValueHandle class_h
 
 static void host_bind_method(JC2_VMContext, JC2_ValueHandle class_handle, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, void* user_data) {
     Value clsVal = from_handle(class_handle);
-    if (!clsVal.isClass()) throw std::runtime_error("Type Error: bind_method expects a Class handle.");
+    if (!clsVal.isClass()) JC2_THROW(TypeError, "bind_method expects a Class handle.");
     ObjClass* cls = static_cast<ObjClass*>(clsVal.asObj());
     
     NativeCallable callable = [fn, user_data](const std::vector<Value>& args) -> Value {
@@ -703,7 +703,7 @@ static void host_set_class_allocator(JC2_VMContext, JC2_ValueHandle cls, JC2_Nat
 static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle inst, const char* name) {
     std::string keyStr(name);
     if (jc::isReservedInternalName(keyStr)) {
-        throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+        JC2_THROW(RuntimeError, "Cannot access private or lifecycle properties dynamically.");
     }
     Value i = from_handle(inst);
     if (i.isInstance()) {
@@ -719,7 +719,7 @@ static JC2_ValueHandle host_instance_get_field(JC2_VMContext, JC2_ValueHandle in
 static void host_instance_set_field(JC2_VMContext, JC2_ValueHandle inst, const char* name, JC2_ValueHandle val) {
     std::string keyStr(name);
     if (jc::isReservedInternalName(keyStr)) {
-        throw std::runtime_error("Runtime Error: Cannot access private or lifecycle properties dynamically.");
+        JC2_THROW(RuntimeError, "Cannot access private or lifecycle properties dynamically.");
     }
     Value i = from_handle(inst);
     if (i.isInstance()) {

@@ -94,7 +94,7 @@ namespace jc {
         inline Token advance() { 
             if (!isAtEnd()) current++; 
             Token t = previous();
-            if (t.type == TokenType::ERROR) throw std::runtime_error("Lexer Error: " + t.lexeme);
+            if (t.type == TokenType::ERROR) JC2_THROW(LexerError, "" + t.lexeme);
             return t; 
         }
         inline Token peek() const { return tokens[current]; }

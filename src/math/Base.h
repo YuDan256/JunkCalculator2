@@ -99,7 +99,7 @@ namespace jc {
         // 字符串解析引擎：完美复刻 JC1 的 enterBase1 / 2 / 3
         // =================================================================================
         static BaseNum fromString(std::string numStr, int r) {
-            if (r < 2) throw std::runtime_error("Math Error: Radix must be >= 2.");
+            if (r < 2) JC2_THROW(MathError, "Radix must be >= 2.");
             bool isNeg = false;
 
             // 处理正负号
@@ -207,7 +207,7 @@ namespace jc {
         // 原汁原味的二进制位运算 (Strict Binary Bitwise)
         // =================================================================================
         void assertBinary(const BaseNum& b, const std::string& op) const {
-            if (radix != 2 || b.radix != 2) throw std::runtime_error("Base Error: Bitwise " + op + " only defined for base 2.");
+            if (radix != 2 || b.radix != 2) JC2_THROW(ValueError, "Bitwise " + op + " only defined for base 2.");
         }
 
         BaseNum bitAnd(const BaseNum& b) const { assertBinary(b, "AND"); return BaseNum(doBitwise(data, b.data, '&'), 2); }
@@ -243,8 +243,8 @@ namespace jc {
         }
 
         BaseNum bitNot(int width = 0) const {
-            if (radix != 2) throw std::runtime_error("Base Error: Bitwise NOT only defined for base 2.");
-            if (data.isNegative()) throw std::runtime_error("Base Error: Bitwise NOT on negative numbers requires explicit width.");
+            if (radix != 2) JC2_THROW(ValueError, "Bitwise NOT only defined for base 2.");
+            if (data.isNegative()) JC2_THROW(ValueError, "Bitwise NOT on negative numbers requires explicit width.");
             // 确定位宽
             int w = width;
             if (w <= 0) {
@@ -258,11 +258,11 @@ namespace jc {
         }
 
         BaseNum shiftLeft(int shift) const {
-            if (shift < 0) throw std::runtime_error("Base Error: Negative shift count.");
+            if (shift < 0) JC2_THROW(ValueError, "Negative shift count.");
             return BaseNum(data * BigInt(radix).pow(shift), radix);
         }
         BaseNum shiftRight(int shift) const {
-            if (shift < 0) throw std::runtime_error("Base Error: Negative shift count.");
+            if (shift < 0) JC2_THROW(ValueError, "Negative shift count.");
             return BaseNum(data / BigInt(radix).pow(shift), radix);
         }
 

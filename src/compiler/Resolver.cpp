@@ -1,4 +1,5 @@
 #include "Resolver.h"
+#include "../memory/Exceptions.h"
 #include <set>
 
 namespace jc {
@@ -10,7 +11,7 @@ void Resolver::checkExplicitDecl(void* node, const std::string& name) {
     checkedDecls.insert(node);
     
     if (scopes.back().lexicalDecls.count(name)) {
-        throw std::runtime_error("SyntaxError: Variable '" + name + "' has already been declared in this scope.");
+        JC2_THROW(SyntaxError, "Variable '" + name + "' has already been declared in this scope.");
     }
 }
 
@@ -153,7 +154,7 @@ void Resolver::hoistBlock(Block* block) {
 
 void Resolver::visitVariable(Variable* expr) {
     if (expr->name.lexeme == "_") {
-        throw std::runtime_error("SyntaxError: '_' is a placeholder and cannot be read.");
+        JC2_THROW(SyntaxError, "'_' is a placeholder and cannot be read.");
     }
     exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
@@ -311,7 +312,7 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     beginScope(true, false);
     for (size_t i = 0; i < expr->params.size(); ++i) {
         if (expr->params[i].lexeme != "_" && scopes.back().lexicalDecls.count(expr->params[i].lexeme)) {
-            throw std::runtime_error("SyntaxError: Parameter '" + expr->params[i].lexeme + "' has already been declared.");
+            JC2_THROW(SyntaxError, "Parameter '" + expr->params[i].lexeme + "' has already been declared.");
         }
         
         VarScope scope = expr->paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
@@ -574,13 +575,13 @@ void Resolver::visitMatchExpr(MatchExpr* expr) {
             if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
                 if (vp->name.lexeme != "_" && !vp->name.lexeme.empty()) {
                     if (!seen.insert(vp->name.lexeme).second) {
-                        throw std::runtime_error("SyntaxError: Variable '" + vp->name.lexeme + "' has already been declared in this pattern.");
+                        JC2_THROW(SyntaxError, "Variable '" + vp->name.lexeme + "' has already been declared in this pattern.");
                     }
                 }
             } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
                 if (rp->name.lexeme != "_" && !rp->name.lexeme.empty()) {
                     if (!seen.insert(rp->name.lexeme).second) {
-                        throw std::runtime_error("SyntaxError: Variable '" + rp->name.lexeme + "' has already been declared in this pattern.");
+                        JC2_THROW(SyntaxError, "Variable '" + rp->name.lexeme + "' has already been declared in this pattern.");
                     }
                 }
             } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
@@ -627,7 +628,7 @@ void Resolver::visitMatchExpr(MatchExpr* expr) {
                 collectVars(p.get(), vars, collectVars);
                 if (first) { baseVars = std::move(vars); first = false; }
                 else if (vars != baseVars) {
-                    throw std::runtime_error("Compile Error: In a comma-separated (or) pattern, every alternative must bind the same set of variables.");
+                    JC2_THROW(ParserError, "In a comma-separated (or) pattern, every alternative must bind the same set of variables.");
                 }
             }
         }
@@ -649,7 +650,7 @@ void Resolver::visitMacroDefExpr(MacroDefExpr* expr) {
     beginScope(true, false);
     for (auto& p : expr->params) {
         if (p.lexeme != "_" && scopes.back().lexicalDecls.count(p.lexeme)) {
-            throw std::runtime_error("SyntaxError: Parameter '" + p.lexeme + "' has already been declared.");
+            JC2_THROW(SyntaxError, "Parameter '" + p.lexeme + "' has already been declared.");
         }
         declareVariable(p.lexeme, VarScope::Local, false, true);
     }

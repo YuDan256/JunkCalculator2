@@ -169,7 +169,7 @@ public:
                 {"defaultExpr", defVal}
             });
         }
-        throw std::runtime_error("Macro Error: Unsupported pattern type");
+        JC2_THROW(RuntimeError, "Unsupported pattern type");
     }
 
     void visitBlock(Block* expr) override {
@@ -782,7 +782,7 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val, MacroExpandFunc expander
     } else if (type == "DefaultPattern") {
         return std::make_unique<DefaultPattern>(toPat(getProp("inner")), toAST(getProp("defaultExpr")));
     }
-    throw std::runtime_error("Macro Error: Unsupported pattern type '" + type + "'");
+    JC2_THROW(RuntimeError, "Unsupported pattern type '" + type + "'");
 }
 
 std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int quoteDepth) {
@@ -803,11 +803,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<SequenceExpr>(std::move(exprs));
     }
 
-    if (!val.isInstance()) throw std::runtime_error("Macro Error: Expected ASTNode instance or List of ASTNodes");
+    if (!val.isInstance()) JC2_THROW(RuntimeError, "Expected ASTNode instance or List of ASTNodes");
     
     auto inst = val.asInstance();
     if (!inst->classDef || inst->classDef->name != "ASTNode") {
-        throw std::runtime_error("Macro Error: Expected ASTNode instance or List of ASTNodes");
+        JC2_THROW(RuntimeError, "Expected ASTNode instance or List of ASTNodes");
     }
     
     auto getProp = [&](const std::string& key) -> Value {
@@ -1332,7 +1332,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         );
     }
 
-    throw std::runtime_error("Macro Error: Unsupported node type '" + type + "'");
+    JC2_THROW(RuntimeError, "Unsupported node type '" + type + "'");
 }
 
 } // namespace jc

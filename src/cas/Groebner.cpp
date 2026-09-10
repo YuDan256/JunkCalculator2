@@ -69,7 +69,7 @@ namespace jc {
         Monomial res;
         size_t i1 = 0, i2 = 0;
         while (i1 < size && i2 < other.size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             if (powers[i1].first < other.powers[i2].first) {
                 res.powers[res.size++] = powers[i1++];
             } else if (powers[i1].first > other.powers[i2].first) {
@@ -81,11 +81,11 @@ namespace jc {
             }
         }
         while (i1 < size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             res.powers[res.size++] = powers[i1++];
         }
         while (i2 < other.size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             res.powers[res.size++] = other.powers[i2++];
         }
         return res;
@@ -109,7 +109,7 @@ namespace jc {
         Monomial res;
         size_t i1 = 0, i2 = 0;
         while (i1 < size && i2 < other.size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             if (powers[i1].first < other.powers[i2].first) {
                 res.powers[res.size++] = powers[i1++];
             } else if (powers[i1].first > other.powers[i2].first) {
@@ -121,7 +121,7 @@ namespace jc {
             }
         }
         while (i1 < size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             res.powers[res.size++] = powers[i1++];
         }
         return res;
@@ -131,7 +131,7 @@ namespace jc {
         Monomial res;
         size_t i1 = 0, i2 = 0;
         while (i1 < size && i2 < other.size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             if (powers[i1].first < other.powers[i2].first) {
                 res.powers[res.size++] = powers[i1++];
             } else if (powers[i1].first > other.powers[i2].first) {
@@ -142,11 +142,11 @@ namespace jc {
             }
         }
         while (i1 < size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             res.powers[res.size++] = powers[i1++];
         }
         while (i2 < other.size) {
-            if (res.size >= MAX_VARS) throw std::runtime_error("Groebner Error: Max variables exceeded.");
+            if (res.size >= MAX_VARS) JC2_THROW(MathError, "Max variables exceeded.");
             res.powers[res.size++] = other.powers[i2++];
         }
         return res;
@@ -348,7 +348,7 @@ namespace jc {
     }
 
     MultiPoly MultiPoly::exactDivide(const MultiPoly& divisor) const {
-        if (divisor.isZero()) throw std::runtime_error("Math Error: Division by zero in MultiPoly.");
+        if (divisor.isZero()) JC2_THROW(MathError, "Division by zero in MultiPoly.");
         if (isZero()) return MultiPoly();
         
         if (divisor.terms.size() == 1 && divisor.terms[0].mono.isOne()) {

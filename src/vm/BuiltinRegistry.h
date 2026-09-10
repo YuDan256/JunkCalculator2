@@ -21,7 +21,7 @@ namespace helpers {
 
     inline ObjDict* getDictMap(const Value& v, const std::string& fnName) {
         if (v.isObjType(ObjType::DICT)) return static_cast<ObjDict*>(v.asObj());
-        throw std::runtime_error("Type Error: " + fnName + "() expects a Dict.");
+        JC2_THROW(TypeError, "" + fnName + "() expects a Dict.");
     }
 
     inline bool isTruthy(const Value& v) {
@@ -124,7 +124,7 @@ namespace helpers {
         const std::vector<Value>& args) {
         if (callValueCallback) return callValueCallback(callee, args);
         if (callee.isFunctionClosure()) return callClosure(callee.asFunction(), args);
-        throw std::runtime_error("Runtime Error: Value is not callable.");
+        JC2_THROW(RuntimeError, "Value is not callable.");
     }
     // 判断可调用值是否接受指定参数个数（函数按 closure 判定；可调用类型按 converterArity；类/__call__ 实例宽松放行）
     inline bool callableAcceptsArgCount(const Value& callee, int n) {
@@ -229,7 +229,7 @@ namespace helpers {
             auto [found, unpacked] = invokeDunder(iterable.asInstance(), "__unpack__");
             if (found) {
                 GcValueGuard guard(unpacked);
-                if (!unpacked.isObjType(ObjType::LIST)) throw std::runtime_error("Type Error: __unpack__() must return a list.");
+                if (!unpacked.isObjType(ObjType::LIST)) JC2_THROW(TypeError, "__unpack__() must return a list.");
                 for (auto& e : static_cast<ObjList*>(unpacked.asObj())->vec) out.push_back(e);
                 return true;
             }
@@ -320,7 +320,7 @@ namespace helpers {
             return lhs.asString() < rhs.asString();
 
         if (lhs.isString() || rhs.isString())
-            throw std::runtime_error("Type Error: Cannot compare string with non-string type.");
+            JC2_THROW(TypeError, "Cannot compare string with non-string type.");
 
         if (lhs.isBigInt() && rhs.isBigInt())
             return lhs.asBigInt() < rhs.asBigInt();
@@ -337,7 +337,7 @@ namespace helpers {
 
         // ★ 新增：符号表达式不支持数值大小比较
         if (lhs.isSymbolic() || rhs.isSymbolic())
-            throw std::runtime_error("Type Error: Cannot compare symbolic expressions with '<' or '>'.");
+            JC2_THROW(TypeError, "Cannot compare symbolic expressions with '<' or '>'.");
 
         double a = lhs.asDouble(), b = rhs.asDouble();
         return (a < b && !Tol::isEq(a, b));

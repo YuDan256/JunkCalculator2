@@ -103,7 +103,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::operator/(const SymExpr& scalar) const {
-        if (isSymZero(scalar)) throw std::runtime_error("SymMatrix Error: Division by zero.");
+        if (isSymZero(scalar)) JC2_THROW(SymbolicError, "Division by zero.");
         SymMatrix result(rows, cols);
         for (size_t i = 0; i < data.size(); ++i) {
             result.data[i] = data[i] / scalar;
@@ -405,14 +405,14 @@ namespace jc {
         if (rows != cols) throw std::invalid_argument("SymMatrix Error: Inverse requires a square matrix.");
         if (rows == 0) return SymMatrix();
         if (rows == 1) {
-            if (isSymZero((*this)(0, 0))) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
+            if (isSymZero((*this)(0, 0))) JC2_THROW(SymbolicError, "Matrix is singular and cannot be inverted.");
             SymMatrix res(1, 1);
             res(0, 0) = SymExpr(BigInt(1)) / (*this)(0, 0);
             return res;
         }
         if (rows == 2) {
             SymExpr det = jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
-            if (isSymZero(det)) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
+            if (isSymZero(det)) JC2_THROW(SymbolicError, "Matrix is singular and cannot be inverted.");
             SymMatrix res(2, 2);
             res(0, 0) = jc::simplify((*this)(1, 1) / det);
             res(0, 1) = jc::simplify(-(*this)(0, 1) / det);
@@ -440,7 +440,7 @@ namespace jc {
             while (pivot_row < n && aug[pivot_row][k].isZero()) {
                 pivot_row++;
             }
-            if (pivot_row == n) throw std::runtime_error("SymMatrix Error: Matrix is singular and cannot be inverted.");
+            if (pivot_row == n) JC2_THROW(SymbolicError, "Matrix is singular and cannot be inverted.");
 
             if (pivot_row != k) {
                 std::swap(aug[k], aug[pivot_row]);
@@ -743,10 +743,10 @@ namespace jc {
             try {
                 return inverse() * b;
             } catch (...) {
-                throw std::runtime_error("SymMatrix Error: Matrix is singular in solve.");
+                JC2_THROW(SymbolicError, "Matrix is singular in solve.");
             }
         }
-        throw std::runtime_error("SymMatrix Error: solve for non-square matrices is not implemented yet.");
+        JC2_THROW(SymbolicError, "solve for non-square matrices is not implemented yet.");
     }
 
     std::pair<SymMatrix, SymMatrix> SymMatrix::lu() const {
@@ -756,7 +756,7 @@ namespace jc {
         SymMatrix U = *this;
         for (int i = 0; i < n; ++i) {
             checkInterrupt();
-            if (isSymZero(U(i, i))) throw std::runtime_error("SymMatrix Error: LU decomposition failed due to zero pivot.");
+            if (isSymZero(U(i, i))) JC2_THROW(SymbolicError, "LU decomposition failed due to zero pivot.");
             for (int j = i + 1; j < n; ++j) {
                 SymExpr factor = jc::simplify(U(j, i) / U(i, i));
                 L(j, i) = factor;
@@ -813,7 +813,7 @@ namespace jc {
         }
         
         if (total_evecs < rows) {
-            throw std::runtime_error("SymMatrix Error: Matrix is not diagonalizable (not enough linearly independent eigenvectors).");
+            JC2_THROW(SymbolicError, "Matrix is not diagonalizable (not enough linearly independent eigenvectors).");
         }
         
         SymMatrix P(rows, rows);

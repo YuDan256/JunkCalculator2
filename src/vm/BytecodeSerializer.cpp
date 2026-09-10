@@ -143,7 +143,7 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         }
         return;
     }
-    throw std::runtime_error("BytecodeSerializer Error: Unsupported constant type for serialization.");
+    JC2_THROW(InternalError, "Unsupported constant type for serialization.");
 }
 
 Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
@@ -217,7 +217,7 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
             uint32_t offset = read32(is);
             return Value(static_cast<double>(baseIdx + offset));
         }
-        default: throw std::runtime_error("JCB Read Error: Unknown constant tag.");
+        default: JC2_THROW(InternalError, "Unknown constant tag.");
     }
 }
 
@@ -474,13 +474,13 @@ void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex
         throw std::runtime_error("JCB_COMPRESS_FAILED");
     }
     std::ofstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
     file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
 }
 
 std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string& path, VM* vm) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    if (!file) JC2_THROW(IOError, "Cannot open file for reading: " + path);
     file.seekg(0, std::ios::end);
     std::streamsize fsize = file.tellg();
     file.seekg(0, std::ios::beg);
@@ -782,13 +782,13 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
         throw std::runtime_error("JCW_COMPRESS_FAILED");
     }
     std::ofstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("IO Error: Cannot open file for writing: " + path);
+    if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
     file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
 }
 
 void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bool infoOnly) {
     std::ifstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("IO Error: Cannot open file for reading: " + path);
+    if (!file) JC2_THROW(IOError, "Cannot open file for reading: " + path);
     file.seekg(0, std::ios::end);
     std::streamsize fsize = file.tellg();
     file.seekg(0, std::ios::beg);

@@ -122,7 +122,7 @@ namespace jc {
         if (v.isObjType(ObjType::FRACTION))  return static_cast<ObjFraction*>(v.asObj())->frac;
         if (v.isDouble())                    return v.asDoubleRaw();
         if (v.isInt32())                     return v.asInt32();
-        throw std::runtime_error("CAS Error: Cannot convert value to CAS type.");
+        JC2_THROW(MathError, "Cannot convert value to CAS type.");
     }
 
     // ==========================================
@@ -1001,10 +1001,10 @@ namespace jc {
     // ==========================================
     SymExpr operator/(const SymExpr& a, const SymExpr& b) {
         if (!a.ptr) return SymExpr(BigInt(0));
-        if (!b.ptr || b.isZero()) throw std::runtime_error("CAS Error: Division by zero.");
+        if (!b.ptr || b.isZero()) JC2_THROW(MathError, "Division by zero.");
 
         auto [bOk, bVal] = tryEvalConst(b);
-        if (bOk && !bVal.truthy()) throw std::runtime_error("CAS Error: Division by zero.");
+        if (bOk && !bVal.truthy()) JC2_THROW(MathError, "Division by zero.");
 
         if (b.ptr->getType() == SymType::NUM) {
             auto numNode = static_cast<SymNum*>(b.ptr);
@@ -1031,14 +1031,14 @@ namespace jc {
         bool bIsZero = b.isZero() || (bOk && !bVal.truthy());
 
         if (aIsZero) {
-            if (bIsZero) throw std::runtime_error("CAS Error: 0^0 is undefined.");
+            if (bIsZero) JC2_THROW(MathError, "0^0 is undefined.");
             bool bIsNeg = false;
             if (bOk) {
                 try { bIsNeg = bVal.asDouble() < 0.0; } catch(...) {}
             } else if (b.ptr->getType() == SymType::NUM) {
                 bIsNeg = isCasNegative(static_cast<SymNum*>(b.ptr)->value);
             }
-            if (bIsNeg) throw std::runtime_error("CAS Error: Division by zero.");
+            if (bIsNeg) JC2_THROW(MathError, "Division by zero.");
             return SymExpr(0);
         }
         if (a.isOne() || bIsZero) return SymExpr(BigInt(1));
@@ -1911,7 +1911,7 @@ namespace jc {
                 }
                 
                 if (nextTerms.size() > static_cast<size_t>(maxPowTerms)) {
-                    throw std::runtime_error("Math Error: Expansion exceeded max terms limit.");
+                    JC2_THROW(MathError, "Expansion exceeded max terms limit.");
                 }
                 
                 // 过滤零项并利用 operator+ 的展平与合并机制，一次性合并所有项！
@@ -2304,8 +2304,8 @@ namespace jc {
     // ==========================================
     static std::vector<std::complex<double>> findRootsNumeric(const std::vector<std::complex<double>>& numCoeffs) {
         int n = static_cast<int>(numCoeffs.size()) - 1;
-        if (n < 1) throw std::runtime_error("Numerical Error: Degree < 1.");
-        if (std::abs(numCoeffs[n]) < 1e-15) throw std::runtime_error("Numerical Error: Leading coefficient evaluated to zero.");
+        if (n < 1) JC2_THROW(MathError, "Degree < 1.");
+        if (std::abs(numCoeffs[n]) < 1e-15) JC2_THROW(MathError, "Leading coefficient evaluated to zero.");
 
         std::vector<std::complex<double>> roots(n);
         std::complex<double> r(0.4, 0.9);
@@ -2351,7 +2351,7 @@ namespace jc {
         std::string dummy = static_cast<SymVar*>(func->args[1])->name;
 
         auto coeffs = extractCoeffs(P, dummy);
-        if (coeffs.empty()) throw std::runtime_error("Numerical Error: Polynomial extraction failed for Root node.");
+        if (coeffs.empty()) JC2_THROW(MathError, "Polynomial extraction failed for Root node.");
 
         std::vector<std::complex<double>> numCoeffs;
         for (const auto& c : coeffs) {
@@ -2373,7 +2373,7 @@ namespace jc {
                 auto [isInt, val] = extractExactInt(static_cast<SymNum*>(func->args[2])->value);
                 if (isInt) k = static_cast<int>(val);
             }
-            if (k < 1 || k > n) throw std::runtime_error("Numerical Error: Root index out of bounds.");
+            if (k < 1 || k > n) JC2_THROW(MathError, "Root index out of bounds.");
             auto root = roots[k - 1];
             if (std::abs(root.imag()) < 1e-12) return Value(root.real());
             return Value(Complex(root.real(), root.imag()));
@@ -2930,7 +2930,7 @@ namespace jc {
                 }
             }
 
-            throw std::runtime_error("Calculus Error: Derivative of function '" + name + "' with " + std::to_string(arity) + " argument(s) is not implemented yet.");
+            JC2_THROW(CalculusError, "Derivative of function '" + name + "' with " + std::to_string(arity) + " argument(s) is not implemented yet.");
         }
         default:
             return SymExpr(BigInt(0));
@@ -3836,7 +3836,7 @@ namespace jc {
 
     static std::pair<std::vector<SymExpr>, std::vector<SymExpr>> polyDivCoeffs(std::vector<SymExpr> A, const std::vector<SymExpr>& B) {
         trimCoeffs(A);
-        if (B.empty()) throw std::runtime_error("Math Error: Division by zero polynomial.");
+        if (B.empty()) JC2_THROW(MathError, "Division by zero polynomial.");
         int degA = static_cast<int>(A.size()) - 1;
         int degB = static_cast<int>(B.size()) - 1;
         
@@ -3861,7 +3861,7 @@ namespace jc {
 
     static std::vector<SymExpr> polyPseudoRemCoeffs(std::vector<SymExpr> A, const std::vector<SymExpr>& B) {
         trimCoeffs(A);
-        if (B.empty()) throw std::runtime_error("Math Error: Division by zero polynomial.");
+        if (B.empty()) JC2_THROW(MathError, "Division by zero polynomial.");
         int degA = static_cast<int>(A.size()) - 1;
         int degB = static_cast<int>(B.size()) - 1;
         
@@ -3875,7 +3875,7 @@ namespace jc {
         while (degA >= degB) {
             checkInterrupt();
             if (getAstNodeCount(A.back()) > SymConfig::maxAstNodes) {
-                throw std::runtime_error("Math Error: polyPseudoRemCoeffs failed due to coefficient explosion.");
+                JC2_THROW(MathError, "polyPseudoRemCoeffs failed due to coefficient explosion.");
             }
             SymExpr leadA = A.back();
             
@@ -3911,7 +3911,7 @@ namespace jc {
         auto coeffsA = extractCoeffs(dividend, var);
         auto coeffsB = extractCoeffs(divisor, var);
         
-        if (coeffsB.empty()) throw std::runtime_error("Math Error: Divisor is not a polynomial in " + var);
+        if (coeffsB.empty()) JC2_THROW(MathError, "Divisor is not a polynomial in " + var);
         if (coeffsA.empty()) return {SymExpr(BigInt(0)), dividend};
         
         auto [coeffsQ, coeffsR] = polyDivCoeffs(coeffsA, coeffsB);
@@ -3945,7 +3945,7 @@ namespace jc {
     // 专为 Bareiss 算法设计的纯多项式环精确除法器 (Fraction-Free)
     SymExpr bareissExactDiv(const SymExpr& dividend, const SymExpr& divisor) {
         if (divisor.isOne()) return dividend;
-        if (divisor.isZero()) throw std::runtime_error("Math Error: Bareiss exact division by zero.");
+        if (divisor.isZero()) JC2_THROW(MathError, "Bareiss exact division by zero.");
         
         std::set<std::string> varsDivisor;
         collectAllVars(divisor.ptr, varsDivisor);
@@ -4009,7 +4009,7 @@ namespace jc {
         auto coeffsA = extractCoeffs(dividend, var);
         auto coeffsB = extractCoeffs(divisor, var);
         
-        if (coeffsB.empty()) throw std::runtime_error("Math Error: Divisor is not a polynomial in " + var);
+        if (coeffsB.empty()) JC2_THROW(MathError, "Divisor is not a polynomial in " + var);
         if (coeffsA.empty()) return dividend;
         
         auto coeffsR = polyPseudoRemCoeffs(coeffsA, coeffsB);
@@ -4046,7 +4046,7 @@ namespace jc {
         while (!coeffsB.empty()) {
             checkInterrupt();
             if (++iter > SymConfig::maxIterations) {
-                throw std::runtime_error("Math Error: polyGCD infinite loop detected.");
+                JC2_THROW(MathError, "polyGCD infinite loop detected.");
             }
             int degA = static_cast<int>(coeffsA.size()) - 1;
             int degB = static_cast<int>(coeffsB.size()) - 1;
@@ -4139,7 +4139,7 @@ namespace jc {
         while (getDegree(V, var) > 0) {
             checkInterrupt();
             if (i > maxI + 2 || i > SymConfig::maxIterations) {
-                throw std::runtime_error("Math Error: polySquareFree failed due to algebraic deadlock.");
+                JC2_THROW(MathError, "polySquareFree failed due to algebraic deadlock.");
             }
             SymExpr dV = diff(V, var);
             SymExpr W_minus_dV = simplifyFrac(W - dV);
@@ -4174,7 +4174,7 @@ namespace jc {
         while (!r1.isZero()) {
             checkInterrupt();
             if (++iter > SymConfig::maxIterations) {
-                throw std::runtime_error("Math Error: polyEGCD infinite loop detected.");
+                JC2_THROW(MathError, "polyEGCD infinite loop detected.");
             }
             auto [q, r] = polyDiv(r0, r1, var);
             r0 = r1; r1 = r;
@@ -4184,7 +4184,7 @@ namespace jc {
             t0 = t1; t1 = t_temp;
             
             if (getAstNodeCount(s1) > SymConfig::maxAstNodes || getAstNodeCount(t1) > SymConfig::maxAstNodes) {
-                throw std::runtime_error("Math Error: polyEGCD failed due to coefficient explosion.");
+                JC2_THROW(MathError, "polyEGCD failed due to coefficient explosion.");
             }
         }
 
@@ -4589,7 +4589,7 @@ namespace jc {
                     }
                 }
             } else if (poly.terms.size() == 1 && poly.terms[0].mono.isOne()) {
-                throw std::runtime_error("Math Error: Division by zero (denominator is algebraically zero).");
+                JC2_THROW(MathError, "Division by zero (denominator is algebraically zero).");
             }
         }
 
@@ -5158,7 +5158,7 @@ namespace jc {
                             if (checkExpEq(term2, term1)) return;
                         }
                     }
-                    throw std::runtime_error("Solver Error: Transcendental or non-polynomial equation is not supported yet.");
+                    JC2_THROW(RuntimeError, "Transcendental or non-polynomial equation is not supported yet.");
                 }
                 return;
             }
@@ -5376,7 +5376,7 @@ namespace jc {
     // 🚀 泰勒展开 (Taylor Series)
     // =================================================================
     SymExpr taylor(const SymExpr& expr, const std::string& var, const SymExpr& a, int order) {
-        if (order < 0) throw std::runtime_error("Math Error: Taylor expansion order must be non-negative.");
+        if (order < 0) JC2_THROW(MathError, "Taylor expansion order must be non-negative.");
         if (!expr.ptr) return SymExpr(BigInt(0));
         SymExpr result(BigInt(0));
         SymExpr current_deriv = expr;
@@ -5395,10 +5395,10 @@ namespace jc {
                 } catch (const EngineInterruptError&) {
                     throw;
                 } catch (...) {
-                    throw std::runtime_error("Math Error: Cannot compute Taylor expansion (derivative undefined at expansion point).");
+                    JC2_THROW(MathError, "Cannot compute Taylor expansion (derivative undefined at expansion point).");
                 }
             } else {
-                throw std::runtime_error("Math Error: Cannot compute Taylor expansion (derivative undefined at expansion point).");
+                JC2_THROW(MathError, "Cannot compute Taylor expansion (derivative undefined at expansion point).");
             }
             
             if (!coeff.isZero()) {
@@ -5973,7 +5973,7 @@ namespace jc {
     }
 
     static SymExpr gruntzInf(SymExpr expr, const std::string& var, int depth) {
-        if (depth > SymConfig::maxDepth * 3) throw std::runtime_error("Math Error: Gruntz limit depth exceeded.");
+        if (depth > SymConfig::maxDepth * 3) JC2_THROW(MathError, "Gruntz limit depth exceeded.");
         if (!containsVar(expr.ptr, var)) return expr;
         
         expr = simplifyCore(rewritePowToExp(expr, var));
@@ -6091,7 +6091,7 @@ namespace jc {
     }
 
     static SymExpr limitCore(const SymExpr& expr, const std::string& var, const SymExpr& val, const std::string& dir, int depth) {
-        if (depth > SymConfig::maxDepth) throw std::runtime_error("Calculus Error: Limit evaluation depth exceeded.");
+        if (depth > SymConfig::maxDepth) JC2_THROW(CalculusError, "Limit evaluation depth exceeded.");
         if (!expr.ptr) return expr;
 
         bool isInfLimit = false;
@@ -6156,10 +6156,10 @@ namespace jc {
             
             if (rightOk && leftOk) {
                 if (right == left) return right;
-                throw std::runtime_error("Math Error: Limit does not exist (left and right limits differ).");
+                JC2_THROW(MathError, "Limit does not exist (left and right limits differ).");
             }
             
-            throw std::runtime_error("Math Error: Limit does not exist or is undefined.");
+            JC2_THROW(MathError, "Limit does not exist or is undefined.");
         }
         return simplify(limitCore(expr, var, val, dir, 0));
     }
@@ -6456,7 +6456,7 @@ namespace jc {
                 }
             }
 
-            if (!resolver) throw std::runtime_error("JIT Error: No function resolver provided for '" + f->name + "'.");
+            if (!resolver) JC2_THROW(InternalError, "No function resolver provided for '" + f->name + "'.");
 
             std::vector<Value> callArgs;
             callArgs.reserve(f->args.size());
@@ -6588,7 +6588,7 @@ namespace jc {
                 }
             }
 
-            if (!resolver) throw std::runtime_error("Universal Error: No function resolver provided for '" + f->name + "'.");
+            if (!resolver) JC2_THROW(InternalError, "No function resolver provided for '" + f->name + "'.");
 
             // 同构打包发送给宿主环境处理
             std::vector<Value> callArgs;

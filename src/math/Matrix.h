@@ -3,6 +3,7 @@
 
 #include "Complex.h"
 #include "Tolerance.h"
+#include "../memory/Exceptions.h"
 #include <cmath>
 #include <future>
 #include <iostream>
@@ -177,7 +178,7 @@ namespace jc {
 
         Matrix operator/(T scalar) const {
             // 对于泛型 T，如果 T 是 double，比较 0.0；如果是 Complex，比较它是否为零 (需确认 Complex 有 == 重载)
-            if (scalar == T(0)) throw std::runtime_error("Matrix Error: Division by zero.");
+            if (scalar == T(0)) JC2_THROW(MathError, "Division by zero.");
             Matrix result(rows, cols);
             if (isContiguous()) {
                 const T* a = data.get();
@@ -774,7 +775,7 @@ namespace jc {
             // 削完之后查证：左半边有没有成功变成单位矩阵？如果有哪怕一行对角线为 0，说明不可逆！
             for (int i = 0; i < rows; ++i) {
                 if (isEssentiallyZero(eliminated(i, i))) {
-                    throw std::runtime_error("Math Error: Matrix is singular and cannot be inverted.");
+                    JC2_THROW(MathError, "Matrix is singular and cannot be inverted.");
                 }
             }
 
@@ -1062,7 +1063,7 @@ namespace jc {
         T permanent() const {
             if (rows != cols) throw std::invalid_argument("Math Error: Permanent requires a square matrix.");
             if (rows > 20)
-                throw std::runtime_error("Math Error: Permanent limited to 20x20 (combinatorial complexity).");
+                JC2_THROW(MathError, "Permanent limited to 20x20 (combinatorial complexity).");
             if (rows == 1) return (*this)(0, 0);
             if (rows == 2) return (*this)(0, 0) * (*this)(1, 1) + (*this)(0, 1) * (*this)(1, 0);
 
@@ -1172,7 +1173,7 @@ namespace jc {
                 result = result + term;
                 if (Tol::clean(term.norm(), result.norm(), 1e3) == 0.0) return result;
             }
-            throw std::runtime_error("Math Error: Matrix sin did not converge.");
+            JC2_THROW(MathError, "Matrix sin did not converge.");
         }
 
         // [矩阵余弦] cos(A) = I - A²/2! + A⁴/4! - ...
@@ -1188,14 +1189,14 @@ namespace jc {
                 result = result + term;
                 if (Tol::clean(term.norm(), result.norm(), 1e3) == 0.0) return result;
             }
-            throw std::runtime_error("Math Error: Matrix cos did not converge.");
+            JC2_THROW(MathError, "Matrix cos did not converge.");
         }
 
         // [矩阵正切] tan(A) = sin(A) * cos(A)^{-1}
         Matrix<T> matTan() const {
             Matrix<T> c = matCos();
             if (c.rank() < rows)
-                throw std::runtime_error("Math Error: Matrix cos(A) is singular, tan(A) undefined.");
+                JC2_THROW(MathError, "Matrix cos(A) is singular, tan(A) undefined.");
             return matSin() * c.inverse();
         }
 
@@ -1213,7 +1214,7 @@ namespace jc {
         Matrix<T> matTanh() const {
             Matrix<T> c = matCosh();
             if (c.rank() < rows)
-                throw std::runtime_error("Math Error: Matrix cosh(A) is singular, tanh(A) undefined.");
+                JC2_THROW(MathError, "Matrix cosh(A) is singular, tanh(A) undefined.");
             return matSinh() * c.inverse();
         }
 
@@ -1223,7 +1224,7 @@ namespace jc {
             if (rows != cols) throw std::invalid_argument("Math Error: Matrix log requires a square matrix.");
             Matrix<T> X = (*this) - identity(rows);
             if (X.norm() >= 1.0)
-                throw std::runtime_error("Math Error: Matrix log series requires ||A - I|| < 1. Try diagonalization.");
+                JC2_THROW(MathError, "Matrix log series requires ||A - I|| < 1. Try diagonalization.");
 
             Matrix<T> term = X;
             Matrix<T> result = X;
@@ -1233,7 +1234,7 @@ namespace jc {
                 result = result + term;
                 if (Tol::clean(term.norm(), result.norm(), 1e3) == 0.0) return result;  // ★ 相对阈值
             }
-            throw std::runtime_error("Math Error: Matrix log series did not converge.");
+            JC2_THROW(MathError, "Matrix log series did not converge.");
         }
 
         // =================================================================================
@@ -1695,7 +1696,7 @@ namespace jc {
                 }
             }
             if (!converged)
-                throw std::runtime_error("Math Error: QR algorithm failed to converge.");
+                JC2_THROW(MathError, "QR algorithm failed to converge.");
         }
         return eigenvals;
     }
@@ -1746,7 +1747,7 @@ namespace jc {
             totalCols += cols;
         }
         
-        if (totalCols == 0) throw std::runtime_error("Math Error: No eigenvectors found.");
+        if (totalCols == 0) JC2_THROW(MathError, "No eigenvectors found.");
         
         ComplexMatrix P(n, totalCols);
         int currentCol = 0;
@@ -1774,7 +1775,7 @@ namespace jc {
         auto eigenvals = computeEigenvalues(A);
         auto [P, alignedEigenvals] = computeEigenvectorsAligned(A, eigenvals);
         if (P.getCols() != n)
-            throw std::runtime_error("Math Error: Matrix is not diagonalizable (insufficient eigenvectors).");
+            JC2_THROW(MathError, "Matrix is not diagonalizable (insufficient eigenvectors).");
         ComplexMatrix D(n, n);
         for (int i = 0; i < n; ++i)
             D(i, i) = alignedEigenvals[i];
@@ -1787,7 +1788,7 @@ namespace jc {
             throw std::invalid_argument("Math Error: Matrix sqrt requires a square matrix.");
         int n = A.getRows();
         if (A.rank() < n)
-            throw std::runtime_error("Math Error: Iterative matrix sqrt requires a non-singular matrix.");
+            JC2_THROW(MathError, "Iterative matrix sqrt requires a non-singular matrix.");
         ComplexMatrix Y = A;
         ComplexMatrix Z = ComplexMatrix::identity(n);
         for (int iter = 0; iter < 100; ++iter) {
@@ -1824,7 +1825,7 @@ namespace jc {
 
         int n = A.getRows();
         if (A.rank() < n)
-            throw std::runtime_error("Math Error: Matrix logarithm undefined for singular matrices.");
+            JC2_THROW(MathError, "Matrix logarithm undefined for singular matrices.");
 
         ComplexMatrix I = ComplexMatrix::identity(n);
 
@@ -1841,7 +1842,7 @@ namespace jc {
             for (int i = 0; i < n; ++i) {
                 Complex eigenval = D(i, i);
                 if (eigenval.real == 0.0 && eigenval.imag == 0.0)
-                    throw std::runtime_error("Math Error: Matrix logarithm undefined (zero eigenvalue).");
+                    JC2_THROW(MathError, "Matrix logarithm undefined (zero eigenvalue).");
                 logD(i, i) = log(eigenval);
             }
 

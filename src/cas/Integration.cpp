@@ -42,7 +42,7 @@ namespace jc {
         if (R_z.isZero() || getDegree(R_z, "_z") <= 0) {
             if (R_z.isZero()) {
                 if (SymConfig::debugIntegration) std::cout << "   [RT] Resultant is zero!" << std::endl;
-                throw std::runtime_error("Calculus Error: Rothstein-Trager failed to find roots of the resultant.");
+                JC2_THROW(CalculusError, "Rothstein-Trager failed to find roots of the resultant.");
             }
             if (SymConfig::debugIntegration) std::cout << "   [RT] Resultant degree <= 0, returning 0." << std::endl;
             return SymExpr(BigInt(0));
@@ -807,7 +807,7 @@ namespace jc {
                     try {
                         SymExpr intAn_x = backSubstitute(coeffs[n]);
                         if (getAstNodeCount(intAn_x) > getAstNodeCount(expr) * 3 + 50) {
-                            throw std::runtime_error("Risch Step 4: Leading coefficient expansion too large, aborting.");
+                            JC2_THROW(MathError, "Leading coefficient expansion too large, aborting.");
                         }
                         SymExpr intAn = integrate(intAn_x, var, depth + 1);
                         SymExpr intAn_t = field.rewrite(trigToExp(intAn));
@@ -824,7 +824,7 @@ namespace jc {
                                 throw std::runtime_error("Non-elementary integral.");
                             }
                             if (containsVar(c.ptr, var)) {
-                                throw std::runtime_error("Non-elementary integral: residue is not constant.");
+                                JC2_THROW(MathError, "residue is not constant.");
                             }
                         } else {
                             B_n = coeffs_intAn[0];
@@ -838,7 +838,7 @@ namespace jc {
                             SymExpr integrand = simplifyCore(coeffs[i] - SymExpr(BigInt(i + 1)) * B[i + 1] * t_deriv);
                             SymExpr integrand_x = backSubstitute(integrand);
                             if (getAstNodeCount(integrand_x) > getAstNodeCount(expr) * 3 + 50) {
-                                throw std::runtime_error("Risch Step 4: Lower coefficient expansion too large, aborting.");
+                                JC2_THROW(MathError, "Lower coefficient expansion too large, aborting.");
                             }
                             SymExpr int_i = integrate(integrand_x, var, depth + 1);
                             SymExpr int_i_t = field.rewrite(trigToExp(int_i));
@@ -852,7 +852,7 @@ namespace jc {
                             } else if (coeffs_int_i.size() == 2) {
                                 SymExpr c_i = coeffs_int_i[1];
                                 if (containsVar(c_i.ptr, var)) {
-                                    throw std::runtime_error("Non-elementary integral: residue is not constant.");
+                                    JC2_THROW(MathError, "residue is not constant.");
                                 }
                                 B[i + 1] = simplifyCore(B[i + 1] + c_i / SymExpr(BigInt(i + 1)));
                                 B[i] = coeffs_int_i[0];
@@ -894,7 +894,7 @@ namespace jc {
                             try {
                                 SymExpr integrand_x = backSubstitute(coeffs[0]);
                                 if (getAstNodeCount(integrand_x) > getAstNodeCount(expr) * 3 + 50) {
-                                    throw std::runtime_error("Risch Step 5: Constant term expansion too large, aborting.");
+                                    JC2_THROW(MathError, "Constant term expansion too large, aborting.");
                                 }
                                 SymExpr int_0 = integrate(integrand_x, var, depth + 1);
                                 result = result + field.rewrite(trigToExp(int_0));
@@ -1372,12 +1372,12 @@ namespace jc {
         debugInfo += "Rewritten integrand: " + rewritten.toString();
         
         if (isElliptic) {
-            throw std::runtime_error("Calculus Error: Integral is non-elementary (Elliptic curve of genus g=1 detected).\n" + debugInfo);
+            JC2_THROW(CalculusError, "Integral is non-elementary (Elliptic curve of genus g=1 detected).\n" + debugInfo);
         } else if (isHyperElliptic) {
-            throw std::runtime_error("Calculus Error: Integral is non-elementary (Hyperelliptic curve of genus g>1 detected).\n" + debugInfo);
+            JC2_THROW(CalculusError, "Integral is non-elementary (Hyperelliptic curve of genus g>1 detected).\n" + debugInfo);
         }
         
-        throw std::runtime_error("Calculus Error: Integral is non-elementary or requires advanced Risch steps.\n" + debugInfo);
+        JC2_THROW(CalculusError, "Integral is non-elementary or requires advanced Risch steps.\n" + debugInfo);
     }
 
     // =================================================================
@@ -3563,7 +3563,7 @@ namespace jc {
                 if (auto res = doInteg(expr, start_depth)) {
                     return simplify(*res);
                 }
-                throw std::runtime_error("Calculus Error: Function integration not supported or complex power.");
+                JC2_THROW(CalculusError, "Function integration not supported or complex power.");
             } catch (const EngineInterruptError&) {
                 throw;
             } catch (const std::runtime_error& e) {
@@ -3603,9 +3603,9 @@ namespace jc {
                     throw std::runtime_error(msg);
                 }
                 
-                throw std::runtime_error("Calculus Error: Function integration not supported or complex power. (" + msg + ")");
+                JC2_THROW(CalculusError, "Function integration not supported or complex power. (" + msg + ")");
             } catch (...) {
-                throw std::runtime_error("Calculus Error: Function integration not supported or complex power.");
+                JC2_THROW(CalculusError, "Function integration not supported or complex power.");
             }
         };
 

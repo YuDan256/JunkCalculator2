@@ -16,7 +16,7 @@ namespace jc {
 
         // 核心约分机制
         void reduce() {
-            if (den.isZero()) throw std::runtime_error("Math Error: Fraction denominator cannot be zero.");
+            if (den.isZero()) JC2_THROW(MathError, "Fraction denominator cannot be zero.");
             if (num.isZero()) {
                 den = BigInt(1);
                 return;
@@ -52,7 +52,7 @@ namespace jc {
 
         // --- 从 double 精确还原分数 ---
         static Fraction fromDouble(double d) {
-            if (!std::isfinite(d)) throw std::runtime_error("Math Error: Cannot convert non-finite double to Fraction.");
+            if (!std::isfinite(d)) JC2_THROW(MathError, "Cannot convert non-finite double to Fraction.");
             if (d == 0.0) return Fraction(BigInt(0));
             bool neg = d < 0;
             if (neg) d = -d;
@@ -116,7 +116,7 @@ namespace jc {
         }
 
         Fraction operator/(const Fraction& other) const {
-            if (other.num.isZero()) throw std::runtime_error("Math Error: Division by zero fraction.");
+            if (other.num.isZero()) JC2_THROW(MathError, "Division by zero fraction.");
             BigInt n1 = BigInt::gcd(num, other.num);
             BigInt n2 = BigInt::gcd(other.den, den);
             BigInt new_num = (num / n1) * (other.den / n2);
@@ -125,7 +125,7 @@ namespace jc {
         }
 
         Fraction operator%(const Fraction& other) const {
-            if (other.num.isZero()) throw std::runtime_error("Math Error: Modulo by zero fraction.");
+            if (other.num.isZero()) JC2_THROW(MathError, "Modulo by zero fraction.");
             BigInt ad = num * other.den;
             BigInt bc = den * other.num;
             BigInt rem = ad % bc;
@@ -140,7 +140,7 @@ namespace jc {
                 return Fraction(num.pow(p), den.pow(p), SkipReduce{});
             }
             // 负指数：(num/den)^(-|p|) = (den/num)^|p|
-            if (num.isZero()) throw std::runtime_error("Math Error: Base 0 requires positive exponent.");
+            if (num.isZero()) JC2_THROW(MathError, "Base 0 requires positive exponent.");
             // 倒数后仍互质，跳过约分
             return Fraction(den.pow(-p), num.pow(-p), SkipReduce{});
         }

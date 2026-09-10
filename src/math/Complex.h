@@ -2,6 +2,7 @@
 #define JC2_COMPLEX_H
 
 #include "Tolerance.h"
+#include "../memory/Exceptions.h"
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
@@ -31,7 +32,7 @@ namespace jc {
         double modulus() const { return std::sqrt(real * real + imag * imag); }
 
         double argument() const {
-            if (real == 0.0 && imag == 0.0) throw std::runtime_error("Math Error: The argument of 0 is arbitrary.");
+            if (real == 0.0 && imag == 0.0) JC2_THROW(MathError, "The argument of 0 is arbitrary.");
             return std::atan2(imag, real);
         }
 
@@ -77,16 +78,16 @@ namespace jc {
 
         Complex operator/(const Complex& other) const {
             double den = other.real * other.real + other.imag * other.imag;
-            if (den == 0.0) throw std::runtime_error("Math Error: Division by zero complex number.");
+            if (den == 0.0) JC2_THROW(MathError, "Division by zero complex number.");
             return { (real * other.real + imag * other.imag) / den, (imag * other.real - real * other.imag) / den };
         }
         Complex operator/(double other) const {
-            if (other == 0.0) throw std::runtime_error("Math Error: Division by zero.");
+            if (other == 0.0) JC2_THROW(MathError, "Division by zero.");
             return { real / other, imag / other };
         }
         friend Complex operator/(double lhs, const Complex& rhs) {
             double den = rhs.real * rhs.real + rhs.imag * rhs.imag;
-            if (den == 0.0) throw std::runtime_error("Math Error: Division by zero complex number.");
+            if (den == 0.0) JC2_THROW(MathError, "Division by zero complex number.");
             return { (lhs * rhs.real) / den, (-lhs * rhs.imag) / den };
         }
 
@@ -112,14 +113,14 @@ namespace jc {
         }
 
         friend Complex log(const Complex& z) { // 即自带的 ln
-            if (z.real == 0.0 && z.imag == 0.0) throw std::runtime_error("Math Error: Logarithm of zero.");
+            if (z.real == 0.0 && z.imag == 0.0) JC2_THROW(MathError, "Logarithm of zero.");
             return { std::log(z.modulus()), z.argument() };
         }
 
         // 复数乘方 a^b = e^(b*ln(a))
         Complex operator^(const Complex& power) const {
             if (real == 0.0 && imag == 0.0) {
-                if (power.real <= 0) throw std::runtime_error("Math Error: Base 0 requires positive real exponent.");
+                if (power.real <= 0) JC2_THROW(MathError, "Base 0 requires positive real exponent.");
                 return { 0.0, 0.0 };
             }
             if (power.imag == 0.0) return (*this) ^ power.real; // 降级提速
@@ -127,7 +128,7 @@ namespace jc {
         }
 
         Complex operator^(double power) const {
-            if (real == 0.0 && imag == 0.0 && power <= 0) throw std::runtime_error("Math Error: Base 0 requires positive exponent.");
+            if (real == 0.0 && imag == 0.0 && power <= 0) JC2_THROW(MathError, "Base 0 requires positive exponent.");
             if (real == 0.0 && imag == 0.0) return { 0.0, 0.0 };
             double a = power * argument();
             double r = std::pow(modulus(), power);
@@ -145,7 +146,7 @@ namespace jc {
         }
         friend Complex tan(const Complex& z) {
             Complex c = cos(z);
-            if (c.real == 0.0 && c.imag == 0.0) throw std::runtime_error("Math Error: Tangent undefined.");
+            if (c.real == 0.0 && c.imag == 0.0) JC2_THROW(MathError, "Tangent undefined.");
             return sin(z) / c;
         }
 
@@ -154,7 +155,7 @@ namespace jc {
         friend Complex cosh(const Complex& z) { return (exp(z) + exp(-z)) / 2.0; }
         friend Complex tanh(const Complex& z) {
             Complex c = cosh(z);
-            if (c.real == 0.0 && c.imag == 0.0) throw std::runtime_error("Math Error: Tanh undefined.");
+            if (c.real == 0.0 && c.imag == 0.0) JC2_THROW(MathError, "Tanh undefined.");
             return sinh(z) / c;
         }
 
@@ -178,7 +179,7 @@ namespace jc {
         }
 
         Complex firstRoot(int n) const {
-            if (n <= 0) throw std::runtime_error("Math Error: Root degree must be positive.");
+            if (n <= 0) JC2_THROW(MathError, "Root degree must be positive.");
             if (real == 0.0 && imag == 0.0) return { 0.0, 0.0 };
             double k = static_cast<double>(n);
             double a = argument() / k;
@@ -219,8 +220,8 @@ namespace jc {
 
         static std::vector<Complex> solveDegreeOne(const Complex& a, const Complex& b) {
             if (a.real == 0.0 && a.imag == 0.0) {
-                if (b.real != 0.0 || b.imag != 0.0) throw std::runtime_error("Math Error: Equation has no solution.");
-                throw std::runtime_error("Math Error: Infinitely many solutions.");
+                if (b.real != 0.0 || b.imag != 0.0) JC2_THROW(MathError, "Equation has no solution.");
+                JC2_THROW(MathError, "Infinitely many solutions.");
             }
             std::vector<Complex> roots = { -b / a };
             cleanRoots(roots);

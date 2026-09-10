@@ -32,7 +32,7 @@ public:
         if (memory == MAP_FAILED) memory = nullptr;
 #endif
         if (!memory) {
-            throw std::runtime_error("FFI Error: Failed to allocate executable memory.");
+            JC2_THROW(FFIError, "Failed to allocate executable memory.");
         }
     }
 
@@ -65,7 +65,7 @@ class ExecutableMemoryPool {
             memory = mmap(nullptr, PAGE_SIZE, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
             if (memory == MAP_FAILED) memory = nullptr;
 #endif
-            if (!memory) throw std::runtime_error("FFI Error: Failed to allocate executable memory page.");
+            if (!memory) JC2_THROW(FFIError, "Failed to allocate executable memory page.");
         }
         ~Page() {
 #ifdef _WIN32
@@ -171,7 +171,7 @@ FFITypeDesc parseType(const Value& v) {
     }
     if (v.is_list()) {
         List l(v.get_handle());
-        if (l.size() < 2) throw std::runtime_error("FFI Error: Array type list must have at least 2 elements [type, dim1, ...].");
+        if (l.size() < 2) JC2_THROW(FFIError, "Array type list must have at least 2 elements [type, dim1, ...].");
         FFITypeDesc desc = parseType(l.get(0));
         for (size_t i = 1; i < l.size(); ++i) {
             desc.array_dims.push_back(l.get(i).as_int());
@@ -206,7 +206,7 @@ FFITypeDesc parseType(const Value& v) {
         else if (t == "pointer") desc = { FFIType::POINTER, 8, 8, nullptr, {} };
         else if (t == "string") desc = { FFIType::STRING, 8, 8, nullptr, {} };
         else if (t == "...") desc = { FFIType::VARIADIC, 0, 1, nullptr, {} };
-        else throw std::runtime_error("FFI Error: Unsupported type '" + t + "'.");
+        else JC2_THROW(FFIError, "Unsupported type '" + t + "'.");
 
         if (!dims.empty()) {
             size_t total_elements = 1;
@@ -222,7 +222,7 @@ FFITypeDesc parseType(const Value& v) {
             return { FFIType::STRUCT, layout->size, layout->align, layout, {} };
         }
     }
-    throw std::runtime_error("FFI Error: Invalid type descriptor.");
+    JC2_THROW(FFIError, "Invalid type descriptor.");
 }
 
 Value read_memory(std::shared_ptr<std::vector<uint8_t>> shared_mem, uint8_t* ptr, const FFITypeDesc& t) {
@@ -275,7 +275,7 @@ void write_memory(uint8_t* ptr, const FFITypeDesc& t, const Value& v) {
         case FFIType::STRING: *reinterpret_cast<const char**>(ptr) = v.as_c_str(); break;
         case FFIType::STRUCT: {
             StructInstanceData* data = v.get_native_data<StructInstanceData>();
-            if (!data || data->layout != t.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
+            if (!data || data->layout != t.layout) JC2_THROW(FFIError, "Struct type mismatch.");
             std::memcpy(ptr, data->base_ptr, t.size);
             break;
         }
@@ -373,7 +373,7 @@ public:
                     current_type = FFIType::STRUCT;
                     current_desc = {FFIType::STRUCT, sdata->layout->size, sdata->layout->align, sdata->layout};
                 }
-                else throw std::runtime_error("FFI Error: Unsupported variadic argument type.");
+                else JC2_THROW(FFIError, "Unsupported variadic argument type.");
             }
 
             switch (current_type) {
@@ -414,7 +414,7 @@ public:
                 break;
             case FFIType::STRUCT: {
                 StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
-                if (!sdata || sdata->layout != current_desc.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
+                if (!sdata || sdata->layout != current_desc.layout) JC2_THROW(FFIError, "Struct type mismatch.");
                 if (current_desc.size == 1 || current_desc.size == 2 || current_desc.size == 4 || current_desc.size == 8) {
                     std::memcpy(&val64, sdata->base_ptr, current_desc.size);
                 } else {
@@ -424,7 +424,7 @@ public:
                 break;
             }
             default:
-                throw std::runtime_error("FFI Error: Unsupported argument type.");
+                JC2_THROW(FFIError, "Unsupported argument type.");
             }
             stack_data[arg_idx++] = val64;
         }
@@ -550,14 +550,14 @@ public:
                     current_type = FFIType::STRUCT;
                     current_desc = {FFIType::STRUCT, sdata->layout->size, sdata->layout->align, sdata->layout};
                 }
-                else throw std::runtime_error("FFI Error: Unsupported variadic argument type.");
+                else JC2_THROW(FFIError, "Unsupported variadic argument type.");
             }
 
             bool is_float = (current_type == FFIType::F32 || current_type == FFIType::F64);
             
             if (current_type == FFIType::STRUCT) {
                 StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
-                if (!sdata || sdata->layout != current_desc.layout) throw std::runtime_error("FFI Error: Struct type mismatch.");
+                if (!sdata || sdata->layout != current_desc.layout) JC2_THROW(FFIError, "Struct type mismatch.");
                 if (current_desc.size <= 16) {
                     uint64_t part1 = 0, part2 = 0;
                     std::memcpy(&part1, sdata->base_ptr, std::min((size_t)8, current_desc.size));
@@ -609,7 +609,7 @@ public:
                 val64 = reinterpret_cast<uint64_t>(args[i].as_c_str());
                 break;
             default:
-                throw std::runtime_error("FFI Error: Unsupported argument type.");
+                JC2_THROW(FFIError, "Unsupported argument type.");
             }
 
             if (is_float) {

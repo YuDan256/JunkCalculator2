@@ -7,6 +7,7 @@
 #include <cstring>
 #include <type_traits>
 #include "ExecutableMemory.h"
+#include "../../memory/Exceptions.h"
 #include "Registers.h"
 #include "Operand.h"
 
@@ -843,7 +844,7 @@ public:
     // --- BIND ---
     void bind(Label& L) {
         if (L.isBound()) {
-            throw std::runtime_error("JIT Error: Label is already bound.");
+            JC2_THROW(InternalError, "Label is already bound.");
         }
         int current_pos = static_cast<int>(offset());
         L.bindTo(current_pos);

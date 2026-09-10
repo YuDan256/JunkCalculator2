@@ -1,4 +1,5 @@
 #include "ExecutableMemory.h"
+#include "../../memory/Exceptions.h"
 #include <utility>
 
 #ifdef _WIN32
@@ -51,7 +52,7 @@ void ExecutableMemory::allocate(size_t size) {
     // 我们先分配 PAGE_READWRITE，写入机器码后，再在 finalize() 中修改为 PAGE_EXECUTE_READ。
     memory_ = static_cast<uint8_t*>(VirtualAlloc(nullptr, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE));
     if (!memory_) {
-        throw std::runtime_error("JIT Error: VirtualAlloc failed to allocate memory.");
+        JC2_THROW(InternalError, "VirtualAlloc failed to allocate memory.");
     }
     size_ = size;
 #else
@@ -59,7 +60,7 @@ void ExecutableMemory::allocate(size_t size) {
     memory_ = static_cast<uint8_t*>(mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0));
     if (memory_ == MAP_FAILED) {
         memory_ = nullptr;
-        throw std::runtime_error("JIT Error: mmap failed to allocate memory.");
+        JC2_THROW(InternalError, "mmap failed to allocate memory.");
     }
     size_ = size;
 #endif
@@ -91,13 +92,13 @@ void ExecutableMemory::finalize() {
 #ifdef _WIN32
     DWORD oldProtect;
     if (!VirtualProtect(memory_, size_, PAGE_EXECUTE_READ, &oldProtect)) {
-        throw std::runtime_error("JIT Error: VirtualProtect failed to set PAGE_EXECUTE_READ.");
+        JC2_THROW(InternalError, "VirtualProtect failed to set PAGE_EXECUTE_READ.");
     }
     // 刷新当前进程的指令缓存
     FlushInstructionCache(GetCurrentProcess(), memory_, size_);
 #else
     if (mprotect(memory_, size_, PROT_READ | PROT_EXEC) != 0) {
-        throw std::runtime_error("JIT Error: mprotect failed to set PROT_READ | PROT_EXEC.");
+        JC2_THROW(InternalError, "mprotect failed to set PROT_READ | PROT_EXEC.");
     }
     // 使用 GCC/Clang 内置函数刷新指令缓存
     __builtin___clear_cache(reinterpret_cast<char*>(memory_), reinterpret_cast<char*>(memory_) + size_);

@@ -1509,7 +1509,7 @@ public:
                         break;
                     }
                     default:
-                        throw std::runtime_error("JIT Error: Unsupported opcode " + std::to_string(static_cast<int>(op)));
+                        JC2_THROW(InternalError, "Unsupported opcode " + std::to_string(static_cast<int>(op)));
                 }
 
                 if (!builder_.currentControl()) break; // 控制流已终止，跳过基本块剩余指令

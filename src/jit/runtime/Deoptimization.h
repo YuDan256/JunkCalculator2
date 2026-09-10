@@ -198,18 +198,18 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
 inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
     const StackMap* map = DeoptRegistry::get().getStackMap(bailoutId);
     if (!map) {
-        throw std::runtime_error("JIT Error: StackMap not found for BailoutId " + std::to_string(bailoutId));
+        JC2_THROW(InternalError, "StackMap not found for BailoutId " + std::to_string(bailoutId));
     }
 
     VM* vm = VM::activeVM;
     if (!vm) {
-        throw std::runtime_error("JIT Error: Active VM not found during deoptimization.");
+        JC2_THROW(InternalError, "Active VM not found during deoptimization.");
     }
 
     // 获取当前执行帧
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame) {
-        throw std::runtime_error("JIT Error: No active CallFrame during deoptimization.");
+        JC2_THROW(InternalError, "No active CallFrame during deoptimization.");
     }
 
     Value* vmRegisters = vm->getRegisters();

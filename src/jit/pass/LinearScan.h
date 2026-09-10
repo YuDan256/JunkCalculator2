@@ -267,12 +267,12 @@ private:
                 int scratchXMMIdx = 0;
 
                 auto getScratchGPR = [&]() {
-                    if (scratchGPRIdx >= 2) throw std::runtime_error("JIT Error: Out of scratch GPRs.");
+                    if (scratchGPRIdx >= 2) JC2_THROW(InternalError, "Out of scratch GPRs.");
                     return scratchGPRs[scratchGPRIdx++];
                 };
                 
                 auto getScratchXMM = [&]() {
-                    if (scratchXMMIdx >= 2) throw std::runtime_error("JIT Error: Out of scratch XMMs.");
+                    if (scratchXMMIdx >= 2) JC2_THROW(InternalError, "Out of scratch XMMs.");
                     return scratchXMMs[scratchXMMIdx++];
                 };
 

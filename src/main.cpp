@@ -145,7 +145,7 @@ bool g_enableJit = false;
 static void processDirectives(const std::vector<jc::Directive>& directives) {
     for (const auto& d : directives) {
         if (d.name == "!") continue;  // Shebang，no-op
-        throw std::runtime_error("Compile Error: Unknown directive '#" + d.name + "'.");
+        JC2_THROW(ParserError, "Unknown directive '#" + d.name + "'.");
     }
 }
 
@@ -561,7 +561,7 @@ int main(int argc, char* argv[]) {
             jc::helpers::nativeClassStack.pop_back();
             return result;
         }
-        throw std::runtime_error("VM Error: Invalid closure in callback.");
+        JC2_THROW(RuntimeError, "Invalid closure in callback.");
     };
     jc::helpers::callValueCallback = [](const jc::Value& callee, const std::vector<jc::Value>& args) -> jc::Value {
         if (callee.isFunctionClosure()) {
@@ -570,7 +570,7 @@ int main(int argc, char* argv[]) {
         if (callee.isType()) {
             jc::ObjTypeDef* td = static_cast<jc::ObjTypeDef*>(callee.asObj());
             if (td->converter) return td->converter(args);
-            throw std::runtime_error("TypeError: This type object is not callable.");
+            JC2_THROW(TypeError, "This type object is not callable.");
         }
         if (callee.isClass()) {
             jc::ObjClass* cls = static_cast<jc::ObjClass*>(callee.asObj());
@@ -606,9 +606,9 @@ int main(int argc, char* argv[]) {
         if (callee.isInstance()) {
             auto [method, owner] = vm.findDunder(callee, "__call__");
             if (method) return vm.callDunder(callee, method, owner, args);
-            throw std::runtime_error("TypeError: Instance is not callable (no __call__).");
+            JC2_THROW(TypeError, "Instance is not callable (no __call__).");
         }
-        throw std::runtime_error("VM Error: Value is not callable.");
+        JC2_THROW(RuntimeError, "Value is not callable.");
     };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;

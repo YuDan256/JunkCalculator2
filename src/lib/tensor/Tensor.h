@@ -46,7 +46,7 @@ namespace jc {
         if (s == "int32" || s == "i32") return DType::Int32;
         if (s == "int64" || s == "i64") return DType::Int64;
         if (s == "bool") return DType::Bool;
-        throw std::runtime_error("Tensor Error: Unknown dtype string '" + s + "'.");
+        JC2_THROW(TensorError, "Unknown dtype string '" + s + "'.");
     }
 
     // ========================================================================
@@ -76,7 +76,7 @@ namespace jc {
             else if constexpr (std::is_same_v<T, int32_t>) return DType::Int32;
             else if constexpr (std::is_same_v<T, int64_t>) return DType::Int64;
             else if constexpr (std::is_same_v<T, uint8_t>) return DType::Bool;
-            else throw std::runtime_error("Tensor Error: Unsupported DType.");
+            else JC2_THROW(TensorError, "Unsupported DType.");
         }
 
         void* data_ptr() override { return data.data(); }
@@ -186,7 +186,7 @@ namespace jc {
         // 元素读写（仅支持 contiguous 的 double 快速路径；其他类型走通用路径）
         // ====================================================================
         double item() const {
-            if (numel() != 1) throw std::runtime_error("Tensor Error: item() requires exactly 1 element.");
+            if (numel() != 1) JC2_THROW(TensorError, "item() requires exactly 1 element.");
             return getFlat(0);
         }
 
@@ -281,7 +281,7 @@ namespace jc {
                 int dimA = (i < ndimOut - ndimA) ? 1 : shapeA[i - (ndimOut - ndimA)];
                 int dimB = (i < ndimOut - ndimB) ? 1 : shapeB[i - (ndimOut - ndimB)];
                 if (dimA != dimB && dimA != 1 && dimB != 1) {
-                    throw std::runtime_error("Tensor Error: Shapes are not broadcastable.");
+                    JC2_THROW(TensorError, "Shapes are not broadcastable.");
                 }
                 out_shape[i] = std::max(dimA, dimB);
             }
@@ -332,9 +332,9 @@ namespace jc {
         }
 
         Tensor view(const std::vector<int>& new_shape) const {
-            if (!is_contiguous()) throw std::runtime_error("Tensor Error: view() requires a contiguous tensor.");
+            if (!is_contiguous()) JC2_THROW(TensorError, "view() requires a contiguous tensor.");
             size_t new_numel = shapeToNumel(new_shape);
-            if (new_numel != numel()) throw std::runtime_error("Tensor Error: Shape mismatch in view().");
+            if (new_numel != numel()) JC2_THROW(TensorError, "Shape mismatch in view().");
             Tensor t = make_view();
             t.shape = new_shape;
             t.strides = calcStrides(new_shape);
@@ -346,7 +346,7 @@ namespace jc {
         // ====================================================================
         Tensor transpose(int dim0, int dim1) const {
             if (dim0 < 0 || dim0 >= dim() || dim1 < 0 || dim1 >= dim())
-                throw std::runtime_error("Tensor Error: transpose dimension out of range.");
+                JC2_THROW(TensorError, "transpose dimension out of range.");
             Tensor t = make_view();
             std::swap(t.shape[dim0], t.shape[dim1]);
             std::swap(t.strides[dim0], t.strides[dim1]);
@@ -354,7 +354,7 @@ namespace jc {
         }
 
         Tensor T() const {
-            if (dim() < 2) throw std::runtime_error("Tensor Error: T() requires at least 2 dimensions.");
+            if (dim() < 2) JC2_THROW(TensorError, "T() requires at least 2 dimensions.");
             return transpose(dim() - 2, dim() - 1);
         }
 
@@ -365,8 +365,8 @@ namespace jc {
         // ====================================================================
         Tensor slice_dim(int dimension, int start, int end, int step) const {
             if (dimension < 0 || dimension >= dim())
-                throw std::runtime_error("Tensor Error: slice dimension out of range.");
-            if (step == 0) throw std::runtime_error("Tensor Error: slice step cannot be zero.");
+                JC2_THROW(TensorError, "slice dimension out of range.");
+            if (step == 0) JC2_THROW(TensorError, "slice step cannot be zero.");
 
             int dim_size = shape[dimension];
             int st = start == SLICE_NONE ? (step > 0 ? 0 : dim_size - 1) : start;
@@ -399,10 +399,10 @@ namespace jc {
 
         Tensor select(int dimension, int index) const {
             if (dimension < 0 || dimension >= dim())
-                throw std::runtime_error("Tensor Error: select dimension out of range.");
+                JC2_THROW(TensorError, "select dimension out of range.");
             if (index < 0) index += shape[dimension];
             if (index < 0 || index >= shape[dimension])
-                throw std::runtime_error("Tensor Error: select index out of range.");
+                JC2_THROW(TensorError, "select index out of range.");
             Tensor t = make_view();
             t.offset = offset + index * strides[dimension];
             t.shape.clear();
@@ -422,7 +422,7 @@ namespace jc {
         Tensor unsqueeze(int dimension) const {
             if (dimension < 0) dimension += dim() + 1;
             if (dimension < 0 || dimension > dim())
-                throw std::runtime_error("Tensor Error: unsqueeze dimension out of range.");
+                JC2_THROW(TensorError, "unsqueeze dimension out of range.");
             Tensor t = make_view();
             t.shape.insert(t.shape.begin() + dimension, 1);
             int stride_val = (dimension < static_cast<int>(strides.size())) ? strides[dimension] : 1;
@@ -435,7 +435,7 @@ namespace jc {
             t.shape.clear();
             t.strides.clear();
             if (dimension >= 0) {
-                if (dimension >= dim()) throw std::runtime_error("Tensor Error: squeeze dimension out of range.");
+                if (dimension >= dim()) JC2_THROW(TensorError, "squeeze dimension out of range.");
                 if (shape[dimension] == 1) {
                     for (int i = 0; i < dim(); ++i) {
                         if (i != dimension) {
@@ -463,7 +463,7 @@ namespace jc {
         // 触发反向传播
         // ====================================================================
         void backward() {
-            if (!impl->requires_grad) throw std::runtime_error("Tensor Error: Tensor does not require grad.");
+            if (!impl->requires_grad) JC2_THROW(TensorError, "Tensor does not require grad.");
             if (!impl->grad) {
                 impl->grad = std::make_shared<Tensor>(shape, dtype(), false);
                 impl->grad->fill_(1.0);
@@ -1462,7 +1462,7 @@ namespace jc {
 
     template <typename Op>
     inline Tensor tensor_compare_op(const Tensor& a, const Tensor& b, Op op) {
-        if (a.dtype() != b.dtype()) throw std::runtime_error("Tensor Error: DType mismatch in comparison.");
+        if (a.dtype() != b.dtype()) JC2_THROW(TensorError, "DType mismatch in comparison.");
         std::vector<int> out_shape = Tensor::broadcastShapes(a.shape, b.shape);
         Tensor out(out_shape, DType::Bool, false);
         out.impl->is_leaf = false;
@@ -1482,7 +1482,7 @@ namespace jc {
     inline Tensor tensor_binary_op(const Tensor& a, const Tensor& b, Op op,
                                    bool req_grad, std::shared_ptr<BackwardNode> grad_fn_node = nullptr) {
         if (a.dtype() != b.dtype())
-            throw std::runtime_error("Tensor Error: DType mismatch.");
+            JC2_THROW(TensorError, "DType mismatch.");
 
         std::vector<int> out_shape = Tensor::broadcastShapes(a.shape, b.shape);
         Tensor out(out_shape, a.dtype(), req_grad);
@@ -1565,12 +1565,12 @@ namespace jc {
     // ---- 矩阵乘法 (1D / 2D / batched) ----
     inline Tensor tensor_matmul(const Tensor& a, const Tensor& b) {
         if (a.dim() < 1 || b.dim() < 1)
-            throw std::runtime_error("Tensor Error: matmul requires at least 1D tensors.");
+            JC2_THROW(TensorError, "matmul requires at least 1D tensors.");
 
         // 1D @ 1D：点积 → 标量
         if (a.dim() == 1 && b.dim() == 1) {
             if (a.shape[0] != b.shape[0])
-                throw std::runtime_error("Tensor Error: matmul shape mismatch.");
+                JC2_THROW(TensorError, "matmul shape mismatch.");
             return tensor_sum(tensor_mul(a, b));
         }
 
@@ -1615,7 +1615,7 @@ namespace jc {
     inline Tensor matmul_batched(const Tensor& a, const Tensor& b) {
         int m = a.shape[a.dim()-2], n = a.shape[a.dim()-1];
         int n2 = b.shape[b.dim()-2], p = b.shape[b.dim()-1];
-        if (n != n2) throw std::runtime_error("Tensor Error: matmul shape mismatch.");
+        if (n != n2) JC2_THROW(TensorError, "matmul shape mismatch.");
 
         std::vector<int> batchA(a.shape.begin(), a.shape.end()-2);
         std::vector<int> batchB(b.shape.begin(), b.shape.end()-2);
@@ -1692,7 +1692,7 @@ namespace jc {
             }
             return out;
         }
-        if (axis >= a.dim()) throw std::runtime_error("Tensor Error: sum axis out of range.");
+        if (axis >= a.dim()) JC2_THROW(TensorError, "sum axis out of range.");
         std::vector<int> out_shape;
         for (int d = 0; d < a.dim(); ++d) {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
@@ -1731,7 +1731,7 @@ namespace jc {
             }
             return out;
         }
-        if (axis >= a.dim()) throw std::runtime_error("Tensor Error: mean axis out of range.");
+        if (axis >= a.dim()) JC2_THROW(TensorError, "mean axis out of range.");
         std::vector<int> out_shape;
         for (int d = 0; d < a.dim(); ++d) {
             if (d == axis) { if (keepdim) out_shape.push_back(1); }
@@ -1787,7 +1787,7 @@ namespace jc {
 
     // ---- argmax / argmin（返回线性索引，不带梯度）----
     inline int64_t tensor_argmax(const Tensor& a) {
-        if (a.numel() == 0) throw std::runtime_error("Tensor Error: argmax on empty tensor.");
+        if (a.numel() == 0) JC2_THROW(TensorError, "argmax on empty tensor.");
         size_t best = 0;
         double best_v = a.getFlat(0);
         for (size_t i = 1; i < a.numel(); ++i) { double v = a.getFlat(i); if (v > best_v) { best_v = v; best = i; } }
@@ -1795,7 +1795,7 @@ namespace jc {
     }
 
     inline int64_t tensor_argmin(const Tensor& a) {
-        if (a.numel() == 0) throw std::runtime_error("Tensor Error: argmin on empty tensor.");
+        if (a.numel() == 0) JC2_THROW(TensorError, "argmin on empty tensor.");
         size_t best = 0;
         double best_v = a.getFlat(0);
         for (size_t i = 1; i < a.numel(); ++i) { double v = a.getFlat(i); if (v < best_v) { best_v = v; best = i; } }
@@ -1804,7 +1804,7 @@ namespace jc {
 
     // ---- 高级索引 (Advanced Indexing) ----
     inline Tensor tensor_mask_get(const Tensor& a, const Tensor& mask) {
-        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        if (a.shape != mask.shape) JC2_THROW(TensorError, "Mask shape must match tensor shape.");
         size_t count = 0;
         for (size_t i = 0; i < mask.numel(); ++i) {
             if (mask.getFlat(i) != 0.0) count++;
@@ -1825,7 +1825,7 @@ namespace jc {
     }
 
     inline void tensor_mask_set(Tensor& a, const Tensor& mask, double val) {
-        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        if (a.shape != mask.shape) JC2_THROW(TensorError, "Mask shape must match tensor shape.");
         for (size_t i = 0; i < a.numel(); ++i) {
             if (mask.getFlat(i) != 0.0) {
                 a.setFlat(i, val);
@@ -1834,7 +1834,7 @@ namespace jc {
     }
 
     inline void tensor_mask_set(Tensor& a, const Tensor& mask, const Tensor& vals) {
-        if (a.shape != mask.shape) throw std::runtime_error("Tensor Error: Mask shape must match tensor shape.");
+        if (a.shape != mask.shape) JC2_THROW(TensorError, "Mask shape must match tensor shape.");
         if (vals.numel() == 1) {
             tensor_mask_set(a, mask, vals.item());
             return;
@@ -1843,7 +1843,7 @@ namespace jc {
         for (size_t i = 0; i < mask.numel(); ++i) {
             if (mask.getFlat(i) != 0.0) count++;
         }
-        if (vals.numel() != count) throw std::runtime_error("Tensor Error: Values tensor size must match number of true elements in mask.");
+        if (vals.numel() != count) JC2_THROW(TensorError, "Values tensor size must match number of true elements in mask.");
         size_t val_idx = 0;
         for (size_t i = 0; i < a.numel(); ++i) {
             if (mask.getFlat(i) != 0.0) {
@@ -1853,7 +1853,7 @@ namespace jc {
     }
 
     inline Tensor tensor_index_get(const Tensor& a, const Tensor& indices) {
-        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        if (a.dim() == 0) JC2_THROW(TensorError, "Cannot index a scalar tensor.");
         std::vector<int> out_shape = indices.shape;
         for (int i = 1; i < a.dim(); ++i) out_shape.push_back(a.shape[i]);
         
@@ -1866,7 +1866,7 @@ namespace jc {
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 out.setFlat(i * inner_size + j, a.getFlat(idx * inner_size + j));
@@ -1879,14 +1879,14 @@ namespace jc {
     }
 
     inline void tensor_index_set(Tensor& a, const Tensor& indices, double val) {
-        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        if (a.dim() == 0) JC2_THROW(TensorError, "Cannot index a scalar tensor.");
         size_t inner_size = 1;
         for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
         
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 a.setFlat(idx * inner_size + j, val);
@@ -1895,7 +1895,7 @@ namespace jc {
     }
 
     inline void tensor_index_set(Tensor& a, const Tensor& indices, const Tensor& vals) {
-        if (a.dim() == 0) throw std::runtime_error("Tensor Error: Cannot index a scalar tensor.");
+        if (a.dim() == 0) JC2_THROW(TensorError, "Cannot index a scalar tensor.");
         if (vals.numel() == 1) {
             tensor_index_set(a, indices, vals.item());
             return;
@@ -1903,7 +1903,7 @@ namespace jc {
         
         std::vector<int> expected_shape = indices.shape;
         for (int i = 1; i < a.dim(); ++i) expected_shape.push_back(a.shape[i]);
-        if (vals.shape != expected_shape) throw std::runtime_error("Tensor Error: Shape mismatch for index assignment.");
+        if (vals.shape != expected_shape) JC2_THROW(TensorError, "Shape mismatch for index assignment.");
         
         size_t inner_size = 1;
         for (int i = 1; i < a.dim(); ++i) inner_size *= a.shape[i];
@@ -1911,7 +1911,7 @@ namespace jc {
         for (size_t i = 0; i < indices.numel(); ++i) {
             int idx = static_cast<int>(indices.getFlat(i));
             if (idx < 0) idx += a.shape[0];
-            if (idx < 0 || idx >= a.shape[0]) throw std::runtime_error("Tensor Error: Index out of bounds.");
+            if (idx < 0 || idx >= a.shape[0]) JC2_THROW(TensorError, "Index out of bounds.");
             
             for (size_t j = 0; j < inner_size; ++j) {
                 a.setFlat(idx * inner_size + j, vals.getFlat(i * inner_size + j));
@@ -2033,7 +2033,7 @@ namespace jc {
     }
 
     inline Tensor tensor_linspace(double start, double end, int steps, DType dt = DType::Float64) {
-        if (steps < 1) throw std::runtime_error("Tensor Error: linspace requires steps >= 1.");
+        if (steps < 1) JC2_THROW(TensorError, "linspace requires steps >= 1.");
         Tensor t({steps}, dt, false);
         if (steps == 1) { t.setFlat(0, start); return t; }
         for (int i = 0; i < steps; ++i) {
@@ -2051,7 +2051,7 @@ namespace jc {
     // 从 double 数组创建
     inline Tensor tensor_from_data(const std::vector<double>& data, const std::vector<int>& shape, DType dt = DType::Float64, bool req_grad = false) {
         size_t expected = shapeToNumel(shape);
-        if (data.size() != expected) throw std::runtime_error("Tensor Error: data size mismatch for shape.");
+        if (data.size() != expected) JC2_THROW(TensorError, "data size mismatch for shape.");
         Tensor t(shape, dt, req_grad);
         for (size_t i = 0; i < data.size(); ++i) t.setFlat(i, data[i]);
         return t;
@@ -2066,17 +2066,17 @@ namespace jc {
 
     // ---- Concatenation ----
     inline Tensor tensor_cat(const std::vector<Tensor>& tensors, int axis = 0) {
-        if (tensors.empty()) throw std::runtime_error("Tensor Error: cat requires at least one tensor.");
+        if (tensors.empty()) JC2_THROW(TensorError, "cat requires at least one tensor.");
         int ndim = tensors[0].dim();
         if (axis < 0) axis += ndim;
-        if (axis < 0 || axis >= ndim) throw std::runtime_error("Tensor Error: cat axis out of range.");
+        if (axis < 0 || axis >= ndim) JC2_THROW(TensorError, "cat axis out of range.");
 
         // Validate shapes
         for (size_t ti = 1; ti < tensors.size(); ++ti) {
-            if (tensors[ti].dim() != ndim) throw std::runtime_error("Tensor Error: cat dimension mismatch.");
+            if (tensors[ti].dim() != ndim) JC2_THROW(TensorError, "cat dimension mismatch.");
             for (int d = 0; d < ndim; ++d) {
                 if (d != axis && tensors[ti].shape[d] != tensors[0].shape[d])
-                    throw std::runtime_error("Tensor Error: cat shape mismatch on dim " + std::to_string(d) + ".");
+                    JC2_THROW(TensorError, "cat shape mismatch on dim " + std::to_string(d) + ".");
             }
         }
 
@@ -2107,7 +2107,7 @@ namespace jc {
 
     // ---- Stack ----
     inline Tensor tensor_stack(const std::vector<Tensor>& tensors, int axis = 0) {
-        if (tensors.empty()) throw std::runtime_error("Tensor Error: stack requires at least one tensor.");
+        if (tensors.empty()) JC2_THROW(TensorError, "stack requires at least one tensor.");
         // unsqueeze each tensor at axis, then cat
         std::vector<Tensor> expanded;
         for (const auto& t : tensors) expanded.push_back(t.unsqueeze(axis));
@@ -2118,10 +2118,10 @@ namespace jc {
     
     // getRow: 返回第 row 行作为 1D tensor
     inline Tensor tensor_getrow(const Tensor& t, int row) {
-        if (t.dim() < 2) throw std::runtime_error("Tensor Error: getrow requires at least 2D tensor.");
+        if (t.dim() < 2) JC2_THROW(TensorError, "getrow requires at least 2D tensor.");
         if (row < 0) row += t.shape[0];
         if (row < 0 || row >= t.shape[0])
-            throw std::runtime_error("Tensor Error: getrow index out of range.");
+            JC2_THROW(TensorError, "getrow index out of range.");
         
         std::vector<int> row_shape(t.shape.begin() + 1, t.shape.end());
         Tensor result(row_shape, t.dtype(), false);
@@ -2134,11 +2134,11 @@ namespace jc {
 
     // getCol: 返回第 col 列作为 Tensor（仅对 2D）
     inline Tensor tensor_getcol(const Tensor& t, int col) {
-        if (t.dim() != 2) throw std::runtime_error("Tensor Error: getcol requires 2D tensor.");
+        if (t.dim() != 2) JC2_THROW(TensorError, "getcol requires 2D tensor.");
         int rows = t.shape[0], cols = t.shape[1];
         if (col < 0) col += cols;
         if (col < 0 || col >= cols)
-            throw std::runtime_error("Tensor Error: getcol index out of range.");
+            JC2_THROW(TensorError, "getcol index out of range.");
         
         Tensor result({rows}, t.dtype(), false);
         for (int i = 0; i < rows; ++i) {
@@ -2149,12 +2149,12 @@ namespace jc {
 
     // deleteRow: 删除第 row 行，返回新 tensor（仅对 2D）
     inline Tensor tensor_deleterow(const Tensor& t, int row) {
-        if (t.dim() != 2) throw std::runtime_error("Tensor Error: deleterow requires 2D tensor.");
-        if (t.shape[0] <= 1) throw std::runtime_error("Tensor Error: Cannot delete row from 1-row tensor.");
+        if (t.dim() != 2) JC2_THROW(TensorError, "deleterow requires 2D tensor.");
+        if (t.shape[0] <= 1) JC2_THROW(TensorError, "Cannot delete row from 1-row tensor.");
         
         if (row < 0) row += t.shape[0];
         if (row < 0 || row >= t.shape[0])
-            throw std::runtime_error("Tensor Error: deleterow index out of range.");
+            JC2_THROW(TensorError, "deleterow index out of range.");
         
         int rows = t.shape[0], cols = t.shape[1];
         Tensor result({rows - 1, cols}, t.dtype(), false);
@@ -2171,12 +2171,12 @@ namespace jc {
 
     // deleteCol: 删除第 col 列，返回新 tensor（仅对 2D）
     inline Tensor tensor_deletecol(const Tensor& t, int col) {
-        if (t.dim() != 2) throw std::runtime_error("Tensor Error: deletecol requires 2D tensor.");
-        if (t.shape[1] <= 1) throw std::runtime_error("Tensor Error: Cannot delete col from 1-col tensor.");
+        if (t.dim() != 2) JC2_THROW(TensorError, "deletecol requires 2D tensor.");
+        if (t.shape[1] <= 1) JC2_THROW(TensorError, "Cannot delete col from 1-col tensor.");
         
         if (col < 0) col += t.shape[1];
         if (col < 0 || col >= t.shape[1])
-            throw std::runtime_error("Tensor Error: deletecol index out of range.");
+            JC2_THROW(TensorError, "deletecol index out of range.");
         
         int rows = t.shape[0], cols = t.shape[1];
         Tensor result({rows, cols - 1}, t.dtype(), false);
@@ -2193,12 +2193,12 @@ namespace jc {
 
     // swapRows: 交换两行（仅对 2D）
     inline Tensor tensor_swaprows(const Tensor& t, int r1, int r2) {
-        if (t.dim() != 2) throw std::runtime_error("Tensor Error: swaprows requires 2D tensor.");
+        if (t.dim() != 2) JC2_THROW(TensorError, "swaprows requires 2D tensor.");
         int rows = t.shape[0], cols = t.shape[1];
         if (r1 < 0) r1 += rows;
         if (r2 < 0) r2 += rows;
         if (r1 < 0 || r1 >= rows || r2 < 0 || r2 >= rows)
-            throw std::runtime_error("Tensor Error: swaprows index out of range.");
+            JC2_THROW(TensorError, "swaprows index out of range.");
         
         Tensor result = t.clone();
         for (int j = 0; j < cols; ++j) {
@@ -2212,13 +2212,13 @@ namespace jc {
     // ---- 矩阵连接（Block concatenation）----
     inline Tensor tensor_hstack(const std::vector<Tensor>& tensors) {
         // 水平拼接：假设都是 2D，按列连接
-        if (tensors.empty()) throw std::runtime_error("Tensor Error: hstack requires at least one tensor.");
+        if (tensors.empty()) JC2_THROW(TensorError, "hstack requires at least one tensor.");
         return tensor_cat(tensors, 1);  // axis=1 表示列方向
     }
 
     inline Tensor tensor_vstack(const std::vector<Tensor>& tensors) {
         // 垂直拼接：假设都是 2D，按行连接
-        if (tensors.empty()) throw std::runtime_error("Tensor Error: vstack requires at least one tensor.");
+        if (tensors.empty()) JC2_THROW(TensorError, "vstack requires at least one tensor.");
         return tensor_cat(tensors, 0);  // axis=0 表示行方向
     }
 
@@ -2241,7 +2241,7 @@ namespace jc {
 
     // ---- Softmax (不跟踪梯度的简化版) ----
     inline Tensor tensor_softmax(const Tensor& a, int axis = -1) {
-        if (a.dim() == 0) throw std::runtime_error("Tensor Error: softmax requires at least 1D.");
+        if (a.dim() == 0) JC2_THROW(TensorError, "softmax requires at least 1D.");
         if (axis < 0) axis += a.dim();
 
         Tensor out = a.clone();

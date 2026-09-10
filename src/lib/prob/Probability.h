@@ -26,11 +26,11 @@ namespace jc {
         // --- Lanczos Log-Gamma (g=7, ~15 位精度) ---
         inline double lngamma(double x) {
             if (x <= 0 && x == std::floor(x))
-                throw std::runtime_error("Math Error: lgamma undefined at non-positive integers.");
+                JC2_THROW(MathError, "lgamma undefined at non-positive integers.");
             if (x <= 0) {
                 double sinpx = std::sin(PI_ * x);
                 if (std::abs(sinpx) < 1e-300)
-                    throw std::runtime_error("Math Error: lgamma pole.");
+                    JC2_THROW(MathError, "lgamma pole.");
                 return std::log(PI_ / std::abs(sinpx)) - lngamma(1.0 - x);
             }
             static const double c[8] = {
@@ -47,7 +47,7 @@ namespace jc {
 
         inline double tgamma(double x) {
             if (x <= 0 && x == std::floor(x))
-                throw std::runtime_error("Math Error: Gamma undefined at non-positive integers.");
+                JC2_THROW(MathError, "Gamma undefined at non-positive integers.");
             if (x < 0.5) return PI_ / (std::sin(PI_ * x) * tgamma(1.0 - x));
             return std::exp(lngamma(x));
         }
@@ -127,7 +127,7 @@ namespace jc {
 
         // --- Peter Acklam 逆正态 (~1.15e-9 精度) ---
         inline double normalInvStd(double p) {
-            if (p <= 0 || p >= 1) throw std::runtime_error("Math Error: p must be in (0,1).");
+            if (p <= 0 || p >= 1) JC2_THROW(MathError, "p must be in (0,1).");
             static const double a[] = { -3.969683028665376e+01, 2.209460984245205e+02,
                 -2.759285104469687e+02, 1.383577518672690e+02,
                 -3.066479806614716e+01, 2.506628277459239e+00 };
@@ -180,48 +180,48 @@ namespace jc {
         // 构造器 (Named Constructors)
         // ─────────────────────────────────────────────
         static Distribution normal(double mu = 0, double sigma = 1) {
-            if (sigma <= 0) throw std::runtime_error("Math Error: sigma must be positive.");
+            if (sigma <= 0) JC2_THROW(MathError, "sigma must be positive.");
             return { Type::NORMAL, {mu, sigma} };
         }
         static Distribution studentT(double df) {
-            if (df <= 0) throw std::runtime_error("Math Error: df must be positive.");
+            if (df <= 0) JC2_THROW(MathError, "df must be positive.");
             return { Type::STUDENT_T, {df} };
         }
         static Distribution chiSquared(double df) {
-            if (df <= 0) throw std::runtime_error("Math Error: df must be positive.");
+            if (df <= 0) JC2_THROW(MathError, "df must be positive.");
             return { Type::CHI_SQUARED, {df} };
         }
         static Distribution fDist(double d1, double d2) {
-            if (d1 <= 0 || d2 <= 0) throw std::runtime_error("Math Error: df must be positive.");
+            if (d1 <= 0 || d2 <= 0) JC2_THROW(MathError, "df must be positive.");
             return { Type::F_DIST, {d1, d2} };
         }
         static Distribution exponential(double lam) {
-            if (lam <= 0) throw std::runtime_error("Math Error: lambda must be positive.");
+            if (lam <= 0) JC2_THROW(MathError, "lambda must be positive.");
             return { Type::EXPONENTIAL, {lam} };
         }
         static Distribution gammaDist(double shape, double rate) {
-            if (shape <= 0 || rate <= 0) throw std::runtime_error("Math Error: shape/rate must be positive.");
+            if (shape <= 0 || rate <= 0) JC2_THROW(MathError, "shape/rate must be positive.");
             return { Type::GAMMA_DIST, {shape, rate} };
         }
         static Distribution betaDist(double a, double b) {
-            if (a <= 0 || b <= 0) throw std::runtime_error("Math Error: alpha/beta must be positive.");
+            if (a <= 0 || b <= 0) JC2_THROW(MathError, "alpha/beta must be positive.");
             return { Type::BETA_DIST, {a, b} };
         }
         static Distribution uniformDist(double a, double b) {
-            if (a >= b) throw std::runtime_error("Math Error: a must be less than b.");
+            if (a >= b) JC2_THROW(MathError, "a must be less than b.");
             return { Type::UNIFORM_DIST, {a, b} };
         }
         static Distribution binomial(int n, double p) {
-            if (n < 0) throw std::runtime_error("Math Error: n must be non-negative.");
-            if (p < 0 || p > 1) throw std::runtime_error("Math Error: p must be in [0,1].");
+            if (n < 0) JC2_THROW(MathError, "n must be non-negative.");
+            if (p < 0 || p > 1) JC2_THROW(MathError, "p must be in [0,1].");
             return { Type::BINOMIAL, {static_cast<double>(n), p} };
         }
         static Distribution poisson(double lam) {
-            if (lam < 0) throw std::runtime_error("Math Error: lambda must be non-negative.");
+            if (lam < 0) JC2_THROW(MathError, "lambda must be non-negative.");
             return { Type::POISSON, {lam} };
         }
         static Distribution geometric(double p) {
-            if (p <= 0 || p > 1) throw std::runtime_error("Math Error: p must be in (0,1].");
+            if (p <= 0 || p > 1) JC2_THROW(MathError, "p must be in (0,1].");
             return { Type::GEOMETRIC, {p} };
         }
 
@@ -378,7 +378,7 @@ namespace jc {
         // ─────────────────────────────────────────────
         double quantile(double p) const {
             using namespace prob;
-            if (p <= 0 || p >= 1) throw std::runtime_error("Math Error: p must be in (0,1).");
+            if (p <= 0 || p >= 1) JC2_THROW(MathError, "p must be in (0,1).");
 
             switch (type) {
             case Type::NORMAL: {
@@ -395,7 +395,7 @@ namespace jc {
                 int k = 0;
                 while (cdf(static_cast<double>(k)) < p) {
                     k++;
-                    if (k > 1000000) throw std::runtime_error("Math Error: quantile search exceeded limit.");
+                    if (k > 1000000) JC2_THROW(MathError, "quantile search exceeded limit.");
                 }
                 return static_cast<double>(k);
             }
@@ -410,9 +410,9 @@ namespace jc {
         double distMean() const {
             switch (type) {
             case Type::NORMAL:       return params[0];
-            case Type::STUDENT_T: { double df = params[0]; if (df <= 1) throw std::runtime_error("Math Error: Mean undefined for df<=1."); return 0; }
+            case Type::STUDENT_T: { double df = params[0]; if (df <= 1) JC2_THROW(MathError, "Mean undefined for df<=1."); return 0; }
             case Type::CHI_SQUARED:  return params[0];
-            case Type::F_DIST: { double d2 = params[1]; if (d2 <= 2) throw std::runtime_error("Math Error: Mean undefined for d2<=2."); return d2 / (d2 - 2); }
+            case Type::F_DIST: { double d2 = params[1]; if (d2 <= 2) JC2_THROW(MathError, "Mean undefined for d2<=2."); return d2 / (d2 - 2); }
             case Type::EXPONENTIAL:  return 1.0 / params[0];
             case Type::GAMMA_DIST:   return params[0] / params[1];
             case Type::BETA_DIST:    return params[0] / (params[0] + params[1]);
@@ -427,11 +427,11 @@ namespace jc {
         double distVar() const {
             switch (type) {
             case Type::NORMAL:       return params[1] * params[1];
-            case Type::STUDENT_T: { double df = params[0]; if (df <= 2) throw std::runtime_error("Math Error: Variance undefined for df<=2."); return df / (df - 2); }
+            case Type::STUDENT_T: { double df = params[0]; if (df <= 2) JC2_THROW(MathError, "Variance undefined for df<=2."); return df / (df - 2); }
             case Type::CHI_SQUARED:  return 2.0 * params[0];
             case Type::F_DIST: {
                 double d1 = params[0], d2 = params[1];
-                if (d2 <= 4) throw std::runtime_error("Math Error: Variance undefined for d2<=4.");
+                if (d2 <= 4) JC2_THROW(MathError, "Variance undefined for d2<=4.");
                 return 2.0 * d2 * d2 * (d1 + d2 - 2) / (d1 * (d2 - 2) * (d2 - 2) * (d2 - 4));
             }
             case Type::EXPONENTIAL: { double l = params[0]; return 1.0 / (l * l); }
@@ -589,12 +589,12 @@ namespace jc {
 
     inline TestResult ttest1(const std::vector<double>& data, double mu0 = 0) {
         int n = static_cast<int>(data.size());
-        if (n < 2) throw std::runtime_error("Math Error: t-test requires >= 2 data points.");
+        if (n < 2) JC2_THROW(MathError, "t-test requires >= 2 data points.");
         double s = 0, sq = 0;
         for (double x : data) { s += x; sq += x * x; }
         double mean = s / n, var = (sq - s * s / n) / (n - 1);
         double se = std::sqrt(var / n);
-        if (se < 1e-30) throw std::runtime_error("Math Error: Zero variance.");
+        if (se < 1e-30) JC2_THROW(MathError, "Zero variance.");
         double t = (mean - mu0) / se, df = n - 1.0;
         Distribution td = Distribution::studentT(df);
         double p = 2.0 * std::min(td.cdf(t), 1.0 - td.cdf(t));
@@ -603,13 +603,13 @@ namespace jc {
 
     inline TestResult ttest2ind(const std::vector<double>& d1, const std::vector<double>& d2) {
         int n1 = static_cast<int>(d1.size()), n2 = static_cast<int>(d2.size());
-        if (n1 < 2 || n2 < 2) throw std::runtime_error("Math Error: t-test requires >= 2 per group.");
+        if (n1 < 2 || n2 < 2) JC2_THROW(MathError, "t-test requires >= 2 per group.");
         double s1 = 0, q1 = 0, s2 = 0, q2 = 0;
         for (double x : d1) { s1 += x; q1 += x * x; }
         for (double x : d2) { s2 += x; q2 += x * x; }
         double m1 = s1 / n1, m2 = s2 / n2, v1 = (q1 - s1 * s1 / n1) / (n1 - 1), v2 = (q2 - s2 * s2 / n2) / (n2 - 1);
         double se = std::sqrt(v1 / n1 + v2 / n2);
-        if (se < 1e-30) throw std::runtime_error("Math Error: Zero variance.");
+        if (se < 1e-30) JC2_THROW(MathError, "Zero variance.");
         double t = (m1 - m2) / se, vn1 = v1 / n1, vn2 = v2 / n2;
         double df = (vn1 + vn2) * (vn1 + vn2) / (vn1 * vn1 / (n1 - 1) + vn2 * vn2 / (n2 - 1));
         Distribution td = Distribution::studentT(df);
@@ -618,18 +618,18 @@ namespace jc {
     }
 
     inline TestResult ttestPaired(const std::vector<double>& d1, const std::vector<double>& d2) {
-        if (d1.size() != d2.size()) throw std::runtime_error("Math Error: Paired test needs equal lengths.");
+        if (d1.size() != d2.size()) JC2_THROW(MathError, "Paired test needs equal lengths.");
         std::vector<double> diff(d1.size());
         for (size_t i = 0; i < d1.size(); ++i) diff[i] = d1[i] - d2[i];
         auto r = ttest1(diff, 0); r.name = "Paired t-test"; return r;
     }
 
     inline TestResult chi2test(const std::vector<double>& obs, const std::vector<double>& exp) {
-        if (obs.size() != exp.size()) throw std::runtime_error("Math Error: obs/exp size mismatch.");
-        if (obs.size() < 2) throw std::runtime_error("Math Error: Need >= 2 categories.");
+        if (obs.size() != exp.size()) JC2_THROW(MathError, "obs/exp size mismatch.");
+        if (obs.size() < 2) JC2_THROW(MathError, "Need >= 2 categories.");
         double stat = 0;
         for (size_t i = 0; i < obs.size(); ++i) {
-            if (exp[i] <= 0) throw std::runtime_error("Math Error: Expected must be positive.");
+            if (exp[i] <= 0) JC2_THROW(MathError, "Expected must be positive.");
             double d = obs[i] - exp[i]; stat += d * d / exp[i];
         }
         double df = static_cast<double>(obs.size() - 1);

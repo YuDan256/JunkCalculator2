@@ -49,10 +49,10 @@ void registerPredefinedClasses() {
             end = args[1].asDouble();
             step = args[2].asDouble();
         } else {
-            throw std::runtime_error("TypeError: range expected 1 to 3 arguments.");
+            JC2_THROW(TypeError, "range expected 1 to 3 arguments.");
         }
 
-        if (step == 0.0) throw std::runtime_error("ValueError: range() arg 3 must not be zero.");
+        if (step == 0.0) JC2_THROW(ValueError, "range() arg 3 must not be zero.");
 
         bool isInt = (std::floor(start) == start) && (std::floor(step) == step) && (std::floor(end) == end);
         
@@ -268,7 +268,7 @@ void registerPredefinedClasses() {
         auto inst = self.asInstance();
         
         if (args.empty() || !args[0].isObjType(ObjType::LIST)) {
-            throw std::runtime_error("TypeError: TokenStream init expects a list of Tokens.");
+            JC2_THROW(TypeError, "TokenStream init expects a list of Tokens.");
         }
         inst->properties["_tokens"] = {args[0], false, false};
         inst->properties["cursor"] = {Value::fromInt32(0), false, false};
@@ -331,7 +331,7 @@ void registerPredefinedClasses() {
         int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor <= 0) {
-            throw std::runtime_error("TokenStream Error: No previous token.");
+            JC2_THROW(LexerError, "No previous token.");
         }
         return list->vec[cursor - 1];
     });
@@ -422,11 +422,11 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx > static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Insert index out of bounds.");
+        if (idx < 0 || idx > static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Insert index out of bounds.");
         
         Value tokVal = args[1];
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
-            throw std::runtime_error("TypeError: Expected a Token instance.");
+            JC2_THROW(TypeError, "Expected a Token instance.");
         }
         auto tokInst = tokVal.asInstance();
         std::string typeStr = tokInst->properties["type"].val.asString();
@@ -438,7 +438,7 @@ void registerPredefinedClasses() {
             jc::Lexer testLexer(lexeme, "");
             auto testTokens = testLexer.tokenize();
             if (testTokens.size() != 2 || testTokens[0].type != tType) {
-                throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+                JC2_THROW(TypeError, "Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
             }
         }
         
@@ -461,11 +461,11 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Set index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Set index out of bounds.");
         
         Value tokVal = args[1];
         if (!tokVal.isInstance() || tokVal.asInstance()->classDef->name != "Token") {
-            throw std::runtime_error("TypeError: Expected a Token instance.");
+            JC2_THROW(TypeError, "Expected a Token instance.");
         }
         auto tokInst = tokVal.asInstance();
         std::string typeStr = tokInst->properties["type"].val.asString();
@@ -477,7 +477,7 @@ void registerPredefinedClasses() {
             jc::Lexer testLexer(lexeme, "");
             auto testTokens = testLexer.tokenize();
             if (testTokens.size() != 2 || testTokens[0].type != tType) {
-                throw std::runtime_error("TypeError: Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
+                JC2_THROW(TypeError, "Token type '" + typeStr + "' does not match its lexeme '" + lexeme + "'.");
             }
         }
         
@@ -497,7 +497,7 @@ void registerPredefinedClasses() {
         
         int idx = static_cast<int>(std::round(args[0].asDouble()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
-        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) throw std::runtime_error("TokenStream Error: Remove index out of bounds.");
+        if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Remove index out of bounds.");
         
         list->mut().erase(list->mut().begin() + idx);
         
@@ -520,7 +520,7 @@ void registerPredefinedClasses() {
         std::vector<Token> tokens;
         for (size_t i = cursor; i < list->vec.size(); ++i) {
             const auto& v = list->vec[i];
-            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") JC2_THROW(TypeError, "TokenStream contains non-Token elements.");
             auto tokInst = v.asInstance();
             std::string typeStr = tokInst->properties["type"].val.asString();
             std::string lexeme = tokInst->properties["lexeme"].val.asString();
@@ -563,13 +563,13 @@ void registerPredefinedClasses() {
         int cursor = inst->properties["cursor"].val.asInt32();
         
         if (cursor >= static_cast<int>(list->vec.size())) {
-            throw std::runtime_error("TokenStream Error: Cannot parse past end of stream.");
+            JC2_THROW(LexerError, "Cannot parse past end of stream.");
         }
 
         std::vector<Token> tokens;
         for (size_t i = cursor; i < list->vec.size(); ++i) {
             const auto& v = list->vec[i];
-            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") throw std::runtime_error("TypeError: TokenStream contains non-Token elements.");
+            if (!v.isInstance() || v.asInstance()->classDef->name != "Token") JC2_THROW(TypeError, "TokenStream contains non-Token elements.");
             auto tokInst = v.asInstance();
             std::string typeStr = tokInst->properties["type"].val.asString();
             std::string lexeme = tokInst->properties["lexeme"].val.asString();

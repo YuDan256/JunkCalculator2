@@ -178,7 +178,7 @@ private:
                     masm_.movabs(r11, src.imm64());
                     masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Move operands.");
+                    JC2_THROW(EmitterError, "Unsupported Move operands.");
                 }
                 break;
             }
@@ -215,7 +215,7 @@ private:
                         masm_.movabs(r10, src.imm64());
                         masm_.movq(getStackOperand(dst.slot()), r10);
                     } else {
-                        throw std::runtime_error("CodeEmitter: Unsupported ParallelMove operand combination.");
+                        JC2_THROW(EmitterError, "Unsupported ParallelMove operand combination.");
                     }
                 };
 
@@ -313,7 +313,7 @@ private:
                     masm_.mov(r11, src.imm32());
                     masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported LoadImm32 destination.");
+                    JC2_THROW(EmitterError, "Unsupported LoadImm32 destination.");
                 }
                 break;
             }
@@ -333,7 +333,7 @@ private:
                     masm_.movabs(r11, src.imm64());
                     masm_.movq(getStackOperand(dst.slot()), r11);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported LoadImm64 destination.");
+                    JC2_THROW(EmitterError, "Unsupported LoadImm64 destination.");
                 }
                 break;
             }
@@ -348,7 +348,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.add(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported AddI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported AddI32 operands.");
                 }
                 if (inst->hasBailoutId()) {
                     needsDeoptTrampoline_ = true;
@@ -374,7 +374,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.sub(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported SubI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported SubI32 operands.");
                 }
                 if (inst->hasBailoutId()) {
                     needsDeoptTrampoline_ = true;
@@ -400,7 +400,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.imul(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported MulI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported MulI32 operands.");
                 }
                 if (inst->hasBailoutId()) {
                     needsDeoptTrampoline_ = true;
@@ -451,7 +451,7 @@ private:
                 } else if (src.isStackSlot()) {
                     masm_.idiv(getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported DivI32 operand.");
+                    JC2_THROW(EmitterError, "Unsupported DivI32 operand.");
                 }
                 
                 if (inst->hasBailoutId()) {
@@ -499,7 +499,7 @@ private:
                 } else if (src.isStackSlot()) {
                     masm_.idiv(getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported IDivI32 operand.");
+                    JC2_THROW(EmitterError, "Unsupported IDivI32 operand.");
                 }
                 break;
             }
@@ -536,7 +536,7 @@ private:
                 } else if (src.isStackSlot()) {
                     masm_.idiv(getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported ModI32 operand.");
+                    JC2_THROW(EmitterError, "Unsupported ModI32 operand.");
                 }
                 break;
             }
@@ -548,7 +548,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.and_(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported AndI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported AndI32 operands.");
                 }
                 break;
             }
@@ -560,7 +560,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.or_(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported OrI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported OrI32 operands.");
                 }
                 break;
             }
@@ -572,7 +572,7 @@ private:
                 } else if (dst.isPhysicalGPR() && src.isStackSlot()) {
                     masm_.xor_(dst.pregGPR(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported XorI32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported XorI32 operands.");
                 }
                 break;
             }
@@ -607,7 +607,7 @@ private:
                         masm_.shl_cl(dst.pregGPR());
                     }
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported ShlI32 destination.");
+                    JC2_THROW(EmitterError, "Unsupported ShlI32 destination.");
                 }
                 break;
             }
@@ -628,7 +628,7 @@ private:
                     }
                     masm_.sar_cl(dst.pregGPR()); // JC2 的 Shr 是算术右移
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported ShrI32 destination.");
+                    JC2_THROW(EmitterError, "Unsupported ShrI32 destination.");
                 }
                 break;
             }
@@ -637,7 +637,7 @@ private:
                 if (dst.isPhysicalGPR()) {
                     masm_.neg(dst.pregGPR());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported NegI32 destination.");
+                    JC2_THROW(EmitterError, "Unsupported NegI32 destination.");
                 }
                 break;
             }
@@ -646,7 +646,7 @@ private:
                 if (dst.isPhysicalGPR()) {
                     masm_.not_(dst.pregGPR());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported NotI32 destination.");
+                    JC2_THROW(EmitterError, "Unsupported NotI32 destination.");
                 }
                 break;
             }
@@ -658,7 +658,7 @@ private:
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
                     masm_.addsd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported AddF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported AddF64 operands.");
                 }
                 break;
             }
@@ -670,7 +670,7 @@ private:
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
                     masm_.subsd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported SubF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported SubF64 operands.");
                 }
                 break;
             }
@@ -682,7 +682,7 @@ private:
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
                     masm_.mulsd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported MulF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported MulF64 operands.");
                 }
                 break;
             }
@@ -715,7 +715,7 @@ private:
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
                     masm_.divsd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported DivF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported DivF64 operands.");
                 }
                 break;
             }
@@ -729,7 +729,7 @@ private:
                     Label& maskLbl = masm_.addConstant64(0x8000000000000000ULL);
                     masm_.xorpd(dst.pregXMM(), maskLbl);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported NegF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported NegF64 operands.");
                 }
                 break;
             }
@@ -739,7 +739,7 @@ private:
                 if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
                     masm_.sqrtsd(dst.pregXMM(), src.pregXMM());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported SqrtF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported SqrtF64 operands.");
                 }
                 break;
             }
@@ -753,7 +753,7 @@ private:
                     Label& maskLbl = masm_.addConstant64(0x7FFFFFFFFFFFFFFFULL);
                     masm_.andpd(dst.pregXMM(), maskLbl);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported AbsF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported AbsF64 operands.");
                 }
                 break;
             }
@@ -772,7 +772,7 @@ private:
                 if (dst.isPhysicalXMM() && src.isPhysicalXMM()) {
                     masm_.roundsd(dst.pregXMM(), src.pregXMM(), mode);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Rounding operands.");
+                    JC2_THROW(EmitterError, "Unsupported Rounding operands.");
                 }
                 break;
             }
@@ -790,7 +790,7 @@ private:
                     masm_.movsd(dst.pregXMM(), Operand(rsp, 0));
                     masm_.addq(rsp, 8);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Sin/Cos operands.");
+                    JC2_THROW(EmitterError, "Unsupported Sin/Cos operands.");
                 }
                 break;
             }
@@ -923,7 +923,7 @@ private:
                     masm_.movsd(xmm5, getStackOperand(lhs.slot()));
                     masm_.ucomisd(xmm5, getStackOperand(rhs.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported CmpF64 operands.");
+                    JC2_THROW(EmitterError, "Unsupported CmpF64 operands.");
                 }
                 break;
             }
@@ -933,7 +933,7 @@ private:
                     masm_.setcc(inst->condition(), dst.pregGPR());
                     masm_.and_(dst.pregGPR(), 1);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Setcc destination.");
+                    JC2_THROW(EmitterError, "Unsupported Setcc destination.");
                 }
                 break;
             }
@@ -941,7 +941,7 @@ private:
                 if (inst->target()) {
                     masm_.jmp(blockLabels_[inst->target()]);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Jmp without target.");
+                    JC2_THROW(EmitterError, "Jmp without target.");
                 }
                 break;
             }
@@ -949,7 +949,7 @@ private:
                 if (inst->target()) {
                     masm_.jcc(inst->condition(), blockLabels_[inst->target()]);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Jcc without target.");
+                    JC2_THROW(EmitterError, "Jcc without target.");
                 }
                 break;
             }
@@ -969,7 +969,7 @@ private:
             case LIROpcode::LoadGlobal: {
                 const LIROperand& dst = inst->defs()[0];
                 int32_t slot = inst->uses()[0].imm32();
-                if (!globalsDataPtr_) throw std::runtime_error("CodeEmitter: globalsDataPtr is null.");
+                if (!globalsDataPtr_) JC2_THROW(EmitterError, "globalsDataPtr is null.");
                 
                 // 1. 加载 globalsDataPtr 的绝对地址
                 masm_.movabs(r11, reinterpret_cast<uint64_t>(globalsDataPtr_));
@@ -980,7 +980,7 @@ private:
                     // 3. 加上偏移量读取全局变量
                     masm_.movq(dst.pregGPR(), Operand(r11, slot * sizeof(uint64_t)));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported LoadGlobal destination.");
+                    JC2_THROW(EmitterError, "Unsupported LoadGlobal destination.");
                 }
                 break;
             }
@@ -990,7 +990,7 @@ private:
                 const LIROperand& offset = inst->uses()[1];
                 
                 if (!base.isPhysicalGPR() || !dst.isPhysicalGPR()) {
-                    throw std::runtime_error("CodeEmitter: LoadField requires GPR for base and dst.");
+                    JC2_THROW(EmitterError, "LoadField requires GPR for base and dst.");
                 }
                 
                 // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
@@ -1002,7 +1002,7 @@ private:
                 } else if (offset.isPhysicalGPR()) {
                     masm_.movq(dst.pregGPR(), Operand(rcx, offset.pregGPR(), Scale::Times1, 0));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported LoadField offset.");
+                    JC2_THROW(EmitterError, "Unsupported LoadField offset.");
                 }
                 break;
             }
@@ -1012,7 +1012,7 @@ private:
                 const LIROperand& val = inst->uses()[2];
                 
                 if (!base.isPhysicalGPR() || !val.isPhysicalGPR()) {
-                    throw std::runtime_error("CodeEmitter: StoreField requires GPR for base and val.");
+                    JC2_THROW(EmitterError, "StoreField requires GPR for base and val.");
                 }
                 
                 // 剥离 NaN-Boxing 掩码，还原真实的 48 位对象指针并符号扩展
@@ -1024,13 +1024,13 @@ private:
                 } else if (offset.isPhysicalGPR()) {
                     masm_.movq(Operand(rcx, offset.pregGPR(), Scale::Times1, 0), val.pregGPR());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported StoreField offset.");
+                    JC2_THROW(EmitterError, "Unsupported StoreField offset.");
                 }
                 break;
             }
             case LIROpcode::GuardIsInt32: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsInt32 requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsInt32 requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
@@ -1048,7 +1048,7 @@ private:
             }
             case LIROpcode::GuardIsDouble: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsDouble requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsDouble requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
@@ -1065,7 +1065,7 @@ private:
             }
             case LIROpcode::GuardIsBool: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsBool requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsBool requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
@@ -1083,7 +1083,7 @@ private:
             }
             case LIROpcode::GuardIsString: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsString requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsString requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
@@ -1122,7 +1122,7 @@ private:
             }
             case LIROpcode::GuardIsObject: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsObject requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsObject requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
                 
@@ -1139,7 +1139,7 @@ private:
             }
             case LIROpcode::GuardTruthy: {
                 const LIROperand& val = inst->uses()[0];
-                if (!val.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardTruthy requires GPR.");
+                if (!val.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardTruthy requires GPR.");
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
 
@@ -1168,7 +1168,7 @@ private:
                 int32_t classDefOffset = inst->uses()[3].imm32();
                 int32_t classIdOffset = inst->uses()[4].imm32();
                 
-                if (!obj.isPhysicalGPR()) throw std::runtime_error("CodeEmitter: GuardIsClass requires GPR.");
+                if (!obj.isPhysicalGPR()) JC2_THROW(EmitterError, "GuardIsClass requires GPR.");
                 
                 needsDeoptTrampoline_ = true;
                 registerStackMap(inst);
@@ -1230,7 +1230,7 @@ private:
                     masm_.emit8(0x0B); // OR r64, r/m64
                     masm_.emitModRM(3, dst.pregGPR().id(), scratch.id());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported BoxInt32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported BoxInt32 operands.");
                 }
                 break;
             }
@@ -1243,7 +1243,7 @@ private:
                     }
                     masm_.mov(dst.pregGPR(), dst.pregGPR());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported UnboxInt32 operands.");
+                    JC2_THROW(EmitterError, "Unsupported UnboxInt32 operands.");
                 }
                 break;
             }
@@ -1259,7 +1259,7 @@ private:
                     masm_.emit8(0x7E);
                     masm_.emitModRM(3, src.pregXMM().id(), dst.pregGPR().id());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported BoxDouble operands.");
+                    JC2_THROW(EmitterError, "Unsupported BoxDouble operands.");
                 }
                 break;
             }
@@ -1273,7 +1273,7 @@ private:
                     masm_.emit8(0x6E);
                     masm_.emitModRM(3, dst.pregXMM().id(), src.pregGPR().id());
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported UnboxDouble operands.");
+                    JC2_THROW(EmitterError, "Unsupported UnboxDouble operands.");
                 }
                 break;
             }
@@ -1290,7 +1290,7 @@ private:
                     masm_.movabs(scratch, 0x7FFC000000000002ULL); // TAG_FALSE
                     masm_.addq(dst.pregGPR(), scratch);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported BoxBool operands.");
+                    JC2_THROW(EmitterError, "Unsupported BoxBool operands.");
                 }
                 break;
             }
@@ -1303,7 +1303,7 @@ private:
                     }
                     masm_.and_(dst.pregGPR(), 1);
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported UnboxBool operands.");
+                    JC2_THROW(EmitterError, "Unsupported UnboxBool operands.");
                 }
                 break;
             }
@@ -1315,7 +1315,7 @@ private:
                 } else if (dst.isPhysicalXMM() && src.isStackSlot()) {
                     masm_.cvtsi2sd(dst.pregXMM(), getStackOperand(src.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Int32ToDouble operands.");
+                    JC2_THROW(EmitterError, "Unsupported Int32ToDouble operands.");
                 }
                 break;
             }
@@ -1342,7 +1342,7 @@ private:
                             masm_.movabs(r11, arg.imm64());
                             masm_.movq(Operand(rsp, i * 8), r11);
                         } else {
-                            throw std::runtime_error("CodeEmitter: Unsupported Call argument type.");
+                            JC2_THROW(EmitterError, "Unsupported Call argument type.");
                         }
                     }
                 }
@@ -1353,7 +1353,7 @@ private:
                 } else if (callee.isStackSlot()) {
                     masm_.movq(rcx, getStackOperand(callee.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                    JC2_THROW(EmitterError, "Unsupported Call callee type.");
                 }
                 if (argc > 0) masm_.movq(r8, rsp); else masm_.movq(r8, 0);
                 masm_.movq(rdx, r14);
@@ -1364,14 +1364,14 @@ private:
                 } else if (callee.isStackSlot()) {
                     masm_.movq(rdi, getStackOperand(callee.slot()));
                 } else {
-                    throw std::runtime_error("CodeEmitter: Unsupported Call callee type.");
+                    JC2_THROW(EmitterError, "Unsupported Call callee type.");
                 }
                 if (argc > 0) masm_.movq(rdx, rsp); else masm_.movq(rdx, 0);
                 masm_.movq(rsi, r14);
                 masm_.mov(rcx, static_cast<int32_t>(argc));
 #endif
                 
-                if (!callRuntimeFunc_) throw std::runtime_error("CodeEmitter: callRuntimeFunc is null.");
+                if (!callRuntimeFunc_) JC2_THROW(EmitterError, "callRuntimeFunc is null.");
                 masm_.callCFunction(callRuntimeFunc_);
                 
                 if (argc > 0) {
@@ -1416,7 +1416,7 @@ private:
                             masm_.movabs(r11, v.imm64());
                             masm_.push(r11);
                         } else {
-                            throw std::runtime_error("CodeEmitter: Unsupported var-arg value type.");
+                            JC2_THROW(EmitterError, "Unsupported var-arg value type.");
                         }
                     }
                     
@@ -1463,7 +1463,7 @@ private:
 #else
                 argRegs = {rdi, rsi, rdx, rcx, r8, r9};
 #endif
-                if (argc > argRegs.size() + 2) throw std::runtime_error("CodeEmitter: Callout with too many arguments.");
+                if (argc > argRegs.size() + 2) JC2_THROW(EmitterError, "Callout with too many arguments.");
                 
                 // Push all arguments to stack to avoid register swap problems
                 for (uint32_t i = 0; i < argc; ++i) {
@@ -1480,7 +1480,7 @@ private:
                         masm_.movabs(r11, arg.imm64());
                         masm_.push(r11);
                     } else {
-                        throw std::runtime_error("CodeEmitter: Unsupported Callout argument type.");
+                        JC2_THROW(EmitterError, "Unsupported Callout argument type.");
                     }
                 }
                 
@@ -1523,7 +1523,7 @@ private:
                 break;
             }
             default:
-                throw std::runtime_error("CodeEmitter: Unimplemented LIR opcode " + to_string(inst->opcode()));
+                JC2_THROW(EmitterError, "Unimplemented LIR opcode " + to_string(inst->opcode()));
         }
     }
 };

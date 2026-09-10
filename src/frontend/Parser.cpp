@@ -96,7 +96,7 @@ namespace jc {
                         field = advance();
                         field.type = TokenType::IDENTIFIER;
                     } else {
-                        throw std::runtime_error("Parser Error: Expect method name after '|> .'.");
+                        JC2_THROW(ParserError, "Expect method name after '|> .'.");
                     }
                 }
 
@@ -109,7 +109,7 @@ namespace jc {
                         while (true) {
                             while (match({ TokenType::NEWLINE })) {}
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                                 inKwOnly = true;
                                 if (check(TokenType::RPAREN)) break;
                                 continue;
@@ -122,7 +122,7 @@ namespace jc {
                                     args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd));
                                     hasKwArg = true;
                                 } else {
-                                    if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                    if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                                     args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd));
                                 }
                             } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
@@ -133,14 +133,14 @@ namespace jc {
                                 args.push_back(withPos(std::make_unique<KeywordArgExpr>(kwName, std::move(val)), kwName.position, kwEnd));
                                 hasKwArg = true;
                             } else {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
-                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only keyword arguments allowed after ';'.");
+                                if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                                 args.push_back(assignment());
                             }
                             while (match({ TokenType::NEWLINE })) {}
                             if (match({ TokenType::COMMA })) continue;
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                                 inKwOnly = true;
                                 if (check(TokenType::RPAREN)) break;
                                 continue;
@@ -303,7 +303,7 @@ namespace jc {
                         advance();  // 触发 "Lexer Error"（如 Unexpected character）
                     }
                     if (!isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                        throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                        JC2_THROW(ParserError, "Expect newline or ';' after statement.");
                     }
                 } catch (const std::exception& e) {
                     if (isLspMode) {
@@ -379,23 +379,23 @@ namespace jc {
         bool isLocal = false, isRef = false, isState = false, isConst = false;
         while (true) {
             if (match({ TokenType::LOCAL })) {
-                if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                if (isLocal) JC2_THROW(ParserError, "Duplicate 'local' modifier.");
                 isLocal = true;
             } else if (match({ TokenType::REF })) {
-                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                if (isRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
                 isRef = true;
             } else if (match({ TokenType::STATE })) {
-                if (isState) throw std::runtime_error("Parser Error: Duplicate 'state' modifier.");
+                if (isState) JC2_THROW(ParserError, "Duplicate 'state' modifier.");
                 isState = true;
             } else if (match({ TokenType::CONST })) {
-                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                 isConst = true;
             } else {
                 break;
             }
         }
-        if (isLocal && (isRef || isState)) throw std::runtime_error("Parser Error: Cannot combine 'local' with 'ref' or 'state'.");
-        if (isRef && isState) throw std::runtime_error("Parser Error: Cannot combine 'ref' and 'state'.");
+        if (isLocal && (isRef || isState)) JC2_THROW(ParserError, "Cannot combine 'local' with 'ref' or 'state'.");
+        if (isRef && isState) JC2_THROW(ParserError, "Cannot combine 'ref' and 'state'.");
 
         // ★ 特权推测解析：精准捕获带类型注解的函数定义 f(x: int) -> int = ...
         bool isFuncDef = false;
@@ -472,22 +472,22 @@ namespace jc {
 
                             // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                                 inKwOnly = true;
                                 continue;
                             }
                             // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
-                            if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-                            if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
+                            if (!restName.empty() && !inKwOnly) JC2_THROW(ParserError, "Rest parameter must be last.");
+                            if (!kwargsName.empty()) JC2_THROW(ParserError, "kwargs parameter must be last.");
 
                             bool isParamRef = false;
                             bool isParamConst = false;
                             while (true) {
                                 if (match({ TokenType::REF })) {
-                                    if (isParamRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                    if (isParamRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
                                     isParamRef = true;
                                 } else if (match({ TokenType::CONST })) {
-                                    if (isParamConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                    if (isParamConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                                     isParamConst = true;
                                 } else {
                                     break;
@@ -500,7 +500,7 @@ namespace jc {
                             std::unique_ptr<Pattern> patNode = nullptr;
 
                             if (match({ TokenType::ELLIPSIS })) {
-                                if (isParamRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be ref.");
+                                if (isParamRef) JC2_THROW(ParserError, "Rest/kwargs parameter cannot be ref.");
                                 if (match({ TokenType::DOLLAR })) {
                                     Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                                     paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
@@ -509,14 +509,14 @@ namespace jc {
                                 }
                                 isRest = true;
                                 if (inKwOnly) {
-                                    if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                    if (!kwargsName.empty()) JC2_THROW(ParserError, "Duplicate kwargs parameter.");
                                     kwargsName = paramTok.lexeme;
                                 } else {
-                                    if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                    if (!restName.empty()) JC2_THROW(ParserError, "Duplicate rest parameter.");
                                     restName = paramTok.lexeme;
                                 }
                             } else if (atDestructPattern()) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
                                 if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                                 patNode = parsePrimaryPattern();
                                 std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -553,7 +553,7 @@ namespace jc {
                             }
 
                             if (match({ TokenType::ASSIGN })) {
-                                if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
+                                if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
                                 if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
                                 else defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
                             } else {
@@ -572,7 +572,7 @@ namespace jc {
                             // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                             if (match({ TokenType::COMMA })) continue;
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                                 inKwOnly = true;
                                 if (check(TokenType::RPAREN)) break;
                                 continue;
@@ -665,9 +665,9 @@ namespace jc {
                     TokenType::BIT_AND_ASSIGN, TokenType::BIT_OR_ASSIGN, TokenType::BIT_XOR_ASSIGN,
                     TokenType::SHIFT_LEFT_ASSIGN, TokenType::SHIFT_RIGHT_ASSIGN })) {
             if (isConst && isRef) {
-                throw std::runtime_error("Parser Error: 'const ref' declaration cannot be initialized with compound assignment.");
+                JC2_THROW(ParserError, "'const ref' declaration cannot be initialized with compound assignment.");
             }
-            if (isConst) throw std::runtime_error("Parser Error: 'const' cannot be applied to compound assignment.");
+            if (isConst) JC2_THROW(ParserError, "'const' cannot be applied to compound assignment.");
             Token compOp = previous();
 
             TokenType baseOp;
@@ -688,12 +688,12 @@ namespace jc {
             default: baseOp = TokenType::PLUS; break;
             }
 
-            if (typeHint) throw std::runtime_error("Parser Error: Type assertion cannot be combined with compound assignment.");
+            if (typeHint) JC2_THROW(ParserError, "Type assertion cannot be combined with compound assignment.");
 
             auto value = assignment();
 
             if (!dynamic_cast<Variable*>(expr.get()) && (isLocal || isRef || isState)) {
-                throw std::runtime_error("Parser Error: 'local', 'ref' or 'state' can only be applied to variables.");
+                JC2_THROW(ParserError, "'local', 'ref' or 'state' can only be applied to variables.");
             }
 
             int endPos = value->endPos;
@@ -703,19 +703,19 @@ namespace jc {
         // ── 处理标准赋值 (=) ──
         if (match({ TokenType::ASSIGN })) {
             if (isConst && isRef) {
-                throw std::runtime_error("Parser Error: 'const ref' declaration cannot be initialized with '='.");
+                JC2_THROW(ParserError, "'const ref' declaration cannot be initialized with '='.");
             }
             Token equals = previous();
             auto value = assignment();  // ★ 直接读取右值即可，把上下两行记录 index 的删掉
 
             int endPos = value->endPos;
             if (auto* dotExpr = dynamic_cast<DotAccess*>(expr.get())) {
-                if (isLocal || isRef || isState || isConst) throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' cannot be applied to object properties.");
+                if (isLocal || isRef || isState || isConst) JC2_THROW(ParserError, "'local', 'ref', 'state', or 'const' cannot be applied to object properties.");
                 return withPos(std::make_unique<DotAssign>(std::move(dotExpr->object), std::move(dotExpr->field), std::move(value), std::move(typeHint)), startPos, endPos);
             }
 
             if (auto* indexExpr = dynamic_cast<IndexAccess*>(expr.get())) {
-                if (isLocal || isRef || isState || isConst) throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' cannot be applied to array elements.");
+                if (isLocal || isRef || isState || isConst) JC2_THROW(ParserError, "'local', 'ref', 'state', or 'const' cannot be applied to array elements.");
                 std::vector<std::vector<std::unique_ptr<Expr>>> chain;
                 IndexAccess* currentIA = indexExpr;
                 chain.push_back(std::move(currentIA->indices));
@@ -743,7 +743,7 @@ namespace jc {
 
             // ★ （旧的 Call 拦截已经被上面顶端安全取代，这里删去原来的 Call if 分支即可！）
 
-            throw std::runtime_error("Parser Error: Invalid assignment target at '" + equals.lexeme + "'.");
+            JC2_THROW(ParserError, "Invalid assignment target at '" + equals.lexeme + "'.");
         }
 
         if (isLocal || isRef || isState || isConst) {
@@ -773,19 +773,19 @@ namespace jc {
                         else if (isState) un->right = withPos(std::make_unique<StateDecl>(restVar->name, isConst), rStart, rEnd);
                         else if (isConst) un->right = withPos(std::make_unique<ConstDecl>(restVar->name), rStart, rEnd);
                     } else {
-                        throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
+                        JC2_THROW(ParserError, "'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
                     }
                 } else {
-                    throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
+                    JC2_THROW(ParserError, "'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
                 }
             } else {
-                throw std::runtime_error("Parser Error: 'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
+                JC2_THROW(ParserError, "'local', 'ref', 'state', or 'const' must be followed by a variable or assignment.");
             }
         }
 
         // ★ 裸类型注解（无 '='/声明）已无意义，报错；求值断言用 'as'
         if (typeHint) {
-            throw std::runtime_error("Parser Error: Type annotation must be followed by '=' or a declaration. Use 'as' for a value assertion (e.g. 'x as int').");
+            JC2_THROW(ParserError, "Type annotation must be followed by '=' or a declaration. Use 'as' for a value assertion (e.g. 'x as int').");
         }
 
         return expr;
@@ -953,7 +953,7 @@ namespace jc {
                         field = advance();
                         field.type = TokenType::IDENTIFIER; // 统一降级视为标识符
                     } else {
-                        throw std::runtime_error("Parser Error: Expect field/method name after '.'.");
+                        JC2_THROW(ParserError, "Expect field/method name after '.'.");
                     }
                 }
 
@@ -966,7 +966,7 @@ namespace jc {
                         while (true) {
                             while (match({ TokenType::NEWLINE })) {}
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                                 inKwOnly = true;
                                 if (check(TokenType::RPAREN)) break;
                                 continue;
@@ -979,7 +979,7 @@ namespace jc {
                                     args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd));
                                     hasKwArg = true;
                                 } else {
-                                    if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                    if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                                     args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd));
                                 }
                             } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
@@ -990,14 +990,14 @@ namespace jc {
                                 args.push_back(withPos(std::make_unique<KeywordArgExpr>(kwName, std::move(val)), kwName.position, kwEnd));
                                 hasKwArg = true;
                             } else {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
-                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only keyword arguments allowed after ';'.");
+                                if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                                 args.push_back(assignment()); // ★ 降级调用，保护函数参数的逗号
                             }
                             while (match({ TokenType::NEWLINE })) {}
                             if (match({ TokenType::COMMA })) continue;
                             if (match({ TokenType::SEMICOLON })) {
-                                if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                                if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                                 inKwOnly = true;
                                 if (check(TokenType::RPAREN)) break;
                                 continue;
@@ -1056,7 +1056,7 @@ namespace jc {
                     while (true) {
                         while (match({ TokenType::NEWLINE })) {}
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                             inKwOnly = true;
                             if (check(TokenType::RPAREN)) break;
                             continue;
@@ -1069,7 +1069,7 @@ namespace jc {
                                 args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), true), spreadStart, spreadEnd));
                                 hasKwArg = true;
                             } else {
-                                if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                                if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                                 args.push_back(withPos(std::make_unique<SpreadExpr>(std::move(val), false), spreadStart, spreadEnd));
                             }
                         } else if (check(TokenType::IDENTIFIER) && current + 1 < static_cast<int>(tokens.size()) && tokens[current + 1].type == TokenType::ASSIGN) {
@@ -1080,14 +1080,14 @@ namespace jc {
                             args.push_back(withPos(std::make_unique<KeywordArgExpr>(kwName, std::move(val)), kwName.position, kwEnd));
                             hasKwArg = true;
                         } else {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only keyword arguments allowed after ';'.");
-                            if (hasKwArg) throw std::runtime_error("Parser Error: Positional argument cannot follow keyword argument.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only keyword arguments allowed after ';'.");
+                            if (hasKwArg) JC2_THROW(ParserError, "Positional argument cannot follow keyword argument.");
                             args.push_back(assignment());
                         }
                         while (match({ TokenType::NEWLINE })) {}
                         if (match({ TokenType::COMMA })) continue;
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in argument list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in argument list.");
                             inKwOnly = true;
                             if (check(TokenType::RPAREN)) break;
                             continue;
@@ -1141,7 +1141,7 @@ namespace jc {
                 std::vector<std::unique_ptr<Expr>> indices;
                 auto parseSliceArg = [this]() -> std::unique_ptr<Expr> {
                     if (check(TokenType::COMMA) || check(TokenType::RBRACKET)) {
-                        throw std::runtime_error("Syntax Error: Missing index expression.");
+                        JC2_THROW(SyntaxError, "Missing index expression.");
                     }
                     std::unique_ptr<Expr> st, en, sp;
                     bool isSl = false;
@@ -1176,7 +1176,7 @@ namespace jc {
 
                 while (match({ TokenType::COMMA })) {
                     while (match({ TokenType::NEWLINE })) {}
-                    if (check(TokenType::RBRACKET)) throw std::runtime_error("Syntax Error: Missing index expression after comma.");
+                    if (check(TokenType::RBRACKET)) JC2_THROW(SyntaxError, "Missing index expression after comma.");
                     indices.push_back(parseSliceArg());
                 }
                 while (match({ TokenType::NEWLINE })) {}
@@ -1213,7 +1213,7 @@ namespace jc {
                 }
                 
                 if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                    throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                    JC2_THROW(ParserError, "Expect newline or ';' after statement.");
                 }
             } catch (const std::exception& e) {
                 if (isLspMode) {
@@ -1432,10 +1432,10 @@ namespace jc {
         bool isLocal = false, isConst = false;
         while (true) {
             if (match({ TokenType::LOCAL })) {
-                if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                if (isLocal) JC2_THROW(ParserError, "Duplicate 'local' modifier.");
                 isLocal = true;
             } else if (match({ TokenType::CONST })) {
-                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                 isConst = true;
             } else {
                 break;
@@ -1477,7 +1477,7 @@ namespace jc {
     // =================================================================
     std::unique_ptr<Expr> Parser::primary() {
         if (match({ TokenType::ERROR })) {
-            throw std::runtime_error("Lexer Error: " + previous().lexeme);
+            JC2_THROW(LexerError, "" + previous().lexeme);
         }
 
         // ★ 统一拦截：任何关键字后面紧跟 = 都是误用
@@ -1570,7 +1570,7 @@ namespace jc {
             if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
                 return enumExpr();
             }
-            throw std::runtime_error("Syntax Error: 'enum' cannot be self-referenced; enum members are compile-time constants.");
+            JC2_THROW(SyntaxError, "'enum' cannot be self-referenced; enum members are compile-time constants.");
         }
         if (match({ TokenType::IF }))       return ifExpr();
         if (match({ TokenType::WHILE }))    return whileExpr();
@@ -1642,7 +1642,7 @@ namespace jc {
                     if (auto* lit = dynamic_cast<Literal*>(path.get())) {
                         VM::activeVM->execCompileTimeImport(lit->value);
                     } else {
-                        throw std::runtime_error("Parser Error: Compile-time import (@) requires a static string or identifier.");
+                        JC2_THROW(ParserError, "Compile-time import (@) requires a static string or identifier.");
                     }
                 }
                 int endPos = path->endPos;
@@ -1661,7 +1661,7 @@ namespace jc {
                 Token macroName = consume(TokenType::IDENTIFIER, "Parser Error: Expect macro name after '@'.");
                 if (!disableMacroExpansion) {
                     if (!deleteMacro(macroName.lexeme)) {
-                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' not found.");
+                        JC2_THROW(ParserError, "Macro '" + macroName.lexeme + "' not found.");
                     }
                 }
                 int endPos = macroName.position + static_cast<int>(macroName.lexeme.length());
@@ -1759,21 +1759,21 @@ namespace jc {
                     while (true) {
                         // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                             inKwOnly = true;
                             continue;
                         }
                         // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
-                        if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-                        if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
+                        if (!restName.empty() && !inKwOnly) JC2_THROW(ParserError, "Rest parameter must be last.");
+                        if (!kwargsName.empty()) JC2_THROW(ParserError, "kwargs parameter must be last.");
                         bool isRef = false;
                         bool isConst = false;
                         while (true) {
                             if (match({ TokenType::REF })) {
-                                if (isRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                if (isRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
                                 isRef = true;
                             } else if (match({ TokenType::CONST })) {
-                                if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                                 isConst = true;
                             } else {
                                 break;
@@ -1786,7 +1786,7 @@ namespace jc {
                         std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
-                            if (isRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be ref.");
+                            if (isRef) JC2_THROW(ParserError, "Rest/kwargs parameter cannot be ref.");
                             if (match({ TokenType::DOLLAR })) {
                                 Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                                 paramTok = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
@@ -1795,14 +1795,14 @@ namespace jc {
                             }
                             isRest = true;
                             if (inKwOnly) {
-                                if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                if (!kwargsName.empty()) JC2_THROW(ParserError, "Duplicate kwargs parameter.");
                                 kwargsName = paramTok.lexeme;
                             } else {
-                                if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                if (!restName.empty()) JC2_THROW(ParserError, "Duplicate rest parameter.");
                                 restName = paramTok.lexeme;
                             }
                         } else if (atDestructPattern()) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
                             if (isRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -1839,7 +1839,7 @@ namespace jc {
                         }
 
                         if (match({ TokenType::ASSIGN })) {
-                            if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
+                            if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
                             auto defExpr = ternary();
                             if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
                             else lambdaDefaults.push_back(std::shared_ptr<Expr>(defExpr.release()));
@@ -1859,7 +1859,7 @@ namespace jc {
                         // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                         if (match({ TokenType::COMMA })) continue;
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                             inKwOnly = true;
                             if (check(TokenType::RPAREN)) break;
                             continue;
@@ -1959,7 +1959,7 @@ namespace jc {
 
                 Value macroVal = resolveMacro(macroName.lexeme);
                 if (macroVal.isNone() || !macroVal.isFunctionClosure()) {
-                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' is not defined or not a function.");
+                    JC2_THROW(ParserError, "Macro '" + macroName.lexeme + "' is not defined or not a function.");
                 }
             
                 ObjClosure* macroFn = macroVal.asFunction();
@@ -1977,7 +1977,7 @@ namespace jc {
                             macroTokens.push_back(t);
                         }
                     }
-                    if (depth != 0) throw std::runtime_error("Parser Error: Unterminated '{' in token macro.");
+                    if (depth != 0) JC2_THROW(ParserError, "Unterminated '{' in token macro.");
                     
                     std::vector<Value> callArgs;
                     ObjList* tokenList = GcHeap::get().allocate<ObjList>();
@@ -2007,7 +2007,7 @@ namespace jc {
                                 errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
                             }
                         }
-                        throw std::runtime_error("Token Macro Execution Error: " + errStr);
+                        JC2_THROW(RuntimeError, "" + errStr);
                     }
                     GcValueGuard resultGuard(resultVal);
                     
@@ -2016,7 +2016,7 @@ namespace jc {
                     };
                     
                     auto expandedAst = JC2_to_AST(resultVal, expander, 0);
-                    if (!expandedAst) throw std::runtime_error("Parser Error: Token Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
+                    if (!expandedAst) JC2_THROW(ParserError, "Token Macro '" + macroName.lexeme + "' did not return a valid ASTNode.");
                     
                     return expandedAst;
                 }
@@ -2031,7 +2031,7 @@ namespace jc {
                         } while (match({ TokenType::COMMA }));
                     }
                     if (check(TokenType::SEMICOLON)) {
-                        throw std::runtime_error("Parser Error: Spread and ';' separator are not supported in macro calls yet.");
+                        JC2_THROW(ParserError, "Spread and ';' separator are not supported in macro calls yet.");
                     }
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro arguments.");
                 }
@@ -2047,7 +2047,7 @@ namespace jc {
                     } else if (provided == nArgs) {
                         shouldProbe = false;
                     } else if (provided < nArgs - 1) {
-                        throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(nArgs) + " arguments, but only " + std::to_string(provided) + " were provided.");
+                        JC2_THROW(ParserError, "Macro '" + macroName.lexeme + "' expects " + std::to_string(nArgs) + " arguments, but only " + std::to_string(provided) + " were provided.");
                     } else {
                         shouldProbe = false;
                     }
@@ -2065,7 +2065,7 @@ namespace jc {
                 }
                 
                 if (static_cast<int>(args.size()) < macroFn->minArgs() || (macroFn->restName.empty() && static_cast<int>(args.size()) > macroFn->maxArgs())) {
-                    throw std::runtime_error("Parser Error: Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (!macroFn->restName.empty() ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
+                    JC2_THROW(ParserError, "Macro '" + macroName.lexeme + "' expects " + std::to_string(macroFn->minArgs()) + (!macroFn->restName.empty() ? " or more" : (macroFn->minArgs() == macroFn->maxArgs() ? "" : " to " + std::to_string(macroFn->maxArgs()))) + " arguments, got " + std::to_string(args.size()) + ".");
                 }
                 
                 int endPos = previous().position + static_cast<int>(previous().lexeme.length());
@@ -2081,7 +2081,7 @@ namespace jc {
                 return expanded;
             }
             if (!check(TokenType::LBRACKET)) {
-                throw std::runtime_error("Parser Error: Expect '[', '{', or identifier after '@'.");
+                JC2_THROW(ParserError, "Expect '[', '{', or identifier after '@'.");
             }
             forceList = true;
         }
@@ -2135,7 +2135,7 @@ namespace jc {
                             currentRow.clear();
                         }
                         else if (!check(TokenType::RBRACKET)) {
-                            throw std::runtime_error("Parser Error: Expect ',' or ';' or ']' inside matrix.");
+                            JC2_THROW(ParserError, "Expect ',' or ';' or ']' inside matrix.");
                         }
                     }
                 }
@@ -2151,13 +2151,13 @@ namespace jc {
             }
             return withPos(std::make_unique<MatrixNode>(std::move(matrixElements)), startPos, endPos);
         }
-        throw std::runtime_error("Parser Error: Expect expression at '" + peek().lexeme + "'.");
+        JC2_THROW(ParserError, "Expect expression at '" + peek().lexeme + "'.");
     }
 
     std::unique_ptr<Expr> Parser::expandMacro(const std::string& name, std::vector<std::unique_ptr<Expr>>& args) {
         Value macroVal = resolveMacro(name);
         if (macroVal.isNone() || !macroVal.isFunctionClosure()) {
-            throw std::runtime_error("Parser Error: Macro '" + name + "' is not defined or not a function.");
+            JC2_THROW(ParserError, "Macro '" + name + "' is not defined or not a function.");
         }
         ObjClosure* macroFn = macroVal.asFunction();
 
@@ -2181,7 +2181,7 @@ namespace jc {
                     errStr = mVal.isString() ? mVal.asString() : mVal.toRepr();
                 }
             }
-            throw std::runtime_error("Macro Execution Error: " + errStr);
+            JC2_THROW(RuntimeError, "" + errStr);
         }
         GcValueGuard resultGuard(resultVal);
         
@@ -2190,7 +2190,7 @@ namespace jc {
         };
         
         auto expandedAst = JC2_to_AST(resultVal, expander, 0);
-        if (!expandedAst) throw std::runtime_error("Parser Error: Macro '" + name + "' did not return a valid ASTNode.");
+        if (!expandedAst) JC2_THROW(ParserError, "Macro '" + name + "' did not return a valid ASTNode.");
         
         return expandedAst;
     }
@@ -2211,9 +2211,9 @@ namespace jc {
         
         if (!check(TokenType::RPAREN)) {
             do {
-                if (!restName.empty()) throw std::runtime_error("Parser Error: Rest parameter must be last.");
+                if (!restName.empty()) JC2_THROW(ParserError, "Rest parameter must be last.");
                 if (match({ TokenType::ELLIPSIS })) {
-                    if (isTokenMacro) throw std::runtime_error("Parser Error: Token macro cannot have rest parameters.");
+                    if (isTokenMacro) JC2_THROW(ParserError, "Token macro cannot have rest parameters.");
                     if (match({ TokenType::DOLLAR })) {
                         Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
                         restName = "$" + idTok.lexeme;
@@ -2233,7 +2233,7 @@ namespace jc {
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after macro parameters.");
         
         if (isTokenMacro && params.size() != 1) {
-            throw std::runtime_error("Parser Error: Token macro must have exactly one parameter.");
+            JC2_THROW(ParserError, "Token macro must have exactly one parameter.");
         }
 
         consume(TokenType::ASSIGN, "Parser Error: Expect '=' after macro signature.");
@@ -2511,7 +2511,7 @@ namespace jc {
                 props.push_back({"defaultExpr", transformQuote(defp->defaultExpr.get())});
                 return makeASTNodeCall("DefaultPattern", 0, std::move(props));
             }
-            throw std::runtime_error("Parser Error: Unsupported pattern type in quote block.");
+            JC2_THROW(ParserError, "Unsupported pattern type in quote block.");
         };
 
         if (auto* block = dynamic_cast<Block*>(expr)) {
@@ -3023,7 +3023,7 @@ namespace jc {
             return makeASTNodeCall("KeywordArgExpr", kw->name.line, std::move(props));
         }
         
-        throw std::runtime_error("Parser Error: Unsupported AST node in quote block.");
+        JC2_THROW(ParserError, "Unsupported AST node in quote block.");
     }
 
     std::unique_ptr<Expr> Parser::quoteExpr() {
@@ -3088,7 +3088,7 @@ namespace jc {
                     }
                     
                     if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                        throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                        JC2_THROW(ParserError, "Expect newline or ';' after statement.");
                     }
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                 }
@@ -3111,7 +3111,7 @@ namespace jc {
                     }
                     
                     if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                        throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                        JC2_THROW(ParserError, "Expect newline or ';' after statement.");
                     }
                     while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
                 }
@@ -3119,7 +3119,7 @@ namespace jc {
                 defaultBody = withPos(std::make_unique<Block>(std::move(stmts)), blockStart, blockEnd);
             }
             else {
-                throw std::runtime_error("Parser Error: Expect 'case' or 'default' inside switch.");
+                JC2_THROW(ParserError, "Expect 'case' or 'default' inside switch.");
             }
         }
         consume(TokenType::RBRACE, "Parser Error: Expect '}' to close switch body.");
@@ -3175,7 +3175,7 @@ namespace jc {
                 while (match({TokenType::NEWLINE})) {}
                 if (check(TokenType::RBRACKET)) break;
                 if (check(TokenType::SEMICOLON)) {
-                    throw std::runtime_error("Parser Error: List pattern (@[...]) cannot contain ';'. Use [...] for a matrix pattern.");
+                    JC2_THROW(ParserError, "List pattern (@[...]) cannot contain ';'. Use [...] for a matrix pattern.");
                 }
 
                 ScopeModifier elemMod = ScopeModifier::None;
@@ -3197,7 +3197,7 @@ namespace jc {
                         if (dynamic_cast<RestPattern*>(e.get())) { hasRest = true; break; }
                     }
                     if (hasRest) {
-                        throw std::runtime_error("Parser Error: Multiple rest patterns ('...') are not allowed in a list pattern.");
+                        JC2_THROW(ParserError, "Multiple rest patterns ('...') are not allowed in a list pattern.");
                     }
                     auto rp = std::make_unique<RestPattern>(name, elemMod, elemConst, std::move(typeHint));
                     if (check(TokenType::COMMA)) {
@@ -3213,7 +3213,7 @@ namespace jc {
                 elements.push_back(parsePattern());
                 if (!match({TokenType::COMMA})) {
                     if (!check(TokenType::RBRACKET)) {
-                        throw std::runtime_error("Parser Error: Expect ',' or ']' in list pattern.");
+                        JC2_THROW(ParserError, "Expect ',' or ']' in list pattern.");
                     }
                 }
             }
@@ -3266,7 +3266,7 @@ namespace jc {
                             }
                         }
                         if (hasRest) {
-                            throw std::runtime_error("Parser Error: Multiple rest patterns ('...') are not allowed in a single row.");
+                            JC2_THROW(ParserError, "Multiple rest patterns ('...') are not allowed in a single row.");
                         }
 
                         if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
@@ -3280,7 +3280,7 @@ namespace jc {
                         } else {
                             currentRow.push_back(std::make_unique<RestPattern>(name, elemMod, elemConst, typeHint));
                             if (!match({TokenType::COMMA})) {
-                                throw std::runtime_error("Parser Error: Expect ',' after pattern.");
+                                JC2_THROW(ParserError, "Expect ',' after pattern.");
                             }
                             continue;
                         }
@@ -3295,7 +3295,7 @@ namespace jc {
                     if (check(TokenType::SEMICOLON) || check(TokenType::RBRACKET)) {
                         // fine
                     } else {
-                        throw std::runtime_error("Parser Error: Expect ',' or ';' or ']' in pattern.");
+                        JC2_THROW(ParserError, "Expect ',' or ';' or ']' in pattern.");
                     }
                 }
             }
@@ -3344,7 +3344,7 @@ namespace jc {
                 } else if (!elemHasMod && match({TokenType::STRING})) {
                     keyStr = previous().lexeme;
                 } else {
-                    throw std::runtime_error("Parser Error: Expect identifier or string as dict pattern key.");
+                    JC2_THROW(ParserError, "Expect identifier or string as dict pattern key.");
                 }
                 
                 if (!elemHasMod && match({TokenType::COLON})) {
@@ -3407,7 +3407,7 @@ namespace jc {
         auto pat = parsePrimaryPattern();
         if (match({TokenType::ASSIGN})) {
             if (dynamic_cast<RestPattern*>(pat.get())) {
-                throw std::runtime_error("Parser Error: Rest pattern '...' cannot have a default value.");
+                JC2_THROW(ParserError, "Rest pattern '...' cannot have a default value.");
             }
             int startPos = pat->startPos;
             auto defExpr = ternary();
@@ -3505,7 +3505,7 @@ namespace jc {
             }
             
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                throw std::runtime_error("Parser Error: Expect newline or ';' after statement.");
+                JC2_THROW(ParserError, "Expect newline or ';' after statement.");
             }
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
@@ -3553,7 +3553,7 @@ namespace jc {
                     memberName = advance();
                     memberName.type = TokenType::IDENTIFIER;
                 } else {
-                    throw std::runtime_error("Parser Error: Expect enum member name.");
+                    JC2_THROW(ParserError, "Expect enum member name.");
                 }
             }
 
@@ -3621,13 +3621,13 @@ namespace jc {
             bool isStatic = false, isLocal = false, isConst = false;
             while (true) {
                 if (match({ TokenType::STATIC })) {
-                    if (isStatic) throw std::runtime_error("Parser Error: Duplicate 'static' modifier.");
+                    if (isStatic) JC2_THROW(ParserError, "Duplicate 'static' modifier.");
                     isStatic = true;
                 } else if (match({ TokenType::LOCAL })) {
-                    if (isLocal) throw std::runtime_error("Parser Error: Duplicate 'local' modifier.");
+                    if (isLocal) JC2_THROW(ParserError, "Duplicate 'local' modifier.");
                     isLocal = true;
                 } else if (match({ TokenType::CONST })) {
-                    if (isConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                    if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                     isConst = true;
                 } else {
                     break;
@@ -3644,7 +3644,7 @@ namespace jc {
                     memberName = advance();
                     memberName.type = TokenType::IDENTIFIER;
                 } else {
-                    throw std::runtime_error("Parser Error: Expect method or field name.");
+                    JC2_THROW(ParserError, "Expect method or field name.");
                 }
             }
 
@@ -3675,21 +3675,21 @@ namespace jc {
                     while (true) {
                         // ★ 分号在参数列表开头：全仅关键字（f(; a, b)）
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                             inKwOnly = true;
                             continue;
                         }
                         // ★ rest 后不能再有位置参数；kwargs 后不能再有任何参数
-                        if (!restName.empty() && !inKwOnly) throw std::runtime_error("Parser Error: Rest parameter must be last.");
-                        if (!kwargsName.empty()) throw std::runtime_error("Parser Error: kwargs parameter must be last.");
+                        if (!restName.empty() && !inKwOnly) JC2_THROW(ParserError, "Rest parameter must be last.");
+                        if (!kwargsName.empty()) JC2_THROW(ParserError, "kwargs parameter must be last.");
                         bool isParamRef = false;
                         bool isParamConst = false;
                         while (true) {
                             if (match({ TokenType::REF })) {
-                                if (isParamRef) throw std::runtime_error("Parser Error: Duplicate 'ref' modifier.");
+                                if (isParamRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
                                 isParamRef = true;
                             } else if (match({ TokenType::CONST })) {
-                                if (isParamConst) throw std::runtime_error("Parser Error: Duplicate 'const' modifier.");
+                                if (isParamConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
                                 isParamConst = true;
                             } else {
                                 break;
@@ -3702,18 +3702,18 @@ namespace jc {
                         std::unique_ptr<Pattern> patNode = nullptr;
 
                         if (match({ TokenType::ELLIPSIS })) {
-                            if (isParamRef) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot be passed by ref.");
+                            if (isParamRef) JC2_THROW(ParserError, "Rest/kwargs parameter cannot be passed by ref.");
                             paramTok = consume(TokenType::IDENTIFIER, "Expect parameter name.");
                             isRest = true;
                             if (inKwOnly) {
-                                if (!kwargsName.empty()) throw std::runtime_error("Parser Error: Duplicate kwargs parameter.");
+                                if (!kwargsName.empty()) JC2_THROW(ParserError, "Duplicate kwargs parameter.");
                                 kwargsName = paramTok.lexeme;
                             } else {
-                                if (!restName.empty()) throw std::runtime_error("Parser Error: Duplicate rest parameter.");
+                                if (!restName.empty()) JC2_THROW(ParserError, "Duplicate rest parameter.");
                                 restName = paramTok.lexeme;
                             }
                         } else if (atDestructPattern()) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Destructured parameter cannot be keyword-only.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Destructured parameter cannot be keyword-only.");
                             if (isParamRef) throw std::runtime_error("Destructured parameter cannot be ref.");
                             patNode = parsePrimaryPattern();
                             std::string phName = "<param_destruct>_" + std::to_string(destructCounter++);
@@ -3745,7 +3745,7 @@ namespace jc {
                         }
 
                         if (match({ TokenType::ASSIGN })) {
-                            if (isRest) throw std::runtime_error("Parser Error: Rest/kwargs parameter cannot have a default value.");
+                            if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
                             auto defExpr = ternary();
                             if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
                             else defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
@@ -3765,7 +3765,7 @@ namespace jc {
                         // , 或 ; 分隔（; 进入仅关键字区，只允许一次）
                         if (match({ TokenType::COMMA })) continue;
                         if (match({ TokenType::SEMICOLON })) {
-                            if (inKwOnly) throw std::runtime_error("Parser Error: Only one ';' allowed in parameter list.");
+                            if (inKwOnly) JC2_THROW(ParserError, "Only one ';' allowed in parameter list.");
                             inKwOnly = true;
                             if (check(TokenType::RPAREN)) break;
                             continue;
@@ -3827,7 +3827,7 @@ namespace jc {
             }
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                throw std::runtime_error("Parser Error: Expect newline or ';' after class member definition.");
+                JC2_THROW(ParserError, "Expect newline or ';' after class member definition.");
             }
             while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
         }
@@ -4078,13 +4078,13 @@ namespace jc {
                 value = withPos(std::make_unique<Variable>(maybeIdTok), maybeIdTok.position, maybeIdTok.position + static_cast<int>(maybeIdTok.lexeme.length()));
             }
             else {
-                throw std::runtime_error("Parser Error: Expect ':' after dict key.");
+                JC2_THROW(ParserError, "Expect ':' after dict key.");
             }
 
             // ★ 检测字典推导式：{k: v for x in ...}
             if (entries.empty() && !isRest && check(TokenType::FOR)) {
                 if (!hasColon) {
-                    throw std::runtime_error("Parser Error: Dict comprehension requires 'key: value' format.");
+                    JC2_THROW(ParserError, "Dict comprehension requires 'key: value' format.");
                 }
                 if (isSimpleId) {
                     // 在推导式中，标识符键应作为变量表达式求值，而不是字符串字面量

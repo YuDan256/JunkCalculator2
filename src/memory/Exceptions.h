@@ -36,11 +36,11 @@ namespace jc {
 
     // ★ 轻量异常：type + message 都是 std::string，不依赖 Value 完整定义，
     // 因此任何文件（含 Value 类的内联方法）都能抛出；VM 层 catch 后包装成 Exception 对象。
-    struct Jc2Error : public std::exception {
+    struct Jc2Error : public std::runtime_error {
         std::string type;
         std::string message;
         mutable std::string whatBuffer;
-        Jc2Error(std::string t, std::string msg) : type(std::move(t)), message(std::move(msg)) {}
+        Jc2Error(std::string t, std::string msg) : std::runtime_error(msg), type(std::move(t)), message(std::move(msg)) {}
         const char* what() const noexcept override {
             if (whatBuffer.empty()) {
                 whatBuffer = type.empty() ? message : type + ": " + message;

@@ -292,6 +292,11 @@ namespace jc {
                         Value result = it->second(vals);
                         return result.asSymbolic();
                     }
+                    catch (const jc::Jc2Error& e) {
+                        if (e.type == jc::err::MathError || e.type == jc::err::CalculusError || e.type == jc::err::SymbolicError)
+                            throw;
+                        // 类型不兼容：保留符号形式
+                    }
                     catch (const std::runtime_error& e) {
                         std::string msg = e.what();
                         // 数学错误：传播给用户

@@ -1088,6 +1088,10 @@ namespace jc {
                     Value result = casValToValue(baseNum->value) ^ casValToValue(expNum->value);
                     return result.asSymbolic();
                 }
+                catch (const jc::Jc2Error& e) {
+                    if (e.type == jc::err::MathError || e.type == jc::err::CalculusError || e.type == jc::err::SymbolicError)
+                        throw;
+                }
                 catch (const std::runtime_error& e) {
                     std::string msg = e.what();
                     if (msg.find("Math Error") != std::string::npos) throw;

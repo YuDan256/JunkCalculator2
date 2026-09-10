@@ -2478,9 +2478,8 @@ Value VM::execImport(const std::string& name) {
         try {
             modFn = BytecodeSerializer::loadJCB(jcbPath, this);
             executePath = jcbPath;
-        } catch (const std::runtime_error& e) {
-            std::string msg = e.what();
-            if (msg == "JCB_MAGIC_MISMATCH" || msg == "JCB_VERSION_MISMATCH") {
+        } catch (const jc::Jc2Error& e) {
+            if (e.type == jc::err::IOError && (e.message == "MAGIC_MISMATCH" || e.message == "VERSION_MISMATCH")) {
                 if (jc2Path.empty()) {
                     jc2Path = helpers::safeResolvePath(name + ".jc2");
                     if (!std::filesystem::is_regular_file(jc2Path)) {

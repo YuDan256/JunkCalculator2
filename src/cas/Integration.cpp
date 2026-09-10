@@ -3583,23 +3583,16 @@ namespace jc {
                     } catch (const std::runtime_error& e2) {
                         std::string msg2 = e2.what();
                         // 如果展开后再次失败，保留新的错误信息
-                        if (msg2.find("Risch Field") != std::string::npos || 
-                            msg2.find("Hermite Reduction") != std::string::npos ||
-                            msg2.find("Integration depth limit exceeded") != std::string::npos ||
-                            msg2.find("Calculus Error:") == 0) {
+                        if (msg2.find("Integration depth limit exceeded") != std::string::npos ||
+                            msg2.find("Integration AST size limit exceeded") != std::string::npos) {
                             msg = msg2;
                         }
                     } catch (...) {}
                 }
                 
-                // 如果是 Risch 算法抛出的进度信息，直接向外传递
-                if (msg.find("Risch Field") != std::string::npos || 
-                    msg.find("Hermite Reduction") != std::string::npos || 
-                    msg.find("Integration depth limit exceeded") != std::string::npos) {
-                    throw std::runtime_error(msg);
-                }
-                
-                if (msg.find("Calculus Error:") == 0) {
+                // 资源限制类错误（深度/AST 超限），直接向外传递
+                if (msg.find("Integration depth limit exceeded") != std::string::npos ||
+                    msg.find("Integration AST size limit exceeded") != std::string::npos) {
                     throw std::runtime_error(msg);
                 }
                 

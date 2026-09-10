@@ -40,17 +40,17 @@ void BytecodeSerializer::writeString(std::ostream& os, const std::string& s) {
 uint8_t BytecodeSerializer::read8(std::istream& is) { return static_cast<uint8_t>(is.get()); }
 uint16_t BytecodeSerializer::read16(std::istream& is) {
     uint8_t buf[2];
-    if (!is.read(reinterpret_cast<char*>(buf), 2)) throw std::runtime_error("JCB Read Error");
+    if (!is.read(reinterpret_cast<char*>(buf), 2)) JC2_THROW(IOError, "Failed to read bytecode data.");
     return buf[0] | (buf[1] << 8);
 }
 uint32_t BytecodeSerializer::read32(std::istream& is) {
     uint8_t buf[4];
-    if (!is.read(reinterpret_cast<char*>(buf), 4)) throw std::runtime_error("JCB Read Error");
+    if (!is.read(reinterpret_cast<char*>(buf), 4)) JC2_THROW(IOError, "Failed to read bytecode data.");
     return buf[0] | (buf[1] << 8) | (buf[2] << 16) | (buf[3] << 24);
 }
 uint64_t BytecodeSerializer::read64(std::istream& is) {
     uint8_t buf[8];
-    if (!is.read(reinterpret_cast<char*>(buf), 8)) throw std::runtime_error("JCB Read Error");
+    if (!is.read(reinterpret_cast<char*>(buf), 8)) JC2_THROW(IOError, "Failed to read bytecode data.");
     uint64_t v = 0;
     for (int i = 0; i < 8; ++i) v |= static_cast<uint64_t>(buf[i]) << (i * 8);
     return v;
@@ -64,7 +64,7 @@ double BytecodeSerializer::readDouble(std::istream& is) {
 std::string BytecodeSerializer::readString(std::istream& is) {
     uint32_t len = read32(is);
     std::string s(len, '\0');
-    if (len > 0 && !is.read(s.data(), len)) throw std::runtime_error("JCB Read Error");
+    if (len > 0 && !is.read(s.data(), len)) JC2_THROW(IOError, "Failed to read bytecode data.");
     return s;
 }
 
@@ -471,7 +471,7 @@ void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex
     std::string raw = os.str();
     std::vector<uint8_t> compressed;
     if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
-        throw std::runtime_error("JCB_COMPRESS_FAILED");
+        JC2_THROW(IOError, "Failed to compress bytecode data.");
     }
     std::ofstream file(path, std::ios::binary);
     if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
@@ -488,15 +488,15 @@ std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string&
     if (fsize > 0) file.read(&compressed[0], fsize);
     std::vector<uint8_t> decompressed;
     if (!jc::deflateDecompress(reinterpret_cast<const uint8_t*>(compressed.data()), compressed.size(), decompressed)) {
-        throw std::runtime_error("JCB_DECOMPRESS_FAILED");
+        JC2_THROW(IOError, "Failed to decompress bytecode data.");
     }
     std::string raw(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
     std::istringstream is(raw, std::ios::binary);
 
     uint32_t magic = read32(is);
-    if (magic != MAGIC_NUMBER) throw std::runtime_error("JCB_MAGIC_MISMATCH");
+    if (magic != MAGIC_NUMBER) JC2_THROW(IOError, "MAGIC_MISMATCH");
     uint32_t version = read32(is);
-    if (version != VERSION) throw std::runtime_error("JCB_VERSION_MISMATCH");
+    if (version != VERSION) JC2_THROW(IOError, "VERSION_MISMATCH");
 
     uint32_t count = read32(is);
     int baseIdx = static_cast<int>(vm->getCompiledFunctions().size());
@@ -779,7 +779,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
     std::string raw = os.str();
     std::vector<uint8_t> compressed;
     if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
-        throw std::runtime_error("JCW_COMPRESS_FAILED");
+        JC2_THROW(IOError, "Failed to compress workspace data.");
     }
     std::ofstream file(path, std::ios::binary);
     if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
@@ -796,15 +796,15 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
     if (fsize > 0) file.read(&compressed[0], fsize);
     std::vector<uint8_t> decompressed;
     if (!jc::deflateDecompress(reinterpret_cast<const uint8_t*>(compressed.data()), compressed.size(), decompressed)) {
-        throw std::runtime_error("JCW_DECOMPRESS_FAILED");
+        JC2_THROW(IOError, "Failed to decompress workspace data.");
     }
     std::string raw(reinterpret_cast<const char*>(decompressed.data()), decompressed.size());
     std::istringstream is(raw, std::ios::binary);
 
     uint32_t magic = read32(is);
-    if (magic != JCW_MAGIC) throw std::runtime_error("JCW_MAGIC_MISMATCH");
+    if (magic != JCW_MAGIC) JC2_THROW(IOError, "MAGIC_MISMATCH");
     uint32_t version = read32(is);
-    if (version != VERSION) throw std::runtime_error("JCW_VERSION_MISMATCH");
+    if (version != VERSION) JC2_THROW(IOError, "VERSION_MISMATCH");
 
     uint32_t fnCount = read32(is);
     if (!merge && !infoOnly) vm->getCompiledFunctions().clear();

@@ -325,6 +325,27 @@ namespace jc {
             if (stmts.empty()) return std::make_unique<Literal>("none", false, false, true);
             return std::make_unique<Block>(std::move(stmts));
         }
+        catch (const jc::Jc2Error& e) {
+            if (VM::activeVM) {
+                VM::activeVM->parsingDepth--;
+                if (VM::activeVM->parsingDepth == 0) {
+                    VM::activeVM->cleanupComptimeGlobals(0);
+                }
+            }
+            if (e.message.find("[") == 0) throw;  // 已有位置前缀
+            int errLine = 0;
+            if (peek().type == TokenType::END_OF_FILE || peek().type == TokenType::NEWLINE) {
+                errLine = previous().line;
+            }
+            else {
+                errLine = peek().line > 0 ? peek().line : previous().line;
+            }
+            std::string fn = "Script";
+            try { fn = std::filesystem::path(sourceFile).filename().string(); }
+            catch (...) {}
+            if (fn.empty()) fn = "Script";
+            throw jc::Jc2Error(e.type, "[" + fn + " : " + std::to_string(errLine) + "] " + e.message);
+        }
         catch (const std::exception& e) {
             if (VM::activeVM) {
                 VM::activeVM->parsingDepth--;
@@ -348,7 +369,7 @@ namespace jc {
                 if (fn.empty()) fn = "Script";
                 msg = "[" + fn + " : " + std::to_string(errLine) + "] " + msg;
             }
-            throw std::runtime_error(msg);
+            JC2_THROW(ParserError, msg);
         }
     }
 

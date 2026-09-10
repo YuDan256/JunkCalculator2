@@ -220,9 +220,8 @@ void runScript(const std::string& filepath, bool isImport = false) {
         } catch (const jc::EngineInterruptError&) {
             if (isImport) throw;
             std::cerr << "\n^C KeyboardInterrupt in script '" << resolvedPath << "'" << std::endl;
-        } catch (const std::runtime_error& ex) {
-            std::string msg = ex.what();
-            if (msg == "JCB_MAGIC_MISMATCH" || msg == "JCB_VERSION_MISMATCH") {
+        } catch (const jc::Jc2Error& ex) {
+            if (ex.type == jc::err::IOError && (ex.message == "MAGIC_MISMATCH" || ex.message == "VERSION_MISMATCH")) {
                 fallbackToSource = true;
             } else {
                 if (isImport) throw;

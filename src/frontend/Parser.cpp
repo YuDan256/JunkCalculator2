@@ -1630,7 +1630,8 @@ namespace jc {
             int saved = current;
             while (match({ TokenType::NEWLINE })) {}  // ★ 跳过 } 和 catch 之间的换行
             std::vector<MatchBranch> catchBranches;
-            if (match({ TokenType::CATCH })) {
+            bool hasCatch = match({ TokenType::CATCH });
+            if (hasCatch) {
                 if (check(TokenType::LBRACE)) {
                     // ★ 完整形式：catch { pattern => body, ... }（多分支/或匹配/guard）
                     consume(TokenType::LBRACE, "Parser Error: Expect '{' after 'catch'.");
@@ -1666,8 +1667,10 @@ namespace jc {
                 }
             }
             if (catchBranches.empty()) {
-                // ★ try 无 catch：语法糖，等价 catch { _ => none }，静默吞下
-                current = saved;
+                // ★ 无 catch 或空 catch：语法糖，等价 catch { _ => none }，静默吞下
+                if (!hasCatch) {
+                    current = saved;  // 只有真正「无 catch」才回退换行；空 catch {} 已消费，不回退
+                }
                 Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
                 MatchBranch branch;
                 branch.patterns.push_back(std::make_unique<VariablePattern>(underscore));

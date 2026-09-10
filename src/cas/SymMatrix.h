@@ -119,6 +119,7 @@ namespace jc {
 
         // --- 格式化输出 ---
         friend std::ostream& operator<<(std::ostream& out, const SymMatrix& m);
+        friend void printSymMatrix(std::ostream& out, const SymMatrix& m, bool full);
     };
 
 } // namespace jc

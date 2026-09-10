@@ -877,50 +877,7 @@ namespace jc {
         return Value(sp);
     }
 
-    inline std::string Value::toString() const {
-        if (isString()) return static_cast<ObjString*>(asObj())->str;
-        if (isType()) return static_cast<ObjTypeDef*>(asObj())->name();
-        if (isInstance()) {
-            try {
-                auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
-                if (foundStr) {
-                    if (strRes.isString()) return strRes.asString();
-                    std::ostringstream oss;
-                    oss << strRes;
-                    return oss.str();
-                }
-            } catch (...) {}
-        }
-        std::ostringstream oss;
-        oss << *this;
-        return oss.str();
-    }
-
-    inline std::string Value::toRepr() const {
-        if (isString()) return "\"" + static_cast<ObjString*>(asObj())->str + "\"";
-        if (isType()) return "<type '" + static_cast<ObjTypeDef*>(asObj())->name() + "'>";
-        if (isInstance()) {
-            try {
-                auto [foundRepl, replRes] = invokeDunder(asInstance(), "__repr__");
-                if (foundRepl) {
-                    if (replRes.isString()) return replRes.asString();
-                    std::ostringstream oss;
-                    oss << replRes;
-                    return oss.str();
-                }
-                auto [foundStr, strRes] = invokeDunder(asInstance(), "__str__");
-                if (foundStr) {
-                    if (strRes.isString()) return strRes.asString();
-                    std::ostringstream oss;
-                    oss << strRes;
-                    return oss.str();
-                }
-            } catch (...) {}
-        }
-        std::ostringstream oss;
-        oss << *this;
-        return oss.str();
-    }
+    // toString / toRepr 的实现在文件后部（与 operator<< 一起，依赖 printValue 核心函数）
 
     struct ClassProperty {
         Value val;
@@ -2524,18 +2481,18 @@ inline ObjClosure* Value::asFunction() const {
 // 打印保护：顶层容器最多展示的元素数量，超出截断为 "..."（防刷屏）
 inline constexpr size_t kMaxPrintElements = 50;
 
-inline std::ostream& operator<<(std::ostream& os, const Value& val) {
-    static thread_local std::vector<const void*> visited;
+// 核心打印：full=false 可读（截断、矩阵 2D、字符串裸、instance __str__），full=true 精确（完整、矩阵 1D、字符串带引号、instance __repr__）
+inline void printValue(std::ostream& os, const Value& val, bool full, std::vector<const void*>& visited) {
     auto printNested = [&os](const Value& v) {
         if (v.isNone()) os << "none";
         else if (v.isUninit()) os << "<uninit>";
         else os << v.toRepr();
     };
 
-    if (val.isNone()) { os << "none"; return os; }
-    if (val.isUninit()) { os << "<uninit>"; return os; }
-    if (val.isBool()) { os << (val.asBool() ? "true" : "false"); return os; }
-    if (val.isInt32()) { os << val.asInt32(); return os; }
+    if (val.isNone()) { os << "none"; return; }
+    if (val.isUninit()) { os << "<uninit>"; return; }
+    if (val.isBool()) { os << (val.asBool() ? "true" : "false"); return; }
+    if (val.isInt32()) { os << val.asInt32(); return; }
     if (val.isDouble()) {
         double v = val.asDoubleRaw();
         std::ostringstream temp;
@@ -2545,31 +2502,34 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             s += ".0";
         }
         os << s;
-        return os;
+        return;
     }
 
     Obj* obj = val.asObj();
     switch (obj->type) {
-        case ObjType::STRING: os << static_cast<ObjString*>(obj)->str; break;
+        case ObjType::STRING:
+            if (full) os << "\"" << static_cast<ObjString*>(obj)->str << "\"";
+            else os << static_cast<ObjString*>(obj)->str;
+            break;
         case ObjType::BIGINT: os << static_cast<ObjBigInt*>(obj)->num; break;
         case ObjType::FRACTION: os << static_cast<ObjFraction*>(obj)->frac; break;
         case ObjType::COMPLEX: os << static_cast<ObjComplex*>(obj)->comp; break;
         case ObjType::REAL_MATRIX: {
             const auto& m = static_cast<ObjRealMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
-            else os << m;
+            else printMatrix(os, m, full);
             break;
         }
         case ObjType::COMPLEX_MATRIX: {
             const auto& m = static_cast<ObjComplexMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
-            else os << m;
+            else printMatrix(os, m, full);
             break;
         }
         case ObjType::SYM_MATRIX: {
             const auto& m = static_cast<ObjSymMatrix*>(obj)->mat;
             if (m.getRows() * m.getCols() == 0) os << "[]";
-            else os << m;
+            else printSymMatrix(os, m, full);
             break;
         }
         case ObjType::SYMBOLIC: os << static_cast<ObjSym*>(obj)->sym.toString(); break;
@@ -2605,7 +2565,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             os << "@[";
             size_t shown = 0;
             for (size_t i = 0; i < list->vec.size(); ++i) {
-                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }
                 if (shown > 0) os << ", ";
                 try { printNested(list->vec[i]); } catch (...) { os << "?"; }
                 ++shown;
@@ -2620,7 +2580,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             os << "{";
             size_t shown = 0;
             for (size_t i = 0; i < dict->elements.size(); ++i) {
-                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }
                 if (shown > 0) os << ", ";
                 try { printNested(dict->elements[i].first); } catch (...) { os << "?"; }
                 os << ": ";
@@ -2637,7 +2597,7 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             os << "@{";
             size_t shown = 0;
             for (size_t i = 0; i < set->elements.size(); ++i) {
-                if (shown == kMaxPrintElements) { os << ", ..."; break; }
+                if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }
                 if (shown > 0) os << ", ";
                 try { printNested(set->elements[i]); } catch (...) { os << "?"; }
                 ++shown;
@@ -2653,17 +2613,32 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             if (guard.isCycle) { os << "<" << prefix << " {...}>"; break; }
                 
             try {
-                auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
-                if (foundRepl) {
-                    if (replRes.isString()) os << replRes.asString();
-                    else os << replRes;
-                    break;
-                }
-                auto [foundStr, strRes] = invokeDunder(inst, "__str__");
-                if (foundStr) {
-                    if (strRes.isString()) os << strRes.asString();
-                    else os << strRes;
-                    break;
+                if (full) {
+                    auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
+                    if (foundRepl) {
+                        if (replRes.isString()) os << replRes.asString();
+                        else os << replRes;
+                        break;
+                    }
+                    auto [foundStr, strRes] = invokeDunder(inst, "__str__");
+                    if (foundStr) {
+                        if (strRes.isString()) os << strRes.asString();
+                        else os << strRes;
+                        break;
+                    }
+                } else {
+                    auto [foundStr, strRes] = invokeDunder(inst, "__str__");
+                    if (foundStr) {
+                        if (strRes.isString()) os << strRes.asString();
+                        else os << strRes;
+                        break;
+                    }
+                    auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
+                    if (foundRepl) {
+                        if (replRes.isString()) os << replRes.asString();
+                        else os << replRes;
+                        break;
+                    }
                 }
             } catch (...) {}
 
@@ -2685,6 +2660,24 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
             break;
         }
     }
+}
+
+inline std::string Value::toString() const {
+    std::ostringstream oss;
+    std::vector<const void*> visited;
+    printValue(oss, *this, false, visited);
+    return oss.str();
+}
+
+inline std::string Value::toRepr() const {
+    std::ostringstream oss;
+    std::vector<const void*> visited;
+    printValue(oss, *this, true, visited);
+    return oss.str();
+}
+
+inline std::ostream& operator<<(std::ostream& os, const Value& val) {
+    os << val.toString();
     return os;
 }
 

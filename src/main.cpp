@@ -1351,7 +1351,6 @@ int main(int argc, char* argv[]) {
             }
             if (!g_silentRepl && (!result.isNone() || g_showNone)) {
                 std::string typeColor;
-                bool isTopLevelMatrix = false;
                 
                 if (result.isNumber() || result.isObjType(jc::ObjType::BIGINT) || result.isObjType(jc::ObjType::FRACTION)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_YELLOW);
@@ -1361,13 +1360,10 @@ int main(int argc, char* argv[]) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_GREEN);
                 } else if (result.isObjType(jc::ObjType::REAL_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_YELLOW);
-                    isTopLevelMatrix = true;
                 } else if (result.isObjType(jc::ObjType::COMPLEX_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_MAGENTA);
-                    isTopLevelMatrix = true;
                 } else if (result.isObjType(jc::ObjType::SYM_MATRIX)) {
                     typeColor = jc::col(jc::Ansi::WHITE);
-                    isTopLevelMatrix = true;
                 } else if (result.isObjType(jc::ObjType::CLOSURE) || result.isObjType(jc::ObjType::CLASS)) {
                     typeColor = jc::col(jc::Ansi::BRIGHT_BLUE);
                 } else if (result.isObjType(jc::ObjType::INSTANCE)) {
@@ -1380,11 +1376,6 @@ int main(int argc, char* argv[]) {
                     typeColor = jc::col(jc::Ansi::WHITE); // SymExpr 等
                 }
 
-                struct MatrixPrintGuard {
-                    ~MatrixPrintGuard() { jc::g_printMatrix2D = false; }
-                } _guard;
-                
-                jc::g_printMatrix2D = isTopLevelMatrix;
                 std::cout << typeColor << result << jc::col(jc::Ansi::RESET) << std::endl;
             }
             if (g_profile) {

@@ -1,7 +1,7 @@
 #include "SymMatrix.h"
 #include "Groebner.h"
 #include "Integration.h"
-#include "../math/Matrix.h" // 借用 g_printMatrix2D 标志
+#include "../math/Matrix.h" // 借用 kMaxPrintMatrixDim
 #include <sstream>
 #include <algorithm>
 
@@ -989,10 +989,10 @@ namespace jc {
     // ==========================================
     // 格式化输出
     // ==========================================
-    std::ostream& operator<<(std::ostream& out, const SymMatrix& m) {
+    void printSymMatrix(std::ostream& out, const SymMatrix& m, bool full) {
         if (m.rows == 0 || m.cols == 0) {
             out << "[]";
-            return out;
+            return;
         }
 
         std::vector<std::vector<std::string>> strs(m.rows, std::vector<std::string>(m.cols));
@@ -1007,9 +1007,19 @@ namespace jc {
             }
         }
 
-        int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
-        int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
-        if (jc::g_printMatrix2D) {
+        if (full) {
+            out << "[";
+            for (int i = 0; i < m.rows; ++i) {
+                for (int j = 0; j < m.cols; ++j) {
+                    out << strs[i][j];
+                    if (j < m.cols - 1) out << ", ";
+                }
+                if (i < m.rows - 1) out << "; ";
+            }
+            out << "]";
+        } else {
+            int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
+            int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
             for (int i = 0; i < maxRows; ++i) {
                 out << "[";
                 for (int j = 0; j < maxCols; ++j) {
@@ -1023,19 +1033,11 @@ namespace jc {
                 if (i < maxRows - 1) out << "\n";
             }
             if (m.rows > maxRows) out << "[...]";
-        } else {
-            out << "[";
-            for (int i = 0; i < maxRows; ++i) {
-                for (int j = 0; j < maxCols; ++j) {
-                    out << strs[i][j];
-                    if (j < maxCols - 1) out << ", ";
-                }
-                if (m.cols > maxCols) out << ", ...";
-                if (i < maxRows - 1) out << "; ";
-            }
-            if (m.rows > maxRows) out << "; ...";
-            out << "]";
         }
+    }
+
+    std::ostream& operator<<(std::ostream& out, const SymMatrix& m) {
+        printSymMatrix(out, m, false);
         return out;
     }
 

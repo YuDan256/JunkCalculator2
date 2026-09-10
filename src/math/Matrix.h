@@ -15,9 +15,7 @@
 
 namespace jc {
 
-    inline bool g_printMatrix2D = false;
-
-// 打印保护：矩阵最多展示的行/列数，超出截断为 "..."（防刷屏）
+    // 打印保护：矩阵最多展示的行/列数，超出截断为 "..."（防刷屏）
 inline constexpr int kMaxPrintMatrixDim = 10;
 
     template <typename T>
@@ -519,26 +517,26 @@ inline constexpr int kMaxPrintMatrixDim = 10;
         }
 
         // ==== 格式化输出 ====
-        friend std::ostream& operator<<(std::ostream& out, const Matrix& m) {
-            std::vector<std::vector<std::string>> strs(m.rows, std::vector<std::string>(m.cols));
-            std::vector<size_t> colWidths(m.cols, 0);
+        // 计算每个元素的字符串表示与列宽（2D/1D 共用）
+        void buildDisplayStrings(std::vector<std::vector<std::string>>& strs, std::vector<size_t>& colWidths) const {
+            strs.assign(rows, std::vector<std::string>(cols));
+            colWidths.assign(cols, 0);
 
             // ★ 修复：按行独立提取参考容差 (Row-based scaling) 解决显示遮蔽
-            std::vector<double> rowScale(m.rows, 0.0);
-            for (int i = 0; i < m.rows; ++i) {
-                for (int j = 0; j < m.cols; ++j) {
-                    rowScale[i] = std::max(rowScale[i], magnitudeOf(m(i, j)));
+            std::vector<double> rowScale(rows, 0.0);
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    rowScale[i] = std::max(rowScale[i], magnitudeOf((*this)(i, j)));
                 }
                 rowScale[i] = std::max(rowScale[i], 1e-30); // 兜底
             }
 
-            for (int i = 0; i < m.rows; ++i) {
-                for (int j = 0; j < m.cols; ++j) {
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
                     std::ostringstream oss;
-                    T val = m(i, j);
+                    T val = (*this)(i, j);
 
                     if constexpr (std::is_same_v<T, double>) {
-                        // ★ 把本行的规模传给清洗引擎，消除浮点噪音
                         val = Tol::clean(val, rowScale[i]);
 
                         std::ostringstream temp;
@@ -551,11 +549,10 @@ inline constexpr int kMaxPrintMatrixDim = 10;
                     }
                     else if constexpr (std::is_same_v<T, Complex>) {
                         Complex cv = Complex::cleaned(val);
-                        // 对于复数，传它的模长进清洗引擎，消除浮点噪音
                         cv.real = Tol::clean(cv.real, rowScale[i]);
                         cv.imag = Tol::clean(cv.imag, rowScale[i]);
 
-                        oss << cv; // Complex 的 operator<< 已经处理了 .0 的逻辑
+                        oss << cv;
                     }
                     else {
                         if (isEssentiallyZero(val)) oss << 0;
@@ -568,11 +565,27 @@ inline constexpr int kMaxPrintMatrixDim = 10;
                     }
                 }
             }
+        }
 
-            int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
-            int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
-            if (jc::g_printMatrix2D) {
-                // 保持排版输出不变 (2D)
+        // 打印核心：full=true 为 1D 紧凑（完整可往返），false 为 2D 排版（截断可读）
+        friend void printMatrix(std::ostream& out, const Matrix& m, bool full) {
+            std::vector<std::vector<std::string>> strs;
+            std::vector<size_t> colWidths;
+            m.buildDisplayStrings(strs, colWidths);
+
+            if (full) {
+                out << "[";
+                for (int i = 0; i < m.rows; ++i) {
+                    for (int j = 0; j < m.cols; ++j) {
+                        out << strs[i][j];
+                        if (j < m.cols - 1) out << ", ";
+                    }
+                    if (i < m.rows - 1) out << "; ";
+                }
+                out << "]";
+            } else {
+                int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
+                int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
                 for (int i = 0; i < maxRows; ++i) {
                     out << "[";
                     for (int j = 0; j < maxCols; ++j) {
@@ -586,20 +599,12 @@ inline constexpr int kMaxPrintMatrixDim = 10;
                     if (i < maxRows - 1) out << "\n";
                 }
                 if (m.rows > maxRows) out << "[...]";
-            } else {
-                // 嵌套时的一维紧凑输出 (1D)
-                out << "[";
-                for (int i = 0; i < maxRows; ++i) {
-                    for (int j = 0; j < maxCols; ++j) {
-                        out << strs[i][j];
-                        if (j < maxCols - 1) out << ", ";
-                    }
-                    if (m.cols > maxCols) out << ", ...";
-                    if (i < maxRows - 1) out << "; ";
-                }
-                if (m.rows > maxRows) out << "; ...";
-                out << "]";
             }
+        }
+
+        // 2D 排版输出（可读，截断）
+        friend std::ostream& operator<<(std::ostream& out, const Matrix& m) {
+            printMatrix(out, m, false);
             return out;
         }
 

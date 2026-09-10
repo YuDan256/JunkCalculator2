@@ -2564,6 +2564,9 @@ void BuiltinRegistry::registerStringFunctions() {
         if (args[0].isString()) return args[0];
         std::ostringstream oss; oss << args[0]; return Value(oss.str());
         }, {"x"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::STRING));
+    reg("repr", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return Value(args[0].toRepr());
+        }, {"x"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::STRING));
     reg("len", { 1 }, [](const std::vector<Value>& args) -> Value {
         // ★ Dunder 钩子: __len__
         if (args[0].isInstance()) {

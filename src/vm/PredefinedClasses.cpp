@@ -101,7 +101,7 @@ void registerPredefinedClasses() {
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
         int64_t idx = static_cast<int64_t>(std::round(args[0].asDouble()));
         if (idx < 0) idx += data.length;
-        if (idx < 0 || idx >= data.length) throw std::out_of_range("IndexError: range object index out of range");
+        if (idx < 0 || idx >= data.length) JC2_THROW(ValueError, "range object index out of range");
         
         double val = data.start + idx * data.step;
         if (data.isInt) return Value(BigInt(static_cast<int64_t>(val)));

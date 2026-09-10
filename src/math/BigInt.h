@@ -1226,12 +1226,12 @@ namespace jc {
         }
 
         explicit BigInt(const std::string& s) {
-            if (s.empty()) throw std::invalid_argument("BigInt Error: Empty string.");
+            if (s.empty()) JC2_THROW(ValueError, "Empty string.");
             size_t start = 0;
             negative = false;
             if (s[0] == '-') { negative = true; start = 1; }
             else if (s[0] == '+') { start = 1; }
-            if (start == s.size()) throw std::invalid_argument("BigInt Error: No digits found.");
+            if (start == s.size()) JC2_THROW(ValueError, "No digits found.");
 
             BigInt res = parseStringDC(s, start, s.size());
             this->data = std::move(res.data);

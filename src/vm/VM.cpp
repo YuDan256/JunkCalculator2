@@ -473,18 +473,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             }
         } catch (const std::exception& ex) {
             if (currentException) {
-                std::string msg = ex.what();
-                std::string type = "Exception";
-                size_t colonPos = msg.find(": ");
-                if (colonPos != std::string::npos) {
-                    std::string prefix = msg.substr(0, colonPos);
-                    if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
-                        type = prefix;
-                        type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
-                        msg = msg.substr(colonPos + 2);
-                    }
-                }
-                Value deferEx = wrapException(type, Value(msg));
+                Value deferEx = wrapException("Exception", Value(ex.what()));
                 auto inst = currentException->asInstance();
                 if (inst) {
                     auto it = inst->properties.find("suppressed");
@@ -8117,18 +8106,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const std::exception& ex) {
             frame->ip = ip;
-            std::string msg = ex.what();
-            std::string type = "Exception";
-            size_t colonPos = msg.find(": ");
-            if (colonPos != std::string::npos) {
-                std::string prefix = msg.substr(0, colonPos);
-                if (prefix == "VM Error" || prefix == "Runtime Error" || prefix == "Type Error" || prefix == "Math Error" || prefix == "IO Error" || prefix == "Syntax Error") {
-                    type = prefix;
-                    type.erase(std::remove(type.begin(), type.end(), ' '), type.end());
-                    msg = msg.substr(colonPos + 2);
-                }
-            }
-            Value errVal = wrapException(type, Value(msg));
+            Value errVal = wrapException("Exception", Value(ex.what()));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

@@ -15,7 +15,7 @@ namespace jc {
     SymMatrix::SymMatrix(int r, int c, const std::vector<SymExpr>& flat_data)
         : rows(r), cols(c), data(flat_data) {
         if (flat_data.size() != static_cast<size_t>(r * c)) {
-            throw std::invalid_argument("SymMatrix Error: Data size does not match dimensions.");
+            JC2_THROW(ValueError, "Data size does not match dimensions.");
         }
     }
 
@@ -24,12 +24,12 @@ namespace jc {
 
     SymExpr& SymMatrix::operator()(int row, int col) {
         if (row >= 0 && row < rows && col >= 0 && col < cols) return data[static_cast<size_t>(col) * rows + row];
-        throw std::out_of_range("SymMatrix Error: Index out of bounds.");
+        JC2_THROW(ValueError, "Index out of bounds.");
     }
 
     const SymExpr& SymMatrix::operator()(int row, int col) const {
         if (row >= 0 && row < rows && col >= 0 && col < cols) return data[static_cast<size_t>(col) * rows + row];
-        throw std::out_of_range("SymMatrix Error: Index out of bounds.");
+        JC2_THROW(ValueError, "Index out of bounds.");
     }
 
     SymMatrix SymMatrix::view(int rStart, int rStep, int rCount, int cStart, int cStep, int cCount) const {
@@ -62,7 +62,7 @@ namespace jc {
     // ==========================================
     SymMatrix SymMatrix::operator+(const SymMatrix& other) const {
         if (isScalar() && other.isScalar()) return SymMatrix(data[0] + other.data[0]);
-        if (rows != other.rows || cols != other.cols) throw std::invalid_argument("SymMatrix Error: Dimensions mismatch (+).");
+        if (rows != other.rows || cols != other.cols) JC2_THROW(ValueError, "Dimensions mismatch (+).");
 
         SymMatrix result(rows, cols);
         for (size_t i = 0; i < data.size(); ++i) {
@@ -73,7 +73,7 @@ namespace jc {
 
     SymMatrix SymMatrix::operator-(const SymMatrix& other) const {
         if (isScalar() && other.isScalar()) return SymMatrix(data[0] - other.data[0]);
-        if (rows != other.rows || cols != other.cols) throw std::invalid_argument("SymMatrix Error: Dimensions mismatch (-).");
+        if (rows != other.rows || cols != other.cols) JC2_THROW(ValueError, "Dimensions mismatch (-).");
 
         SymMatrix result(rows, cols);
         for (size_t i = 0; i < data.size(); ++i) {
@@ -115,7 +115,7 @@ namespace jc {
     // 矩阵乘法 (带防膨胀机制)
     // ==========================================
     SymMatrix SymMatrix::operator*(const SymMatrix& other) const {
-        if (cols != other.rows) throw std::invalid_argument("SymMatrix Error: Cols must equal rows (*).");
+        if (cols != other.rows) JC2_THROW(ValueError, "Cols must equal rows (*).");
 
         SymMatrix result(rows, other.cols);
         std::vector<std::vector<SymNode*>> cellTerms(rows * other.cols);
@@ -157,7 +157,7 @@ namespace jc {
     // 标量加减 (A ± c*I)
     // ==========================================
     SymMatrix SymMatrix::operator+(const SymExpr& scalar) const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Scalar addition requires square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Scalar addition requires square matrix.");
         SymMatrix result(*this);
         for (int i = 0; i < rows; ++i) result(i, i) = result(i, i) + scalar;
         return result;
@@ -168,14 +168,14 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::operator-(const SymExpr& scalar) const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Scalar subtraction requires square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Scalar subtraction requires square matrix.");
         SymMatrix result(*this);
         for (int i = 0; i < rows; ++i) result(i, i) = result(i, i) - scalar;
         return result;
     }
 
     SymMatrix operator-(const SymExpr& scalar, const SymMatrix& rhs) {
-        if (rhs.getRows() != rhs.getCols()) throw std::invalid_argument("SymMatrix Error: Scalar subtraction requires square matrix.");
+        if (rhs.getRows() != rhs.getCols()) JC2_THROW(ValueError, "Scalar subtraction requires square matrix.");
         SymMatrix result = -rhs;
         for (int i = 0; i < rhs.getRows(); ++i) result(i, i) = result(i, i) + scalar;
         return result;
@@ -195,7 +195,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::subMatrix(int excludeRow, int excludeCol) const {
-        if (rows <= 1 || cols <= 1) throw std::invalid_argument("SymMatrix Error: Matrix too small for subMatrix.");
+        if (rows <= 1 || cols <= 1) JC2_THROW(ValueError, "Matrix too small for subMatrix.");
         SymMatrix result(rows - 1, cols - 1);
         int ri = 0;
         for (int i = 0; i < rows; ++i) {
@@ -212,7 +212,7 @@ namespace jc {
     }
 
     void SymMatrix::swapRows(int row1, int row2) {
-        if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) throw std::out_of_range("SymMatrix Error: Row index out of bounds.");
+        if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
         for (int j = 0; j < cols; ++j) {
             SymExpr temp = (*this)(row1, j);
             (*this)(row1, j) = (*this)(row2, j);
@@ -221,7 +221,7 @@ namespace jc {
     }
 
     void SymMatrix::swapCols(int col1, int col2) {
-        if (col1 < 0 || col1 >= cols || col2 < 0 || col2 >= cols) throw std::out_of_range("SymMatrix Error: Column index out of bounds.");
+        if (col1 < 0 || col1 >= cols || col2 < 0 || col2 >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
         for (int i = 0; i < rows; ++i) {
             SymExpr temp = (*this)(i, col1);
             (*this)(i, col1) = (*this)(i, col2);
@@ -230,22 +230,22 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::getRow(int r) const {
-        if (r < 0 || r >= rows) throw std::out_of_range("SymMatrix Error: Row index out of bounds.");
+        if (r < 0 || r >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
         SymMatrix result(1, cols);
         for (int j = 0; j < cols; ++j) result(0, j) = (*this)(r, j);
         return result;
     }
 
     SymMatrix SymMatrix::getCol(int c) const {
-        if (c < 0 || c >= cols) throw std::out_of_range("SymMatrix Error: Column index out of bounds.");
+        if (c < 0 || c >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
         SymMatrix result(rows, 1);
         for (int i = 0; i < rows; ++i) result(i, 0) = (*this)(i, c);
         return result;
     }
 
     SymMatrix SymMatrix::deleteRow(int r) const {
-        if (rows <= 1) throw std::invalid_argument("SymMatrix Error: Cannot delete row from single-row matrix.");
-        if (r < 0 || r >= rows) throw std::out_of_range("SymMatrix Error: Row index out of bounds.");
+        if (rows <= 1) JC2_THROW(ValueError, "Cannot delete row from single-row matrix.");
+        if (r < 0 || r >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
         SymMatrix result(rows - 1, cols);
         int ri = 0;
         for (int i = 0; i < rows; ++i) {
@@ -257,8 +257,8 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::deleteCol(int c) const {
-        if (cols <= 1) throw std::invalid_argument("SymMatrix Error: Cannot delete col from single-column matrix.");
-        if (c < 0 || c >= cols) throw std::out_of_range("SymMatrix Error: Column index out of bounds.");
+        if (cols <= 1) JC2_THROW(ValueError, "Cannot delete col from single-column matrix.");
+        if (c < 0 || c >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
         SymMatrix result(rows, cols - 1);
         for (int i = 0; i < rows; ++i) {
             int rj = 0;
@@ -271,7 +271,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::integR(const SymMatrix& other) const {
-        if (rows != other.rows) throw std::invalid_argument("SymMatrix Error: Row counts must match for horizontal concatenation.");
+        if (rows != other.rows) JC2_THROW(ValueError, "Row counts must match for horizontal concatenation.");
         SymMatrix result(rows, cols + other.cols);
         for (int i = 0; i < rows; ++i) {
             for (int j = 0; j < cols; ++j) result(i, j) = (*this)(i, j);
@@ -281,7 +281,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::integC(const SymMatrix& other) const {
-        if (cols != other.cols) throw std::invalid_argument("SymMatrix Error: Column counts must match for vertical concatenation.");
+        if (cols != other.cols) JC2_THROW(ValueError, "Column counts must match for vertical concatenation.");
         SymMatrix result(rows + other.rows, cols);
         for (int i = 0; i < rows; ++i)
             for (int j = 0; j < cols; ++j) result(i, j) = (*this)(i, j);
@@ -300,7 +300,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::reshape(int newRows, int newCols) const {
-        if (newRows * newCols != rows * cols) throw std::invalid_argument("SymMatrix Error: Element count mismatch in reshape.");
+        if (newRows * newCols != rows * cols) JC2_THROW(ValueError, "Element count mismatch in reshape.");
         SymMatrix result(newRows, newCols);
         for (int idx = 0; idx < rows * cols; ++idx) {
             result.data[idx] = data[idx];
@@ -328,7 +328,7 @@ namespace jc {
     // 高级线性代数
     // ==========================================
     SymExpr SymMatrix::determinant() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Determinant requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Determinant requires a square matrix.");
         if (rows == 0) return SymExpr(BigInt(1));
         if (rows == 1) return (*this)(0, 0);
         if (rows == 2) return jc::simplify(expand_core((*this)(0,0)*(*this)(1,1) - (*this)(0,1)*(*this)(1,0), SymConfig::maxExpandTerms));
@@ -385,7 +385,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::adjugate() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Adjugate requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Adjugate requires a square matrix.");
         if (rows == 1) {
             SymMatrix res(1, 1);
             res(0, 0) = SymExpr(BigInt(1));
@@ -402,7 +402,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::inverse() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Inverse requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Inverse requires a square matrix.");
         if (rows == 0) return SymMatrix();
         if (rows == 1) {
             if (isSymZero((*this)(0, 0))) JC2_THROW(SymbolicError, "Matrix is singular and cannot be inverted.");
@@ -469,7 +469,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::power(int n) const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Matrix power requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Matrix power requires a square matrix.");
         if (n == 0) return identity(rows);
         SymMatrix base = (n > 0) ? *this : inverse();
         int exp = std::abs(n);
@@ -484,7 +484,7 @@ namespace jc {
     }
 
     SymExpr SymMatrix::trace() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Trace requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Trace requires a square matrix.");
         SymExpr result(BigInt(0));
         for (int i = 0; i < rows; ++i) {
             result = result + (*this)(i, i);
@@ -662,13 +662,13 @@ namespace jc {
     }
 
     SymExpr SymMatrix::condition() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Condition number requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Condition number requires a square matrix.");
         SymMatrix inv = inverse();
         return jc::simplify(norm() * inv.norm());
     }
 
     SymExpr SymMatrix::permanent() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Permanent requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Permanent requires a square matrix.");
         int n = rows;
         if (n == 0) return SymExpr(BigInt(1));
         if (n == 1) return (*this)(0, 0);
@@ -703,7 +703,7 @@ namespace jc {
     }
 
     SymExpr SymMatrix::charPoly(const std::string& var) const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Characteristic polynomial requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Characteristic polynomial requires a square matrix.");
         SymMatrix A_minus_lambdaI = *this;
         SymExpr lambda = SymExpr::makeVar(var);
         for (int i = 0; i < rows; ++i) {
@@ -713,14 +713,14 @@ namespace jc {
     }
 
     std::vector<SymExpr> SymMatrix::eigenvalues() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Eigenvalues require a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Eigenvalues require a square matrix.");
         std::string lambda_var = "_lambda";
         SymExpr cp = charPoly(lambda_var);
         return solveEq(cp, lambda_var);
     }
 
     std::vector<std::pair<SymExpr, SymMatrix>> SymMatrix::eigenvectors() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Eigenvectors require a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Eigenvectors require a square matrix.");
         std::vector<SymExpr> evals = eigenvalues();
         std::vector<std::pair<SymExpr, SymMatrix>> evecs;
         
@@ -738,7 +738,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::solve(const SymMatrix& b) const {
-        if (rows != b.getRows()) throw std::invalid_argument("SymMatrix Error: Dimension mismatch in solve.");
+        if (rows != b.getRows()) JC2_THROW(ValueError, "Dimension mismatch in solve.");
         if (rows == cols) {
             try {
                 return inverse() * b;
@@ -750,7 +750,7 @@ namespace jc {
     }
 
     std::pair<SymMatrix, SymMatrix> SymMatrix::lu() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: LU decomposition requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "LU decomposition requires a square matrix.");
         int n = rows;
         SymMatrix L = identity(n);
         SymMatrix U = *this;
@@ -804,7 +804,7 @@ namespace jc {
     }
 
     std::pair<SymMatrix, SymMatrix> SymMatrix::diagonalize() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Diagonalize requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Diagonalize requires a square matrix.");
         std::vector<std::pair<SymExpr, SymMatrix>> evecs = eigenvectors();
         
         int total_evecs = 0;
@@ -848,7 +848,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::hessian(const std::vector<std::string>& vars) const {
-        if (!isScalar()) throw std::invalid_argument("SymMatrix Error: Hessian requires a scalar (1x1 matrix).");
+        if (!isScalar()) JC2_THROW(ValueError, "Hessian requires a scalar (1x1 matrix).");
         int n = static_cast<int>(vars.size());
         SymMatrix H(n, n);
         SymExpr f = data[0];
@@ -883,7 +883,7 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::exp() const {
-        if (rows != cols) throw std::invalid_argument("SymMatrix Error: Matrix exponential requires a square matrix.");
+        if (rows != cols) JC2_THROW(ValueError, "Matrix exponential requires a square matrix.");
         try {
             auto [P, D] = diagonalize();
             SymMatrix expD = zeros(rows, cols);

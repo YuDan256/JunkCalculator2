@@ -84,11 +84,11 @@ namespace jc {
     public:
         // --- 构造函数 ---
         BaseNum(BigInt val, int r) : data(std::move(val)), radix(r) {
-            if (r < 2) throw std::invalid_argument("Math Error: Base radix must be >= 2.");
+            if (r < 2) JC2_THROW(ValueError, "Base radix must be >= 2.");
         }
 
         BaseNum(double val, int r) : radix(r) {
-            if (r < 2) throw std::invalid_argument("Math Error: Base radix must be >= 2.");
+            if (r < 2) JC2_THROW(ValueError, "Base radix must be >= 2.");
             data = BigInt(static_cast<int64_t>(std::round(val)));
         }
 
@@ -106,7 +106,7 @@ namespace jc {
             if (!numStr.empty() && numStr[0] == '-') { isNeg = true; numStr.erase(0, 1); }
             else if (!numStr.empty() && numStr[0] == '+') { numStr.erase(0, 1); }
 
-            if (numStr.empty()) throw std::invalid_argument("Base Error: Empty number string.");
+            if (numStr.empty()) JC2_THROW(ValueError, "Empty number string.");
 
             BigInt result(0);
             BigInt baseBI(r);
@@ -118,9 +118,9 @@ namespace jc {
                     if (c >= '0' && c <= '9') digit = c - '0';
                     else if (c >= 'A' && c <= 'Z') digit = c - 'A' + 10;
                     else if (c >= 'a' && c <= 'z') digit = c - 'a' + 10;
-                    else throw std::invalid_argument("Base Error: Invalid character '" + std::string(1, c) + "'.");
+                    else JC2_THROW(ValueError, "Invalid character '" + std::string(1, c) + "'.");
 
-                    if (digit >= r) throw std::invalid_argument("Base Error: Digit exceeds radix.");
+                    if (digit >= r) JC2_THROW(ValueError, "Digit exceeds radix.");
                     result = result * baseBI + BigInt(digit);
                 }
             }
@@ -139,7 +139,7 @@ namespace jc {
                     // ★ 校验：块内只允许数字字符
                     for (char c : block) {
                         if (c < '0' || c > '9') {
-                            throw std::invalid_argument("Base Error: Invalid character '" + std::string(1, c) + "' in digit block.");
+                            JC2_THROW(ValueError, "Invalid character '" + std::string(1, c) + "' in digit block.");
                         }
                     }
 
@@ -156,7 +156,7 @@ namespace jc {
                         overflow = true;
                     }
                     catch (const std::invalid_argument&) {
-                        throw std::invalid_argument("Base Error: Invalid digit block '" + block + "'.");
+                        JC2_THROW(ValueError, "Invalid digit block '" + block + "'.");
                     }
 
                     if (overflow) {
@@ -164,15 +164,15 @@ namespace jc {
                         BigInt digitBI(block);
                         BigInt radixBI(r);
                         if (digitBI.isNegative() || digitBI >= radixBI) {
-                            throw std::invalid_argument(
-                                "Base Error: Digit block '" + block + "' exceeds radix " + std::to_string(r) + ".");
+                            JC2_THROW(ValueError,
+                                "Digit block '" + block + "' exceeds radix " + std::to_string(r) + ".");
                         }
                         result = result * baseBI + digitBI;
                     }
                     else {
                         if (digit < 0 || digit >= static_cast<int64_t>(r)) {
-                            throw std::invalid_argument(
-                                "Base Error: Digit block '" + block + "' exceeds radix " + std::to_string(r) + ".");
+                            JC2_THROW(ValueError,
+                                "Digit block '" + block + "' exceeds radix " + std::to_string(r) + ".");
                         }
                         result = result * baseBI + BigInt(digit);
                     }
@@ -191,7 +191,7 @@ namespace jc {
         int determineRadix(const BaseNum& other) const {
             if (radix == 10) return other.radix;
             if (other.radix == 10) return radix;
-            if (radix != other.radix) throw std::invalid_argument("Base Error: Radix mismatched (and neither is 10).");
+            if (radix != other.radix) JC2_THROW(ValueError, "Radix mismatched (and neither is 10).");
             return radix;
         }
 

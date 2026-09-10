@@ -866,7 +866,7 @@ namespace jc {
             if (i < 0) i += dimSize;
             if (i < 0 || i >= dimSize) {
                 if (noThrow) return { false, -1, {0,0,0} };
-                throw std::out_of_range("VM Error: Index out of bounds.");
+                JC2_THROW(ValueError, "Index out of bounds.");
             }
             return { false, i, {0,0,0} };
         }

@@ -40,7 +40,7 @@ namespace jc {
             : rows(r), cols(c), row_stride(1), col_stride(r), offset(0),
               data(std::make_shared<T[]>(static_cast<size_t>(r) * c)) {
             if (flat_data.size() != static_cast<size_t>(r * c)) {
-                throw std::invalid_argument("Matrix Error: Data size does not match dimensions.");
+                JC2_THROW(ValueError, "Data size does not match dimensions.");
             }
             std::copy(flat_data.begin(), flat_data.end(), data.get());
         }
@@ -98,19 +98,19 @@ namespace jc {
 
         T& operator()(int row, int col) {
             if (row >= 0 && row < rows && col >= 0 && col < cols) return data[offset + row * row_stride + col * col_stride];
-            throw std::out_of_range("Matrix Error: Index out of bounds.");
+            JC2_THROW(ValueError, "Index out of bounds.");
         }
 
         const T& operator()(int row, int col) const {
             if (row >= 0 && row < rows && col >= 0 && col < cols) return data[offset + row * row_stride + col * col_stride];
-            throw std::out_of_range("Matrix Error: Index out of bounds.");
+            JC2_THROW(ValueError, "Index out of bounds.");
         }
 
         // ==== 惊艳的高速数学运算 (纯模板推导) ====
 
         Matrix operator+(const Matrix& other) const {
             if (isNumber() && other.isNumber()) return Matrix((*this)(0, 0) + other(0, 0));
-            if (rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix Error: Dimensions mismatch (+).");
+            if (rows != other.rows || cols != other.cols) JC2_THROW(ValueError, "Dimensions mismatch (+).");
 
             Matrix result(rows, cols);
             if (isContiguous() && other.isContiguous()) {
@@ -128,7 +128,7 @@ namespace jc {
 
         Matrix operator-(const Matrix& other) const {
             if (isNumber() && other.isNumber()) return Matrix((*this)(0, 0) - other(0, 0));
-            if (rows != other.rows || cols != other.cols) throw std::invalid_argument("Matrix Error: Dimensions mismatch (-).");
+            if (rows != other.rows || cols != other.cols) JC2_THROW(ValueError, "Dimensions mismatch (-).");
 
             Matrix result(rows, cols);
             if (isContiguous() && other.isContiguous()) {
@@ -429,7 +429,7 @@ namespace jc {
 
         // 智能矩阵乘法入口
         Matrix operator*(const Matrix& other) const {
-            if (cols != other.rows) throw std::invalid_argument("Matrix Error: Cols must equal rows (*).");
+            if (cols != other.rows) JC2_THROW(ValueError, "Cols must equal rows (*).");
 
             int minDim = std::min({rows, cols, other.cols});
             int maxDim = std::max({rows, cols, other.cols});
@@ -491,7 +491,7 @@ namespace jc {
 
         // ==== 纯数学流派：标量加减变成 A ± c*I ====
         Matrix operator+(T scalar) const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Scalar addition requires square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Scalar addition requires square matrix.");
             Matrix result(*this);
             for (int i = 0; i < rows; ++i) result(i, i) = result(i, i) + scalar;
             return result;
@@ -502,14 +502,14 @@ namespace jc {
         }
 
         Matrix operator-(T scalar) const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Scalar subtraction requires square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Scalar subtraction requires square matrix.");
             Matrix result(*this);
             for (int i = 0; i < rows; ++i) result(i, i) = result(i, i) - scalar;
             return result;
         }
 
         friend Matrix operator-(T scalar, const Matrix& rhs) {
-            if (rhs.getRows() != rhs.getCols()) throw std::invalid_argument("Math Error: Scalar subtraction requires square matrix.");
+            if (rhs.getRows() != rhs.getCols()) JC2_THROW(ValueError, "Scalar subtraction requires square matrix.");
             Matrix result = -rhs;
             for (int i = 0; i < rhs.getRows(); ++i) result(i, i) = result(i, i) + scalar;
             return result;
@@ -595,7 +595,7 @@ namespace jc {
         }
 
         void swapRows(int row1, int row2) {
-            if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
+            if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
             for (int j = 0; j < cols; ++j) {
                 T temp = (*this)(row1, j);
                 (*this)(row1, j) = (*this)(row2, j);
@@ -604,16 +604,16 @@ namespace jc {
         }
         // [2] 初等行变换：某行乘以非零常数
         void multiplyRow(int row, T scalar, int startCol = 0) {
-            if (row < 0 || row >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
+            if (row < 0 || row >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
             // 利用标准库判定 0 的通用写法 (兼容 double, Complex 等类型的比较)
-            if (scalar == T(0)) throw std::invalid_argument("Matrix Error: Cannot multiply a row by zero.");
+            if (scalar == T(0)) JC2_THROW(ValueError, "Cannot multiply a row by zero.");
             for (int j = startCol; j < cols; ++j) {
                 (*this)(row, j) = (*this)(row, j) * scalar;
             }
         }
         // [3] 初等行变换：将 row2 的 scalar 倍加到 row1 上 ( row1 = row1 + scalar * row2 )
         void addRows(int row1, int row2, T scalar, int startCol = 0) {
-            if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
+            if (row1 < 0 || row1 >= rows || row2 < 0 || row2 >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
             for (int j = startCol; j < cols; ++j) {
                 (*this)(row1, j) = (*this)(row1, j) + scalar * (*this)(row2, j);
             }
@@ -703,7 +703,7 @@ namespace jc {
 
         // [6] 行列式 (Determinant)
         T determinant() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Determinant is only defined for square matrices.");
+            if (rows != cols) JC2_THROW(ValueError, "Determinant is only defined for square matrices.");
             Matrix<T> temp(*this);
             int swapCount = 0;
 
@@ -758,7 +758,7 @@ namespace jc {
         }
         // [8] 逆矩阵 (Inverse) - 拼凑满配高斯-约当算子的最经典算法！
         Matrix<T> inverse() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Inverse is only defined for square matrices.");
+            if (rows != cols) JC2_THROW(ValueError, "Inverse is only defined for square matrices.");
 
             // 把我们要的单位矩阵 I 直接拼贴到原矩阵 A 的右侧，变成 [A | I]
             Matrix<T> augmented(rows, cols * 2);
@@ -809,7 +809,7 @@ namespace jc {
 
         // [迹] Trace
         T trace() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Trace is only defined for square matrices.");
+            if (rows != cols) JC2_THROW(ValueError, "Trace is only defined for square matrices.");
             T result = T(0);
             for (int i = 0; i < rows; ++i) result = result + (*this)(i, i);
             return result;
@@ -843,7 +843,7 @@ namespace jc {
 
         // [子矩阵] 删除指定行和列后的余子矩阵
         Matrix<T> subMatrix(int excludeRow, int excludeCol) const {
-            if (rows <= 1 || cols <= 1) throw std::invalid_argument("Matrix Error: Matrix too small for subMatrix.");
+            if (rows <= 1 || cols <= 1) JC2_THROW(ValueError, "Matrix too small for subMatrix.");
             Matrix<T> result(rows - 1, cols - 1);
             int ri = 0;
             for (int i = 0; i < rows; ++i) {
@@ -861,7 +861,7 @@ namespace jc {
 
         // [整数次幂] A^n（支持负整数幂 = 逆矩阵重复乘）
         Matrix<T> power(int n) const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Matrix power requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Matrix power requires a square matrix.");
             if (n == 0) return identity(rows);
             Matrix<T> base = (n > 0) ? *this : inverse();
             int exp = std::abs(n);
@@ -880,7 +880,7 @@ namespace jc {
 
         // [水平拼接] [A | B]
         Matrix<T> integR(const Matrix<T>& other) const {
-            if (rows != other.rows) throw std::invalid_argument("Matrix Error: Row counts must match for horizontal concatenation.");
+            if (rows != other.rows) JC2_THROW(ValueError, "Row counts must match for horizontal concatenation.");
             Matrix<T> result(rows, cols + other.cols);
             for (int i = 0; i < rows; ++i) {
                 for (int j = 0; j < cols; ++j) result(i, j) = (*this)(i, j);
@@ -891,7 +891,7 @@ namespace jc {
 
         // [垂直拼接] [A; B]
         Matrix<T> integC(const Matrix<T>& other) const {
-            if (cols != other.cols) throw std::invalid_argument("Matrix Error: Column counts must match for vertical concatenation.");
+            if (cols != other.cols) JC2_THROW(ValueError, "Column counts must match for vertical concatenation.");
             Matrix<T> result(rows + other.rows, cols);
             for (int i = 0; i < rows; ++i)
                 for (int j = 0; j < cols; ++j) result(i, j) = (*this)(i, j);
@@ -916,7 +916,7 @@ namespace jc {
 
         // [交换列]
         void swapCols(int col1, int col2) {
-            if (col1 < 0 || col1 >= cols || col2 < 0 || col2 >= cols) throw std::out_of_range("Matrix Error: Column index out of bounds.");
+            if (col1 < 0 || col1 >= cols || col2 < 0 || col2 >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
             for (int i = 0; i < rows; ++i) {
                 T temp = (*this)(i, col1);
                 (*this)(i, col1) = (*this)(i, col2);
@@ -926,22 +926,22 @@ namespace jc {
 
         // [获取某一行] 返回 1×cols 矩阵
         Matrix<T> getRow(int row) const {
-            if (row < 0 || row >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
+            if (row < 0 || row >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
             // 零拷贝视图：单行切片
             return Matrix(data, 1, cols, row_stride, col_stride, offset + row * row_stride);
         }
 
         // [获取某一列] 返回 rows×1 矩阵
         Matrix<T> getCol(int col) const {
-            if (col < 0 || col >= cols) throw std::out_of_range("Matrix Error: Column index out of bounds.");
+            if (col < 0 || col >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
             // 零拷贝视图：单列切片
             return Matrix(data, rows, 1, row_stride, col_stride, offset + col * col_stride);
         }
 
         // [删除某一行] 返回 (rows-1)×cols 矩阵
         Matrix<T> deleteRow(int row) const {
-            if (rows <= 1) throw std::invalid_argument("Matrix Error: Cannot delete row from single-row matrix.");
-            if (row < 0 || row >= rows) throw std::out_of_range("Matrix Error: Row index out of bounds.");
+            if (rows <= 1) JC2_THROW(ValueError, "Cannot delete row from single-row matrix.");
+            if (row < 0 || row >= rows) JC2_THROW(ValueError, "Row index out of bounds.");
             Matrix<T> result(rows - 1, cols);
             int ri = 0;
             for (int i = 0; i < rows; ++i) {
@@ -954,8 +954,8 @@ namespace jc {
 
         // [删除某一列] 返回 rows×(cols-1) 矩阵
         Matrix<T> deleteCol(int col) const {
-            if (cols <= 1) throw std::invalid_argument("Matrix Error: Cannot delete col from single-column matrix.");
-            if (col < 0 || col >= cols) throw std::out_of_range("Matrix Error: Column index out of bounds.");
+            if (cols <= 1) JC2_THROW(ValueError, "Cannot delete col from single-column matrix.");
+            if (col < 0 || col >= cols) JC2_THROW(ValueError, "Column index out of bounds.");
             Matrix<T> result(rows, cols - 1);
             for (int i = 0; i < rows; ++i) {
                 int rj = 0;
@@ -969,7 +969,7 @@ namespace jc {
 
         // [变形] Reshape：保持元素总数不变，重新分配行列
         Matrix<T> reshape(int newRows, int newCols) const {
-            if (newRows * newCols != rows * cols) throw std::invalid_argument("Matrix Error: Element count mismatch in reshape.");
+            if (newRows * newCols != rows * cols) JC2_THROW(ValueError, "Element count mismatch in reshape.");
             Matrix<T> result(newRows, newCols);
             if (isContiguous()) {
                 std::copy(data.get(), data.get() + static_cast<size_t>(rows) * cols, result.data.get());
@@ -1038,7 +1038,7 @@ namespace jc {
 
         // [伴随矩阵] Adjugate = transpose of cofactor matrix
         Matrix<T> adjugate() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Adjugate requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Adjugate requires a square matrix.");
             if (rows == 1) { Matrix<T> r(1, 1); r(0, 0) = T(1); return r; }
             
             // ★ 算法级降维打击：利用 adj(A) = det(A) * A^-1，将复杂度从 O(N^5) 降至 O(N^3)
@@ -1061,7 +1061,7 @@ namespace jc {
 
         // [永久式] Permanent (递归展开，和行列式类似但不带符号)
         T permanent() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Permanent requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Permanent requires a square matrix.");
             if (rows > 20)
                 JC2_THROW(MathError, "Permanent limited to 20x20 (combinatorial complexity).");
             if (rows == 1) return (*this)(0, 0);
@@ -1102,7 +1102,7 @@ namespace jc {
 
         // [条件数] Condition number = norm(A) * norm(A^-1)
         double condition() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Condition number requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Condition number requires a square matrix.");
             return norm() * inverse().norm();
         }
 
@@ -1128,7 +1128,7 @@ namespace jc {
         // [矩阵指数] Scaling and Squaring + Taylor 级数
         // 替代原来的纯 Taylor 展开，对任意范数矩阵稳定收敛
         Matrix<T> matExp() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Matrix exp requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Matrix exp requires a square matrix.");
 
             int n = rows;
             double normA = norm();
@@ -1163,7 +1163,7 @@ namespace jc {
         // [矩阵正弦] sin(A) = A - A³/3! + A⁵/5! - ...
         // 递推：term_k = term_{k-1} * (-A²) / ((2k)(2k+1))
         Matrix<T> matSin() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Matrix sin requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Matrix sin requires a square matrix.");
             Matrix<T> negA2 = -((*this) * (*this));
             Matrix<T> term = *this;
             Matrix<T> result = *this;
@@ -1179,7 +1179,7 @@ namespace jc {
         // [矩阵余弦] cos(A) = I - A²/2! + A⁴/4! - ...
         // 递推：term_k = term_{k-1} * (-A²) / ((2k-1)(2k))
         Matrix<T> matCos() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Matrix cos requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Matrix cos requires a square matrix.");
             Matrix<T> negA2 = -((*this) * (*this));
             Matrix<T> term = identity(rows);
             Matrix<T> result = identity(rows);
@@ -1221,7 +1221,7 @@ namespace jc {
         // [矩阵对数 - 泰勒级数法] ln(I + X) = X - X²/2 + X³/3 - ...
         // 仅当 ||A - I|| < 1 时收敛。其他情况需要用对角化方法（见下方自由函数）
         Matrix<T> matLogSeries() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: Matrix log requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "Matrix log requires a square matrix.");
             Matrix<T> X = (*this) - identity(rows);
             if (X.norm() >= 1.0)
                 JC2_THROW(MathError, "Matrix log series requires ||A - I|| < 1. Try diagonalization.");
@@ -1282,7 +1282,7 @@ namespace jc {
         // 返回 {Q, R}，其中 Q 的列为正交规范化向量，R 为上三角
         // =================================================================================
         std::pair<Matrix<T>, Matrix<T>> qrDecomposition() const {
-            if (rows < cols) throw std::invalid_argument("Math Error: QR decomposition requires rows >= cols.");
+            if (rows < cols) JC2_THROW(ValueError, "QR decomposition requires rows >= cols.");
             int m = rows, n = cols;
 
             // 工作副本：V 的各列将被逐步正交化成 Q 的列
@@ -1332,7 +1332,7 @@ namespace jc {
 
         // [LU 分解] Doolittle 算法 + 列主元偏序选取 (Partial Pivoting)
         LUResult luDecomposition() const {
-            if (rows != cols) throw std::invalid_argument("Math Error: LU decomposition requires a square matrix.");
+            if (rows != cols) JC2_THROW(ValueError, "LU decomposition requires a square matrix.");
             int n = rows;
 
             Matrix<T> U(*this);
@@ -1439,13 +1439,13 @@ namespace jc {
         // [Schmidt 正交化] 返回列向量正交规范化后的矩阵（本质上就是 QR 的 Q）
         // =================================================================================
         Matrix<T> orthogonalize() const {
-            if (rank() < cols) throw std::invalid_argument("Math Error: Columns must be linearly independent.");
+            if (rank() < cols) JC2_THROW(ValueError, "Columns must be linearly independent.");
             auto [Q, R] = qrDecomposition();
             return Q;
         }
 
         static Matrix<T> magic(int n) {
-            if (n < 3) throw std::invalid_argument("Math Error: Magic square size must be >= 3.");
+            if (n < 3) JC2_THROW(ValueError, "Magic square size must be >= 3.");
             Matrix<T> result(n, n);
             if (n % 2 == 1) {
                 // === 奇数阶：罗伯法 (Siamese method) ===
@@ -1532,7 +1532,7 @@ namespace jc {
     // =================================================================================
     inline ComplexMatrix toHessenberg(const ComplexMatrix& A) {
         int n = A.getRows();
-        if (n != A.getCols()) throw std::invalid_argument("Math Error: Hessenberg reduction requires a square matrix.");
+        if (n != A.getCols()) JC2_THROW(ValueError, "Hessenberg reduction requires a square matrix.");
         if (n <= 2) return A; // 2×2 以下本身就是 Hessenberg
 
         ComplexMatrix H(A);
@@ -1604,7 +1604,7 @@ namespace jc {
 // =================================================================================
     inline std::vector<Complex> computeEigenvalues(ComplexMatrix A) {
         int n = A.getRows();
-        if (n != A.getCols()) throw std::invalid_argument("Math Error: Eigenvalues require a square matrix.");
+        if (n != A.getCols()) JC2_THROW(ValueError, "Eigenvalues require a square matrix.");
 
         // =============================================
         // 第一步：Householder 约化为上 Hessenberg 形式
@@ -1771,7 +1771,7 @@ namespace jc {
     // 对角化：返回 {P, D}，满足 A = P * D * P^(-1)
     inline std::pair<ComplexMatrix, ComplexMatrix> diagonalize(const ComplexMatrix& A) {
         int n = A.getRows();
-        if (n != A.getCols()) throw std::invalid_argument("Math Error: Diagonalization requires a square matrix.");
+        if (n != A.getCols()) JC2_THROW(ValueError, "Diagonalization requires a square matrix.");
         auto eigenvals = computeEigenvalues(A);
         auto [P, alignedEigenvals] = computeEigenvectorsAligned(A, eigenvals);
         if (P.getCols() != n)
@@ -1785,7 +1785,7 @@ namespace jc {
 
     inline ComplexMatrix matSqrtIterative(const ComplexMatrix& A) {
         if (A.getRows() != A.getCols())
-            throw std::invalid_argument("Math Error: Matrix sqrt requires a square matrix.");
+            JC2_THROW(ValueError, "Matrix sqrt requires a square matrix.");
         int n = A.getRows();
         if (A.rank() < n)
             JC2_THROW(MathError, "Iterative matrix sqrt requires a non-singular matrix.");
@@ -1821,7 +1821,7 @@ namespace jc {
 // =================================================================================
     inline ComplexMatrix matLog(const ComplexMatrix& A) {
         if (A.getRows() != A.getCols())
-            throw std::invalid_argument("Math Error: Matrix log requires a square matrix.");
+            JC2_THROW(ValueError, "Matrix log requires a square matrix.");
 
         int n = A.getRows();
         if (A.rank() < n)
@@ -1898,7 +1898,7 @@ namespace jc {
     // =================================================================================
     inline ComplexMatrix matSqrt(const ComplexMatrix& A) {
         if (A.getRows() != A.getCols())
-            throw std::invalid_argument("Math Error: Matrix sqrt requires a square matrix.");
+            JC2_THROW(ValueError, "Matrix sqrt requires a square matrix.");
 
         int n = A.getRows();
 

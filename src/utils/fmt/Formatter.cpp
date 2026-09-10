@@ -273,7 +273,7 @@ public:
     void visitInvokeExpr(InvokeExpr* e) override { if (e->callee) e->callee->accept(*this); for (auto& a : e->arguments) if (a) a->accept(*this); }
     void visitForInExpr(ForInExpr* e) override { visitPattern(e->pattern.get()); if (e->iterable) e->iterable->accept(*this); if (e->body) e->body->accept(*this); }
     void visitThrowExpr(ThrowExpr* e) override { if (e->value) e->value->accept(*this); }
-    void visitTryCatchExpr(TryCatchExpr* e) override { if (e->tryBody) e->tryBody->accept(*this); visitPattern(e->catchPattern.get()); if (e->catchBody) e->catchBody->accept(*this); }
+    void visitTryCatchExpr(TryCatchExpr* e) override { if (e->tryBody) e->tryBody->accept(*this); for (auto& b : e->catchBranches) { for (auto& p : b.patterns) visitPattern(p.get()); if (b.guard) b.guard->accept(*this); if (b.body) b.body->accept(*this); } }
     void visitImportExpr(ImportExpr* e) override { if (e->path) e->path->accept(*this); }
     void visitSwitchExpr(SwitchExpr* e) override {
         collectOuterBraces(e->startPos, e->endPos);

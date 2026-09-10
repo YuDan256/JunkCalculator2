@@ -121,6 +121,7 @@ private:
     
     void hoistBlock(Block* block);
     void resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier globalMod = ScopeModifier::None, bool globalConst = false, bool skipRedecl = false);
+    void resolveMatchBranches(std::vector<MatchBranch>& branches);
 };
 
 } // namespace jc

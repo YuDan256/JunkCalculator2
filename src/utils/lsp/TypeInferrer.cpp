@@ -372,7 +372,10 @@ namespace lsp {
     }
     void TypeInferrer::visitTryCatchExpr(TryCatchExpr* e) {
         if (e->tryBody) e->tryBody->accept(*this);
-        if (e->catchBody) e->catchBody->accept(*this);
+        for (auto& b : e->catchBranches) {
+            if (b.guard) b.guard->accept(*this);
+            if (b.body) b.body->accept(*this);
+        }
     }
     void TypeInferrer::visitImportExpr(ImportExpr* e) {
         (void)e;

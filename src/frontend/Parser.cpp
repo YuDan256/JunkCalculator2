@@ -1629,20 +1629,52 @@ namespace jc {
             auto tryBody = parseStatementOrBlock();
             int saved = current;
             while (match({ TokenType::NEWLINE })) {}  // ★ 跳过 } 和 catch 之间的换行
+            std::vector<MatchBranch> catchBranches;
             if (match({ TokenType::CATCH })) {
-                consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'catch'.");
-                auto catchPattern = parsePrimaryPattern();
-                consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
-                auto catchBody = parseStatementOrBlock();
-                int endPos = catchBody->endPos;
-                return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody)), tryTok.position, endPos);
+                if (check(TokenType::LBRACE)) {
+                    // ★ 完整形式：catch { pattern => body, ... }（多分支/或匹配/guard）
+                    consume(TokenType::LBRACE, "Parser Error: Expect '{' after 'catch'.");
+                    while (!check(TokenType::RBRACE) && !isAtEnd()) {
+                        while (match({ TokenType::NEWLINE, TokenType::SEMICOLON })) {}
+                        if (check(TokenType::RBRACE)) break;
+                        MatchBranch branch;
+                        do {
+                            branch.patterns.push_back(parsePattern());
+                        } while (match({ TokenType::COMMA }));
+                        if (match({ TokenType::IF })) {
+                            consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'if' guard.");
+                            branch.guard = expression();
+                            consume(TokenType::RPAREN, "Parser Error: Expect ')' after 'if' guard.");
+                        }
+                        consume(TokenType::ARROW, "Parser Error: Expect '=>' after catch pattern.");
+                        branch.body = parseMatchBody();
+                        catchBranches.push_back(std::move(branch));
+                        match({ TokenType::COMMA });
+                    }
+                    consume(TokenType::RBRACE, "Parser Error: Expect '}' to close catch block.");
+                } else {
+                    // ★ 简写：catch(pattern) body，单分支糖，等价 catch { pattern => body }
+                    consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'catch'.");
+                    auto catchPattern = parsePrimaryPattern();
+                    consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
+                    auto catchBody = parseStatementOrBlock();
+                    MatchBranch branch;
+                    branch.patterns.push_back(std::move(catchPattern));
+                    branch.body = std::move(catchBody);
+                    catchBranches.push_back(std::move(branch));
+                }
             }
-            // ★ try 无 catch：回退换行（保留语句分隔符），静默吞下错误，失败返回 none
-            current = saved;
-            Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
-            auto catchPattern = std::make_unique<VariablePattern>(underscore);
-            auto catchBody = withPos(std::make_unique<Literal>("none", false, false, true), tryBody->endPos, tryBody->endPos);
-            return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchPattern), std::move(catchBody)), tryTok.position, catchBody->endPos);
+            if (catchBranches.empty()) {
+                // ★ try 无 catch：语法糖，等价 catch { _ => none }，静默吞下
+                current = saved;
+                Token underscore(TokenType::IDENTIFIER, "_", tryTok.position, tryTok.line);
+                MatchBranch branch;
+                branch.patterns.push_back(std::make_unique<VariablePattern>(underscore));
+                branch.body = withPos(std::make_unique<Literal>("none", false, false, true), tryBody->endPos, tryBody->endPos);
+                catchBranches.push_back(std::move(branch));
+            }
+            int endPos = catchBranches.back().body->endPos;
+            return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchBranches)), tryTok.position, endPos);
         }
         if (match({ TokenType::IMPORT })) {
             int startPos = previous().position;
@@ -2825,8 +2857,17 @@ namespace jc {
         if (auto* tryCatch = dynamic_cast<TryCatchExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"tryBody", transformQuote(tryCatch->tryBody.get())});
-            props.push_back({"catchPattern", transformPattern(tryCatch->catchPattern.get())});
-            props.push_back({"catchBody", transformQuote(tryCatch->catchBody.get())});
+            std::vector<std::unique_ptr<Expr>> branchesArgs;
+            for (const auto& b : tryCatch->catchBranches) {
+                std::vector<std::pair<std::string, std::unique_ptr<Expr>>> bProps;
+                std::vector<std::unique_ptr<Expr>> patsArgs;
+                for (const auto& p : b.patterns) patsArgs.push_back(transformPattern(p.get()));
+                bProps.push_back({"patterns", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(patsArgs))});
+                bProps.push_back({"guard", transformQuote(b.guard.get())});
+                bProps.push_back({"body", transformQuote(b.body.get())});
+                branchesArgs.push_back(makeASTNodeCall("MatchBranch", 0, std::move(bProps)));
+            }
+            props.push_back({"branches", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(branchesArgs))});
             return makeASTNodeCall("TryCatchExpr", 0, std::move(props));
         }
         if (auto* sw = dynamic_cast<SwitchExpr*>(expr)) {

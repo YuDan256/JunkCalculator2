@@ -558,7 +558,10 @@ namespace lsp {
     }
     void NameResolver::visitTryCatchExpr(TryCatchExpr* e) {
         if (e->tryBody) e->tryBody->accept(*this);
-        if (e->catchBody) e->catchBody->accept(*this);
+        for (auto& b : e->catchBranches) {
+            if (b.guard) b.guard->accept(*this);
+            if (b.body) b.body->accept(*this);
+        }
     }
     void NameResolver::visitSwitchExpr(SwitchExpr* e) {
         if (e->subject) e->subject->accept(*this);

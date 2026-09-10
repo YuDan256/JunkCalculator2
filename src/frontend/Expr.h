@@ -611,13 +611,12 @@ namespace jc {
         void accept(ExprVisitor& visitor) override { visitor.visitThrowExpr(this); }
     };
 
-    // ★ try { ... } catch (e) { ... }
+    // ★ try { ... } catch { pattern => body, ... }
     struct TryCatchExpr : public Expr {
         std::unique_ptr<Expr> tryBody;
-        std::unique_ptr<Pattern> catchPattern;
-        std::unique_ptr<Expr> catchBody;
-        TryCatchExpr(std::unique_ptr<Expr> tryBody, std::unique_ptr<Pattern> catchPattern, std::unique_ptr<Expr> catchBody)
-            : tryBody(std::move(tryBody)), catchPattern(std::move(catchPattern)), catchBody(std::move(catchBody)) {
+        std::vector<MatchBranch> catchBranches;
+        TryCatchExpr(std::unique_ptr<Expr> tryBody, std::vector<MatchBranch> catchBranches)
+            : tryBody(std::move(tryBody)), catchBranches(std::move(catchBranches)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitTryCatchExpr(this); }
     };

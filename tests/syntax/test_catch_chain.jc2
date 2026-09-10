@@ -1,0 +1,59 @@
+class MyError extends Exception {}
+class OtherError extends Exception {}
+
+test_catch_chain_type_match() = {
+    r = try {
+        throw MyError("x")
+    } catch {
+        e: OtherError => "other",
+        e: MyError => "mine"
+    }
+    assert(r == "mine", "catch chain type match")
+}
+test_catch_chain_type_match()
+
+test_catch_type_mismatch_rethrow() = {
+    threw = false
+    try {
+        try {
+            throw MyError("x")
+        } catch {
+            e: OtherError => "other"
+        }
+    } catch (e) {
+        threw = true
+    }
+    assert(threw, "type mismatch rethrows")
+}
+test_catch_type_mismatch_rethrow()
+
+test_catch_or_pattern() = {
+    r = try {
+        throw OtherError("x")
+    } catch {
+        e: MyError, e: OtherError => "mine or other"
+    }
+    assert(r == "mine or other", "or pattern")
+}
+test_catch_or_pattern()
+
+test_catch_guard() = {
+    r = try {
+        throw MyError("big error")
+    } catch {
+        e: MyError if (e.message == "big error") => "big",
+        e: MyError => "small"
+    }
+    assert(r == "big", "guard")
+}
+test_catch_guard()
+
+test_catch_shorthand_keeps_type() = {
+    r = try {
+        throw MyError("x")
+    } catch (e) {
+        type(e) == MyError
+    }
+    assert(r, "shorthand keeps exception type")
+}
+test_catch_shorthand_keeps_type()

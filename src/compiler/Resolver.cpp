@@ -359,10 +359,7 @@ void Resolver::visitThrowExpr(ThrowExpr* expr) {
 
 void Resolver::visitTryCatchExpr(TryCatchExpr* expr) {
     resolve(expr->tryBody.get());
-    beginScope();
-    resolvePattern(expr->catchPattern.get(), true, ScopeModifier::Local, false);
-    resolve(expr->catchBody.get());
-    endScope();
+    resolveMatchBranches(expr->catchBranches);
 }
 
 void Resolver::visitImportExpr(ImportExpr* expr) {
@@ -569,7 +566,11 @@ void Resolver::visitSequenceExpr(SequenceExpr* expr) {
 
 void Resolver::visitMatchExpr(MatchExpr* expr) {
     resolve(expr->subject.get());
-    for (auto& b : expr->branches) {
+    resolveMatchBranches(expr->branches);
+}
+
+void Resolver::resolveMatchBranches(std::vector<MatchBranch>& branches) {
+    for (auto& b : branches) {
         auto checkSelfRedecl = [](Pattern* p, std::set<std::string>& seen, auto& self) -> void {
             if (!p) return;
             if (auto* vp = dynamic_cast<VariablePattern*>(p)) {

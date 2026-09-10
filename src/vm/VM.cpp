@@ -105,11 +105,13 @@ static std::string manglePrivate(uint64_t classId, const std::string& name) {
 
 namespace jc {
 
-// 判断值是否是 Exception（含子类）的实例：沿 parent 链找名为 "Exception" 的祖先类。
+// 判断值是否是 Exception（含子类）的实例：沿 parent 链做指针比较（缓存内置 Exception 类）。
 static bool isExceptionInstance(const Value& v) {
     if (!v.isInstance()) return false;
+    ObjClass* exceptionClass = VM::activeVM ? VM::activeVM->exceptionClass : nullptr;
+    if (!exceptionClass) return false;
     for (ObjClass* c = v.asInstance()->classDef; c; c = c->parent) {
-        if (c->name == "Exception") return true;
+        if (c == exceptionClass) return true;
     }
     return false;
 }

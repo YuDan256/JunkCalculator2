@@ -903,6 +903,7 @@ void registerPredefinedClasses() {
     VM::activeVM->registerBuiltinValue("Token", Value(tokenClass));
     VM::activeVM->registerBuiltinValue("TokenStream", Value(tokenStreamClass));
     VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
+    VM::activeVM->exceptionClass = exceptionClass;
     VM::activeVM->registerBuiltinValue("BaseNum", Value(baseNumClass));
 }
 

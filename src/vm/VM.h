@@ -343,6 +343,7 @@ public:
     ObjClass* setProto = nullptr;
     ObjClass* stringProto = nullptr;
     ObjClass* matrixProto = nullptr;
+    ObjClass* exceptionClass = nullptr;
 
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());

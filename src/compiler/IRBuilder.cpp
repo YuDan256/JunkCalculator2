@@ -3551,32 +3551,120 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* normalVal = lastValue;
     auto normalEnv = envStack;
 
-    // 2. 异常分支
+    // 2. 异常分支（catch 链，复用 match 的分支选择）
     envStack = baseEnv;
     
     IRNode* catchNode = graph->createValueNode(IROp::Catch);
     catchNode->setControl(tryBegin);
     currentControl = catchNode;
     
-    pushScope(); // Catch scope
-
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
-
-    IRNode* failMerge = graph->createNode(IROp::Merge);
-    buildPatternMatch(expr->catchPattern.get(), errVal, failMerge, ScopeModifier::Local, false, true);
-
-    if (!failMerge->dataInputs.empty()) {
-        IRNode* throwNode = graph->createNode(IROp::Throw);
-        throwNode->setControl(failMerge);
-        throwNode->addData(errVal);
-        recordExitNode(throwNode);
-    }
-
-    expr->catchBody->accept(*this);
-    IRNode* catchControl = currentControl;
-    IRNode* catchVal = lastValue;
+    IRNode* subjectNode = errVal;
     
+    IRNode* endMerge = graph->createNode(IROp::Merge);
+    IRNode* catchResultPhi = graph->createValueNode(IROp::Phi);
+    catchResultPhi->setControl(endMerge);
+    
+    IRNode* currentFailControl = currentControl;
+    std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> branchEnvs;
+    
+    for (auto& branch : expr->catchBranches) {
+        currentControl = currentFailControl;
+        envStack = baseEnv;
+        pushScope(); // Branch scope
+        
+        IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
+        IRNode* nextBranchMerge = graph->createNode(IROp::Merge);
+        
+        std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> patEnvs;
+        for (auto& pat : branch.patterns) {
+            IRNode* patFailMerge = graph->createNode(IROp::Merge);
+            auto envBefore = envStack;
+            buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false); // ★ 软匹配
+            patEnvs.push_back(envStack);
+            branchSuccessMerge->addData(currentControl);
+            currentControl = patFailMerge;
+            envStack = envBefore;
+        }
+        nextBranchMerge->addData(currentControl);
+        
+        if (branch.patterns.size() > 1) {
+            size_t branchScope = envStack.size() - 1;
+            std::unordered_set<std::string> patVars;
+            for (auto& pEnv : patEnvs) {
+                for (auto& pair : pEnv[branchScope]) patVars.insert(pair.first);
+            }
+            for (auto& name : patVars) {
+                IRNode* phi = graph->createValueNode(IROp::Phi);
+                phi->setControl(branchSuccessMerge);
+                for (auto& pEnv : patEnvs) {
+                    phi->addData(pEnv[branchScope].count(name) ? pEnv[branchScope].at(name) : graph->createConstant(Value::none()));
+                }
+                phi->name = name;
+                envStack[branchScope][name] = phi;
+            }
+        } else if (!patEnvs.empty()) {
+            envStack = patEnvs[0];
+        }
+        
+        currentControl = branchSuccessMerge;
+        if (branch.guard) {
+            branch.guard->accept(*this);
+            IRNode* ifNode = graph->createNode(IROp::If);
+            ifNode->setControl(currentControl);
+            ifNode->addData(lastValue);
+            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            nextBranchMerge->addData(ifFalse);
+            currentControl = ifTrue;
+        }
+        
+        branch.body->accept(*this);
+        endMerge->addData(currentControl);
+        catchResultPhi->addData(lastValue);
+        
+        popScope();
+        branchEnvs.push_back(envStack);
+        currentFailControl = nextBranchMerge;
+    }
+    
+    // ★ 所有 catch 分支失败 → Throw errVal（异常向外传播）
+    currentControl = currentFailControl;
+    envStack = baseEnv;
+    pushScope();
+    IRNode* throwNode = graph->createNode(IROp::Throw);
+    throwNode->setControl(currentControl);
+    throwNode->addData(errVal);
+    recordExitNode(throwNode);
     popScope();
+    branchEnvs.push_back(envStack);
+    
+    // ★ 异常分支内部 env 汇合
+    envStack = baseEnv;
+    for (size_t i = 0; i < baseEnv.size(); ++i) {
+        std::unordered_set<std::string> modifiedVars;
+        for (auto& bEnv : branchEnvs) {
+            for (const auto& pair : bEnv[i]) {
+                if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) {
+                    modifiedVars.insert(pair.first);
+                }
+            }
+        }
+        for (const auto& name : modifiedVars) {
+            IRNode* phi = graph->createValueNode(IROp::Phi);
+            phi->setControl(endMerge);
+            for (auto& bEnv : branchEnvs) {
+                phi->addData(bEnv[i].count(name) ? bEnv[i].at(name) : baseEnv[i].at(name));
+            }
+            phi->name = name;
+            envStack[i][name] = phi;
+        }
+    }
+    
+    IRNode* catchControl = endMerge;
+    IRNode* catchVal = catchResultPhi;
     auto catchEnv = envStack;
 
     // 3. 汇合

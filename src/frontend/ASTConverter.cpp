@@ -393,11 +393,29 @@ public:
     void visitTryCatchExpr(TryCatchExpr* expr) override {
         expr->tryBody->accept(*this); Value tryB = result;
         GcValueGuard tryBGuard(tryB);
-        expr->catchBody->accept(*this); Value catchB = result;
+        ObjList* branches = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(branches);
+        for (auto& b : expr->catchBranches) {
+            ObjList* pats = GcHeap::get().allocate<ObjList>();
+            GcObjGuard patsGuard(pats);
+            for (auto& p : b.patterns) pats->vec.push_back(patternToJC2(p.get()));
+            
+            Value guardVal = Value::none();
+            if (b.guard) { b.guard->accept(*this); guardVal = result; }
+            GcValueGuard gGuard(guardVal);
+            
+            b.body->accept(*this); Value bodyVal = result;
+            
+            Value branchNode = makeASTNode("MatchBranch", 0, {
+                {"patterns", Value(pats)},
+                {"guard", guardVal},
+                {"body", bodyVal}
+            });
+            branches->vec.push_back(branchNode);
+        }
         result = makeASTNode("TryCatchExpr", 0, {
             {"tryBody", tryB},
-            {"catchPattern", patternToJC2(expr->catchPattern.get())},
-            {"catchBody", catchB}
+            {"branches", Value(branches)}
         });
     }
 
@@ -1027,10 +1045,33 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
             getProp("isConst").truthy()
         );
     } else if (type == "TryCatchExpr") {
+        std::vector<MatchBranch> branches;
+        Value branchesVal = getProp("branches");
+        if (branchesVal.isObjType(ObjType::LIST)) {
+            for (const auto& bVal : static_cast<ObjList*>(branchesVal.asObj())->vec) {
+                auto bInst = bVal.asInstance();
+                auto getBProp = [&](const std::string& key) -> Value {
+                    auto it = bInst->properties.find(key);
+                    if (it != bInst->properties.end()) {
+                        return it->second.val;
+                    }
+                    return Value::none();
+                };
+                MatchBranch branch;
+                Value patsVal = getBProp("patterns");
+                if (patsVal.isObjType(ObjType::LIST)) {
+                    for (const auto& pVal : static_cast<ObjList*>(patsVal.asObj())->vec) {
+                        branch.patterns.push_back(toPat(pVal));
+                    }
+                }
+                branch.guard = toAST(getBProp("guard"));
+                branch.body = toAST(getBProp("body"));
+                branches.push_back(std::move(branch));
+            }
+        }
         return std::make_unique<TryCatchExpr>(
             toAST(getProp("tryBody")),
-            toPat(getProp("catchPattern")),
-            toAST(getProp("catchBody"))
+            std::move(branches)
         );
     } else if (type == "SwitchExpr") {
         std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;

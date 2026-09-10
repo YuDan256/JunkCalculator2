@@ -17,8 +17,14 @@ namespace jc {
 
 struct ValueException : public std::exception {
     Value val;
+    mutable std::string whatBuffer;
     explicit ValueException(Value v) : val(std::move(v)) {}
-    const char* what() const noexcept override { return "ValueException"; }
+    const char* what() const noexcept override {
+        if (whatBuffer.empty()) {
+            whatBuffer = val.isString() ? val.asString() : val.toString();
+        }
+        return whatBuffer.c_str();
+    }
 };
 
 // ============================================================================

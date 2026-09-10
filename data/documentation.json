@@ -5832,18 +5832,21 @@
       ]
     },
     "catch": {
-      "signature": "catch (pattern) { handler }",
+      "signature": "catch (pattern) { handler }  |  catch { pattern => body, ... }",
       "desc": [
         "The error handler block of a `try` statement.",
-        "The pattern receives the thrown value (can be of any type).",
+        "The pattern receives the thrown error object.",
+        "`catch` reuses `match` branch syntax: `catch { p => body, ... }` supports",
+        "multiple branches, or-patterns (comma), guards (if), and soft type matching.",
+        "`catch (e) { ... }` is shorthand for `catch { e => ... }`.",
         "Supports full pattern matching and destructuring.",
-        "If the pattern match fails, the error is automatically re-thrown.",
+        "If no branch matches, the error is automatically re-thrown.",
         "You can re-throw the error with `throw e` to propagate it upward.",
-        "Note: The `(` MUST be on the same line as `catch`.",
         "See also: /help try, /help error"
       ],
       "examples": [
         "try { error(\"oops\") } catch (e) { print(e) }",
+        "try { risky() } catch { e: TypeError => print(\"type\"), e => print(\"other\") }",
         "try { throw {code: 404} } catch ({message: {code}}) { print(code) }"
       ]
     },

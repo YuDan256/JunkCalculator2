@@ -125,5 +125,17 @@
             "}"
         ],
         "description": "Try-Catch block"
+    },
+    "Try Catch Chain": {
+        "prefix": "trycatch",
+        "body": [
+            "try {",
+            "\t$1",
+            "} catch {",
+            "\t${2:e: TypeError} => ${3:handler},",
+            "\t${4:e} => ${0:fallback}",
+            "}"
+        ],
+        "description": "Try-Catch with multiple branches (catch chain)"
     }
 }

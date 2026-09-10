@@ -915,10 +915,10 @@
       "signature": "delete variable"
     },
     "try": {
-      "signature": "try { body } [catch (pattern) { handler }]"
+      "signature": "try { body } [catch (pattern) { handler } | catch { branch, ... }]"
     },
     "catch": {
-      "signature": "catch (pattern) { handler }"
+      "signature": "catch (pattern) { handler }  |  catch { pattern => body, ... }"
     },
     "throw": {
       "signature": "throw expr"

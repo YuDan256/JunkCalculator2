@@ -75,6 +75,12 @@ JC2 standard libraries loaded via `import`:
 
 ## What's New in v2.6.3.1
 
+### Fixes
+- **Empty catch block**: `try { ... } catch {}` no longer triggers a spurious "Expect newline or ';' after statement" parse error.
+- **Empty catch rethrows**: `catch {}` now rethrows the error (equivalent to "no branch matched") instead of silently swallowing it.
+
+## What's New in v2.6.3.0
+
 ### Try/Catch Reworked — Catch Chains
 - **Catch reuses `match` syntax**: `catch { pattern => body, ... }` supports multiple branches, tried in order until one matches.
 - **Soft type matching**: a type annotation in a catch pattern (`catch { e: TypeError => ... }`) skips the branch and re-throws if the error's type doesn't match.

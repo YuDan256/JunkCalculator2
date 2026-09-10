@@ -75,6 +75,12 @@
 
 ## v2.6.3.1 版本更新说明
 
+### 修复
+- **空 catch 块**：`try { ... } catch {}` 不再报误的 "Expect newline or ';' after statement" 解析错误。
+- **空 catch 重新抛出**：`catch {}` 现在重新抛出错误（等价「无分支匹配」），不再静默吞下。
+
+## v2.6.3.0 版本更新说明
+
 ### try/catch 重构 — Catch 链
 - **catch 复用 `match` 语法**：`catch { pattern => body, ... }` 支持多个分支，按顺序匹配，命中即止。
 - **软类型匹配**：catch 模式中的类型注解（`catch { e: TypeError => ... }`）做软匹配——类型不符则跳过该分支并向上重新抛出。

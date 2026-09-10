@@ -273,7 +273,53 @@ public:
     void visitInvokeExpr(InvokeExpr* e) override { if (e->callee) e->callee->accept(*this); for (auto& a : e->arguments) if (a) a->accept(*this); }
     void visitForInExpr(ForInExpr* e) override { visitPattern(e->pattern.get()); if (e->iterable) e->iterable->accept(*this); if (e->body) e->body->accept(*this); }
     void visitThrowExpr(ThrowExpr* e) override { if (e->value) e->value->accept(*this); }
-    void visitTryCatchExpr(TryCatchExpr* e) override { if (e->tryBody) e->tryBody->accept(*this); for (auto& b : e->catchBranches) { for (auto& p : b.patterns) visitPattern(p.get()); if (b.guard) b.guard->accept(*this); if (b.body) b.body->accept(*this); } }
+    void visitTryCatchExpr(TryCatchExpr* e) override {
+        if (e->tryBody) e->tryBody->accept(*this);
+        // 收集 catch { ... } 的花括号（否则会被当作 dict/set 的花括号处理）
+        if (!e->catchBranches.empty()) {
+            int tryEnd = e->tryBody ? e->tryBody->endPos : e->startPos;
+            int firstBodyStart = e->catchBranches[0].body ? e->catchBranches[0].body->startPos : -1;
+            if (firstBodyStart != -1) {
+                for (const auto& tok : tokens) {
+                    if (tok.position > tryEnd && tok.position < firstBodyStart && tok.type == TokenType::LBRACE) {
+                        bracePos.insert(tok.position);
+                        break;
+                    }
+                }
+            }
+            int lastBodyEnd = e->catchBranches.back().body ? e->catchBranches.back().body->endPos : -1;
+            if (lastBodyEnd != -1) {
+                for (const auto& tok : tokens) {
+                    if (tok.position > lastBodyEnd && tok.type == TokenType::RBRACE) {
+                        bracePos.insert(tok.position);
+                        break;
+                    }
+                }
+            }
+        }
+        for (size_t bi = 0; bi < e->catchBranches.size(); ++bi) {
+            auto& b = e->catchBranches[bi];
+            for (auto& p : b.patterns) visitPattern(p.get());
+            if (b.guard) b.guard->accept(*this);
+            if (b.body) b.body->accept(*this);
+            // 收集 catch 分支之间的 ,
+            if (bi + 1 < e->catchBranches.size()) {
+                int thisEnd = b.body ? b.body->endPos : -1;
+                int nextStart = -1;
+                if (!e->catchBranches[bi + 1].patterns.empty() && e->catchBranches[bi + 1].patterns[0]) {
+                    nextStart = e->catchBranches[bi + 1].patterns[0]->startPos;
+                }
+                if (thisEnd != -1 && nextStart != -1) {
+                    for (const auto& tok : tokens) {
+                        if (tok.position >= thisEnd && tok.position < nextStart && tok.type == TokenType::COMMA) {
+                            matchCommaPos.insert(tok.position);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
     void visitImportExpr(ImportExpr* e) override { if (e->path) e->path->accept(*this); }
     void visitSwitchExpr(SwitchExpr* e) override {
         collectOuterBraces(e->startPos, e->endPos);

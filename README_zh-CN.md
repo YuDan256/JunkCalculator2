@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.2.0
+# Junk Calculator 2.6.3.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.2.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.3.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -34,7 +34,7 @@
 - **垃圾回收 (GC)**：运行于 VM 栈上的标记-清扫 (Mark-and-Sweep) 垃圾回收器 (`GcHeap`)。追踪 GC 根节点（全局变量、调用栈、闭包上值及上下文）以打破并清除循环引用。
 - **面向对象 (OOP)**：支持单继承 (`extends`)、`super` 超类分发以及通过魔术方法（如 `__add__`）实现的运算符重载。实例对象支持解构赋值。
 - **控制流与模式匹配**：包含 `if/else`、`while`、`for`、`for-in`、`switch/case`、`match`（支持深度解构与依赖绑定）、`break/continue/return` 以及用于资源清理的 `defer`。
-- **错误处理**：提供 `try/catch/throw` 结构与支持栈追踪的结构化 `Exception` 对象。
+- **错误处理**：提供 `try/catch/throw` 结构与支持栈追踪的结构化 `Exception` 对象，并支持 match 风格 catch 链（`catch { pattern => body, ... }`），包含软类型匹配与 guard。
 - **元编程 (Metaprogramming)**：支持基于 AST 的编译时宏系统 (`macro`)，提供代码引用 (`quote`)、解引用 (`$`) 以及卫生宏 (`gensym`) 能力，允许在编译阶段进行代码生成。
 - **执行控制**：具备强大的 `Ctrl+C` 中断机制，可在不崩溃虚拟机的前提下安全暂停死循环或重型 CAS 计算。连续三次 `Ctrl+C` 将触发强制退出。
 - **函数特性**：支持闭包、Lambda 表达式 `(x) => expr`、默认参数、关键字参数 (`f(a=1, b=2)`)、仅关键字参数 (`f(a; b=0)`)、关键字收集 (`f(; ...kw)`)、可变长参数 (`...args`)、参数解包 (`f(...args)`) 以及 `ref` 引用参数绑定。
@@ -73,41 +73,63 @@
 
 ---
 
-## v2.6.2.0 版本更新说明
+## v2.6.3.0 版本更新说明
 
-### 函数与参数解包
-- **仅关键字参数**：`;` 分隔参数列表——分号后为仅关键字（`f(a; b, c=0)`），分号后的 `...kw` 将多余关键字收集成字典（`f(a, ...rest; b, ...kw)`）。参数元数据拆分为四个独立字段（`paramNames`/`restName`/`kwargNames`/`kwargsName`），取代旧的 `...` 前缀 hack。
-- **参数解包（spread）**：`...expr` 内联展开——`f(...args)` 将 list/set/matrix/string 按位置展开，`f(1; ...opts)` 将字典展开为关键字参数。解包可出现在任意位置、可多次出现。
-- **字面量解包**：`@[...a]`、`@{...s}`、`{...d}` 在 list/set/dict 字面量内解包。字典解包从左到右合并，后者覆盖前者；显式 key 始终优先。
-- **`__unpack__` / `__mapping__`**：自定义类型通过这两个 dunder 返回 list（位置）或 dict（关键字）来接入解包；`apply` 改用 `__unpack__` 而非 `__iter__`，避免无限迭代。
-- **统一原生调用约定**：`rest` 在原生函数中始终以 list 形式到达，消除了旧有的「展开 vs 收集」分裂。
-- **更丰富的签名**：`toString` 现显示 `const`/`ref` 修饰符与内建关键字默认值——`print` 呈现为 `<function print(...args; sep = " ", end = "\n")>`。
+### try/catch 重构 — Catch 链
+- **catch 复用 `match` 语法**：`catch { pattern => body, ... }` 支持多个分支，按顺序匹配，命中即止。
+- **软类型匹配**：catch 模式中的类型注解（`catch { e: TypeError => ... }`）做软匹配——类型不符则跳过该分支并向上重新抛出。
+- **或匹配与 guard**：`catch { e: A, e: B => ... }` 匹配任一类型；`catch { e if (cond) => ... }` 附加 guard。
+- **简写**：`catch(pattern) body` 等价 `catch { pattern => body }`，支持或匹配（逗号）但不支持 guard。
 
-### `print` / `println` 合并
-- **`print(...args; sep = " ", end = "\n")`**：`print` 新增 Python 风格的仅关键字 `sep`/`end`，默认以换行结尾。`println` 移除；`print("不换行", end = "")` 覆盖旧的不换行行为。这是首个使用仅关键字默认值的内建函数。
+### 类型化错误
+- **显式异常类型**：`Jc2Error` + `JC2_THROW(TypeError, ...)` 取代字符串前缀编码；原生扩展通过 `throw_error_typed` 抛出类型化错误（`JC2_EXT_VERSION` → 6）。
+- **异常子类保留类型**：`throw MyError("x")` 能被 `catch { e: MyError => ... }` 捕获，得益于指针化的 `isExceptionInstance`。
+- **更丰富的报错信息**：索引越界/维度/not found 等错误附带具体的非法值。
+
+### `repr()` 与 str/repr 分离
+- **`repr(x)`**：返回完整、可往返的字符串——容器完全展开、字符串带引号、矩阵用 1D `[1,2;3,4]` 形式。
+- **`str(x)` / `print`**：可读形式——大容器截断、矩阵用 2D 排版。
+- **打印截断**：大 `List`/`Dict`/`Set` 只打印前 50 个元素 + `...`；矩阵/SymMatrix 截断到 10×10；tensor 每维截断到 10。`repr()` 仍返回完整内容。
+- **`match` 抛出 `MatchError`**：无分支匹配时抛 `MatchError: match: no branch matched for value X`，不再静默返回 `none`。
+
+### LSP 与 IDE 集成
+- **内置 LSP 服务器**：JC2 现随附完整语言服务器（`jc2 lsp`），支持 hover、签名帮助、补全与语义高亮。
+- **语义高亮**：由 `BuiltinIndex` + `NameResolver` + `TypeChecker` 驱动的 token 级高亮，配合 `semanticTokenScopes` 精确作用域。
+- **类型推断**：上下文感知引擎推断变量/表达式类型，驱动 hover 与补全，并通过 sidecar JSON 解析 DLL 模块返回类型。
+- **VS Code 扩展**：插件升级为工业级 LSP 客户端（esbuild 打包）。
+
+### 格式化器
+- **基于 AST 的格式化器**：`jc2 fmt` 命令以 1TBS 风格重排源码，支持智能换行、一元运算符间距、注释与 trivia 保留。
+- **token 流排版引擎**：重写为 token 流排版引擎，保留字面量、注释、指令/shebang 与 return 间距。
+
+### 语言与解析器
+- **列表与矩阵模式分离**：`@[...]` 解构列表，`[...]` 解构矩阵——不再有歧义。
+- **解构参数**：列表模式参数支持默认值（`f(@[a, b = 1]) = ...`）。
+- **裸 `try`**：不带 `catch` 的 `try { ... }` 吞掉错误并返回 `none`。
+- **格式规格**：Python 风格格式规格，用 `::` 分隔符（`f"{x::.2f}"`）。
 
 ### 矩阵
-- **不可变矩阵**：矩阵不再写时复制；因值不再变化，哈希得以缓存。
-- **零拷贝视图**：切片、`trans`、`getRow`、`getCol` 返回基于步幅的视图，而非复制。
-- **2D 切片**：`getItem`/`getSlice` 及升级后的 `setSlice(sr, sc, val)` 支持行列区间。
+- **列主序存储**：矩阵模型统一为列主序 1D 视图；`toList`/`toMatrix` 去除向量展平特例；移除 `getItem`/`setItem`。
 
-### Tensor
-- **性能**：基于模板的 dtype 分派、连续快路径、分块缓存 matmul、批量 matmul 的 Strassen 快路径，以及零开销的 `TensorImpl` 句柄架构。
-- **自动求导**：拓扑排序反向传播，配合真正的 `no_grad` 上下文。
-- **广播与归约**：广播步幅迭代、1D/批量 `matmul`、`sum`/`mean` 轴、`clamp`、`argmax`；`DType::Bool` 严格索引分派；归约支持 `keepdim`；嵌套列表初始化与形状推断。
+### 数学与性能
+- **BigInt**：FFT 乘法、Newton-Raphson 逆/开方、分治转换、移位运算符。
+- **π 与 e**：Gauss-Legendre π 替换为 Chudnovsky + 二分拆分；`e` 计算多线程化。
+- **Decimal**：Base-10⁹ `DecInt` limb 布局、AGM 加速 `ln`/`exp`、全局高精度常量池、小对象优化。
 
-### 标准库
-- **`bytes`**：原生 `Buffer` 取代旧的 `buffer.jc2` 脚本——Hex/Base64 编解码、零拷贝 view/slice、链式类型化读写方法。
-- **`ffi`**：跨平台（Linux/macOS）、零拷贝多维数组视图、嵌套结构体支持、内联数组索引赋值。
-- **`io`**：`File` 流类，零拷贝二进制 I/O、RFC 4180 CSV 引擎、文件系统操作、Windows 上的 UTF-8 路径处理。
+### 工作区与 CLI
+- **子命令 CLI**：`jc2 run/eval/repl/fmt/lsp/compile/...` 取代一坨 flag。
+- **工作区快照**：`.jcw` 工作区以二进制内存快照持久化，支持增量合并与自省。
+- **压缩**：零依赖 DEFLATE 压缩器压缩 `.jcw`/`.jcb` 存档。
+- **REPL**：`/run` 快捷方式、合并的 `/set` 集群、`/gc` `/gcinfo`。
 
-### CAS
-- **化简**：同指数幂在乘法中合并，矩阵运算化简 / 幂折叠改进。
+### JIT
+- **全 opcode 覆盖**：`BytecodeToHIR` 现覆盖全部 112 个 opcode，并修复 GCM phi 回边、merge phi 顺序、类型转换路由等。
 
 ### 修复
-- 宏调用参数恢复为 AST 节点——`@m(a=1)` 将 `a=1` 解析为 `Assign` 语句，而非命名参数。
-- `maxArity` 检查改用解包后的位置参数个数，`f(1, 2, ...@[], 3, 4)` 正常工作。
-- rest/kwargs 必须为最后一个参数；`;` 允许出现在参数列表开头（全仅关键字）。
+- `_: int`（带类型注解的丢弃符）与 `..._: int` 现真正执行类型检查，不再静默跳过。
+- catch 简写支持或匹配（`catch(p1, p2) body`）。
+- 格式化器保留 catch 花括号与分支逗号。
+- `switch` case 值解析为表达式，而非类型注解。
 
 ---
 

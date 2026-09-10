@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.6.2.0
+# Junk Calculator 2.6.3.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.2.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.3.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -34,7 +34,7 @@ Developed by Yu Liangyang, Tsinghua University.
 - **Garbage Collection (GC)**: Mark-and-Sweep Garbage Collector (`GcHeap`) executing on top of the VM stack. Traces GC roots (Globals, Stack, Upvalues, and Contexts) to resolve cyclic references.
 - **Object-Oriented Programming**: Single inheritance (`extends`), `super` dispatching, and operator overloading via dunder methods (e.g., `__add__`). Instances support destructuring assignment.
 - **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `match` (with deep destructuring and dependent binding), `break/continue/return`, and `defer` for resource cleanup.
-- **Error Handling**: `try/catch/throw` constructs with structured `Exception` objects and stack tracebacks.
+- **Error Handling**: `try/catch/throw` constructs with structured `Exception` objects, stack tracebacks, and match-style catch chains (`catch { pattern => body, ... }`) with soft type matching and guards.
 - **Metaprogramming**: AST-based compile-time macro system (`macro`) with code quoting (`quote`), unquoting (`$`), and hygienic macros (`gensym`) for code generation.
 - **Execution Control**: Robust `Ctrl+C` interrupt mechanism to safely halt infinite loops or heavy CAS computations without crashing the VM. Pressing `Ctrl+C` three times consecutively triggers an immediate hard exit.
 - **Functions**: Closures, lambdas `(x) => expr`, default parameters, keyword arguments (`f(a=1, b=2)`), keyword-only params (`f(a; b=0)`), kwargs collection (`f(; ...kw)`), variadic arguments (`...args`), argument unpacking (`f(...args)`), and `ref` parameter binding.
@@ -73,41 +73,63 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
-## What's New in v2.6.2.0
+## What's New in v2.6.3.0
 
-### Functions & Argument Unpacking
-- **Keyword-only parameters**: A `;` splits the parameter list — everything after it is keyword-only (`f(a; b, c=0)`), and `...kw` after the `;` collects leftover keyword arguments into a dict (`f(a, ...rest; b, ...kw)`). Parameter metadata is split into four independent fields (`paramNames`/`restName`/`kwargNames`/`kwargsName`), replacing the old `...`-prefix hack.
-- **Argument unpacking (spread)**: `...expr` expands inline — `f(...args)` spreads a list/set/matrix/string positionally, `f(1; ...opts)` spreads a dict into keyword arguments. Spread may appear anywhere and multiple times.
-- **Literal unpacking**: `@[...a]`, `@{...s}`, `{...d}` unpack into list/set/dict literals. Dict spread merges left-to-right with later keys winning; explicit keys always take precedence.
-- **`__unpack__` / `__mapping__`**: custom types opt into unpacking by returning a list (positional) or a dict (keyword) from these dunders; `apply` now uses `__unpack__` instead of `__iter__` to avoid infinite iterators.
-- **Unified native call convention**: `rest` always arrives as a list in native functions regardless of how the call is written, eliminating the old expand-vs-collect split.
-- **Richer signatures**: `toString` now shows `const`/`ref` modifiers and builtin keyword defaults — `print` renders as `<function print(...args; sep = " ", end = "\n")>`.
+### Try/Catch Reworked — Catch Chains
+- **Catch reuses `match` syntax**: `catch { pattern => body, ... }` supports multiple branches, tried in order until one matches.
+- **Soft type matching**: a type annotation in a catch pattern (`catch { e: TypeError => ... }`) skips the branch and re-throws if the error's type doesn't match.
+- **Or-patterns & guards**: `catch { e: A, e: B => ... }` matches either type; `catch { e if (cond) => ... }` adds a guard.
+- **Shorthand**: `catch(pattern) body` is sugar for `catch { pattern => body }`, and supports or-patterns (comma) but not guards.
 
-### `print` / `println` Merge
-- **`print(...args; sep = " ", end = "\n")`**: `print` gains Python-style keyword-only `sep`/`end` and defaults to a trailing newline. `println` is removed; `print("no newline", end = "")` covers the old no-newline behavior. This is the first builtin to exercise keyword-only defaults.
+### Typed Errors
+- **Explicit exception types**: `Jc2Error` + `JC2_THROW(TypeError, ...)` replace string-prefix encoding; native extensions throw typed errors via `throw_error_typed` (`JC2_EXT_VERSION` → 6).
+- **Exception subclasses keep their type**: `throw MyError("x")` is caught by `catch { e: MyError => ... }` thanks to pointer-based `isExceptionInstance`.
+- **Richer messages**: index/out-of-range/dimension/not-found errors include the offending values.
+
+### `repr()` & str/repr Separation
+- **`repr(x)`**: returns the full, round-trippable string — containers fully expanded, strings quoted, matrices in 1D `[1,2;3,4]` form.
+- **`str(x)` / `print`**: readable form — large containers truncated, matrices in 2D layout.
+- **Print truncation**: large `List`/`Dict`/`Set` print the first 50 elements + `...`; matrices/SymMatrix truncate to 10×10; tensors truncate each dimension to 10. `repr()` still returns the full content.
+- **`match` raises `MatchError`** when no branch matches, instead of silently returning `none`.
+
+### LSP & IDE Integration
+- **Built-in LSP server**: JC2 now ships a full language server (`jc2 lsp`) with hover, signature help, completion, and semantic tokens.
+- **Semantic tokens**: token-level highlighting driven by `BuiltinIndex` + `NameResolver` + `TypeChecker`, with `semanticTokenScopes` for precise scoping.
+- **Type inference**: a context-aware engine infers variable/expression types, powers hover and completion, and resolves DLL module return types via sidecar JSON.
+- **VS Code extension**: the plugin is upgraded to an industrial-grade LSP client (bundled with esbuild).
+
+### Formatter
+- **AST-based formatter**: a `jc2 fmt` command reformats source with 1TBS style, smart line wrapping, unary spacing, and comment/trivia preservation.
+- **Token-stream layout engine**: rewritten as a token-stream layout engine preserving literals, comments, directives/shebangs, and return spacing.
+
+### Language & Parser
+- **List vs matrix patterns**: `@[...]` destructures lists, `[...]` destructures matrices — no more ambiguity.
+- **Destructured parameters**: list-pattern parameters with defaults (`f(@[a, b = 1]) = ...`).
+- **Bare `try`**: `try { ... }` without `catch` swallows errors and yields `none`.
+- **Format specs**: Python-aligned format specs with `::` separator (`f"{x::.2f}"`).
 
 ### Matrix
-- **Immutable matrices**: matrices no longer copy-on-write; hashes are cached because values never change.
-- **Zero-copy views**: slicing, `trans`, `getRow`, `getCol` return stride-based views instead of copying.
-- **2D slicing**: `getItem`/`getSlice` and an upgraded `setSlice(sr, sc, val)` support row/column ranges.
+- **Column-major storage**: the matrix model is unified on a column-major 1D view; `toList`/`toMatrix` drop the vector-flatten special case; `getItem`/`setItem` are removed.
 
-### Tensor
-- **Performance**: template-based dtype dispatch, contiguous fast paths, cache-blocked matmul, a Strassen fast path for batched matmul, and a zero-overhead `TensorImpl` handle architecture.
-- **Autograd**: topological-sort backward pass with a true `no_grad` context.
-- **Broadcasting & reductions**: broadcast stride iteration, 1D/batched `matmul`, `sum`/`mean` axis, `clamp`, `argmax`; `DType::Bool` for strict index dispatch; `keepdim` on reductions; nested-list initialization with shape inference.
+### Mathematics & Performance
+- **BigInt**: FFT multiplication, Newton-Raphson inverse/sqrt, divide-and-conquer conversion, and shift operators.
+- **π & e**: Gauss-Legendre pi replaced by Chudnovsky + Binary Splitting; multi-threaded `e` computation.
+- **Decimal**: Base-10⁹ `DecInt` limb layout, AGM-accelerated `ln`/`exp`, a global high-precision constant pool, and small-size optimization.
 
-### Standard Library
-- **`bytes`**: a native `Buffer` replaces the old `buffer.jc2` script — Hex/Base64 encode/decode, zero-copy view/slice, and chained typed read/write methods.
-- **`ffi`**: cross-platform (Linux/macOS), zero-copy multi-dimensional array views, nested struct support, and inline-array index assignment.
-- **`io`**: a `File` stream class with zero-copy binary I/O, an RFC 4180 CSV engine, filesystem operations, and UTF-8 path handling on Windows.
+### Workspace & CLI
+- **Subcommand CLI**: `jc2 run/eval/repl/fmt/lsp/compile/...` replaces flag soup.
+- **Workspace snapshots**: `.jcw` workspace persistence as a binary memory snapshot, with incremental merge and introspection.
+- **Compression**: a zero-dependency DEFLATE compressor compresses `.jcw`/`.jcb` archives.
+- **REPL**: `/run` shortcut, consolidated `/set` cluster, and `/gc` `/gcinfo`.
 
-### CAS
-- **Simplification**: same-exponent powers contract on multiplication, and matrix operation simplification / power folding improved.
+### JIT
+- **Full opcode coverage**: `BytecodeToHIR` now covers all 112 opcodes, with fixes for GCM phi back-edges, merge phi ordering, and type-converter routing.
 
 ### Fixes
-- Macro call arguments are AST nodes again — `@m(a=1)` parses `a=1` as an `Assign` statement, not a named argument.
-- `maxArity` checks use the post-spread positional count, so `f(1, 2, ...@[], 3, 4)` works.
-- Rest/kwargs must be the last parameter; `;` is allowed at the start of a parameter list (all keyword-only).
+- `_: int` (discard with type hint) and `..._: int` now enforce the type check instead of silently skipping it.
+- Catch shorthand supports or-patterns (`catch(p1, p2) body`).
+- Formatter preserves catch braces and branch commas.
+- `switch` case values parse as expressions, not type annotations.
 
 ---
 

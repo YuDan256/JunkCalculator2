@@ -5202,10 +5202,29 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     currentControl = currentFailControl;
     envStack = baseEnv;
     pushScope();
-    IRNode* noneNode = graph->createConstant(Value::none());
-    noneNode->setControl(currentControl);
-    endMerge->addData(currentControl);
-    resultPhi->addData(noneNode);
+    // ★ fallback：所有分支失败 → 抛 MatchError（消息带 subject 值）
+    IRNode* strNode = graph->createValueNode(IROp::Stringify);
+    strNode->setControl(currentControl);
+    strNode->addData(subjectNode);
+    currentControl = strNode;
+    
+    IRNode* prefixNode = graph->createConstant(Value("match: no branch matched for value "));
+    prefixNode->setControl(currentControl);
+    
+    IRNode* concatNode = graph->createValueNode(IROp::ConcatStrings);
+    concatNode->setControl(currentControl);
+    concatNode->addData(prefixNode);
+    concatNode->addData(strNode);
+    concatNode->payload1 = 2;
+    currentControl = concatNode;
+    
+    IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
+    throwNode->setControl(currentControl);
+    throwNode->addData(concatNode);
+    IRNode* typeStr = graph->createConstant(Value(jc::err::MatchError));
+    typeStr->setControl(currentControl);
+    throwNode->addData(typeStr);
+    recordExitNode(throwNode);
     popScope();
     branchEnvs.push_back(envStack); // Fallback branch environment
     

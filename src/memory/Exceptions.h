@@ -18,6 +18,7 @@ namespace jc {
         constexpr const char* TypeError = "TypeError";
         constexpr const char* ValueError = "ValueError";
         constexpr const char* MathError = "MathError";
+        constexpr const char* MatchError = "MatchError";
         constexpr const char* IOError = "IOError";
         constexpr const char* RuntimeError = "RuntimeError";
         constexpr const char* OverflowError = "OverflowError";

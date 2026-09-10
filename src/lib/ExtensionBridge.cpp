@@ -333,6 +333,10 @@ static void host_throw_error(JC2_VMContext, const char* msg) {
     JC2_THROW(RuntimeError, msg);
 }
 
+static void host_throw_error_typed(JC2_VMContext, const char* type, const char* msg) {
+    throw jc::Jc2Error(type ? type : "", msg ? msg : "");
+}
+
 static JC2_ValueHandle host_make_list(JC2_VMContext) {
     ObjList* list = GcHeap::get().allocate<ObjList>();
     return protect(Value(list));
@@ -895,7 +899,8 @@ static const JC2_HostAPI host_api = {
     host_set_class_allocator,
     host_instance_get_field,
     host_instance_set_field,
-    host_freeze_object
+    host_freeze_object,
+    host_throw_error_typed
 };
 
 const JC2_HostAPI* get_host_api() {

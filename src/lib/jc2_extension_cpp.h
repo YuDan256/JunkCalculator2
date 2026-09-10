@@ -2,6 +2,7 @@
 #define JC2_EXTENSION_CPP_H
 
 #include "jc2_extension_api.h"
+#include "../memory/Exceptions.h"
 #include <string>
 #include <vector>
 #include <stdexcept>
@@ -391,9 +392,13 @@ public:
     }
 };
 
+[[noreturn]] inline void throw_error_typed(const std::string& type, const std::string& msg) {
+    Env::api->throw_error_typed(Env::ctx, type.c_str(), msg.c_str());
+    throw jc::Jc2Error(type, msg);
+}
+
 [[noreturn]] inline void throw_error(const std::string& msg) {
-    Env::api->throw_error(Env::ctx, msg.c_str());
-    JC2_THROW(RuntimeError, msg);
+    throw_error_typed("RuntimeError", msg);
 }
 
 } // namespace jc2

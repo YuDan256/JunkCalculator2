@@ -21,7 +21,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 5
+#define JC2_EXT_VERSION 6
 
 #define JC2_SLICE_NONE (-2147483647 - 1)
 
@@ -198,6 +198,10 @@ typedef struct JC2_HostAPI {
     
     /* --- 对象冻结 (Object Freezing) --- */
     void (*freeze_object)(JC2_VMContext ctx, JC2_ValueHandle v);
+
+    /* --- 类型化异常 (Typed Error) --- */
+    /* 触发指定类型的 JC2 异常（type 如 "TypeError"/"ValueError"/"MathError"），内部执行 C++ throw */
+    void (*throw_error_typed)(JC2_VMContext ctx, const char* type, const char* msg);
     
 } JC2_HostAPI;
 

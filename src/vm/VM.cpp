@@ -145,7 +145,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                     callee = VM::activeVM->getBuiltinClosure(tag);
                     continue;
                 } else {
-                    throw std::runtime_error("VM Error: Unknown function or not callable '" + tag + "'.");
+                    JC2_THROW(RuntimeError, "Unknown function or not callable '" + tag + "'.");
                 }
             }
         }
@@ -160,7 +160,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                 BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                 if (bt == BuiltinType::TYPE_DEF) {
-                    if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                    if (argc != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                     Value v = args[0];
                     std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
                     if (v.isType()) {
@@ -195,7 +195,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                     return res.as_bits;
                 }
             }
-            throw std::runtime_error("TypeError: This type object is not callable.");
+            JC2_THROW(TypeError, "This type object is not callable.");
         }
 
         if (callee.isFunctionClosure()) {
@@ -780,7 +780,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                                 if (aIt != ait->second.begin()) expected += " or ";
                                 expected += std::to_string(*aIt);
                             }
-                            throw std::runtime_error("Runtime Error: Function '" + tag + 
+                            JC2_THROW(RuntimeError, "Function '" + tag + 
                                 "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                         }
                     }
@@ -794,7 +794,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     return;
                 }
             } else {
-                throw std::runtime_error("VM Error: Unknown function or not callable '" + tag + "'.");
+                JC2_THROW(RuntimeError, "Unknown function or not callable '" + tag + "'.");
             }
         }
     }
@@ -811,7 +811,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             BuiltinType bt = std::get<BuiltinType>(td->types[0]);
             if (bt == BuiltinType::TYPE_DEF) {
                 if (kwArgc > 0) JC2_THROW(TypeError, "type() does not accept keyword arguments.");
-                if (argc != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                if (argc != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                 Value v = registers[currentFrame->registerBase + calleeReg + 1];
                 std::vector<std::variant<BuiltinType, ObjClass*>> newTypes;
                 if (v.isType()) {
@@ -845,7 +845,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 return;
             }
         }
-        throw std::runtime_error("TypeError: This type object is not callable.");
+        JC2_THROW(TypeError, "This type object is not callable.");
     }
 
     if (callee.isFunctionClosure()) {
@@ -869,13 +869,13 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (alignedArgs[i].isUninit()) {
                     int expected = closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
                     if (expected < 0) expected = 0;
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
+                    JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
                 }
             }
             if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
                 int expected = closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
                 if (expected < 0) expected = 0;
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
             }
             
             int totalArgc = static_cast<int>(alignedArgs.size());
@@ -1060,14 +1060,14 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         if (aIt != ait->second.begin()) expected += " or ";
                         expected += std::to_string(closure->isUFCS ? *aIt - 1 : *aIt);
                     }
-                    throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
+                    JC2_THROW(RuntimeError, "Function '" + closure->rawBody + 
                         "' expects " + expected + " arguments, got " + std::to_string(closure->isUFCS ? actualArgc - 1 : actualArgc) + ".");
                 }
             } else if (static_cast<int>(closure->maxArgs()) > 0 && closure->restName.empty()) {
                 int expectedMin = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
                 int expectedMax = closure->isUFCS ? closure->maxArgs() + 1 : closure->maxArgs();
                 if (totalArgc < expectedMin || totalArgc > expectedMax) {
-                    throw std::runtime_error("Runtime Error: Function '" + closure->rawBody + 
+                    JC2_THROW(RuntimeError, "Function '" + closure->rawBody + 
                         "' expects " + std::to_string(closure->minArgs()) + " to " + 
                         std::to_string(closure->maxArgs()) + " arguments, got " + 
                         std::to_string(closure->isUFCS ? totalArgc - 1 : totalArgc) + ".");
@@ -1132,11 +1132,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
-                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                        JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
                 if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+                    JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
                 int totalArgc = static_cast<int>(alignedArgs.size());
@@ -1216,7 +1216,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 int totalArgc = static_cast<int>(args.size());
                 if (static_cast<int>(initMethod->maxArgs()) > 0 && initMethod->restName.empty()) {
                     if (totalArgc < static_cast<int>(initMethod->minArgs()) || totalArgc > static_cast<int>(initMethod->maxArgs())) {
-                        throw std::runtime_error("Runtime Error: Method 'init' expects " + std::to_string(initMethod->minArgs()) + " to " + 
+                        JC2_THROW(RuntimeError, "Method 'init' expects " + std::to_string(initMethod->minArgs()) + " to " + 
                             std::to_string(initMethod->maxArgs()) + " arguments, got " + 
                             std::to_string(totalArgc) + ".");
                     }
@@ -1277,11 +1277,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
-                        throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                        JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                     }
                 }
                 if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
-                    throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+                    JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
                 }
                 
                 int totalArgc = static_cast<int>(alignedArgs.size());
@@ -1520,7 +1520,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         if (!fnDef->restName.empty()) {
             int fixedMax = fnDef->maxArity;
             if (totalArgc < fnDef->arity) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
@@ -1540,7 +1540,7 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
             registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = rootedArgs[i];
@@ -2031,11 +2031,11 @@ invoke_method:
                 
         for (int i = 0; i < fnDef->arity; ++i) {
             if (alignedArgs[i].isUninit()) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
         }
         if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
+            JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects at most " + std::to_string(fnDef->maxArity) + " arguments.");
         }
                 
         int totalArgc = static_cast<int>(alignedArgs.size());
@@ -2100,7 +2100,7 @@ invoke_method:
         bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
         if (kwArgc > 0 || hasRest) {
             if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
-                throw std::runtime_error("TypeError: Native method '" + methodName + "' does not support keyword arguments.");
+                JC2_THROW(TypeError, "Native method '" + methodName + "' does not support keyword arguments.");
             }
             args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
             
@@ -2119,7 +2119,7 @@ invoke_method:
         int totalArgc = static_cast<int>(args.size());
         if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
-                throw std::runtime_error("Runtime Error: Method '" + methodName + 
+                JC2_THROW(RuntimeError, "Method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
                     std::to_string(method->maxArgs()) + " arguments, got " + 
                     std::to_string(totalArgc) + ".");
@@ -2169,7 +2169,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         }
         c = c->parent;
     }
-    if (!method) throw std::runtime_error("VM Error: Parent class has no method '" + methodName + "'.");
+    if (!method) JC2_THROW(RuntimeError, "Parent class has no method '" + methodName + "'.");
     
     if (method->isBytecode()) {
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
@@ -2182,7 +2182,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         if (!fnDef->restName.empty()) {
             int fixedMax = fnDef->maxArity;
             if (totalArgc < fnDef->arity) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
             }
             ObjList* restList = GcHeap::get().allocate<ObjList>();
             if (totalArgc > fixedMax) {
@@ -2202,7 +2202,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
             registers[newBase + fixedMax] = Value(restList);
         } else {
             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
             }
             for (int i = 0; i < totalArgc; ++i) {
                 registers[newBase + i] = registers[currentFrame->registerBase + a + 1 + i];
@@ -2265,7 +2265,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         bool hasRest = !method->restName.empty() || !method->kwargNames.empty() || !method->kwargsName.empty();
         if (kwArgc > 0 || hasRest) {
             if (method->paramNames.empty() && method->restName.empty() && method->kwargNames.empty() && method->kwargsName.empty()) {
-                throw std::runtime_error("TypeError: Native super method '" + methodName + "' does not support keyword arguments.");
+                JC2_THROW(TypeError, "Native super method '" + methodName + "' does not support keyword arguments.");
             }
             args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + a + 1], method->paramNames, method->restName, method->kwargNames, method->kwargsName, Value::none(), method->kwargHasDefault);
             
@@ -2284,7 +2284,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         int totalArgc = static_cast<int>(args.size());
         if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
-                throw std::runtime_error("Runtime Error: Super method '" + methodName + 
+                JC2_THROW(RuntimeError, "Super method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
                     std::to_string(method->maxArgs()) + " arguments, got " + 
                     std::to_string(totalArgc) + ".");
@@ -2390,11 +2390,11 @@ Value VM::execImport(const std::string& name) {
         std::string ext = from_path(to_path(resolved).extension());
 #if defined(_WIN32)
         HMODULE handle = LoadLibraryW(to_path(resolved).wstring().c_str());
-        if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "'."); }
+        if (!handle) { loadedModules.erase(name); JC2_THROW(RuntimeError, "Failed to load dynamic library '" + resolved + "'."); }
         auto init_fn = (JC2_ExtensionInitFunc)GetProcAddress(handle, "jc2_extension_init");
 #else
         void* handle = dlopen(resolved.c_str(), RTLD_NOW);
-        if (!handle) { loadedModules.erase(name); throw std::runtime_error("VM Error: Failed to load dynamic library '" + resolved + "': " + dlerror()); }
+        if (!handle) { loadedModules.erase(name); JC2_THROW(RuntimeError, "Failed to load dynamic library '" + resolved + "': " + dlerror()); }
         auto init_fn = (JC2_ExtensionInitFunc)dlsym(handle, "jc2_extension_init");
 #endif
         if (!init_fn) {
@@ -2497,7 +2497,7 @@ Value VM::execImport(const std::string& name) {
 
     if (!modFn && !jc2Path.empty()) {
         std::ifstream file(to_path(jc2Path));
-        if (!file.is_open()) { loadedModules.erase(name); throw std::runtime_error("IO Error: Cannot read module script."); }
+        if (!file.is_open()) { loadedModules.erase(name); JC2_THROW(IOError, "Cannot read module script."); }
         std::string code, line;
         while (std::getline(file, line)) code += line + "\n";
         file.close();
@@ -2631,7 +2631,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     }
 
     std::ifstream file(to_path(resolved));
-    if (!file.is_open()) throw std::runtime_error("IO Error: Cannot read compile-time module script.");
+    if (!file.is_open()) JC2_THROW(IOError, "Cannot read compile-time module script.");
     std::string code, line;
     while (std::getline(file, line)) code += line + "\n";
     file.close();
@@ -3399,7 +3399,7 @@ VM::VM() {
                     try {
                         if (radix != 10) {
                             std::string numPart = trimmed.substr(p);
-                            if (numPart.empty()) throw std::runtime_error("empty");
+                            if (numPart.empty()) JC2_THROW(ValueError, "empty");
                             BigInt res = BaseNum::fromString(numPart, radix).getValue();
                             return Value(neg ? -res : res);
                         }
@@ -3511,7 +3511,7 @@ VM::VM() {
                 return Value(SymMatrix(r, c));
             int total = r * c;
             if (static_cast<int>(items.size()) != total)
-                throw std::runtime_error("Runtime Error: symmatrix() element count mismatch: "
+                JC2_THROW(RuntimeError, "symmatrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
                     std::to_string(items.size()) + ".");
             std::vector<SymExpr> flat;
@@ -3537,11 +3537,11 @@ VM::VM() {
                     try {
                         val64 = v.asBigInt().toInt64();
                     } catch (...) {
-                        throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+                        JC2_THROW(ValueError, "slice " + name + " absolute value exceeds 2^31-1.");
                     }
                 }
                 if (val64 > 2147483647LL || val64 < -2147483647LL) {
-                    throw std::runtime_error("Value Error: slice " + name + " absolute value exceeds 2^31-1.");
+                    JC2_THROW(ValueError, "slice " + name + " absolute value exceeds 2^31-1.");
                 }
                 return static_cast<int>(val64);
             };
@@ -3566,7 +3566,7 @@ VM::VM() {
                 return Value(RealMatrix(r, c));
             int total = r * c;
             if (static_cast<int>(items.size()) != total)
-                throw std::runtime_error("Runtime Error: matrix() element count mismatch: "
+                JC2_THROW(RuntimeError, "matrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
                     std::to_string(items.size()) + ".");
             bool hasSymbolic = false;
@@ -3609,7 +3609,7 @@ VM::VM() {
     matrixProto->name = "Matrix";
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
-        if (!currentDebuggerFrame) throw std::runtime_error("Debugger not active.");
+        if (!currentDebuggerFrame) JC2_THROW(RuntimeError, "Debugger not active.");
         int reg = static_cast<int>(args[0].asDouble());
         CallFrame* frame = currentDebuggerFrame;
         int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
@@ -3617,14 +3617,14 @@ VM::VM() {
             int locals = frame->function ? frame->function->localCount : 0;
             return (reg < locals) ? registers[frame->registerBase + reg] : registers[frame->refParamsBase + (reg - locals)];
         }
-        throw std::runtime_error("Register out of bounds.");
+        JC2_THROW(RuntimeError, "Register out of bounds.");
     };
     builtinArity["__dbg_reg"] = {1};
 
     nativeBuiltins["__dbg_type_feedback"] = [this](const std::vector<Value>& args) -> Value {
-        if (args.empty() || !args[0].isFunctionClosure()) throw std::runtime_error("Expected a function.");
+        if (args.empty() || !args[0].isFunctionClosure()) JC2_THROW(TypeError, "Expected a function.");
         ObjClosure* closure = args[0].asFunction();
-        if (!closure->isBytecode()) throw std::runtime_error("Expected a bytecode function.");
+        if (!closure->isBytecode()) JC2_THROW(TypeError, "Expected a bytecode function.");
         auto& fnDef = compiledFunctions[closure->compiledFnIndex];
         ObjList* list = GcHeap::get().allocate<ObjList>();
         for (uint8_t fb : fnDef->chunk.typeFeedback) {
@@ -3692,7 +3692,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         if (totalArgc < fnDef->arity) {
             int expected = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
             if (expected < 0) expected = 0;
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
+            JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
         }
         ObjList* restList = GcHeap::get().allocate<ObjList>();
         if (totalArgc > fixedMax) {
@@ -3718,7 +3718,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
             if (expMax < 0) expMax = 0;
             int gotArgs = closure && closure->isUFCS ? totalArgc - 1 : totalArgc;
             if (gotArgs < 0) gotArgs = 0;
-            throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(expMin) + " to " + std::to_string(expMax) + " arguments, got " + std::to_string(gotArgs) + ".");
+            JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(expMin) + " to " + std::to_string(expMax) + " arguments, got " + std::to_string(gotArgs) + ".");
         }
         for (int i = 0; i < totalArgc; ++i) {
             registers[newBase + i] = actualArgs[i];
@@ -4210,13 +4210,13 @@ Value VM::run(int targetFrameDepth) {
                 if (ic.cachedGlobalSlot >= 0) {
                     getReg(a) = globals.data()[ic.cachedGlobalSlot];
                 } else if (ic.cachedGlobalSlot == -2) {
-                    if (frame->classContext.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
+                    if (frame->classContext.isNone()) JC2_THROW(RuntimeError, "'class' accessed outside of context.");
                     getReg(a) = frame->classContext;
                 } else {
                     const std::string& name = chunk->constants.data()[ic.nameIdx].asString();
                     if (name == "<class>") {
                         ic.cachedGlobalSlot = -2;
-                        if (frame->classContext.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
+                        if (frame->classContext.isNone()) JC2_THROW(RuntimeError, "'class' accessed outside of context.");
                         getReg(a) = frame->classContext;
                         break;
                     }
@@ -4297,10 +4297,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::DELETE_GLOBAL: {
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 const std::string& name = chunk->constants.data()[bx].asString();
-                if (name == "<class>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'class'.");
-                if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'namespace'.");
+                if (name == "<class>") JC2_THROW(SyntaxError, "cannot delete context keyword 'class'.");
+                if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot delete context keyword 'namespace'.");
                 if (constGlobals.count(name)) {
-                    throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
+                    JC2_THROW(RuntimeError, "Cannot delete const variable '" + name + "'.");
                 }
                 auto it = globalNames.find(name);
                 if (it != globalNames.end()) {
@@ -4324,7 +4324,7 @@ Value VM::run(int targetFrameDepth) {
                         
                 int fnIdx = static_cast<int>(std::round(chunk->constants.data()[bx].asDouble()));
                 if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
-                    throw std::runtime_error("VM Error: Invalid function index.");
+                    JC2_THROW(RuntimeError, "Invalid function index.");
 
                 auto& fn = compiledFunctions[fnIdx];
                 auto closure = GcHeap::get().allocate<ObjClosure>(
@@ -4398,7 +4398,7 @@ Value VM::run(int targetFrameDepth) {
                         if (!fnDef->restName.empty()) {
                             int fixedMax = fnDef->maxArity;
                             if (totalArgc < fnDef->arity) {
-                                throw std::runtime_error("VM Error: '" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
+                                JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
                             }
                             ObjList* restList = GcHeap::get().allocate<ObjList>();
                             if (totalArgc > fixedMax) {
@@ -4413,7 +4413,7 @@ Value VM::run(int targetFrameDepth) {
                             actualArgs.push_back(Value(restList));
                         } else {
                             if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                                throw std::runtime_error("VM Error: '" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
+                                JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
                             }
                             while (actualArgs.size() < static_cast<size_t>(fnDef->maxArity)) actualArgs.push_back(Value::uninit());
                         }
@@ -5186,7 +5186,7 @@ Value VM::run(int targetFrameDepth) {
                     Value v = getReg(b + i);
                     if (v.isSpread()) {
                         auto* sp = static_cast<ObjSpread*>(v.asObj());
-                        if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in list literal.");
+                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
                         helpers::spreadPositional(sp->value, list->vec);
                     } else {
                         list->vec.push_back(v);
@@ -5206,15 +5206,15 @@ Value VM::run(int targetFrameDepth) {
                     if (k.isSpread()) {
                         // ★ rest entry：v 是 dict 或带 __mapping__ 的实例
                         auto* sp = static_cast<ObjSpread*>(k.asObj());
-                        if (!sp->isKeyword) throw std::runtime_error("TypeError: positional spread not allowed in dict literal.");
+                        if (!sp->isKeyword) JC2_THROW(TypeError, "positional spread not allowed in dict literal.");
                         Value kwDictVal = v;
                         std::unique_ptr<GcValueGuard> upGuard;
                         if (!kwDictVal.isObjType(ObjType::DICT)) {
-                            if (!kwDictVal.isInstance()) throw std::runtime_error("TypeError: dict spread expects a dict or an instance with __mapping__().");
+                            if (!kwDictVal.isInstance()) JC2_THROW(TypeError, "dict spread expects a dict or an instance with __mapping__().");
                             auto [upMethod, upOwner] = findDunder(kwDictVal, "__mapping__");
-                            if (!upMethod) throw std::runtime_error("TypeError: dict spread expects a dict or an instance with __mapping__().");
+                            if (!upMethod) JC2_THROW(TypeError, "dict spread expects a dict or an instance with __mapping__().");
                             kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
-                            if (!kwDictVal.isObjType(ObjType::DICT)) throw std::runtime_error("TypeError: __mapping__() must return a dict for dict spread.");
+                            if (!kwDictVal.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "__mapping__() must return a dict for dict spread.");
                             upGuard = std::make_unique<GcValueGuard>(kwDictVal);
                         }
                         for (auto& [kk, vv] : static_cast<ObjDict*>(kwDictVal.asObj())->elements) {
@@ -5236,7 +5236,7 @@ Value VM::run(int targetFrameDepth) {
                     Value v = getReg(b + i);
                     if (v.isSpread()) {
                         auto* sp = static_cast<ObjSpread*>(v.asObj());
-                        if (sp->isKeyword) throw std::runtime_error("TypeError: keyword spread not allowed in set literal.");
+                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
                         std::vector<Value> tmp;
                         helpers::spreadPositional(sp->value, tmp);
                         for (auto& e : tmp) set->add(e);
@@ -5286,7 +5286,7 @@ Value VM::run(int targetFrameDepth) {
                 Value result;
 
                 if (hasOther) {
-                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+                    JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                 } else {
                     // 统一拼接：标量当 1×1 矩阵，先每行 integR，再各行 integC
                     auto extractCell = [&](Value& cell) {
@@ -5335,7 +5335,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         result = matResult;
                     } catch (...) {
-                        throw std::runtime_error("VM Error: Dimension mismatch during block matrix concatenation.");
+                        JC2_THROW(RuntimeError, "Dimension mismatch during block matrix concatenation.");
                     }
                 }
                 getReg(a) = result;
@@ -5353,7 +5353,7 @@ Value VM::run(int targetFrameDepth) {
                 if (listVal.isObjType(ObjType::LIST)) {
                     static_cast<ObjList*>(listVal.asObj())->mut().push_back(getReg(b));
                 } else {
-                    throw std::runtime_error("VM Error: LIST_APPEND target is not a list.");
+                    JC2_THROW(RuntimeError, "LIST_APPEND target is not a list.");
                 }
                 break;
             }
@@ -5369,7 +5369,7 @@ Value VM::run(int targetFrameDepth) {
                 if (setVal.isObjType(ObjType::SET)) {
                     static_cast<ObjSet*>(setVal.asObj())->add(getReg(b));
                 } else {
-                    throw std::runtime_error("VM Error: SET_APPEND target is not a set.");
+                    JC2_THROW(RuntimeError, "SET_APPEND target is not a set.");
                 }
                 break;
             }
@@ -5386,7 +5386,7 @@ Value VM::run(int targetFrameDepth) {
                 if (dictVal.isObjType(ObjType::DICT)) {
                     static_cast<ObjDict*>(dictVal.asObj())->set(getReg(b), getReg(c));
                 } else {
-                    throw std::runtime_error("VM Error: DICT_APPEND target is not a dict.");
+                    JC2_THROW(RuntimeError, "DICT_APPEND target is not a dict.");
                 }
                 break;
             }
@@ -5516,14 +5516,14 @@ Value VM::run(int targetFrameDepth) {
                                 result = it->second.val;
                             } else {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                                else JC2_THROW(RuntimeError, "Property '" + keyStr + "' not found.");
                             }
                         }
                         getReg(a) = result;
                         break;
                     } else {
                         if (noThrow) { getReg(a) = Value::uninit(); break; }
-                        throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
+                        JC2_THROW(TypeError, "Instance does not support this indexing. Implement __getitem__.");
                     }
                 }
 
@@ -5593,12 +5593,12 @@ Value VM::run(int targetFrameDepth) {
                             throw;
                         }
                     } else if (obj.isObjType(ObjType::DICT)) {
-                        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+                        if (idx.isSlice()) JC2_THROW(TypeError, "Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
                         auto it = dict->keyMap.find(idx);
                         if (it == dict->keyMap.end()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("VM Error: Key not found.");
+                            else JC2_THROW(RuntimeError, "Key not found.");
                         } else {
                             result = dict->elements[it->second].second;
                         }
@@ -5606,13 +5606,13 @@ Value VM::run(int targetFrameDepth) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
                         if (!idx.isString()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("VM Error: Namespace keys must be strings.");
+                            else JC2_THROW(RuntimeError, "Namespace keys must be strings.");
                         } else {
                             std::string key = idx.asString();
                             auto it = ns->fields.find(key);
                             if (it == ns->fields.end()) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Key not found in namespace.");
+                                else JC2_THROW(RuntimeError, "Key not found in namespace.");
                             } else {
                                 result = *(it->second.upval->location);
                             }
@@ -5621,7 +5621,7 @@ Value VM::run(int targetFrameDepth) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
                         if (!idx.isString()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("VM Error: Class static field keys must be strings.");
+                            else JC2_THROW(RuntimeError, "Class static field keys must be strings.");
                         } else {
                             std::string key = idx.asString();
                             if (isReservedInternalName(key)) {
@@ -5715,26 +5715,26 @@ Value VM::run(int targetFrameDepth) {
                                 }
                                 if (!foundStatic) {
                                     if (noThrow) result = Value::uninit();
-                                    else throw std::runtime_error("VM Error: Static field not found in class.");
+                                    else JC2_THROW(RuntimeError, "Static field not found in class.");
                                 }
                             }
                         }
                     } else if (obj.isSlice()) {
                         if (!idx.isString()) {
                             if (noThrow) result = Value::uninit();
-                            else throw std::runtime_error("VM Error: Slice properties must be accessed with string keys.");
+                            else JC2_THROW(RuntimeError, "Slice properties must be accessed with string keys.");
                         } else {
                             Value prop = obj.asSlice()->getProperty(idx.asString());
                             if (prop.isUninit()) {
                                 if (noThrow) result = Value::uninit();
-                                else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found on slice.");
+                                else JC2_THROW(RuntimeError, "Property '" + idx.asString() + "' not found on slice.");
                             } else {
                                 result = prop;
                             }
                         }
                     } else {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("VM Error: Unsupported 1D index get.");
+                        else JC2_THROW(RuntimeError, "Unsupported 1D index get.");
                     }
                 } else if (dims == 2) {
                     Value rowIdx = args[0];
@@ -5765,10 +5765,10 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("VM Error: Unsupported 2D index get.");
+                        else JC2_THROW(RuntimeError, "Unsupported 2D index get.");
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Unsupported index dimensionality.");
+                    JC2_THROW(RuntimeError, "Unsupported index dimensionality.");
                 }
                 getReg(a) = result;
                 break;
@@ -5807,7 +5807,7 @@ Value VM::run(int targetFrameDepth) {
                             std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                             auto it = inst->properties.find(mangledName);
                             if (it != inst->properties.end()) {
-                                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
                                 invalidateJITOnContainerReplace(it->second.val, val);
                                 it->second.val = val;
                                 foundPrivate = true;
@@ -5822,7 +5822,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         break;
                     } else {
-                        throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
+                        JC2_THROW(TypeError, "Instance does not support this indexing. Implement __setitem__.");
                     }
                 }
 
@@ -5837,7 +5837,7 @@ Value VM::run(int targetFrameDepth) {
                         } else {
                             if (val.isObjType(ObjType::LIST)) {
                                 const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                                if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                                if (static_cast<int>(srcL.size()) != range.sliceInfo.count) JC2_THROW(RuntimeError, "Slice assignment size mismatch.");
                                 for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
                             } else {
                                 for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
@@ -5846,7 +5846,7 @@ Value VM::run(int targetFrameDepth) {
                     } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         errMatImmutableSetItem();
                     } else if (obj.isObjType(ObjType::DICT)) {
-                        if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+                        if (idx.isSlice()) JC2_THROW(TypeError, "Dict does not support slice indexing.");
                         auto dict = static_cast<ObjDict*>(obj.asObj());
                         Value oldVal = Value::none();
                         auto dit = dict->keyMap.find(idx);
@@ -5855,7 +5855,7 @@ Value VM::run(int targetFrameDepth) {
                         dict->set(idx, val);
                     } else if (obj.isObjType(ObjType::NAMESPACE)) {
                         auto ns = static_cast<ObjNamespace*>(obj.asObj());
-                        if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
+                        if (!idx.isString()) JC2_THROW(RuntimeError, "Namespace keys must be strings.");
                         std::string key = idx.asString();
                         Value oldVal = Value::none();
                         auto nsIt = ns->fields.find(key);
@@ -5864,7 +5864,7 @@ Value VM::run(int targetFrameDepth) {
                         ns->setField(key, val);
                     } else if (obj.isClass()) {
                         auto cls = static_cast<ObjClass*>(obj.asObj());
-                        if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
+                        if (!idx.isString()) JC2_THROW(RuntimeError, "Class static field keys must be strings.");
                         std::string key = idx.asString();
                         if (isReservedInternalName(key)) {
                             errAccessPrivateDynamic();
@@ -5876,7 +5876,7 @@ Value VM::run(int targetFrameDepth) {
                             std::string mangledName = manglePrivate(ctxOwner->classId, key);
                             auto it = ctxOwner->properties.find(mangledName);
                             if (it != ctxOwner->properties.end()) {
-                                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
+                                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
                                 invalidateJITOnContainerReplace(it->second.val, val);
                                 it->second.val = val;
                                 found = true;
@@ -5888,10 +5888,10 @@ Value VM::run(int targetFrameDepth) {
                                 auto it = c_cls->properties.find(key);
                                 if (it != c_cls->properties.end()) {
                                     if (it->second.is_local) {
-                                        if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                                        if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + key + "'.");
                                         break;
                                     }
-                                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                                    if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const static property '" + key + "'.");
                                     invalidateJITOnContainerReplace(it->second.val, val);
                                     it->second.val = val;
                                     found = true;
@@ -5905,7 +5905,7 @@ Value VM::run(int targetFrameDepth) {
                             if (cls) cls->properties[key] = { val, false, false };
                         }
                     } else {
-                        throw std::runtime_error("VM Error: Unsupported 1D index set.");
+                        JC2_THROW(RuntimeError, "Unsupported 1D index set.");
                     }
                 } else if (dims == 2) {
                     Value rowIdx = args[0];
@@ -5913,10 +5913,10 @@ Value VM::run(int targetFrameDepth) {
                     if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
                         errMatImmutableSetElement();
                     } else {
-                        throw std::runtime_error("VM Error: Unsupported 2D index set.");
+                        JC2_THROW(RuntimeError, "Unsupported 2D index set.");
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Unsupported index dimensionality.");
+                    JC2_THROW(RuntimeError, "Unsupported index dimensionality.");
                 }
                 break;
             }
@@ -6041,7 +6041,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Cannot iterate over this type.");
+                    JC2_THROW(RuntimeError, "Cannot iterate over this type.");
                 }
                 
                 ObjList* state = GcHeap::get().allocate<ObjList>();
@@ -6284,7 +6284,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 } else {
-                    throw std::runtime_error("VM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
+                    JC2_THROW(RuntimeError, "'in' requires a string, list, dict, set, matrix, or instance.");
                 }
                 
                 getReg(a) = Value(found);
@@ -6358,7 +6358,7 @@ Value VM::run(int targetFrameDepth) {
                         if (cls) cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Invalid closure type for method.");
+                    JC2_THROW(RuntimeError, "Invalid closure type for method.");
                 }
                 break;
             }
@@ -6369,7 +6369,7 @@ Value VM::run(int targetFrameDepth) {
                 Value subClass = getReg(a);
                 Value superClass = getReg(b);
                 
-                if (!subClass.isClass() || !superClass.isClass()) throw std::runtime_error("VM Error: Inheritance requires two classes.");
+                if (!subClass.isClass() || !superClass.isClass()) JC2_THROW(RuntimeError, "Inheritance requires two classes.");
                 auto sub = static_cast<ObjClass*>(subClass.asObj());
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
@@ -6435,7 +6435,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                     
-                    throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+                    JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
                 } else if (obj.isClass()) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) errAccessPrivateOutsideClass();
@@ -6478,9 +6478,9 @@ Value VM::run(int targetFrameDepth) {
                         }
                         break;
                     }
-                    throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
+                    JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
                 }
-                throw std::runtime_error("VM Error: Cannot get private property on this type.");
+                JC2_THROW(RuntimeError, "Cannot get private property on this type.");
             }
             case OpCode::GET_PROP: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
@@ -6885,7 +6885,7 @@ Value VM::run(int targetFrameDepth) {
                 }
 
                 if (!found) {
-                    throw std::runtime_error("VM Error: Property '" + field + "' not found.");
+                    JC2_THROW(RuntimeError, "Property '" + field + "' not found.");
                 }
                 getReg(a) = result;
                 break;
@@ -7200,7 +7200,7 @@ Value VM::run(int targetFrameDepth) {
                                                 if (aIt != allowedArities.begin()) expected += " or ";
                                                 expected += std::to_string(*aIt - 1);
                                             }
-                                            throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                            JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
                                         }
                                         std::vector<Value> fullArgs;
                                         fullArgs.reserve(totalArgs);
@@ -7250,11 +7250,11 @@ Value VM::run(int targetFrameDepth) {
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     auto it = inst->properties.find(mangledName);
                     if (op == OpCode::SET_PRIVATE) {
-                        if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
-                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+                        if (it == inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+                        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
                         it->second.val = val;
                     } else {
-                        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+                        if (it != inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
                         inst->properties[mangledName] = {val, op == OpCode::DEFINE_PRIVATE_CONST, true};
                     }
                 } else if (obj.isClass()) {
@@ -7265,17 +7265,17 @@ Value VM::run(int targetFrameDepth) {
                         if (!owner) errAccessPrivateOutsideClass();
                         std::string mangledName = manglePrivate(owner->classId, keyStr);
                         auto it = owner->properties.find(mangledName);
-                        if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' not found.");
-                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyStr + "'.");
+                        if (it == owner->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' not found.");
+                        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
                         it->second.val = val;
                     } else {
                         std::string mangledName = manglePrivate(cls->classId, keyStr);
                         auto it = cls->properties.find(mangledName);
-                        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyStr + "' already defined.");
+                        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
                         if (cls) cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Cannot set private property on this type.");
+                    JC2_THROW(RuntimeError, "Cannot set private property on this type.");
                 }
                 break;
             }
@@ -7297,8 +7297,8 @@ Value VM::run(int targetFrameDepth) {
                     
                     auto it = inst->properties.find(keyStr);
                     if (it != inst->properties.end()) {
-                        if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-                        throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
+                        if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+                        JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
                     }
                     
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
@@ -7307,11 +7307,11 @@ Value VM::run(int targetFrameDepth) {
                     std::string keyStr = keyVal.asString();
                     auto it = cls->properties.find(keyStr);
                     if (it != cls->properties.end()) {
-                        throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+                        JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
                     }
                     if (cls) cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
                 } else {
-                    throw std::runtime_error("VM Error: Cannot define property on this type.");
+                    JC2_THROW(RuntimeError, "Cannot define property on this type.");
                 }
                 break;
             }
@@ -7388,10 +7388,10 @@ Value VM::run(int targetFrameDepth) {
                         auto it = c_cls->properties.find(keyStr);
                         if (it != c_cls->properties.end()) {
                             if (it->second.is_local) {
-                                if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
+                                if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + keyStr + "'.");
                                 break;
                             }
-                            if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
+                            if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const static property '" + keyStr + "'.");
                             invalidateJITOnContainerReplace(it->second.val, val);
                             it->second.val = val;
                             found = true;
@@ -7404,7 +7404,7 @@ Value VM::run(int targetFrameDepth) {
                         if (cls) cls->properties[keyStr] = { val, false, false };
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Cannot set property on this type.");
+                    JC2_THROW(RuntimeError, "Cannot set property on this type.");
                 }
                 break;
             }
@@ -7505,10 +7505,10 @@ Value VM::run(int targetFrameDepth) {
                     try {
                         m = Value(RealMatrix(1, 1, { elem.asDouble() }));
                     } catch (...) {
-                        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+                        JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                     }
                 } else {
-                    throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+                    JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                 }
                 GcValueGuard mGuard(m);
                 static_cast<ObjList*>(getReg(a).asObj())->vec.push_back(m);
@@ -7550,7 +7550,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     getReg(a) = rowResult;
                 } catch (...) {
-                    throw std::runtime_error("VM Error: Dimension mismatch during matrix comprehension concatenation.");
+                    JC2_THROW(RuntimeError, "Dimension mismatch during matrix comprehension concatenation.");
                 }
                 break;
             }
@@ -7582,13 +7582,13 @@ Value VM::run(int targetFrameDepth) {
                         try {
                             val64 = v.asBigInt().toInt64();
                         } catch (...) {
-                            throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+                            JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
                         }
                     } else {
                         val64 = static_cast<int64_t>(std::round(v.asDouble()));
                     }
                     if (val64 > 2147483647LL || val64 < -2147483647LL) {
-                        throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+                        JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
                     }
                     return static_cast<int>(val64);
                 };
@@ -7617,7 +7617,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value pathVal = getReg(b);
-                if (!pathVal.isString()) throw std::runtime_error("VM Error: import requires a string path.");
+                if (!pathVal.isString()) JC2_THROW(RuntimeError, "import requires a string path.");
                 getReg(a) = execImport(pathVal.asString());
                 break;
             }
@@ -7659,7 +7659,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     getReg(a) = Value(matched);
                 } else {
-                    if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
+                    if (!typeVal.isType()) JC2_THROW(TypeError, "Expected a type object.");
                     getReg(a) = Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
                 }
                 break;
@@ -7884,7 +7884,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     cls = cls->parent;
                 }
-                if (!rawMethod) throw std::runtime_error("VM Error: Parent class has no method '" + field + "'.");
+                if (!rawMethod) JC2_THROW(RuntimeError, "Parent class has no method '" + field + "'.");
                 
                 auto bound = GcHeap::get().allocate<ObjClosure>(
                     std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -7968,7 +7968,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::GET_SELF: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (frame->selfContext.isNone()) throw std::runtime_error("VM Error: 'self' accessed outside of context.");
+                if (frame->selfContext.isNone()) JC2_THROW(RuntimeError, "'self' accessed outside of context.");
                 getReg(a) = frame->selfContext;
                 break;
             }
@@ -8081,7 +8081,7 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
                     default:
-                        throw std::runtime_error("VM Error: Unimplemented opcode " + std::to_string(static_cast<int>(op)));
+                        JC2_THROW(RuntimeError, "Unimplemented opcode " + std::to_string(static_cast<int>(op)));
                 }
             }
         } catch (const EngineInterruptError&) {
@@ -8249,7 +8249,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
     Value result;
 
     if (hasOther) {
-        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+        JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
     } else {
         // 统一拼接：标量当 1×1 矩阵，先每行 integR，再各行 integC
         auto extractCell = [&](Value& cell) {
@@ -8298,7 +8298,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
             }
             result = matResult;
         } catch (...) {
-            throw std::runtime_error("VM Error: Dimension mismatch during block matrix concatenation.");
+            JC2_THROW(RuntimeError, "Dimension mismatch during block matrix concatenation.");
         }
     }
     vm->getCurrentFrame()->jitReturnSlot = result;
@@ -8324,13 +8324,13 @@ uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t s
             try {
                 val64 = v.asBigInt().toInt64();
             } catch (...) {
-                throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+                JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
             }
         } else {
             val64 = static_cast<int64_t>(std::round(v.asDouble()));
         }
         if (val64 > 2147483647LL || val64 < -2147483647LL) {
-            throw std::runtime_error("Value Error: slice absolute value exceeds 2^31-1.");
+            JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
         }
         return static_cast<int>(val64);
     };
@@ -8374,7 +8374,7 @@ void jc2_jit_dict_append(uint64_t dict_bits, uint64_t key_bits, uint64_t val_bit
     if (dictVal.isObjType(ObjType::DICT)) {
         static_cast<ObjDict*>(dictVal.asObj())->set(keyVal, valVal);
     } else {
-        throw std::runtime_error("VM Error: DICT_APPEND target is not a dict.");
+        JC2_THROW(RuntimeError, "DICT_APPEND target is not a dict.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -8383,7 +8383,7 @@ uint64_t jc2_jit_get_ref_param(uint32_t bx) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
-    if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+    if (frame->refParamsBase == -1) JC2_THROW(RuntimeError, "Invalid ref param index.");
     Value res = *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location);
     frame->jitReturnSlot = res;
     return res.as_bits;
@@ -8394,7 +8394,7 @@ void jc2_jit_set_ref_param(uint32_t bx, uint64_t val_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
-    if (frame->refParamsBase == -1) throw std::runtime_error("VM Error: Invalid ref param index.");
+    if (frame->refParamsBase == -1) JC2_THROW(RuntimeError, "Invalid ref param index.");
     Value val = Value::fromRawBits(val_bits);
     *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location) = val;
     JIT_CALLOUT_CATCH_VOID
@@ -8407,8 +8407,8 @@ void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk) {
     const std::string& name = chunk->constants[ic.nameIdx].asString();
     Value val = Value::fromRawBits(val_bits);
     
-    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
-    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
+    if (name == "<class>") JC2_THROW(SyntaxError, "cannot override context keyword 'class'.");
+    if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot override context keyword 'namespace'.");
     
     vm->setGlobal(name, val);
     JIT_CALLOUT_CATCH_VOID
@@ -8423,7 +8423,7 @@ uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk) {
     if (name == "<class>") {
         ic.cachedGlobalSlot = -2;
         Value ctx = vm->getCurrentFrame()->classContext;
-        if (ctx.isNone()) throw std::runtime_error("VM Error: 'class' accessed outside of context.");
+        if (ctx.isNone()) JC2_THROW(RuntimeError, "'class' accessed outside of context.");
         vm->getCurrentFrame()->jitReturnSlot = ctx;
         return ctx.as_bits;
     }
@@ -8910,7 +8910,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                                         Value v = fullArgs[0];
                                         ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
                                         if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
@@ -8941,7 +8941,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         return Value(resTd);
                                     }
                                 }
-                                throw std::runtime_error("TypeError: This type object is not callable.");
+                                JC2_THROW(TypeError, "This type object is not callable.");
                             } else {
                                 auto cls = static_cast<ObjClass*>(gVal.asObj());
                                 if (cls->native_allocator) {
@@ -9042,7 +9042,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                                         Value v = fullArgs[0];
                                         ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
                                         if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
@@ -9073,7 +9073,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         return Value(resTd);
                                     }
                                 }
-                                throw std::runtime_error("TypeError: This type object is not callable.");
+                                JC2_THROW(TypeError, "This type object is not callable.");
                             } else {
                                 auto cls = static_cast<ObjClass*>(gVal.asObj());
                                 if (cls->native_allocator) {
@@ -9150,7 +9150,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                     if (aIt != allowedArities.begin()) expected += " or ";
                                     expected += std::to_string(*aIt - 1);
                                 }
-                                throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
                             }
                             std::vector<Value> fullArgs;
                             fullArgs.reserve(totalArgs);
@@ -9171,7 +9171,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
     }
 
     if (!found) {
-        throw std::runtime_error("VM Error: Property '" + field + "' not found.");
+        JC2_THROW(RuntimeError, "Property '" + field + "' not found.");
     }
     
     vm->getCurrentFrame()->jitReturnSlot = result;
@@ -9527,7 +9527,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                                         Value v = fullArgs[0];
                                         ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
                                         if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
@@ -9558,7 +9558,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         return Value(resTd);
                                     }
                                 }
-                                throw std::runtime_error("TypeError: This type object is not callable.");
+                                JC2_THROW(TypeError, "This type object is not callable.");
                             } else {
                                 auto cls = static_cast<ObjClass*>(gVal.asObj());
                                 if (cls->native_allocator) {
@@ -9659,7 +9659,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                 if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
                                     BuiltinType bt = std::get<BuiltinType>(td->types[0]);
                                     if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) throw std::runtime_error("TypeError: type() expects 1 argument.");
+                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
                                         Value v = fullArgs[0];
                                         ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
                                         if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
@@ -9690,7 +9690,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         return Value(resTd);
                                     }
                                 }
-                                throw std::runtime_error("TypeError: This type object is not callable.");
+                                JC2_THROW(TypeError, "This type object is not callable.");
                             } else {
                                 auto cls = static_cast<ObjClass*>(gVal.asObj());
                                 if (cls->native_allocator) {
@@ -9767,7 +9767,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                     if (aIt != allowedArities.begin()) expected += " or ";
                                     expected += std::to_string(*aIt - 1);
                                 }
-                                throw std::runtime_error("Runtime Error: Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
+                                JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
                             }
                             std::vector<Value> fullArgs;
                             fullArgs.reserve(totalArgs);
@@ -9914,7 +9914,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
             }
         }
     } else {
-        throw std::runtime_error("VM Error: Cannot iterate over this type.");
+        JC2_THROW(RuntimeError, "Cannot iterate over this type.");
     }
 
     ObjList* state = GcHeap::get().allocate<ObjList>();
@@ -10157,7 +10157,7 @@ bool VM::opIn(Value needle, Value haystack) {
     } else if (haystack.isType()) {
         found = checkValueType(needle, static_cast<ObjTypeDef*>(haystack.asObj()));  // 包含：needle 是类型的值
     } else {
-        throw std::runtime_error("VM Error: 'in' requires a string, list, dict, set, matrix, or instance.");
+        JC2_THROW(RuntimeError, "'in' requires a string, list, dict, set, matrix, or instance.");
     }
 
     return found;
@@ -10176,7 +10176,7 @@ Value VM::opMatchType(Value val, Value typeVal) {
         }
         return Value(matched);
     } else {
-        if (!typeVal.isType()) throw std::runtime_error("TypeError: Expected a type object.");
+        if (!typeVal.isType()) JC2_THROW(TypeError, "Expected a type object.");
         return Value(checkValueType(val, static_cast<ObjTypeDef*>(typeVal.asObj())));
     }
 }
@@ -10225,7 +10225,7 @@ Value VM::opIsSubset(Value a, Value b) {
         }
         return Value(true);
     }
-    throw std::runtime_error("TypeError: '<:' requires types, classes, sets, or an instance with __subsets__.");
+    JC2_THROW(TypeError, "'<:' requires types, classes, sets, or an instance with __subsets__.");
 }
 
 uint64_t jc2_jit_in(uint64_t b_bits, uint64_t c_bits) {
@@ -10240,7 +10240,7 @@ uint64_t jc2_jit_import(uint64_t b_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value path = Value::fromRawBits(b_bits);
-    if (!path.isString()) throw std::runtime_error("VM Error: import requires a string path.");
+    if (!path.isString()) JC2_THROW(RuntimeError, "import requires a string path.");
     Value result = vm->importModule(path.asString());
     return result.as_bits;
     JIT_CALLOUT_CATCH
@@ -10308,13 +10308,13 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                         result = it->second.val;
                     } else {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("VM Error: Property '" + keyStr + "' not found.");
+                        else JC2_THROW(RuntimeError, "Property '" + keyStr + "' not found.");
                     }
                 }
             }
         } else {
             if (noThrow) result = Value::uninit();
-            else throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __getitem__.");
+            else JC2_THROW(TypeError, "Instance does not support this indexing. Implement __getitem__.");
         }
     } else if (dims == 1) {
         Value idx = args[0];
@@ -10387,12 +10387,12 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             else if (obj.isObjType(ObjType::COMPLEX_MATRIX)) result = processMatGet(static_cast<ObjComplexMatrix*>(obj.asObj())->mat);
             else result = processMatGet(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
         } else if (obj.isObjType(ObjType::DICT)) {
-            if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+            if (idx.isSlice()) JC2_THROW(TypeError, "Dict does not support slice indexing.");
             auto dict = static_cast<ObjDict*>(obj.asObj());
             auto it = dict->keyMap.find(idx);
             if (it == dict->keyMap.end()) {
                 if (noThrow) result = Value::uninit();
-                else throw std::runtime_error("VM Error: Key not found.");
+                else JC2_THROW(RuntimeError, "Key not found.");
             } else {
                 result = dict->elements[it->second].second;
             }
@@ -10400,13 +10400,13 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             auto ns = static_cast<ObjNamespace*>(obj.asObj());
             if (!idx.isString()) {
                 if (noThrow) result = Value::uninit();
-                else throw std::runtime_error("VM Error: Namespace keys must be strings.");
+                else JC2_THROW(RuntimeError, "Namespace keys must be strings.");
             } else {
                 std::string key = idx.asString();
                 auto it = ns->fields.find(key);
                 if (it == ns->fields.end()) {
                     if (noThrow) result = Value::uninit();
-                    else throw std::runtime_error("VM Error: Key not found in namespace.");
+                    else JC2_THROW(RuntimeError, "Key not found in namespace.");
                 } else {
                     result = *(it->second.upval->location);
                 }
@@ -10415,7 +10415,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             auto cls = static_cast<ObjClass*>(obj.asObj());
             if (!idx.isString()) {
                 if (noThrow) result = Value::uninit();
-                else throw std::runtime_error("VM Error: Class static field keys must be strings.");
+                else JC2_THROW(RuntimeError, "Class static field keys must be strings.");
             } else {
                 std::string key = idx.asString();
                 if (isReservedInternalName(key)) {
@@ -10509,26 +10509,26 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                     }
                     if (!foundStatic) {
                         if (noThrow) result = Value::uninit();
-                        else throw std::runtime_error("VM Error: Static field not found in class.");
+                        else JC2_THROW(RuntimeError, "Static field not found in class.");
                     }
                 }
             }
         } else if (obj.isSlice()) {
             if (!idx.isString()) {
                 if (noThrow) result = Value::uninit();
-                else throw std::runtime_error("VM Error: Slice properties must be accessed with string keys.");
+                else JC2_THROW(RuntimeError, "Slice properties must be accessed with string keys.");
             } else {
                 Value prop = obj.asSlice()->getProperty(idx.asString());
                 if (prop.isUninit()) {
                     if (noThrow) result = Value::uninit();
-                    else throw std::runtime_error("VM Error: Property '" + idx.asString() + "' not found on slice.");
+                    else JC2_THROW(RuntimeError, "Property '" + idx.asString() + "' not found on slice.");
                 } else {
                     result = prop;
                 }
             }
         } else {
             if (noThrow) result = Value::uninit();
-            else throw std::runtime_error("VM Error: Unsupported 1D index get.");
+            else JC2_THROW(RuntimeError, "Unsupported 1D index get.");
         }
     } else if (dims == 2) {
         Value rowIdx = args[0];
@@ -10555,10 +10555,10 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
             else result = processMatGet2D(static_cast<ObjSymMatrix*>(obj.asObj())->mat);
         } else {
             if (noThrow) result = Value::uninit();
-            else throw std::runtime_error("VM Error: Unsupported 2D index get.");
+            else JC2_THROW(RuntimeError, "Unsupported 2D index get.");
         }
     } else {
-        throw std::runtime_error("VM Error: Unsupported index dimensionality.");
+        JC2_THROW(RuntimeError, "Unsupported index dimensionality.");
     }
 
     vm->getCurrentFrame()->jitReturnSlot = result;
@@ -10587,7 +10587,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
                 auto it = inst->properties.find(mangledName);
                 if (it != inst->properties.end()) {
-                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyStr + "'.");
+                    if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
                     vm->invalidateJITOnContainerReplace(it->second.val, val);
                     it->second.val = val;
                     foundPrivate = true;
@@ -10601,7 +10601,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 inst->setProperty(keyStr, val);
             }
         } else {
-            throw std::runtime_error("TypeError: Instance does not support this indexing. Implement __setitem__.");
+            JC2_THROW(TypeError, "Instance does not support this indexing. Implement __setitem__.");
         }
     } else if (args.size() == 1) {
         Value idx = args[0];
@@ -10614,7 +10614,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             } else {
                 if (val.isObjType(ObjType::LIST)) {
                     const auto& srcL = static_cast<ObjList*>(val.asObj())->vec;
-                    if (static_cast<int>(srcL.size()) != range.sliceInfo.count) throw std::runtime_error("VM Error: Slice assignment size mismatch.");
+                    if (static_cast<int>(srcL.size()) != range.sliceInfo.count) JC2_THROW(RuntimeError, "Slice assignment size mismatch.");
                     for (int k = 0; k < range.sliceInfo.count; ++k) list->mut()[range.sliceInfo.start + k * range.sliceInfo.step] = srcL[k];
                 } else {
                     for (int i = 0; i < range.sliceInfo.count; ++i) list->mut()[range.sliceInfo.start + i * range.sliceInfo.step] = val;
@@ -10623,7 +10623,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
         } else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             errMatImmutableSetItem();
         } else if (obj.isObjType(ObjType::DICT)) {
-            if (idx.isSlice()) throw std::runtime_error("TypeError: Dict does not support slice indexing.");
+            if (idx.isSlice()) JC2_THROW(TypeError, "Dict does not support slice indexing.");
             auto dict = static_cast<ObjDict*>(obj.asObj());
             Value oldVal = Value::none();
             auto dit = dict->keyMap.find(idx);
@@ -10632,7 +10632,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             dict->set(idx, val);
         } else if (obj.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(obj.asObj());
-            if (!idx.isString()) throw std::runtime_error("VM Error: Namespace keys must be strings.");
+            if (!idx.isString()) JC2_THROW(RuntimeError, "Namespace keys must be strings.");
             std::string key = idx.asString();
             Value oldVal = Value::none();
             auto nsIt = ns->fields.find(key);
@@ -10641,7 +10641,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             ns->setField(key, val);
         } else if (obj.isClass()) {
             auto cls = static_cast<ObjClass*>(obj.asObj());
-            if (!idx.isString()) throw std::runtime_error("VM Error: Class static field keys must be strings.");
+            if (!idx.isString()) JC2_THROW(RuntimeError, "Class static field keys must be strings.");
             std::string key = idx.asString();
             if (isReservedInternalName(key)) {
                 errAccessPrivateDynamic();
@@ -10653,7 +10653,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 std::string mangledName = manglePrivate(ctxOwner->classId, key);
                 auto it = ctxOwner->properties.find(mangledName);
                 if (it != ctxOwner->properties.end()) {
-                    if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + key + "'.");
+                    if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
                     vm->invalidateJITOnContainerReplace(it->second.val, val);
                     it->second.val = val;
                     found = true;
@@ -10665,10 +10665,10 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                     auto it = c_cls->properties.find(key);
                     if (it != c_cls->properties.end()) {
                         if (it->second.is_local) {
-                            if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + key + "'.");
+                            if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + key + "'.");
                             break;
                         }
-                        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + key + "'.");
+                        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const static property '" + key + "'.");
                         vm->invalidateJITOnContainerReplace(it->second.val, val);
                         it->second.val = val;
                         found = true;
@@ -10682,7 +10682,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 if (cls) cls->properties[key] = { val, false, false };
             }
         } else {
-            throw std::runtime_error("VM Error: Unsupported 1D index set.");
+            JC2_THROW(RuntimeError, "Unsupported 1D index set.");
         }
     } else if (args.size() == 2) {
         Value rowIdx = args[0];
@@ -10690,10 +10690,10 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
         if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX) || obj.isObjType(ObjType::SYM_MATRIX)) {
             errMatImmutableSetElement();
         } else {
-            throw std::runtime_error("VM Error: Unsupported 2D index set.");
+            JC2_THROW(RuntimeError, "Unsupported 2D index set.");
         }
     } else {
-        throw std::runtime_error("VM Error: Unsupported index dimensionality.");
+        JC2_THROW(RuntimeError, "Unsupported index dimensionality.");
     }
     
     return obj;
@@ -10780,7 +10780,7 @@ uint64_t jc2_jit_get_self() {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value selfCtx = vm->getCurrentFrame()->selfContext;
-    if (selfCtx.isNone()) throw std::runtime_error("VM Error: 'self' accessed outside of context.");
+    if (selfCtx.isNone()) JC2_THROW(RuntimeError, "'self' accessed outside of context.");
     vm->getCurrentFrame()->jitReturnSlot = selfCtx;
     return selfCtx.as_bits;
     JIT_CALLOUT_CATCH
@@ -10800,7 +10800,7 @@ uint64_t jc2_jit_get_upval(uint32_t uvIdx) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
-        throw std::runtime_error("VM Error: Invalid upvalue index.");
+        JC2_THROW(RuntimeError, "Invalid upvalue index.");
     Value res = *(frame->closure->upvalues[uvIdx]->location);
     frame->jitReturnSlot = res;
     return res.as_bits;
@@ -10812,7 +10812,7 @@ void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
-        throw std::runtime_error("VM Error: Invalid upvalue index.");
+        JC2_THROW(RuntimeError, "Invalid upvalue index.");
     *(frame->closure->upvalues[uvIdx]->location) = Value::fromRawBits(val_bits);
     JIT_CALLOUT_CATCH_VOID
 }
@@ -10845,7 +10845,7 @@ uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chu
         }
         cls = cls->parent;
     }
-    if (!rawMethod) throw std::runtime_error("VM Error: Parent class has no method '" + field + "'.");
+    if (!rawMethod) JC2_THROW(RuntimeError, "Parent class has no method '" + field + "'.");
     
     auto bound = GcHeap::get().allocate<ObjClosure>(
         std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
@@ -10948,10 +10948,10 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             auto it = c_cls->properties.find(keyStr);
             if (it != c_cls->properties.end()) {
                 if (it->second.is_local) {
-                    if (c_cls == cls) throw std::runtime_error("VM Error: Cannot modify private static property '" + keyStr + "'.");
+                    if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + keyStr + "'.");
                     break;
                 }
-                if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const static property '" + keyStr + "'.");
+                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const static property '" + keyStr + "'.");
                 vm->invalidateJITOnContainerReplace(it->second.val, val);
                 it->second.val = val;
                 found = true;
@@ -10964,7 +10964,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
             if (cls) cls->properties[keyStr] = { val, false, false };
         }
     } else {
-        throw std::runtime_error("VM Error: Cannot set property on this type.");
+        JC2_THROW(RuntimeError, "Cannot set property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11399,7 +11399,7 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     int base = frame->registerBase;
     
     if (fnIdx >= vm->getCompiledFunctions().size())
-        throw std::runtime_error("JIT Error: Invalid function index.");
+        JC2_THROW(InternalError, "Invalid function index.");
 
     auto& fn = vm->getCompiledFunctions()[fnIdx];
     auto closure = GcHeap::get().allocate<ObjClosure>(
@@ -11520,7 +11520,7 @@ void jc2_jit_list_append(uint64_t list_bits, uint64_t val_bits) {
     if (listVal.isObjType(ObjType::LIST)) {
         static_cast<ObjList*>(listVal.asObj())->mut().push_back(val);
     } else {
-        throw std::runtime_error("VM Error: LIST_APPEND target is not a list.");
+        JC2_THROW(RuntimeError, "LIST_APPEND target is not a list.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11540,7 +11540,7 @@ void jc2_jit_set_append(uint64_t set_bits, uint64_t val_bits) {
     if (setVal.isObjType(ObjType::SET)) {
         static_cast<ObjSet*>(setVal.asObj())->add(val);
     } else {
-        throw std::runtime_error("VM Error: SET_APPEND target is not a set.");
+        JC2_THROW(RuntimeError, "SET_APPEND target is not a set.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11599,7 +11599,7 @@ void jc2_jit_inherit(uint64_t sub_bits, uint64_t super_bits) {
     JIT_CALLOUT_TRY
     Value subClass = Value::fromRawBits(sub_bits);
     Value superClass = Value::fromRawBits(super_bits);
-    if (!subClass.isClass() || !superClass.isClass()) throw std::runtime_error("VM Error: Inheritance requires two classes.");
+    if (!subClass.isClass() || !superClass.isClass()) JC2_THROW(RuntimeError, "Inheritance requires two classes.");
     auto sub = static_cast<ObjClass*>(subClass.asObj());
     auto sup = static_cast<ObjClass*>(superClass.asObj());
     if (sub) sub->parent = sup;
@@ -11637,11 +11637,11 @@ void jc2_jit_set_global_ref(uint32_t icIdx, uint64_t val_bits, const Chunk* chun
     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
     const std::string& name = chunk->constants[ic.nameIdx].asString();
     Value val = Value::fromRawBits(val_bits);
-    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
-    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
-    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot modify const variable '" + name + "'.");
+    if (name == "<class>") JC2_THROW(SyntaxError, "cannot override context keyword 'class'.");
+    if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot override context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) JC2_THROW(RuntimeError, "Cannot modify const variable '" + name + "'.");
     if (!vm->hasGlobal(name) && vm->getNativeBuiltins().find(name) == vm->getNativeBuiltins().end() && vm->getBuiltinValue(name).isNone()) {
-        throw std::runtime_error("Runtime Error: Undefined variable '" + name + "'.");
+        JC2_THROW(RuntimeError, "Undefined variable '" + name + "'.");
     }
     vm->setGlobal(name, val);
     JIT_CALLOUT_CATCH_VOID
@@ -11653,9 +11653,9 @@ void jc2_jit_define_const_global(uint32_t icIdx, uint64_t val_bits, const Chunk*
     InlineCache& ic = const_cast<InlineCache&>(chunk->inlineCaches[icIdx]);
     const std::string& name = chunk->constants[ic.nameIdx].asString();
     Value val = Value::fromRawBits(val_bits);
-    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot override context keyword 'class'.");
-    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot override context keyword 'namespace'.");
-    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot redefine const variable '" + name + "'.");
+    if (name == "<class>") JC2_THROW(SyntaxError, "cannot override context keyword 'class'.");
+    if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot override context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) JC2_THROW(RuntimeError, "Cannot redefine const variable '" + name + "'.");
     vm->setGlobal(name, val);
     vm->setConstGlobal(name);
     JIT_CALLOUT_CATCH_VOID
@@ -11665,9 +11665,9 @@ void jc2_jit_delete_global(uint32_t bx, const Chunk* chunk) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     const std::string& name = chunk->constants[bx].asString();
-    if (name == "<class>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'class'.");
-    if (name == "<namespace>") throw std::runtime_error("Syntax Error: cannot delete context keyword 'namespace'.");
-    if (vm->getConstGlobals().count(name)) throw std::runtime_error("Runtime Error: Cannot delete const variable '" + name + "'.");
+    if (name == "<class>") JC2_THROW(SyntaxError, "cannot delete context keyword 'class'.");
+    if (name == "<namespace>") JC2_THROW(SyntaxError, "cannot delete context keyword 'namespace'.");
+    if (vm->getConstGlobals().count(name)) JC2_THROW(RuntimeError, "Cannot delete const variable '" + name + "'.");
     if (!vm->hasGlobal(name)) JC2_THROW(RuntimeError, "Undefined global variable '" + name + "'.");
     vm->removeGlobal(name);
     JIT_CALLOUT_CATCH_VOID
@@ -11732,7 +11732,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
                     result = cit->second.val;
                 }
             } else {
-                throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
+                JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
             }
         }
     } else if (obj.isClass()) {
@@ -11747,10 +11747,10 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
                 result = it->second.val;
             }
         } else {
-            throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
+            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
         }
     } else {
-        throw std::runtime_error("VM Error: Cannot get private property on this type.");
+        JC2_THROW(RuntimeError, "Cannot get private property on this type.");
     }
 
     frame->jitReturnSlot = result;
@@ -11774,19 +11774,19 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
-        if (it == inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' not found.");
-        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private property '" + keyVal.asString() + "'.");
+        if (it == inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
         it->second.val = val;
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = owner->properties.find(mangledName);
-        if (it == owner->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' not found.");
-        if (it->second.is_const) throw std::runtime_error("VM Error: Cannot modify const private static property '" + keyVal.asString() + "'.");
+        if (it == owner->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyVal.asString() + "'.");
         it->second.val = val;
     } else {
-        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+        JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11807,16 +11807,16 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
-        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+        if (it != inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
         inst->properties[mangledName] = {val, false, true};
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
         auto it = cls->properties.find(mangledName);
-        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' already defined.");
+        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
         cls->properties[mangledName] = {val, false, true};
     } else {
-        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+        JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11837,16 +11837,16 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->properties.find(mangledName);
-        if (it != inst->properties.end()) throw std::runtime_error("VM Error: Private property '" + keyVal.asString() + "' already defined.");
+        if (it != inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
         inst->properties[mangledName] = {val, true, true};
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
         auto it = cls->properties.find(mangledName);
-        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Private static property '" + keyVal.asString() + "' already defined.");
+        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
         cls->properties[mangledName] = {val, true, true};
     } else {
-        throw std::runtime_error("VM Error: Cannot set private property on this type.");
+        JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11864,18 +11864,18 @@ void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         std::string keyStr = keyVal.asString();
         auto it = inst->properties.find(keyStr);
         if (it != inst->properties.end()) {
-            if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-            throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
+            if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
         }
         inst->properties[keyStr] = {val, false, false};
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string keyStr = keyVal.asString();
         auto it = cls->properties.find(keyStr);
-        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
         cls->properties[keyStr] = {val, false, false};
     } else {
-        throw std::runtime_error("VM Error: Cannot define property on this type.");
+        JC2_THROW(RuntimeError, "Cannot define property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11893,18 +11893,18 @@ void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t ic
         std::string keyStr = keyVal.asString();
         auto it = inst->properties.find(keyStr);
         if (it != inst->properties.end()) {
-            if (it->second.is_local) throw std::runtime_error("VM Error: Cannot access private property '" + keyStr + "' externally.");
-            throw std::runtime_error("VM Error: Property '" + keyStr + "' already defined.");
+            if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
         }
         inst->properties[keyStr] = {val, true, false};
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string keyStr = keyVal.asString();
         auto it = cls->properties.find(keyStr);
-        if (it != cls->properties.end()) throw std::runtime_error("VM Error: Static property '" + keyStr + "' already defined.");
+        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
         cls->properties[keyStr] = {val, true, false};
     } else {
-        throw std::runtime_error("VM Error: Cannot define property on this type.");
+        JC2_THROW(RuntimeError, "Cannot define property on this type.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11914,7 +11914,7 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
     const std::string& methodName = chunk->constants[nameIdx].asString();
     Value classVal = Value::fromRawBits(class_bits);
     Value closureVal = Value::fromRawBits(closure_bits);
-    if (!classVal.isClass()) throw std::runtime_error("VM Error: METHOD requires a class.");
+    if (!classVal.isClass()) JC2_THROW(RuntimeError, "METHOD requires a class.");
     auto cls = static_cast<ObjClass*>(classVal.asObj());
     if (closureVal.isFunctionClosure()) {
         ObjClosure* fn = closureVal.asFunction();
@@ -11929,7 +11929,7 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
             if (cls) cls->properties[methodName] = {closureVal, isConst, false};
         }
     } else {
-        throw std::runtime_error("VM Error: Invalid closure type for method.");
+        JC2_THROW(RuntimeError, "Invalid closure type for method.");
     }
     JIT_CALLOUT_CATCH_VOID
 }
@@ -11948,10 +11948,10 @@ void jc2_jit_matrix_comp_append(uint64_t acc_bits, uint64_t elem_bits) {
         try {
             m = Value(RealMatrix(1, 1, { elem.asDouble() }));
         } catch (...) {
-            throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+            JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
         }
     } else {
-        throw std::runtime_error("VM Error: Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
+        JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
     }
     GcValueGuard mGuard(m);
     static_cast<ObjList*>(Value::fromRawBits(acc_bits).asObj())->vec.push_back(m);
@@ -11994,7 +11994,7 @@ uint64_t jc2_jit_matrix_comp_end(uint64_t acc_bits) {
                 }
             }
         } catch (...) {
-            throw std::runtime_error("VM Error: Dimension mismatch during matrix comprehension concatenation.");
+            JC2_THROW(RuntimeError, "Dimension mismatch during matrix comprehension concatenation.");
         }
     }
     VM::activeVM->getCurrentFrame()->jitReturnSlot = rowResult;

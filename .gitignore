@@ -375,3 +375,6 @@ local/
 
 # 提交信息临时文件
 .commit_msg.txt
+
+# JIT 测试结果（回归测试产物）
+jit_tests/results/

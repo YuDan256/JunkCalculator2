@@ -1653,13 +1653,14 @@ namespace jc {
                     }
                     consume(TokenType::RBRACE, "Parser Error: Expect '}' to close catch block.");
                 } else {
-                    // ★ 简写：catch(pattern) body，单分支糖，等价 catch { pattern => body }
+                    // ★ 简写：catch(pattern, ...) body，单分支糖（支持或匹配），等价 catch { pattern, ... => body }
                     consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'catch'.");
-                    auto catchPattern = parsePrimaryPattern();
+                    MatchBranch branch;
+                    do {
+                        branch.patterns.push_back(parsePattern());
+                    } while (match({ TokenType::COMMA }));
                     consume(TokenType::RPAREN, "Parser Error: Expect ')' after catch pattern.");
                     auto catchBody = parseStatementOrBlock();
-                    MatchBranch branch;
-                    branch.patterns.push_back(std::move(catchPattern));
                     branch.body = std::move(catchBody);
                     catchBranches.push_back(std::move(branch));
                 }

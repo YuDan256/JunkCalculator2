@@ -146,16 +146,26 @@
 
 ## 命令行接口使用方法
 
-    JunkCalculator2                    # 运行交互式 REPL 会话
-    JunkCalculator2 script.jc2         # 执行目标脚本
-    JunkCalculator2 --run script.jc2   # 执行目标脚本（显式传递）
-    JunkCalculator2 script.jc2 -d      # 执行脚本，并在执行时打印虚拟机字节码反汇编流
-    JunkCalculator2 script.jc2 --ir    # 执行并打印 IR 图
-    JunkCalculator2 script.jc2 --hir   # 执行并打印 HIR 图
-    JunkCalculator2 script.jc2 --mc    # 执行并打印机器码反汇编
-    JunkCalculator2 script.jc2 --jit   # 开启 JIT 编译执行
-    JunkCalculator2 script.jc2 --debug # 开启交互式步进调试器模式运行
-    JunkCalculator2 script.jc2 --profile # 运行结束后输出 VM 执行火焰图指令性能报告
+    jc2                                # 运行交互式 REPL 会话（默认）
+    jc2 load [name/path]               # 加载工作区并进入 REPL
+    jc2 [path].jcw                     # 自动回退为加载工作区
+    jc2 script.jc2                     # 执行脚本（回退到 'run'）
+    jc2 run script.jc2                 # 显式执行脚本
+    jc2 compile in.jc2 [out.jcb]       # 编译脚本为字节码
+    jc2 compile in.jc2 -m              # 编译为模块（供 'import' 使用）
+    jc2 compile in.jc2 -s              # 编译并剥离调试信息
+    jc2 fmt [path]                     # 格式化脚本或目录
+    jc2 fmt --check [path]             # 检查脚本是否已格式化（未格式化则返回 1）
+    jc2 test [dir]                     # 运行目录中的测试脚本
+    jc2 eval "expr"                    # 求值表达式并退出
+    jc2 help [topic]                   # 显示帮助概览或特定主题
+    jc2 version                        # 显示当前版本
+
+全局 flag（可附加到任意命令）：
+
+    -d, --ir, --hir, --mc              # 显示反汇编 / IR / 机器码
+    --debug, --profile, --jit          # 启用调试器 / 性能分析器 / JIT
+    -q, --quiet                        # 静默模式（不显示 banner/提示符）
 
 *脚本路径上下文：`run` 与 `import` 指令执行时，将动态地使执行文件所在目录压入路径栈。因此，在脚本内部请求相对物理路径资源时，解析规则始终基于脚本自身所在目录，而脱离终端命令执行点的影响。*
 
@@ -174,6 +184,7 @@
     |   +-- math/                   基础数学库 (BigInt, Fraction, Complex, Matrix, Base)
     |   +-- cas/                    计算机代数系统 (Symbolic, Integration, Factorization, Groebner)
     |   +-- lib/                    原生 C++ 扩展与 C ABI (Image, JSON, FFI, Regex 等)
+    |   +-- utils/                  共享工具 (lsp, fmt, json, deflate)
     +-- modules/                    标准 JC2 库
     +-- docs/                       设计文档 (JIT, VM, Extension API 等)
     +-- data/                       捆绑数据 (帮助文档、图标、质数表)

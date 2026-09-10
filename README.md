@@ -146,16 +146,26 @@ Requires a C++20 compliant compiler and CMake 3.15+.
 
 ## Command-Line Interface
 
-    JunkCalculator2                    # Interactive REPL session
-    JunkCalculator2 script.jc2         # Execute a script
-    JunkCalculator2 --run script.jc2   # Execute a script (explicit flag)
-    JunkCalculator2 script.jc2 -d      # Execute and print bytecode disassembly
-    JunkCalculator2 script.jc2 --ir    # Execute and print IR graph
-    JunkCalculator2 script.jc2 --hir   # Execute and print HIR graph
-    JunkCalculator2 script.jc2 --mc    # Execute and print machine code disassembly
-    JunkCalculator2 script.jc2 --jit   # Execute with JIT compilation
-    JunkCalculator2 script.jc2 --debug # Execute with interactive step-debugger
-    JunkCalculator2 script.jc2 --profile # Execute and print performance report
+    jc2                                # Interactive REPL (default)
+    jc2 load [name/path]               # Load a workspace and enter REPL
+    jc2 [path].jcw                     # Auto-fallback to load workspace
+    jc2 script.jc2                     # Run a script (fallback to 'run')
+    jc2 run script.jc2                 # Run a script explicitly
+    jc2 compile in.jc2 [out.jcb]       # Compile script to bytecode
+    jc2 compile in.jc2 -m              # Compile as a module (for 'import')
+    jc2 compile in.jc2 -s              # Compile and strip debug info
+    jc2 fmt [path]                     # Format a script or directory of scripts
+    jc2 fmt --check [path]             # Check if scripts are formatted (returns 1 if not)
+    jc2 test [dir]                     # Run test scripts in directory
+    jc2 eval "expr"                    # Evaluate expression and exit
+    jc2 help [topic]                   # Show help overview or specific topic
+    jc2 version                        # Show current version
+
+Global flags (appendable to any command):
+
+    -d, --ir, --hir, --mc              # Show disassembly / IR / Machine Code
+    --debug, --profile, --jit          # Enable debugger / profiler / JIT
+    -q, --quiet                        # Quiet mode (no banner/prompt)
 
 *Script Path Context: The `run` and `import` instructions push the executing script's directory onto a paths stack, resolving relative I/O based on the current file's location rather than the terminal's working directory.*
 
@@ -174,6 +184,7 @@ Requires a C++20 compliant compiler and CMake 3.15+.
     |   +-- math/                   Math primitives (BigInt, Fraction, Complex, Matrix, Base)
     |   +-- cas/                    Computer Algebra System (Symbolic, Integration, Factorization)
     |   +-- lib/                    Native C++ extensions & C ABI (Image, JSON, FFI, Regex, ...)
+    |   +-- utils/                  Shared utilities (lsp, fmt, json, deflate)
     +-- modules/                    Standard JC2 libraries
     +-- docs/                       Design documentation (JIT, VM, Extension API, ...)
     +-- data/                       Bundled data (help documentation, icon, prime table)

@@ -803,6 +803,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     }
                     emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
                     assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
+                } else {
+                    // _ 丢弃符：不绑定变量，但类型注解（如 ..._: int）仍需生效
+                    emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
                 }
                 continue;
             }
@@ -827,7 +830,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
         }
 
-        if (lp->rest && lp->rest->name.lexeme != "_") {
+        if (lp->rest) {
             auto* restPat = lp->rest.get();
             IRNode* startNode = graph->createConstant(Value(static_cast<double>(lp->elements.size())));
             startNode->setControl(currentControl);
@@ -853,19 +856,24 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             sliceNode->payload2 = 0;
             currentControl = sliceNode;
             
-            auto it = patternSymbols->find(restPat);
-            ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
-            ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
-            bool isExplicitConst = restPat->isConst || globalConst;
-            
-            if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
-                int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
-                if (upvalIdx != -1) {
-                    currentFunction->upvalues[upvalIdx].isRef = true;
+            if (restPat->name.lexeme != "_") {
+                auto it = patternSymbols->find(restPat);
+                ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
+                bool isExplicitConst = restPat->isConst || globalConst;
+                
+                if (mod == ScopeModifier::Ref && currentFunction && (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState)) {
+                    int upvalIdx = resolveUpvalue(restPat->name.lexeme, sym.scope == VarScope::CapturedState);
+                    if (upvalIdx != -1) {
+                        currentFunction->upvalues[upvalIdx].isRef = true;
+                    }
                 }
+                emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
+                assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
+            } else {
+                // _ 丢弃符：不绑定变量，但类型注解（如 ..._: int）仍需生效
+                emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
             }
-            emitTypeAssert(sliceNode, restPat->typeHint, restPat->name.lexeme);
-            assignVar(restPat->name.lexeme, sliceNode, sym, mod, isExplicitConst);
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);

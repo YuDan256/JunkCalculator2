@@ -160,6 +160,7 @@
     jc2 eval "expr"                    # 求值表达式并退出
     jc2 help [topic]                   # 显示帮助概览或特定主题
     jc2 version                        # 显示当前版本
+    jc2 lsp                            # 启动 LSP 服务器（stdio）
 
 全局 flag（可附加到任意命令）：
 

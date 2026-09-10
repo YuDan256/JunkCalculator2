@@ -160,6 +160,7 @@ Requires a C++20 compliant compiler and CMake 3.15+.
     jc2 eval "expr"                    # Evaluate expression and exit
     jc2 help [topic]                   # Show help overview or specific topic
     jc2 version                        # Show current version
+    jc2 lsp                            # Start the LSP server (stdio)
 
 Global flags (appendable to any command):
 

@@ -597,12 +597,17 @@ void registerPredefinedClasses() {
 
     auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "message"}, std::vector<bool>{false, false}, "<init>", nullptr);
     excInit->defaultValues.push_back(Value::none());
+    excInit->defaultValues.push_back(Value(""));  // ★ message 默认空字符串
     GcObjGuard excInitGuard(excInit);
     excInit->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto inst = self.asInstance();
         
-        if (args.size() == 1) {
+        if (args.size() == 0) {
+            // ★ 默认构造：type = 类名，message = ""
+            inst->properties["type"] = {Value(inst->classDef->name), false, false};
+            inst->properties["message"] = {Value(""), false, false};
+        } else if (args.size() == 1) {
             inst->properties["type"] = {Value(inst->classDef->name), false, false};
             inst->properties["message"] = {args[0], false, false};
         } else {

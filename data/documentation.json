@@ -3070,7 +3070,7 @@
       "  ──────────────────────",
       "    • Variables bound in a pattern are strictly local to that branch's body.",
       "    • Patterns are evaluated top-to-bottom. The first match wins.",
-      "    • If no pattern matches, the expression safely returns `none`.",
+      "    • If no pattern matches, the expression throws `MatchError`.",
       "",
       "  9. Custom View Extractors (__match__)",
       "  ──────────────────────",
@@ -5498,7 +5498,7 @@
         "Use `,` to separate multiple patterns for a single branch.",
         "Use `if (cond)` for guard clauses.",
         "Use `_` as a wildcard or fallback pattern.",
-        "Returns the value of the executed branch, or `none` if no pattern matches.",
+        "Returns the value of the executed branch, or throws `MatchError` if no pattern matches.",
         "See also: /help match (topic)"
       ],
       "examples": [

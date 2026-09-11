@@ -2483,10 +2483,10 @@ inline constexpr size_t kMaxPrintElements = 50;
 
 // 核心打印：full=false 可读（截断、矩阵 2D、字符串裸、instance __str__），full=true 精确（完整、矩阵 1D、字符串带引号、instance __repr__）
 inline void printValue(std::ostream& os, const Value& val, bool full, std::vector<const void*>& visited) {
-    auto printNested = [&os](const Value& v) {
+    auto printNested = [&os, &visited](const Value& v) {
         if (v.isNone()) os << "none";
         else if (v.isUninit()) os << "<uninit>";
-        else os << v.toRepr();
+        else printValue(os, v, true, visited);  // ★ 共享 visited，full=true（容器内元素用 repr），避免循环引用检测失效
     };
 
     if (val.isNone()) { os << "none"; return; }

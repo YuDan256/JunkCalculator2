@@ -380,14 +380,6 @@ namespace lsp {
     void TypeInferrer::visitImportExpr(ImportExpr* e) {
         (void)e;
     }
-    void TypeInferrer::visitSwitchExpr(SwitchExpr* e) {
-        if (e->subject) e->subject->accept(*this);
-        for (auto& c : e->cases) {
-            for (auto& v : c.first) if (v) v->accept(*this);
-            if (c.second) c.second->accept(*this);
-        }
-        if (e->defaultBody) e->defaultBody->accept(*this);
-    }
     void TypeInferrer::visitEnumDefExpr(EnumDefExpr* e) {
         for (auto& m : e->members) if (m.second) m.second->accept(*this);
     }

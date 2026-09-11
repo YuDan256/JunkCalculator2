@@ -29,9 +29,6 @@ namespace jc {
         {"try",      TokenType::TRY},          // ★
         {"catch",    TokenType::CATCH},         // ★
         {"import",   TokenType::IMPORT},
-        {"switch",   TokenType::SWITCH},       // ★
-        {"case",     TokenType::CASE},         // ★
-        {"default",  TokenType::DEFAULT},      // ★
         {"match",    TokenType::MATCH},        // ★
         {"macro",    TokenType::MACRO},        // ★
         {"syntax",   TokenType::SYNTAX},       // ★

@@ -563,14 +563,6 @@ namespace lsp {
             if (b.body) b.body->accept(*this);
         }
     }
-    void NameResolver::visitSwitchExpr(SwitchExpr* e) {
-        if (e->subject) e->subject->accept(*this);
-        for (auto& c : e->cases) {
-            for (auto& v : c.first) if (v) v->accept(*this);
-            if (c.second) c.second->accept(*this);
-        }
-        if (e->defaultBody) e->defaultBody->accept(*this);
-    }
     void NameResolver::visitDestructAssign(DestructAssign* e) {
         if (e->value) e->value->accept(*this);
     }

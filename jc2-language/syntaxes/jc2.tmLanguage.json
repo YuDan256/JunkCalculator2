@@ -412,7 +412,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.jc2",
-                    "match": "\\b(if|else|while|for|in|is|as|break|continue|return|switch|case|default|throw|try|catch|match|defer)\\b"
+                    "match": "\\b(if|else|while|for|in|is|as|break|continue|return|throw|try|catch|match|defer)\\b"
                 },
                 {
                     "name": "keyword.declaration.jc2",

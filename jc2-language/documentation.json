@@ -869,15 +869,6 @@
     "match": {
       "signature": "match (expr) { pattern => body, ... }"
     },
-    "switch": {
-      "signature": "switch (expr) { case val: body ... [default: body] }"
-    },
-    "case": {
-      "signature": "case value [, value2, ...]: body"
-    },
-    "default": {
-      "signature": "default: body"
-    },
     "namespace": {
       "signature": "namespace [Name] { ... }  |  namespace"
     },

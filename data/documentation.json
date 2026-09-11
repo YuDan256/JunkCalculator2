@@ -89,7 +89,7 @@
       "    base        Radix conversion, display shells, bitwise operations",
       "    type        First-class types, type algebra, reflection, type predicates",
       "    sys         RNG, prime engine, workspace, scripting, colors",
-      "    control     if/else, while, for, for-in, switch, break/continue/return",
+      "    control     if/else, while, for, for-in, match, break/continue/return",
       "    match       Pattern matching, deep destructuring, type guards",
       "    scope       auto-local, global, const, delete, ref, closures",
       "    string      String functions, indexing, slicing, escape sequences",
@@ -108,7 +108,7 @@
       "",
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
-      "    if  else  while  for  in  is  as  break  continue  return  switch  case  match  default  defer",
+      "    if  else  while  for  in  is  as  break  continue  return  match  defer",
       "    class  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
       "    try  catch  throw  import  true  false  none  macro  syntax  quote",
       "",
@@ -280,12 +280,11 @@
       "        1. Newline (\\n) or Semicolon (;)",
       "        2. Right brace (}) for the last statement in a block",
       "        3. End of File (EOF)",
-      "        4. `case` or `default` (inside switch blocks)",
       "      (e.g., `a = 1 b = 2` is a syntax error; use `a = 1; b = 2` or newlines).",
       "    • Inside ( ) and [ ], newlines are completely ignored by the lexer.",
       "      The entire contents are parsed as a single continuous line.",
       "    • Operators at the end of a line (+, -, *, =, in, etc.) continue to the next line.",
-      "    • STRICT: Keywords like if, while, for, switch, class, catch MUST be on the",
+      "    • STRICT: Keywords like if, while, for, class, catch MUST be on the",
       "      same line as their following '(' or identifier. (e.g., `if \\n (x)` is an error).",
       "    • STRICT ANONYMOUS: When defining anonymous classes, namespaces, or enums,",
       "      the opening brace `{` MUST be on the same line as the keyword (or `extends`).",
@@ -1801,20 +1800,6 @@
       "      for ([var1, var2] in iterable) { body }",
       "      for ([local key, local val] in dict(\"a\", 1)) print(key)   // No braces needed!",
       "      for ([const k, v] in d) { ... }                             // Per-variable const",
-      "",
-      "  Switch",
-      "  ──────────────────────",
-      "    switch (expr) {",
-      "        case val1, val2:",
-      "            stmt1",
-      "            stmt2",
-      "        default:",
-      "            stmt3",
-      "    }",
-      "    • The switch body MUST be wrapped in {}.",
-      "    • case/default branches do NOT require {} and will greedily absorb",
-      "      multiple statements until the next case, default, or }.",
-      "    • No fall-through. Returns the value of the matched branch.",
       "",
       "  Control Statements & Scope Safety",
       "  ──────────────────────",
@@ -5510,62 +5495,6 @@
         "match (x) { 1, 2 => \"small\", _ => \"large\" }",
         "match (pt) { [x, y] if (x == y) => \"diagonal\", _ => \"other\" }",
         "match (obj) { {name, ...rest} => name }"
-      ]
-    },
-    "switch": {
-      "signature": "switch (expr) { case val: body ... [default: body] }",
-      "desc": [
-        "Pattern matching statement. Evaluates expr and compares against",
-        "each case value. Executes the first matching branch.",
-        "The switch body MUST be wrapped in {}.",
-        "Case branches do NOT require {} and absorb all statements until the next case.",
-        "Multiple values per case: `case val1, val2:`",
-        "No fall-through — only the matched branch executes.",
-        "Returns the value of the matched branch expression.",
-        "See also: /help control"
-      ],
-      "examples": [
-        "switch (day) {",
-        "    case \"Mon\", \"Tue\":",
-        "        print(\"weekday\")",
-        "        1",
-        "    case \"Sat\", \"Sun\":",
-        "        print(\"weekend\")",
-        "        2",
-        "    default:",
-        "        0",
-        "}"
-      ]
-    },
-    "case": {
-      "signature": "case value [, value2, ...]: body",
-      "desc": [
-        "A branch inside a `switch` statement.",
-        "Matches when the switch expression equals any of the listed values.",
-        "Multiple values can be comma-separated for a single branch.",
-        "Does NOT require {} and greedily absorbs statements until the next case/default/}.",
-        "See also: /help switch, /help control"
-      ],
-      "examples": [
-        "case 1:",
-        "    print(\"one\")",
-        "    return 1",
-        "case \"a\", \"b\":",
-        "    print(\"letter\")"
-      ]
-    },
-    "default": {
-      "signature": "default: body",
-      "desc": [
-        "The fallback branch inside a `switch` statement.",
-        "Executes when no `case` value matches the switch expression.",
-        "Does NOT require {} and greedily absorbs statements until the end of the switch.",
-        "See also: /help switch, /help control"
-      ],
-      "examples": [
-        "default:",
-        "    print(\"unknown\")",
-        "    0"
       ]
     },
     "namespace": {

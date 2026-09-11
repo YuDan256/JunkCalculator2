@@ -72,8 +72,8 @@ bool isKeywordLike(TokenType t) {
     case TokenType::CONST: case TokenType::LOCAL: case TokenType::REF:
     case TokenType::STATE: case TokenType::STATIC: case TokenType::DELETE:
     case TokenType::IN: case TokenType::IS: case TokenType::AS:
-    case TokenType::MATCH: case TokenType::SWITCH: case TokenType::CASE:
-    case TokenType::DEFAULT: case TokenType::TRY: case TokenType::CATCH:
+    case TokenType::MATCH:
+    case TokenType::TRY: case TokenType::CATCH:
     case TokenType::ELSE: case TokenType::CLASS: case TokenType::EXTENDS:
     case TokenType::NAMESPACE: case TokenType::ENUM: case TokenType::DEFER:
     case TokenType::MACRO: case TokenType::SYNTAX: case TokenType::QUOTE:
@@ -112,9 +112,9 @@ bool needSpaceBefore(TokenType cur, TokenType prev, int prevPos, const std::set<
         cur == TokenType::COLON)
         return false;
     // 开括号（：关键字后空格（if/while/for/catch/return/throw/import 等），
-    // 但 match/switch 是函数风格无空格（match(），函数名也无空格（f(）
+    // 但 match 是函数风格无空格（match(），函数名也无空格（f(）
     if (cur == TokenType::LPAREN) {
-        if (prev == TokenType::MATCH || prev == TokenType::SWITCH) return false;
+        if (prev == TokenType::MATCH) return false;
         return isKeywordLike(prev);
     }
     // 开括号 [：= / 运算符 / 关键字 后空格（= [），@ 后无空格（@[），标识符后无空格（a[）
@@ -139,16 +139,14 @@ class BlockBraceCollector : public ExprVisitor {
 public:
     std::set<int> bracePos;
     std::set<int> unaryOpPos;       // 一元运算符 position（后无空格，AST Unary 节点提供）
-    std::set<int> caseColonPos;     // switch case 的 :（后换行）
     std::set<int> matchCommaPos;    // match 分支之间的 ,（后换行）
-    std::set<int> caseKeywordPos;   // switch 内 case/default 关键字（前换行）
     std::vector<std::pair<int, int>> preserveRanges;  // 语法宏 body 原样保留范围
     std::vector<std::pair<int, int>> forceBraceRanges;  // if/else 链需强制加花括号的分支范围
     const std::vector<Token>& tokens;
 
     explicit BlockBraceCollector(const std::vector<Token>& t) : tokens(t) {}
 
-    // 收集「无 Block 字段但仍是块体」的节点的外层花括号（class/enum/switch/match）
+    // 收集「无 Block 字段但仍是块体」的节点的外层花括号（class/enum/match）
     void collectOuterBraces(int startPos, int endPos) {
         int open = -1, close = -1;
         for (const auto& tok : tokens) {
@@ -321,48 +319,6 @@ public:
         }
     }
     void visitImportExpr(ImportExpr* e) override { if (e->path) e->path->accept(*this); }
-    void visitSwitchExpr(SwitchExpr* e) override {
-        collectOuterBraces(e->startPos, e->endPos);
-        if (e->subject) e->subject->accept(*this);
-        // 收集 switch 内所有 case/default 关键字位置
-        int open = -1, close = -1;
-        for (const auto& tok : tokens) {
-            if (tok.position >= e->startPos && tok.position < e->endPos) {
-                if (tok.type == TokenType::LBRACE && open == -1) open = tok.position;
-                if (tok.type == TokenType::RBRACE) close = tok.position;
-            }
-        }
-        for (const auto& tok : tokens) {
-            if (tok.position > open && tok.position < close &&
-                (tok.type == TokenType::CASE || tok.type == TokenType::DEFAULT)) {
-                caseKeywordPos.insert(tok.position);
-            }
-        }
-        for (auto& c : e->cases) {
-            for (auto& v : c.first) if (v) v->accept(*this);
-            if (c.second) {
-                int bodyStart = c.second->startPos;
-                int lastEnd = -1;
-                for (auto& v : c.first) if (v) lastEnd = std::max(lastEnd, v->endPos);
-                for (const auto& tok : tokens) {
-                    if (tok.position >= lastEnd && tok.position < bodyStart && tok.type == TokenType::COLON) {
-                        caseColonPos.insert(tok.position);
-                        break;
-                    }
-                }
-                c.second->accept(*this);
-            }
-        }
-        if (e->defaultBody) {
-            for (int j = static_cast<int>(tokens.size()) - 1; j >= 0; --j) {
-                if (tokens[j].position < e->defaultBody->startPos && tokens[j].type == TokenType::COLON) {
-                    caseColonPos.insert(tokens[j].position);
-                    break;
-                }
-            }
-            e->defaultBody->accept(*this);
-        }
-    }
     void visitClassDefExpr(ClassDefExpr* e) override {
         collectOuterBraces(e->startPos, e->endPos);
         if (e->superClassExpr) e->superClassExpr->accept(*this);
@@ -447,8 +403,8 @@ public:
 // TokenPrinter：遍历 token 流，排版
 // ============================================================================
 std::string printTokens(const std::string& source, const std::vector<Token>& tokens, const std::set<int>& bracePos,
-                        const std::set<int>& unaryOpPos, const std::set<int>& caseColonPos,
-                        const std::set<int>& matchCommaPos, const std::set<int>& caseKeywordPos,
+                        const std::set<int>& unaryOpPos,
+                        const std::set<int>& matchCommaPos,
                         const std::vector<std::pair<int, int>>& preserveRanges,
                         const std::vector<std::pair<int, int>>& forceBraceRanges) {
     std::string out;
@@ -456,7 +412,6 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
     int wrapIndent = 0;      // 折行（80 字符换行）的额外缩进层数
     int pendingNL = 0;          // 0 无换行 / 1 单换行 / 2 空一行
     bool lineHasContent = false;
-    bool inCaseBody = false;
     int forceBraceEnd = -1;
     std::vector<int> indentStack;  // 多行字面量缩进栈
     TokenType prev = TokenType::NEWLINE;
@@ -675,7 +630,6 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
         case TokenType::RBRACE: {
             if (bracePos.count(t.position)) {
                 // block }
-                if (inCaseBody) { indent = std::max(indent - 1, 0); inCaseBody = false; }
                 indent = std::max(indent - 1, 0);
                 pendingNL = std::max(pendingNL, 1);
                 emitNewlines(pendingNL);
@@ -695,20 +649,10 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
         }
 
         case TokenType::COLON:
-            if (caseColonPos.count(t.position)) {
-                if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-                out += ':';
-                lineHasContent = true;
-                setPrev(TokenType::COLON, t.position);
-                pendingNL = std::max(pendingNL, 1);
-                indent++;
-                inCaseBody = true;
-            } else {
-                if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-                out += ':';
-                lineHasContent = true;
-                setPrev(TokenType::COLON, t.position);
-            }
+            if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
+            out += ':';
+            lineHasContent = true;
+            setPrev(TokenType::COLON, t.position);
             break;
 
         case TokenType::COMMA:
@@ -789,19 +733,6 @@ std::string printTokens(const std::string& source, const std::vector<Token>& tok
             if (newlineAfter(t) || currentLineLength() >= 80) { pendingNL = std::max(pendingNL, 1); wrapIndent = 1; }
             break;
 
-        case TokenType::CASE:
-        case TokenType::DEFAULT:
-            if (caseKeywordPos.count(t.position)) {
-                if (inCaseBody) { indent = std::max(indent - 1, 0); inCaseBody = false; }
-                pendingNL = std::max(pendingNL, 1);
-            }
-            if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
-            else if (lineHasContent && needSpaceBefore(t.type, prev, prevPos, unaryOpPos)) out += ' ';
-            out += t.lexeme;
-            lineHasContent = true;
-            setPrev(t.type, t.position);
-            break;
-
         default: {
             if (pendingNL > 0) { emitNewlines(pendingNL); pendingNL = 0; }
             else if (lineHasContent && needSpaceBefore(t.type, prev, prevPos, unaryOpPos)) out += ' ';
@@ -834,7 +765,7 @@ std::string Formatter::format(const std::string& source) {
         BlockBraceCollector collector(tokens);
         ast->accept(collector);
 
-        std::string out = printTokens(source, tokens, collector.bracePos, collector.unaryOpPos, collector.caseColonPos, collector.matchCommaPos, collector.caseKeywordPos, collector.preserveRanges, collector.forceBraceRanges);
+        std::string out = printTokens(source, tokens, collector.bracePos, collector.unaryOpPos, collector.matchCommaPos, collector.preserveRanges, collector.forceBraceRanges);
         if (!out.empty() && out.back() != '\n') out += '\n';
 
         // ★ 保留 # 指令：shebang 固定在最上行，其余 directive 随后

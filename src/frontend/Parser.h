@@ -64,7 +64,6 @@ namespace jc {
         std::unique_ptr<Expr> ifExpr();
         std::unique_ptr<Expr> whileExpr();
         std::unique_ptr<Expr> forExpr();
-        std::unique_ptr<Expr> switchExpr();
         std::unique_ptr<Expr> matchExpr();     // ★
         std::unique_ptr<Expr> macroDefExpr(bool isTokenMacro);  // ★
         std::unique_ptr<Expr> quoteExpr();     // ★

@@ -952,8 +952,7 @@ namespace lsp {
                             // 控制流关键字（controlFlow，紫）
                             case TokenType::IF: case TokenType::ELSE: case TokenType::WHILE:
                             case TokenType::FOR: case TokenType::BREAK: case TokenType::CONTINUE:
-                            case TokenType::RETURN: case TokenType::SWITCH: case TokenType::CASE:
-                            case TokenType::DEFAULT: case TokenType::THROW: case TokenType::TRY:
+                            case TokenType::RETURN: case TokenType::THROW: case TokenType::TRY:
                             case TokenType::CATCH: case TokenType::MATCH: case TokenType::DEFER:
                                 isControlFlow = true;
                                 break;

@@ -83,7 +83,6 @@ namespace lsp {
         void visitThrowExpr(ThrowExpr* e) override;
         void visitTryCatchExpr(TryCatchExpr* e) override;
         void visitImportExpr(ImportExpr* e) override;
-        void visitSwitchExpr(SwitchExpr* e) override;
         void visitEnumDefExpr(EnumDefExpr* e) override;
         void visitDotAccess(DotAccess* e) override;
         void visitDotAssign(DotAssign* e) override;

@@ -69,7 +69,6 @@ public:
     void visitThrowExpr(ThrowExpr* expr) override;
     void visitTryCatchExpr(TryCatchExpr* expr) override;
     void visitImportExpr(ImportExpr* expr) override;
-    void visitSwitchExpr(SwitchExpr* expr) override;
     void visitClassDefExpr(ClassDefExpr* expr) override;
     void visitNamespaceDecl(NamespaceDecl* expr) override;
     void visitEnumDefExpr(EnumDefExpr* expr) override;

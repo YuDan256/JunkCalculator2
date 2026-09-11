@@ -366,15 +366,6 @@ void Resolver::visitImportExpr(ImportExpr* expr) {
     resolve(expr->path.get());
 }
 
-void Resolver::visitSwitchExpr(SwitchExpr* expr) {
-    resolve(expr->subject.get());
-    for (auto& c : expr->cases) {
-        for (auto& v : c.first) resolve(v.get());
-        resolve(c.second.get());
-    }
-    if (expr->defaultBody) resolve(expr->defaultBody.get());
-}
-
 void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     if (expr->superClassExpr) resolve(expr->superClassExpr.get());
     

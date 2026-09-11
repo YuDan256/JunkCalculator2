@@ -96,7 +96,6 @@ namespace jc {
     struct ThrowExpr;        // ★
     struct TryCatchExpr;     // ★
     struct ImportExpr;
-    struct SwitchExpr;       // ★
     struct ClassDefExpr;       // ★
     struct NamespaceDecl;      // ★ 新增
     struct EnumDefExpr;        // ★ 新增
@@ -244,7 +243,6 @@ namespace jc {
         virtual void visitThrowExpr(ThrowExpr* expr) = 0;
         virtual void visitTryCatchExpr(TryCatchExpr* expr) = 0;
         virtual void visitImportExpr(ImportExpr* expr) = 0;
-        virtual void visitSwitchExpr(SwitchExpr* expr) = 0;
         virtual void visitClassDefExpr(ClassDefExpr* expr) = 0;
         virtual void visitNamespaceDecl(NamespaceDecl* expr) = 0;
         virtual void visitEnumDefExpr(EnumDefExpr* expr) = 0;
@@ -627,21 +625,6 @@ namespace jc {
             : path(std::move(path)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitImportExpr(this); }
-    };
-
-    // ★ switch (expr) { case v1: { body } case v2, v3: { body } default: { body } }
-    struct SwitchExpr : public Expr {
-        std::unique_ptr<Expr> subject;
-        // 每个 case: (匹配值列表, body)
-        std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
-        std::unique_ptr<Expr> defaultBody; // 可为 nullptr
-        SwitchExpr(std::unique_ptr<Expr> subject,
-            std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases,
-            std::unique_ptr<Expr> defaultBody)
-            : subject(std::move(subject)), cases(std::move(cases)),
-            defaultBody(std::move(defaultBody)) {
-        }
-        void accept(ExprVisitor& visitor) override { visitor.visitSwitchExpr(this); }
     };
 
     struct NamespaceDecl : public Expr {

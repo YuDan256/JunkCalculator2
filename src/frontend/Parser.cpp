@@ -269,7 +269,6 @@ namespace jc {
                 case TokenType::FOR:
                 case TokenType::RETURN:
                 case TokenType::MATCH:
-                case TokenType::SWITCH:
                 case TokenType::TRY:
                 case TokenType::THROW:
                 case TokenType::MACRO:
@@ -1512,8 +1511,7 @@ namespace jc {
                 t == TokenType::THROW || t == TokenType::TRY ||  // ★
                 t == TokenType::CATCH || t == TokenType::REF ||   // ★
                 t == TokenType::STATE || t == TokenType::STATIC || // ★
-                t == TokenType::IMPORT || t == TokenType::SWITCH ||  // ★
-                t == TokenType::CASE || t == TokenType::DEFAULT ||
+                t == TokenType::IMPORT ||
                 t == TokenType::MATCH || t == TokenType::MACRO || t == TokenType::SYNTAX || t == TokenType::QUOTE || t == TokenType::DEFER ||
                 t == TokenType::SUPER || t == TokenType::CLASS || t == TokenType::SELF ||
                 t == TokenType::TRUE_KW || t == TokenType::FALSE_KW || t == TokenType::NONE_KW ||
@@ -1705,7 +1703,6 @@ namespace jc {
                 return withPos(std::make_unique<ImportExpr>(std::move(path)), startPos, endPos);
             }
         }
-        if (match({ TokenType::SWITCH })) return switchExpr();
         if (match({ TokenType::MATCH })) return matchExpr();
         if (match({ TokenType::MACRO })) return macroDefExpr(false);
         if (match({ TokenType::SYNTAX })) return macroDefExpr(true);
@@ -2873,20 +2870,6 @@ namespace jc {
             props.push_back({"branches", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(branchesArgs))});
             return makeASTNodeCall("TryCatchExpr", 0, std::move(props));
         }
-        if (auto* sw = dynamic_cast<SwitchExpr*>(expr)) {
-            std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
-            props.push_back({"subject", transformQuote(sw->subject.get())});
-            std::vector<std::unique_ptr<Expr>> casesArgs;
-            for (const auto& c : sw->cases) {
-                std::vector<std::unique_ptr<Expr>> casePairArgs;
-                casePairArgs.push_back(makeExprList(c.first));
-                casePairArgs.push_back(transformQuote(c.second.get()));
-                casesArgs.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(casePairArgs)));
-            }
-            props.push_back({"cases", std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(casesArgs))});
-            props.push_back({"defaultBody", transformQuote(sw->defaultBody.get())});
-            return makeASTNodeCall("SwitchExpr", 0, std::move(props));
-        }
         if (auto* cls = dynamic_cast<ClassDefExpr*>(expr)) {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             if (!cls->name.lexeme.empty() && cls->name.lexeme[0] == '$') {
@@ -3111,86 +3094,6 @@ namespace jc {
         auto body = assignment();
         int endPos = body->endPos;
         return withPos(std::make_unique<DeferExpr>(std::move(body)), startPos, endPos);
-    }
-
-    std::unique_ptr<Expr> Parser::switchExpr() {
-        int startPos = previous().position;
-        consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'switch'.");
-        auto subject = expression();
-        consume(TokenType::RPAREN, "Parser Error: Expect ')' after switch expression.");
-        while (match({ TokenType::NEWLINE })) {}
-        
-        consume(TokenType::LBRACE, "Parser Error: Expect '{' to open switch body.");
-
-        MacroScopeGuard guard(this);
-        std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
-        std::unique_ptr<Expr> defaultBody = nullptr;
-
-        while (!check(TokenType::RBRACE) && !isAtEnd()) {
-            while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
-            if (check(TokenType::RBRACE)) break;
-            
-            if (match({ TokenType::CASE })) {
-                std::vector<std::unique_ptr<Expr>> values;
-                values.push_back(ternary()); 
-                while (match({ TokenType::COMMA })) {
-                    values.push_back(ternary()); 
-                }
-                consume(TokenType::COLON, "Parser Error: Expect ':' after case value(s).");
-                
-                // 持续吸收语句，直到遇到下一个 case, default 或 }
-                int blockStart = peek().position;
-                std::vector<std::unique_ptr<Expr>> stmts;
-                while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
-                    while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
-                    if (check(TokenType::CASE) || check(TokenType::DEFAULT) || check(TokenType::RBRACE)) break;
-                    
-                    auto expr = expression();
-                    if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-                        for (auto& e : seq->expressions) stmts.push_back(std::move(e));
-                    } else {
-                        stmts.push_back(std::move(expr));
-                    }
-                    
-                    if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                        JC2_THROW(ParserError, "Expect newline or ';' after statement.");
-                    }
-                    while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
-                }
-                int blockEnd = stmts.empty() ? previous().position + static_cast<int>(previous().lexeme.length()) : stmts.back()->endPos;
-                cases.push_back({ std::move(values), withPos(std::make_unique<Block>(std::move(stmts)), blockStart, blockEnd) });
-            }
-            else if (match({ TokenType::DEFAULT })) {
-                consume(TokenType::COLON, "Parser Error: Expect ':' after 'default'.");
-                int blockStart = peek().position;
-                std::vector<std::unique_ptr<Expr>> stmts;
-                while (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd()) {
-                    while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
-                    if (check(TokenType::CASE) || check(TokenType::DEFAULT) || check(TokenType::RBRACE)) break;
-                    
-                    auto expr = expression();
-                    if (auto* seq = dynamic_cast<SequenceExpr*>(expr.get())) {
-                        for (auto& e : seq->expressions) stmts.push_back(std::move(e));
-                    } else {
-                        stmts.push_back(std::move(expr));
-                    }
-                    
-                    if (!check(TokenType::CASE) && !check(TokenType::DEFAULT) && !check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
-                        JC2_THROW(ParserError, "Expect newline or ';' after statement.");
-                    }
-                    while (match({ TokenType::SEMICOLON, TokenType::NEWLINE })) {}
-                }
-                int blockEnd = stmts.empty() ? previous().position + static_cast<int>(previous().lexeme.length()) : stmts.back()->endPos;
-                defaultBody = withPos(std::make_unique<Block>(std::move(stmts)), blockStart, blockEnd);
-            }
-            else {
-                JC2_THROW(ParserError, "Expect 'case' or 'default' inside switch.");
-            }
-        }
-        consume(TokenType::RBRACE, "Parser Error: Expect '}' to close switch body.");
-        int endPos = previous().position + static_cast<int>(previous().lexeme.length());
-
-        return withPos(std::make_unique<SwitchExpr>(std::move(subject), std::move(cases), std::move(defaultBody)), startPos, endPos);
     }
 
     std::unique_ptr<Pattern> Parser::parsePrimaryPattern() {

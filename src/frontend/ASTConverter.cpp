@@ -419,26 +419,6 @@ public:
         });
     }
 
-    void visitSwitchExpr(SwitchExpr* expr) override {
-        expr->subject->accept(*this); Value subj = result;
-        ObjList* cases = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard(cases);
-        for (auto& c : expr->cases) {
-            ObjList* casePair = GcHeap::get().allocate<ObjList>();
-            GcObjGuard cpGuard(casePair);
-            casePair->vec.push_back(makeExprListT(c.first));
-            c.second->accept(*this); casePair->vec.push_back(result);
-            cases->vec.push_back(Value(casePair));
-        }
-        Value defB = Value::none();
-        if (expr->defaultBody) { expr->defaultBody->accept(*this); defB = result; }
-        result = makeASTNode("SwitchExpr", 0, {
-            {"subject", subj},
-            {"cases", Value(cases)},
-            {"defaultBody", defB}
-        });
-    }
-
     void visitClassDefExpr(ClassDefExpr* expr) override {
         Value sup = Value::none();
         if (expr->superClassExpr) { expr->superClassExpr->accept(*this); sup = result; }
@@ -1072,30 +1052,6 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<TryCatchExpr>(
             toAST(getProp("tryBody")),
             std::move(branches)
-        );
-    } else if (type == "SwitchExpr") {
-        std::vector<std::pair<std::vector<std::unique_ptr<Expr>>, std::unique_ptr<Expr>>> cases;
-        Value casesVal = getProp("cases");
-        if (casesVal.isObjType(ObjType::LIST)) {
-            for (const auto& cVal : static_cast<ObjList*>(casesVal.asObj())->vec) {
-                if (cVal.isObjType(ObjType::LIST)) {
-                    auto cList = static_cast<ObjList*>(cVal.asObj());
-                    if (cList->vec.size() >= 2) {
-                        std::vector<std::unique_ptr<Expr>> vals;
-                        if (cList->vec[0].isObjType(ObjType::LIST)) {
-                            for (const auto& v : static_cast<ObjList*>(cList->vec[0].asObj())->vec) {
-                                vals.push_back(toAST(v));
-                            }
-                        }
-                        cases.push_back({std::move(vals), toAST(cList->vec[1])});
-                    }
-                }
-            }
-        }
-        return std::make_unique<SwitchExpr>(
-            toAST(getProp("subject")),
-            std::move(cases),
-            toAST(getProp("defaultBody"))
         );
     } else if (type == "ClassDefExpr") {
         auto parseProps = [&](const Value& propsVal) {

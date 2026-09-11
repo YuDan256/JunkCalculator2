@@ -56,9 +56,6 @@ namespace jc {
         TRY,                 // ★ 新增
         CATCH,               // ★ 新增
         IMPORT,
-        SWITCH,              // ★
-        CASE,                // ★
-        DEFAULT,             // ★
         MATCH,               // ★ 新增
         MACRO,               // ★ 新增
         SYNTAX,              // ★ 新增
@@ -181,9 +178,6 @@ namespace jc {
         case TokenType::BREAK:         return "BREAK";            // ★
         case TokenType::CONTINUE:      return "CONTINUE";         // ★
         case TokenType::RETURN:        return "RETURN";           // ★
-        case TokenType::SWITCH:        return "SWITCH";
-        case TokenType::CASE:          return "CASE";
-        case TokenType::DEFAULT:       return "DEFAULT";
         case TokenType::MATCH:         return "MATCH";
         case TokenType::MACRO:         return "MACRO";
         case TokenType::SYNTAX:        return "SYNTAX";
@@ -286,9 +280,6 @@ namespace jc {
         if (s == "BREAK") return TokenType::BREAK;
         if (s == "CONTINUE") return TokenType::CONTINUE;
         if (s == "RETURN") return TokenType::RETURN;
-        if (s == "SWITCH") return TokenType::SWITCH;
-        if (s == "CASE") return TokenType::CASE;
-        if (s == "DEFAULT") return TokenType::DEFAULT;
         if (s == "MATCH") return TokenType::MATCH;
         if (s == "MACRO") return TokenType::MACRO;
         if (s == "SYNTAX") return TokenType::SYNTAX;

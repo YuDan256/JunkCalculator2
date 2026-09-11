@@ -280,14 +280,6 @@ namespace lsp {
             if (b.body) b.body->accept(*this);
         }
     }
-    void TypeChecker::visitSwitchExpr(SwitchExpr* e) {
-        if (e->subject) e->subject->accept(*this);
-        for (auto& c : e->cases) {
-            for (auto& v : c.first) if (v) v->accept(*this);
-            if (c.second) c.second->accept(*this);
-        }
-        if (e->defaultBody) e->defaultBody->accept(*this);
-    }
     void TypeChecker::visitClassDefExpr(ClassDefExpr* e) {
         for (auto& p : e->staticProperties) if (p.value) p.value->accept(*this);
         for (auto& p : e->instanceProperties) if (p.value) p.value->accept(*this);

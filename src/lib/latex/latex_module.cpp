@@ -67,7 +67,7 @@ std::string valueToLatex(const jc2::Value& val) {
 class LatexParser {
     std::string src; size_t pos = 0;
 
-    void skipSpace() { while (pos < src.size() && std::isspace(src[pos])) pos++; }
+    void skipSpace() { while (pos < src.size() && std::isspace(static_cast<unsigned char>(src[pos]))) pos++; }
     bool match(char c) { skipSpace(); if (pos < src.size() && src[pos] == c) { pos++; return true; } return false; }
 
     std::string peekCmd() {
@@ -75,7 +75,7 @@ class LatexParser {
         if (pos < src.size() && src[pos] == '\\') {
             size_t p = pos + 1;
             if (p < src.size() && src[p] == '\\') return "\\\\";
-            while (p < src.size() && std::isalpha(src[p])) p++;
+            while (p < src.size() && std::isalpha(static_cast<unsigned char>(src[p]))) p++;
             return src.substr(pos, p - pos);
         }
         return "";
@@ -180,7 +180,7 @@ class LatexParser {
         }
 
         size_t start = pos;
-        while (pos < src.size() && (std::isdigit(src[pos]) || src[pos] == '.')) pos++;
+        while (pos < src.size() && (std::isdigit(static_cast<unsigned char>(src[pos])) || src[pos] == '.')) pos++;
         if (pos > start) return src.substr(start, pos - start);
 
         if (cmd != "") {
@@ -188,7 +188,7 @@ class LatexParser {
             if (cmd == "\\pi") return "PI";
             return cmd.substr(1);
         }
-        if (pos < src.size() && std::isalpha(src[pos])) {
+        if (pos < src.size() && std::isalpha(static_cast<unsigned char>(src[pos]))) {
             std::string varStr(1, src[pos++]);
             return varStr;
         }
@@ -217,7 +217,7 @@ class LatexParser {
                 left = "(" + left + ") / (" + parsePower() + ")";
             }
             else {
-                if (pos < src.size() && (src[pos] == '(' || std::isalpha(src[pos]))) {
+                if (pos < src.size() && (src[pos] == '(' || std::isalpha(static_cast<unsigned char>(src[pos])))) {
                     left = "(" + left + ") * (" + parsePower() + ")";
                 }
                 else if (pos < src.size() && src[pos] == '\\') {

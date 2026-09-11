@@ -332,7 +332,7 @@ namespace jc {
             }
             break;
         default:
-            if (std::isdigit(c)) { number(); }
+            if (std::isdigit(static_cast<unsigned char>(c))) { number(); }
             else if (c == 'f' && (peek() == '"' || peek() == '\'')) { // ★ 支持 f" 和 f'
                 char quote = advance(); // consume opening quote
                 if (peek() == quote && peekNext() == quote) {
@@ -381,12 +381,12 @@ namespace jc {
             char next = peek();
             if (next == 'x' || next == 'X') {
                 advance(); // consume 'x'
-                if (!std::isxdigit(peek())) { emitError("Invalid hex literal."); return; }
-                while (std::isxdigit(peek()) || peek() == '_') {
+                if (!std::isxdigit(static_cast<unsigned char>(peek()))) { emitError("Invalid hex literal."); return; }
+                while (std::isxdigit(static_cast<unsigned char>(peek())) || peek() == '_') {
                     if (peek() == '_') {
                         if (source[current - 1] == 'x' || source[current - 1] == 'X') { emitError("Invalid hex literal: '_' cannot follow '0x'."); return; }
                         if (peekNext() == '_') { emitError("Invalid hex literal: consecutive '_' are not allowed."); return; }
-                        if (!std::isxdigit(peekNext())) { emitError("Invalid hex literal: '_' must be followed by a digit."); return; }
+                        if (!std::isxdigit(static_cast<unsigned char>(peekNext()))) { emitError("Invalid hex literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
@@ -419,20 +419,20 @@ namespace jc {
         }
 
         if (!isHexOctBin) {
-            while (std::isdigit(peek()) || peek() == '_') {
+            while (std::isdigit(static_cast<unsigned char>(peek())) || peek() == '_') {
                 if (peek() == '_') {
                     if (peekNext() == '_') { emitError("Invalid number literal: consecutive '_' are not allowed."); return; }
-                    if (!std::isdigit(peekNext())) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
+                    if (!std::isdigit(static_cast<unsigned char>(peekNext()))) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
                 }
                 advance();
             }
-            if (peek() == '.' && std::isdigit(peekNext())) {
+            if (peek() == '.' && std::isdigit(static_cast<unsigned char>(peekNext()))) {
                 advance();
-                while (std::isdigit(peek()) || peek() == '_') {
+                while (std::isdigit(static_cast<unsigned char>(peek())) || peek() == '_') {
                     if (peek() == '_') {
                         if (source[current - 1] == '.') { emitError("Invalid number literal: '_' cannot follow '.'."); return; }
                         if (peekNext() == '_') { emitError("Invalid number literal: consecutive '_' are not allowed."); return; }
-                        if (!std::isdigit(peekNext())) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
+                        if (!std::isdigit(static_cast<unsigned char>(peekNext()))) { emitError("Invalid number literal: '_' must be followed by a digit."); return; }
                     }
                     advance();
                 }
@@ -441,16 +441,16 @@ namespace jc {
                 char next = peekNext();
                 bool hasSign = (next == '+' || next == '-');
                 bool isValidScientific = false;
-                if (hasSign) { if (std::isdigit(peekNextNext())) isValidScientific = true; }
-                else if (std::isdigit(next)) isValidScientific = true;
+                if (hasSign) { if (std::isdigit(static_cast<unsigned char>(peekNextNext()))) isValidScientific = true; }
+                else if (std::isdigit(static_cast<unsigned char>(next))) isValidScientific = true;
                 if (isValidScientific) {
                     advance();
                     if (hasSign) advance();
-                    while (std::isdigit(peek()) || peek() == '_') {
+                    while (std::isdigit(static_cast<unsigned char>(peek())) || peek() == '_') {
                         if (peek() == '_') {
                             if (source[current - 1] == 'e' || source[current - 1] == 'E' || source[current - 1] == '+' || source[current - 1] == '-') { emitError("Invalid scientific literal: '_' cannot follow exponent indicator or sign."); return; }
                             if (peekNext() == '_') { emitError("Invalid scientific literal: consecutive '_' are not allowed."); return; }
-                            if (!std::isdigit(peekNext())) { emitError("Invalid scientific literal: '_' must be followed by a digit."); return; }
+                            if (!std::isdigit(static_cast<unsigned char>(peekNext()))) { emitError("Invalid scientific literal: '_' must be followed by a digit."); return; }
                         }
                         advance();
                     }
@@ -536,7 +536,7 @@ namespace jc {
                 case 'f':  value += '\f'; break;
                 case 'v':  value += '\v'; break;
                 case 'x': {
-                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(static_cast<unsigned char>(source[current])) && std::isxdigit(static_cast<unsigned char>(source[current+1]))) {
                         std::string hexStr = source.substr(current, 2);
                         value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
                         current += 2;
@@ -597,7 +597,7 @@ namespace jc {
                 case 'f':  value += '\f'; break;
                 case 'v':  value += '\v'; break;
                 case 'x': {
-                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(static_cast<unsigned char>(source[current])) && std::isxdigit(static_cast<unsigned char>(source[current+1]))) {
                         std::string hexStr = source.substr(current, 2);
                         value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
                         current += 2;
@@ -693,7 +693,7 @@ namespace jc {
                 case 'f':  value += '\f'; break;
                 case 'v':  value += '\v'; break;
                 case 'x': {
-                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(static_cast<unsigned char>(source[current])) && std::isxdigit(static_cast<unsigned char>(source[current+1]))) {
                         std::string hexStr = source.substr(current, 2);
                         value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
                         current += 2;
@@ -789,7 +789,7 @@ namespace jc {
                 case 'f':  value += '\f'; break;
                 case 'v':  value += '\v'; break;
                 case 'x': {
-                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(source[current]) && std::isxdigit(source[current+1])) {
+                    if (current + 1 < static_cast<int>(source.length()) && std::isxdigit(static_cast<unsigned char>(source[current])) && std::isxdigit(static_cast<unsigned char>(source[current+1]))) {
                         std::string hexStr = source.substr(current, 2);
                         value += static_cast<char>(std::stoi(hexStr, nullptr, 16));
                         current += 2;

@@ -98,7 +98,7 @@ static bool endsWithContinuation(const std::string& line) {
         if (e + 1 < word.length()) return false;
         size_t start = e + 1 - word.length();
         if (line.substr(start, word.length()) != word) return false;
-        if (start > 0 && (std::isalnum(line[start - 1]) || line[start - 1] == '_')) return false;
+        if (start > 0 && (std::isalnum(static_cast<unsigned char>(line[start - 1])) || line[start - 1] == '_')) return false;
         return true;
         };
 

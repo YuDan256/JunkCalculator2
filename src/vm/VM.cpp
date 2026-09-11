@@ -6239,7 +6239,8 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 Value errVal = getReg(a);
-                ObjClass* errCls = static_cast<ObjClass*>(chunk->constants.data()[bx].asObj());
+                Value clsVal = chunk->constants.data()[bx];
+                ObjClass* errCls = clsVal.isClass() ? static_cast<ObjClass*>(clsVal.asObj()) : nullptr;
                 frame->ip = ip;
                 errVal = wrapException(errCls, nullptr, errVal);
                 throw ValueException(errVal);

@@ -205,7 +205,7 @@ namespace jc {
         }
         inline static Value fromObj(Obj* obj) {
             Value v;
-            v.as_bits = SIGN_BIT | QNAN | reinterpret_cast<uint64_t>(obj);
+            v.as_bits = obj ? (SIGN_BIT | QNAN | reinterpret_cast<uint64_t>(obj)) : (QNAN | TAG_NONE);
             if (obj) obj->refCount++;
             return v;
         }
@@ -292,7 +292,7 @@ namespace jc {
         Value(double val) : as_bits(QNAN | TAG_NONE) { *this = fromDouble(val); }
         Value(int val) : as_bits(INT32_MASK | static_cast<uint32_t>(val)) {}
         Value(bool val) : as_bits(val ? (QNAN | TAG_TRUE) : (QNAN | TAG_FALSE)) {}
-        Value(Obj* obj) : as_bits(SIGN_BIT | QNAN | reinterpret_cast<uint64_t>(obj)) { 
+        Value(Obj* obj) : as_bits(obj ? (SIGN_BIT | QNAN | reinterpret_cast<uint64_t>(obj)) : (QNAN | TAG_NONE)) { 
             if (obj) obj->refCount++; 
         }
 

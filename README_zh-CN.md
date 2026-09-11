@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.3.1
+# Junk Calculator 2.6.3.2
 
-![Version](https://img.shields.io/badge/Version-v2.6.3.1-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.3.2-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -72,6 +72,12 @@
 - `http`：现代 HTTP/1.1 客户端，支持 URL 解析及 GET/POST 请求。
 
 ---
+
+## v2.6.3.2 版本更新说明
+
+### 错误与打印
+- **Exception 默认构造**：`Exception()` / `MyError()` 现在可用空 message（`""`）构造，不再强制要求 message 参数。
+- **递归打印修复**：自引用容器（`l.push(l)`）不再崩溃 REPL——通过共享嵌套容器的递归保护，打印为 `@[@[...]]`。
 
 ## v2.6.3.1 版本更新说明
 

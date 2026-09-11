@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.6.3.1
+# Junk Calculator 2.6.3.2
 
-![Version](https://img.shields.io/badge/Version-v2.6.3.1-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.3.2-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
@@ -72,6 +72,12 @@ JC2 standard libraries loaded via `import`:
 - `http`: HTTP/1.1 client supporting URL parsing and GET/POST requests.
 
 ---
+
+## What's New in v2.6.3.2
+
+### Errors & Printing
+- **Exception default constructor**: `Exception()` / `MyError()` now work with an empty message (`""`), instead of requiring a message argument.
+- **Recursive print fix**: self-referential containers (`l.push(l)`) no longer crash the REPL — they print as `@[@[...]]` thanks to a shared recursion guard across nested containers.
 
 ## What's New in v2.6.3.1
 

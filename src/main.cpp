@@ -737,7 +737,7 @@ int main(int argc, char* argv[]) {
 
     // 5. 执行无参数的立即命令
     if (command == "help") { printHelp(); return 0; }
-    if (command == "version") { std::cout << "Junk Calculator 2.6.3.1\n"; return 0; }
+    if (command == "version") { std::cout << "Junk Calculator 2.6.3.2\n"; return 0; }
     if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
     if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
     if (command == "load" && loadTarget.empty()) { std::cerr << "Error: load requires a workspace name or path.\n"; return 1; }
@@ -928,7 +928,7 @@ int main(int argc, char* argv[]) {
     auto printBannerTop = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.6.3.1\n"
+            << "   Junk Calculator 2.6.3.2\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET);
     };
@@ -1153,7 +1153,7 @@ int main(int argc, char* argv[]) {
             if (input == "/debug off") { applySwitch("debug", false); std::cout << "Interactive Step-Debugger disabled.\n"; continue; }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.6.3.1\n"; continue; }
+            if (input == "/version") { std::cout << "Junk Calculator 2.6.3.2\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { 
                 vm.clearGlobals(); 

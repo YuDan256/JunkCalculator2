@@ -6,9 +6,9 @@
 static jc2::Class* g_distClass = nullptr;
 
 static std::shared_ptr<jc::Distribution> getDist(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("Type Error: Expected a Distribution instance.");
+    if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Distribution instance.");
     auto ptr = val.get_native_data<std::shared_ptr<jc::Distribution>>();
-    if (!ptr) jc2::throw_error("Type Error: Expected a Distribution native object.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Distribution native object.");
     return *ptr;
 }
 
@@ -34,7 +34,7 @@ METHOD(std_dev) { GET_SELF; return jc2::Value(std::sqrt(d->distVar())).get_handl
 METHOD(sample) {
     GET_SELF;
     int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_double()));
-    if (n <= 0) jc2::throw_error("Runtime Error: sample() count must be positive.");
+    if (n <= 0) jc2::throw_error(jc2::ErrorType::RuntimeError, "sample() count must be positive.");
     auto data = d->sample(n);
     jc2::RealMatrix mat(1, n);
     for (int i = 0; i < n; ++i) mat.set(0, i, data[i]);
@@ -77,7 +77,7 @@ FUNC(dstd) { (void)argc; return jc2::Value(std::sqrt(getDist(jc2::Value(argv[0])
 FUNC(sample) {
     (void)argc;
     int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_double()));
-    if (n <= 0) jc2::throw_error("Runtime Error: sample() count must be positive.");
+    if (n <= 0) jc2::throw_error(jc2::ErrorType::RuntimeError, "sample() count must be positive.");
     auto data = getDist(jc2::Value(argv[0]))->sample(n);
     jc2::RealMatrix mat(1, n);
     for (int i = 0; i < n; ++i) mat.set(0, i, data[i]);
@@ -158,7 +158,7 @@ FUNC(mean) {
     if (arg.is_instance() && arg.get_native_data<std::shared_ptr<jc::Distribution>>()) {
         return jc2::Value(getDist(arg)->distMean()).get_handle();
     }
-    jc2::throw_error("Type Error: prob.mean() expects a Distribution.");
+    jc2::throw_error(jc2::ErrorType::TypeError, "prob.mean() expects a Distribution.");
 }
 FUNC(var) {
     (void)argc;
@@ -166,7 +166,7 @@ FUNC(var) {
     if (arg.is_instance() && arg.get_native_data<std::shared_ptr<jc::Distribution>>()) {
         return jc2::Value(getDist(arg)->distVar()).get_handle();
     }
-    jc2::throw_error("Type Error: prob.var() expects a Distribution.");
+    jc2::throw_error(jc2::ErrorType::TypeError, "prob.var() expects a Distribution.");
 }
 FUNC(std_dev) {
     (void)argc;
@@ -174,7 +174,7 @@ FUNC(std_dev) {
     if (arg.is_instance() && arg.get_native_data<std::shared_ptr<jc::Distribution>>()) {
         return jc2::Value(std::sqrt(getDist(arg)->distVar())).get_handle();
     }
-    jc2::throw_error("Type Error: prob.std() expects a Distribution.");
+    jc2::throw_error(jc2::ErrorType::TypeError, "prob.std() expects a Distribution.");
 }
 
 int jc2_init(jc2::Module& mod) {

@@ -14,9 +14,9 @@ static jc2::Class* g_decimalClass = nullptr;
 
 
 static std::shared_ptr<Decimal> getDecimal(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("TypeError: Expected a Decimal instance.");
+    if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Decimal instance.");
     auto ptr = val.get_native_data<std::shared_ptr<Decimal>>();
-    if (!ptr) jc2::throw_error("TypeError: Instance is not a Decimal.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::TypeError, "Instance is not a Decimal.");
     return *ptr;
 }
 
@@ -46,7 +46,7 @@ static Decimal parseDecimalArg(const jc2::Value& val) {
     if (val.is_int() || val.is_double()) {
         return Decimal::from_string(val.to_string());
     }
-    jc2::throw_error("TypeError: Cannot convert to Decimal.");
+    jc2::throw_error(jc2::ErrorType::TypeError, "Cannot convert to Decimal.");
 }
 
 #define METHOD(name) JC2_ValueHandle decimal_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
@@ -100,7 +100,7 @@ METHOD(__hash__) {
 }
 
 JC2_ValueHandle global_Decimal(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("TypeError: Decimal() takes exactly 1 argument (0 given).");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "Decimal() takes exactly 1 argument (0 given).");
     return wrapDecimal(parseDecimalArg(jc2::Value(argv[0]))).get_handle();
 }
 

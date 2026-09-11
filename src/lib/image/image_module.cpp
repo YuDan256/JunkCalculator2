@@ -6,13 +6,13 @@ using namespace jc2;
 
 jc::Color parseColor(const Value& v) {
     if (v.is_string()) return jc::Color::parse(v.as_string());
-    throw_error("Type Error: Expected a color string.");
+    throw_error(jc2::ErrorType::TypeError, "Expected a color string.");
 }
 
 jc::Image* getImg(JC2_ValueHandle* argv) {
     Value self(argv[0]);
     jc::Image* img = self.get_native_data<jc::Image>();
-    if (!img) throw_error("Type Error: Expected an Image instance.");
+    if (!img) throw_error(jc2::ErrorType::TypeError, "Expected an Image instance.");
     return img;
 }
 
@@ -99,7 +99,7 @@ JC2_ValueHandle img_axes(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
 }
 JC2_ValueHandle img_save(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     if (!getImg(argv)->saveBMP(Value(argv[1]).as_string())) {
-        throw_error("IO Error: Failed to save image.");
+        throw_error(jc2::ErrorType::IOError, "Failed to save image.");
     }
     return argv[0];
 }
@@ -107,10 +107,10 @@ JC2_ValueHandle img_save(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 Class* g_imageClass = nullptr;
 
 JC2_ValueHandle create_image(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 2) throw_error("TypeError: Image() takes at least 2 arguments (width, height).");
+    if (argc < 2) throw_error(jc2::ErrorType::TypeError, "Image() takes at least 2 arguments (width, height).");
     int w = Value(argv[0]).as_int();
     int h = Value(argv[1]).as_int();
-    if (w <= 0 || h <= 0) throw_error("Dimensions must be positive.");
+    if (w <= 0 || h <= 0) throw_error(jc2::ErrorType::RuntimeError, "Dimensions must be positive.");
     jc::Color bg = (argc >= 3) ? parseColor(Value(argv[2])) : jc::Color{255, 255, 255};
     
     Instance inst(*g_imageClass);

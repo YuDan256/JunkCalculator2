@@ -1,10 +1,17 @@
 #include "../jc2_extension_cpp.h"
+#include "../../memory/Exceptions.h"
 #include <string>
 #include <vector>
 #include <memory>
 #include <cstdint>
 #include <stdexcept>
 #include <cctype>
+
+static jc2::Class* g_regexErrorClass = nullptr;
+
+[[noreturn]] inline void throwRegexError(const std::string& msg) {
+    jc2::throw_error_class(*g_regexErrorClass, msg);
+}
 
 static int g_max_steps = 10000000;
 
@@ -122,7 +129,7 @@ public:
 
     std::vector<std::shared_ptr<ASTNode>> parse() {
         auto nodes = alt();
-        if (ok()) jc2::throw_error("Regex Error: Unexpected character at position " + std::to_string(p));
+        if (ok()) throwRegexError("Unexpected character at position " + std::to_string(p));
         return nodes;
     }
 
@@ -231,14 +238,14 @@ public:
     }
 
     std::shared_ptr<ASTNode> atom() {
-        if (!ok()) jc2::throw_error("Regex Error: Unexpected end of pattern");
+        if (!ok()) throwRegexError("Unexpected end of pattern");
         uint32_t c = pk();
         if (c == '(') {
             nx();
             gc++;
             int idx = gc;
             auto inner = alt();
-            if (!ok() || pk() != ')') jc2::throw_error("Regex Error: Unmatched '('");
+            if (!ok() || pk() != ')') throwRegexError("Unmatched '('");
             nx();
             auto node = std::make_shared<ASTNode>();
             node->type = "group";
@@ -264,7 +271,7 @@ public:
             return node;
         } else if (c == '\\') {
             nx();
-            if (!ok()) jc2::throw_error("Regex Error: Trailing backslash");
+            if (!ok()) throwRegexError("Trailing backslash");
             uint32_t e = nx();
             if (isdigit(e) && e != '0') {
                 std::string num_str = "";
@@ -287,7 +294,7 @@ public:
             return node;
         } else {
             if (c == ')' || c == '*' || c == '+' || c == '?') {
-                jc2::throw_error("Regex Error: Unexpected character");
+                throwRegexError("Unexpected character");
             }
             nx();
             auto node = std::make_shared<ASTNode>();
@@ -338,7 +345,7 @@ public:
                 node->specs.push_back(sp);
             }
         }
-        if (!ok()) jc2::throw_error("Regex Error: Unmatched '['");
+        if (!ok()) throwRegexError("Unmatched '['");
         nx();
         return node;
     }
@@ -536,7 +543,7 @@ public:
             } else {
                 stepCount++;
                 if (g_max_steps != -1 && stepCount > g_max_steps) {
-                    jc2::throw_error("RegexError: Catastrophic backtracking detected (step limit exceeded).");
+                    throwRegexError("Catastrophic backtracking detected (step limit exceeded).");
                 }
             }
             
@@ -641,11 +648,11 @@ static jc2::Class* g_reMatchClass = nullptr;
 
 static std::shared_ptr<RegexVM> getRegex(const jc2::Value& val) {
     if (!val.is_instance()) {
-        jc2::throw_error("TypeError: Expected a Regex instance.");
+        jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Regex instance.");
     }
     auto ptr = val.get_native_data<std::shared_ptr<RegexVM>>();
     if (!ptr) {
-        jc2::throw_error("TypeError: Instance is not a Regex.");
+        jc2::throw_error(jc2::ErrorType::TypeError, "Instance is not a Regex.");
     }
     return *ptr;
 }
@@ -694,11 +701,13 @@ JC2_ValueHandle rematch_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 }
 
 JC2_ValueHandle regex_init(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("TypeError: Regex() takes 1 argument.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "Regex() takes 1 argument.");
     std::string pat = jc2::Value(argv[0]).as_string();
     try {
         auto vm = std::make_shared<RegexVM>(pat);
         return wrapRegex(vm, pat).get_handle();
+    } catch (const jc::Jc2Error&) {
+        throw;
     } catch (const std::exception& e) {
         jc2::throw_error(e.what());
     }
@@ -862,7 +871,7 @@ JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv
     if (argc > 0) {
         int steps = static_cast<int>(jc2::Value(argv[0]).as_double());
         if (steps < -1) {
-            jc2::throw_error("ValueError: max_steps cannot be less than -1.");
+            jc2::throw_error(jc2::ErrorType::ValueError, "max_steps cannot be less than -1.");
         }
         g_max_steps = steps;
     }
@@ -874,6 +883,8 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
     try {
         auto vm = std::make_shared<RegexVM>(pat);
         return wrapRegex(vm, pat).get_handle();
+    } catch (const jc::Jc2Error&) {
+        throw;
     } catch (const std::exception& e) {
         jc2::throw_error(e.what());
     }
@@ -1006,6 +1017,12 @@ int jc2_init(jc2::Module& mod) {
     g_reMatchClass = new jc2::Class("ReMatch");
     g_reMatchClass->bind_method("__str__", rematch_str, 0, 0);
     mod.register_value("ReMatch", *g_reMatchClass);
+
+    // 注册 regex.RegexError
+    g_regexErrorClass = new jc2::Class("RegexError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_regexErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("RegexError", *g_regexErrorClass);
 
     g_regexClass = new jc2::Class("Regex");
     g_regexClass->set_allocator(regex_init);

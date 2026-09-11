@@ -6,9 +6,9 @@ static jc2::Class* g_tensorClass = nullptr;
 jc2::Class* g_tensorErrorClass = nullptr;
 
 static jc::Tensor* getTensor(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("TypeError: Expected a Tensor instance.");
+    if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Tensor instance.");
     auto ptr = val.get_native_data<jc::Tensor>();
-    if (!ptr) jc2::throw_error("TypeError: Instance is not a Tensor.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::TypeError, "Instance is not a Tensor.");
     return ptr;
 }
 
@@ -27,7 +27,7 @@ static bool isTensor(const jc2::Value& val) {
 }
 
 static std::vector<int> listToShape(const jc2::Value& val) {
-    if (!val.is_list()) jc2::throw_error("TypeError: shape must be a list.");
+    if (!val.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "shape must be a list.");
     jc2::List list(val.get_handle());
     std::vector<int> shape;
     for (size_t i = 0; i < list.size(); ++i) {
@@ -37,7 +37,7 @@ static std::vector<int> listToShape(const jc2::Value& val) {
 }
 
 static std::vector<double> listToDoubles(const jc2::Value& val) {
-    if (!val.is_list()) jc2::throw_error("TypeError: data must be a list.");
+    if (!val.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "data must be a list.");
     jc2::List list(val.get_handle());
     std::vector<double> data;
     for (size_t i = 0; i < list.size(); ++i) {
@@ -146,13 +146,13 @@ METHOD(__getitem__) {
         } else if (idx_t->dtype() == jc::DType::Int32 || idx_t->dtype() == jc::DType::Int64) {
             return wrapTensor(jc::tensor_index_get(*t1, *idx_t)).get_handle();
         } else {
-            jc2::throw_error("Tensor Error: Advanced indexing requires a Bool or Integer tensor.");
+            throwTensorError("Advanced indexing requires a Bool or Integer tensor.");
         }
     }
 
     jc::Tensor current = *t1;
     int dims_provided = static_cast<int>(dims_list.size());
-    if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
+    if (dims_provided > current.dim()) throwTensorError("Too many indices for tensor.");
 
     int current_dim = 0;
     for (int i = 0; i < dims_provided; ++i) {
@@ -176,7 +176,7 @@ METHOD(__setitem__) {
     GET_SELF;
     // ★ 统一调用约定：argv = [self, rest_list]（dims + value）
     jc2::List args_list(jc2::Value(argv[1]).get_handle());
-    if (args_list.size() < 2) jc2::throw_error("Tensor Error: __setitem__ requires at least one index and a value.");
+    if (args_list.size() < 2) throwTensorError("__setitem__ requires at least one index and a value.");
     jc2::Value val = args_list.get(args_list.size() - 1);
 
     if (args_list.size() == 2 && isTensor(args_list.get(0))) {
@@ -188,14 +188,14 @@ METHOD(__setitem__) {
             if (isTensor(val)) jc::tensor_index_set(*t1, *idx_t, *getTensor(val));
             else jc::tensor_index_set(*t1, *idx_t, val.as_double());
         } else {
-            jc2::throw_error("Tensor Error: Advanced indexing requires a Bool or Integer tensor.");
+            throwTensorError("Advanced indexing requires a Bool or Integer tensor.");
         }
         return jc2::Value().get_handle();
     }
 
     int dims_provided = static_cast<int>(args_list.size()) - 1;
     jc::Tensor current = *t1;
-    if (dims_provided > current.dim()) jc2::throw_error("Tensor Error: Too many indices for tensor.");
+    if (dims_provided > current.dim()) throwTensorError("Too many indices for tensor.");
 
     int current_dim = 0;
     for (int i = 0; i < dims_provided; ++i) {
@@ -222,7 +222,7 @@ METHOD(__setitem__) {
                     current.setFlat(i, val_t->getFlat(i));
                 }
             } else {
-                jc2::throw_error("Tensor Error: Shape mismatch in __setitem__.");
+                throwTensorError("Shape mismatch in __setitem__.");
             }
         } else {
             current.fill_(val.as_double());
@@ -310,7 +310,7 @@ static void parseNestedList(const jc2::Value& val, std::vector<double>& out_data
             out_shape.push_back(size);
         } else if (current_depth < static_cast<int>(out_shape.size())) {
             if (out_shape[current_depth] != size) {
-                jc2::throw_error("Tensor Error: Inconsistent sequence length in nested list.");
+                throwTensorError("Inconsistent sequence length in nested list.");
             }
         }
         
@@ -319,16 +319,16 @@ static void parseNestedList(const jc2::Value& val, std::vector<double>& out_data
         }
     } else {
         if (current_depth < static_cast<int>(out_shape.size())) {
-            jc2::throw_error("Tensor Error: Jagged nested list detected.");
+            throwTensorError("Jagged nested list detected.");
         }
         out_data.push_back(val.as_double());
     }
 }
 
 FUNC(tensor) {
-    if (argc < 1) jc2::throw_error("TypeError: Tensor() takes at least 1 argument.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "Tensor() takes at least 1 argument.");
     jc2::Value arg0(argv[0]);
-    if (!arg0.is_list()) jc2::throw_error("TypeError: data must be a list.");
+    if (!arg0.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "data must be a list.");
 
     std::vector<double> data;
     std::vector<int> shape;
@@ -345,16 +345,16 @@ FUNC(tensor) {
         size_t expected_numel = shape.empty() ? 0 : 1;
         for (int s : shape) expected_numel *= s;
         if (data.size() != expected_numel) {
-            jc2::throw_error("Tensor Error: Jagged nested list detected.");
+            throwTensorError("Jagged nested list detected.");
         }
     } else {
-        jc2::throw_error("TypeError: shape must be a list or none.");
+        jc2::throw_error(jc2::ErrorType::TypeError, "shape must be a list or none.");
     }
 
     if (argc >= 3) {
         jc2::Value dt_val(argv[2]);
         if (!dt_val.is_none()) {
-            if (!dt_val.is_string()) jc2::throw_error("TypeError: dtype must be a string.");
+            if (!dt_val.is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "dtype must be a string.");
             dt = jc::stringToDType(dt_val.as_string());
         }
     }
@@ -418,7 +418,7 @@ FUNC(randn) {
 FUNC(matmul) { (void)argc; return wrapTensor(jc::tensor_matmul(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
 FUNC(cat) {
     jc2::Value listVal(argv[0]);
-    if (!listVal.is_list()) jc2::throw_error("TypeError: cat expects a list of tensors.");
+    if (!listVal.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "cat expects a list of tensors.");
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
@@ -427,7 +427,7 @@ FUNC(cat) {
 }
 FUNC(stack) {
     jc2::Value listVal(argv[0]);
-    if (!listVal.is_list()) jc2::throw_error("TypeError: stack expects a list of tensors.");
+    if (!listVal.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "stack expects a list of tensors.");
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
@@ -452,7 +452,7 @@ FUNC(swaprows) { (void)argc; return wrapTensor(jc::tensor_swaprows(*getTensor(jc
 FUNC(hstack) {
     (void)argc;
     jc2::Value listVal(argv[0]);
-    if (!listVal.is_list()) jc2::throw_error("TypeError: hstack expects a list of tensors.");
+    if (!listVal.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "hstack expects a list of tensors.");
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
@@ -461,7 +461,7 @@ FUNC(hstack) {
 FUNC(vstack) {
     (void)argc;
     jc2::Value listVal(argv[0]);
-    if (!listVal.is_list()) jc2::throw_error("TypeError: vstack expects a list of tensors.");
+    if (!listVal.is_list()) jc2::throw_error(jc2::ErrorType::TypeError, "vstack expects a list of tensors.");
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
@@ -469,7 +469,7 @@ FUNC(vstack) {
 }
 FUNC(from_matrix) {
     jc2::Value matVal(argv[0]);
-    if (!matVal.is_real_matrix()) jc2::throw_error("TypeError: from_matrix expects a RealMatrix.");
+    if (!matVal.is_real_matrix()) jc2::throw_error(jc2::ErrorType::TypeError, "from_matrix expects a RealMatrix.");
     jc2::RealMatrix mat(matVal.get_handle());
     bool rg = (argc >= 2) ? jc2::Value(argv[1]).as_bool() : false;
     
@@ -486,7 +486,7 @@ FUNC(from_matrix) {
 FUNC(to_matrix) {
     (void)argc;
     auto t = getTensor(jc2::Value(argv[0]));
-    if (t->dim() != 2) jc2::throw_error("Tensor Error: to_matrix requires 2D tensor.");
+    if (t->dim() != 2) throwTensorError("to_matrix requires 2D tensor.");
     int rows = t->shape[0];
     int cols = t->shape[1];
     jc2::RealMatrix mat(rows, cols);
@@ -500,7 +500,7 @@ FUNC(to_matrix) {
 FUNC(no_grad) {
     (void)argc;
     jc2::Value fnVal(argv[0]);
-    if (!fnVal.is_function()) jc2::throw_error("TypeError: no_grad expects a function.");
+    if (!fnVal.is_function()) jc2::throw_error(jc2::ErrorType::TypeError, "no_grad expects a function.");
     jc2::Function fn(fnVal.get_handle());
     jc::AutogradGuard guard(false);
     return fn.call({}).get_handle();

@@ -8,6 +8,12 @@
 #include <string>
 #include <vector>
 
+static jc2::Class* g_jsonErrorClass = nullptr;
+
+[[noreturn]] inline void throwJsonError(const std::string& msg) {
+    jc2::throw_error_class(*g_jsonErrorClass, msg);
+}
+
 struct JsonEngine {
     static std::string encode(const jc2::Value& val, int indent, int level) {
         std::string pad = (indent > 0) ? std::string(level * indent, ' ') : "";
@@ -134,7 +140,7 @@ struct JsonParser {
         while (pos < s.size() && s[pos] != '"') {
             if (s[pos] == '\\') {
                 pos++;
-                if (pos >= s.size()) jc2::throw_error("JSON Parse Error: Unexpected end inside string.");
+                if (pos >= s.size()) throwJsonError("Unexpected end inside string.");
                 char esc = s[pos];
                 switch (esc) {
                 case '"':  result += '"'; break;
@@ -149,7 +155,7 @@ struct JsonParser {
                     std::string hexStr;
                     for (int i = 0; i < 4; ++i) {
                         pos++;
-                        if (pos >= s.size()) jc2::throw_error("JSON Parse Error: Unexpected end inside string.");
+                        if (pos >= s.size()) throwJsonError("Unexpected end inside string.");
                         hexStr += s[pos];
                     }
                     try {
@@ -178,7 +184,7 @@ struct JsonParser {
             }
             pos++;
         }
-        if (pos >= s.size()) jc2::throw_error("JSON Parse Error: Unterminated string.");
+        if (pos >= s.size()) throwJsonError("Unterminated string.");
         pos++;
         return result;
     }
@@ -200,17 +206,17 @@ struct JsonParser {
         }
 
         std::string numStr = s.substr(start, pos - start);
-        if (numStr == "-" || numStr.empty()) jc2::throw_error("JSON Parse Error: Invalid number structure.");
+        if (numStr == "-" || numStr.empty()) throwJsonError("Invalid number structure.");
 
         if (isFloat) {
             try { return jc2::Value(std::stod(numStr)); }
-            catch (...) { jc2::throw_error("JSON Parse Error: Float out of range."); }
+            catch (...) { throwJsonError("Float out of range."); }
         }
 
         try { return jc2::BigInt(numStr); }
         catch (...) { 
             try { return jc2::Value(std::stod(numStr)); }
-            catch (...) { jc2::throw_error("JSON Parse Error: Number out of range."); }
+            catch (...) { throwJsonError("Number out of range."); }
         }
     }
 
@@ -234,7 +240,7 @@ struct JsonParser {
             }
             else break;
         }
-        if (pos >= s.size() || s[pos] != ']') jc2::throw_error("JSON Parse Error: Expected ']' array closer.");
+        if (pos >= s.size() || s[pos] != ']') throwJsonError("Expected ']' array closer.");
         pos++;
         return L;
     }
@@ -247,10 +253,10 @@ struct JsonParser {
 
         while (true) {
             skipWS();
-            if (pos >= s.size() || s[pos] != '"') jc2::throw_error("JSON Parse Error: Object keys must be strings.");
+            if (pos >= s.size() || s[pos] != '"') throwJsonError("Object keys must be strings.");
             std::string key = parseString();
             skipWS();
-            if (pos >= s.size() || s[pos] != ':') jc2::throw_error("JSON Parse Error: Expected ':' separator.");
+            if (pos >= s.size() || s[pos] != ':') throwJsonError("Expected ':' separator.");
             pos++; skipWS();
 
             jc2::Value v = parseValue();
@@ -264,14 +270,14 @@ struct JsonParser {
             }
             else break;
         }
-        if (pos >= s.size() || s[pos] != '}') jc2::throw_error("JSON Parse Error: Expected '}' object closer.");
+        if (pos >= s.size() || s[pos] != '}') throwJsonError("Expected '}' object closer.");
         pos++;
         return D;
     }
 
     jc2::Value parseValue() {
         skipWS();
-        if (pos >= s.size()) jc2::throw_error("JSON Parse Error: Unexpected end of input.");
+        if (pos >= s.size()) throwJsonError("Unexpected end of input.");
         char c = s[pos];
         if (c == '"') return parseString();
         if (c == '[') return parseArray();
@@ -298,12 +304,18 @@ JC2_ValueHandle global_pretty(JC2_VMContext, int argc, JC2_ValueHandle* argv, vo
 
 JC2_ValueHandle global_decode(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Value arg(argv[0]);
-    if (!arg.is_string()) jc2::throw_error("Type Error: decode() expects a string.");
+    if (!arg.is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "decode() expects a string.");
     JsonParser parser(arg.as_string());
     return parser.parseValue().get_handle();
 }
 
 int jc2_init(jc2::Module& mod) {
+    // 注册 json.JsonError
+    g_jsonErrorClass = new jc2::Class("JsonError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_jsonErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("JsonError", *g_jsonErrorClass);
+
     mod.register_function("encode", global_encode, 1, 1, {"val"});
     mod.register_function("stringify", global_encode, 1, 1, {"val"});
     mod.register_function("pretty", global_pretty, 1, 2, {"val", "indent"});

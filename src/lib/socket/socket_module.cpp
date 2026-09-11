@@ -28,13 +28,19 @@ typedef int NativeSocket;
 #define closesocket close
 #endif
 
+static jc2::Class* g_networkErrorClass = nullptr;
+
+[[noreturn]] inline void throwNetworkError(const std::string& msg) {
+    jc2::throw_error_class(*g_networkErrorClass, msg);
+}
+
 static void initNetwork() {
     static bool initialized = false;
     if (!initialized) {
 #ifdef _WIN32
         WSADATA wsaData;
         if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-            jc2::throw_error("Network Error: WSAStartup failed.");
+            throwNetworkError("WSAStartup failed.");
         }
 #endif
         initialized = true;
@@ -50,9 +56,9 @@ struct SocketWrapper {
 static jc2::Class* g_socketClass = nullptr;
 
 static SocketWrapper* getSock(const jc2::Value& v, const std::string& fn) {
-    if (!v.is_instance()) jc2::throw_error("Type Error: " + fn + " expects a valid Network Socket.");
+    if (!v.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "" + fn + " expects a valid Network Socket.");
     auto ptr = v.get_native_data<SocketWrapper>();
-    if (!ptr) jc2::throw_error("Type Error: " + fn + " expects a valid Network Socket.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::TypeError, "" + fn + " expects a valid Network Socket.");
     return ptr;
 }
 
@@ -73,7 +79,7 @@ METHOD(send) {
     GET_SELF("send");
     std::string data = jc2::Value(argv[1]).as_string();
     if (::send(wrapper->sock, data.c_str(), (int)data.size(), 0) == SOCKET_ERROR) {
-        jc2::throw_error("Network Error: Connection lost during send.");
+        throwNetworkError("Connection lost during send.");
     }
     return jc2::Value(static_cast<double>(data.size())).get_handle();
 }
@@ -86,7 +92,7 @@ METHOD(recv) {
     std::vector<char> buffer(max_bytes);
     int bytes_read = ::recv(wrapper->sock, buffer.data(), max_bytes, 0);
 
-    if (bytes_read < 0) jc2::throw_error("Network Error: Failed to receive data.");
+    if (bytes_read < 0) throwNetworkError("Failed to receive data.");
     if (bytes_read == 0) return jc2::Value("").get_handle();
 
     return jc2::Value(std::string(buffer.data(), bytes_read)).get_handle();
@@ -107,7 +113,7 @@ METHOD(accept) {
     GET_SELF("accept");
     NativeSocket client_sock = ::accept(wrapper->sock, nullptr, nullptr);
     if (client_sock == INVALID_SOCKET) {
-        jc2::throw_error("Network Error: Accept failed.");
+        throwNetworkError("Accept failed.");
     }
     return makeSocketInstance(client_sock).get_handle();
 }
@@ -124,19 +130,19 @@ FUNC(connect) {
     hints.ai_socktype = SOCK_STREAM;
 
     if (getaddrinfo(host.c_str(), port.c_str(), &hints, &res) != 0) {
-        jc2::throw_error("Network Error: Could not resolve host '" + host + "'.");
+        throwNetworkError("Could not resolve host '" + host + "'.");
     }
 
     NativeSocket s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (s == INVALID_SOCKET) {
         freeaddrinfo(res);
-        jc2::throw_error("Network Error: Failed to create socket.");
+        throwNetworkError("Failed to create socket.");
     }
 
     if (::connect(s, res->ai_addr, (int)res->ai_addrlen) == SOCKET_ERROR) {
         closesocket(s);
         freeaddrinfo(res);
-        jc2::throw_error("Network Error: Connection refused to " + host + ":" + port);
+        throwNetworkError("Connection refused to " + host + ":" + port);
     }
     freeaddrinfo(res);
 
@@ -156,13 +162,13 @@ FUNC(server) {
     const char* host_ptr = (host == "0.0.0.0" || host == "") ? nullptr : host.c_str();
 
     if (getaddrinfo(host_ptr, port.c_str(), &hints, &res) != 0) {
-        jc2::throw_error("Network Error: Could not resolve bind address.");
+        throwNetworkError("Could not resolve bind address.");
     }
 
     NativeSocket s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if (s == INVALID_SOCKET) {
         freeaddrinfo(res);
-        jc2::throw_error("Network Error: Failed to create server socket.");
+        throwNetworkError("Failed to create server socket.");
     }
 
     int opt = 1;
@@ -175,13 +181,13 @@ FUNC(server) {
     if (::bind(s, res->ai_addr, (int)res->ai_addrlen) == SOCKET_ERROR) {
         closesocket(s);
         freeaddrinfo(res);
-        jc2::throw_error("Network Error: Bind failed on port " + port);
+        throwNetworkError("Bind failed on port " + port);
     }
     freeaddrinfo(res);
 
     if (::listen(s, SOMAXCONN) == SOCKET_ERROR) {
         closesocket(s);
-        jc2::throw_error("Network Error: Listen failed.");
+        throwNetworkError("Listen failed.");
     }
 
     return makeSocketInstance(s).get_handle();
@@ -192,6 +198,12 @@ int jc2_init(jc2::Module& mod) {
 
     g_socketClass = new jc2::Class("Socket");
     mod.register_value("Socket", *g_socketClass);
+
+    // 注册 socket.NetworkError
+    g_networkErrorClass = new jc2::Class("NetworkError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_networkErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("NetworkError", *g_networkErrorClass);
 
     g_socketClass->bind_method("send", sock_send, 1, 1, {"data"});
     g_socketClass->bind_method("recv", sock_recv, 0, 1, {"max_bytes"});

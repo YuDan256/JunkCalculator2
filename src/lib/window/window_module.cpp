@@ -242,7 +242,7 @@ public:
 struct WinEvent { std::string type; int x = 0, y = 0, key = 0, button = 0; };
 class NativeWindow {
 public:
-    NativeWindow(const std::string&, int, int) { jc2::throw_error("Window module is strictly Win32 currently."); }
+    NativeWindow(const std::string&, int, int) { throw_error(jc2::ErrorType::RuntimeError, "Window module is strictly Win32 currently."); }
     bool isOpen() { return false; }
     bool pollEvent(WinEvent&) { return false; }
     void show(const jc::Image*) {}
@@ -255,7 +255,7 @@ public:
 static jc2::Class* g_windowClass = nullptr;
 
 JC2_ValueHandle win_allocator(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 3) jc2::throw_error("TypeError: Window() takes exactly 3 arguments (title, width, height).");
+    if (argc < 3) jc2::throw_error(jc2::ErrorType::TypeError, "Window() takes exactly 3 arguments (title, width, height).");
     std::string title = jc2::Value(argv[0]).as_string();
     int w = jc2::Value(argv[1]).as_int();
     int h = jc2::Value(argv[2]).as_int();
@@ -362,10 +362,10 @@ JC2_ValueHandle win_show(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     auto win = self.get_native_data<NativeWindow>();
     if (!win) return jc2::Value().get_handle();
     jc2::Value arg(argv[1]);
-    if (!arg.is_instance()) jc2::throw_error("Type Error: Expected an Image instance.");
+    if (!arg.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected an Image instance.");
     jc2::Instance imgInst(arg.get_handle());
     auto im = imgInst.get_native_data<jc::Image>();
-    if (!im) jc2::throw_error("Type Error: Invalid Image instance.");
+    if (!im) jc2::throw_error(jc2::ErrorType::TypeError, "Invalid Image instance.");
     win->show(im);
     return jc2::Value().get_handle();
 }

@@ -9,6 +9,12 @@
 #include <vector>
 #include <string>
 
+static jc2::Class* g_latexErrorClass = nullptr;
+
+[[noreturn]] inline void throwLatexError(const std::string& msg) {
+    jc2::throw_error_class(*g_latexErrorClass, msg);
+}
+
 std::string valueToLatex(const jc2::Value& val) {
     if (val.is_double()) {
         std::ostringstream oss; oss << std::defaultfloat << std::setprecision(6) << val.as_double();
@@ -83,11 +89,11 @@ class LatexParser {
     std::string parseMatrix() {
         std::string envName;
         if (matchCmd("\\begin")) {
-            if (!match('{')) jc2::throw_error("Expected '{' after \\begin");
+            if (!match('{')) throwLatexError("Expected '{' after \\begin");
             size_t start = pos;
             while (pos < src.size() && src[pos] != '}') pos++;
             envName = src.substr(start, pos - start);
-            if (!match('}')) jc2::throw_error("Expected '}' after \\begin{...");
+            if (!match('}')) throwLatexError("Expected '}' after \\begin{...");
         } else {
             return "";
         }
@@ -97,12 +103,12 @@ class LatexParser {
         while (pos < src.size()) {
             skipSpace();
             if (matchCmd("\\end")) {
-                if (!match('{')) jc2::throw_error("Expected '{' after \\end");
+                if (!match('{')) throwLatexError("Expected '{' after \\end");
                 size_t start = pos;
                 while (pos < src.size() && src[pos] != '}') pos++;
                 std::string endName = src.substr(start, pos - start);
-                if (!match('}')) jc2::throw_error("Expected '}' after \\end{...");
-                if (endName != envName) jc2::throw_error("Mismatched \\begin{" + envName + "} and \\end{" + endName + "}");
+                if (!match('}')) throwLatexError("Expected '}' after \\end{...");
+                if (endName != envName) throwLatexError("Mismatched \\begin{" + envName + "} and \\end{" + endName + "}");
                 break;
             }
             if (matchCmd("\\\\")) {
@@ -125,12 +131,12 @@ class LatexParser {
             return parseMatrix();
         }
         if (matchCmd("\\frac")) {
-            if (!match('{')) jc2::throw_error("Expected '{' after \\frac");
+            if (!match('{')) throwLatexError("Expected '{' after \\frac");
             auto num = parseExpr();
-            if (!match('}')) jc2::throw_error("Expected '}' after numerator");
-            if (!match('{')) jc2::throw_error("Expected '{' for denominator");
+            if (!match('}')) throwLatexError("Expected '}' after numerator");
+            if (!match('{')) throwLatexError("Expected '{' for denominator");
             auto den = parseExpr();
-            if (!match('}')) jc2::throw_error("Expected '}' after denominator");
+            if (!match('}')) throwLatexError("Expected '}' after denominator");
             return "((" + num + ") / (" + den + "))";
         }
 
@@ -143,11 +149,11 @@ class LatexParser {
             std::string arg;
             if (match('(')) {
                 arg = parseExpr();
-                if (!match(')')) jc2::throw_error("Missing ')' for " + cmd);
+                if (!match(')')) throwLatexError("Missing ')' for " + cmd);
             }
             else if (match('{')) {
                 arg = parseExpr();
-                if (!match('}')) jc2::throw_error("Missing '}' for " + cmd);
+                if (!match('}')) throwLatexError("Missing '}' for " + cmd);
             }
             else {
                 arg = parsePower();
@@ -159,17 +165,17 @@ class LatexParser {
 
         if (match('(')) {
             auto expr = parseExpr();
-            if (!match(')')) jc2::throw_error("Missing closing ')'");
+            if (!match(')')) throwLatexError("Missing closing ')'");
             return "(" + expr + ")";
         }
         if (match('{')) {
             auto expr = parseExpr();
-            if (!match('}')) jc2::throw_error("Missing closing '}'");
+            if (!match('}')) throwLatexError("Missing closing '}'");
             return "(" + expr + ")";
         }
         if (match('[')) {
             auto expr = parseExpr();
-            if (!match(']')) jc2::throw_error("Missing closing ']'");
+            if (!match(']')) throwLatexError("Missing closing ']'");
             return "(" + expr + ")";
         }
 
@@ -187,7 +193,7 @@ class LatexParser {
             return varStr;
         }
 
-        jc2::throw_error("LaTeX Parse Error: Unexpected token at '" + src.substr(pos, 5) + "...'");
+        throwLatexError("Unexpected token at '" + src.substr(pos, 5) + "...'");
     }
 
     std::string parsePower() {
@@ -257,12 +263,12 @@ JC2_ValueHandle global_to_latex(JC2_VMContext, int, JC2_ValueHandle* argv, void*
 
 JC2_ValueHandle global_eval(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Value arg(argv[0]);
-    if (!arg.is_string()) jc2::throw_error("eval() requires a LaTeX string.");
+    if (!arg.is_string()) throw_error(jc2::ErrorType::TypeError, "eval() requires a LaTeX string.");
     LatexParser parser;
     std::string code = parser.compile(arg.as_string());
     
     jc2::Value evalFunc(jc2::Env::api->get_global(jc2::Env::ctx, "eval"));
-    if (!evalFunc.is_function()) jc2::throw_error("Internal Error: 'eval' function not found.");
+    if (!evalFunc.is_function()) throwLatexError("'eval' function not found.");
     
     JC2_ValueHandle codeHandle = jc2::Value(code).get_handle();
     jc2::Value res(jc2::Env::api->call_function(jc2::Env::ctx, evalFunc.get_handle(), 1, &codeHandle));
@@ -274,7 +280,7 @@ JC2_ValueHandle global_eval(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Value arg0(argv[0]);
     jc2::Value arg1(argv[1]);
-    if (!arg0.is_string()) jc2::throw_error("compile(string, vars): Requires formula and variable names.");
+    if (!arg0.is_string()) throw_error(jc2::ErrorType::TypeError, "Requires formula and variable names.");
 
     std::string latex_str = arg0.as_string();
     std::vector<std::string> varNames;
@@ -283,11 +289,11 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
         jc2::List l(arg1.get_handle());
         for (size_t i = 0; i < l.size(); ++i) {
             jc2::Value v = l.get(i);
-            if (!v.is_string()) jc2::throw_error("Variable names must be strings.");
+            if (!v.is_string()) throw_error(jc2::ErrorType::TypeError, "Variable names must be strings.");
             varNames.push_back(v.as_string());
         }
     }
-    else jc2::throw_error("compile_latex(): 2nd argument must be a List or Matrix of variable strings.");
+    else throw_error(jc2::ErrorType::TypeError, "2nd argument must be a List or Matrix of variable strings.");
 
     LatexParser parser;
     std::string exprCode = parser.compile(latex_str);
@@ -302,13 +308,19 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
     funcCode += ") => " + exprCode;
 
     jc2::Value evalFunc(jc2::Env::api->get_global(jc2::Env::ctx, "eval"));
-    if (!evalFunc.is_function()) jc2::throw_error("Internal Error: 'eval' function not found.");
+    if (!evalFunc.is_function()) throwLatexError("'eval' function not found.");
     
     JC2_ValueHandle codeHandle = jc2::Value(funcCode).get_handle();
     return jc2::Env::api->call_function(jc2::Env::ctx, evalFunc.get_handle(), 1, &codeHandle);
 }
 
 int jc2_init(jc2::Module& mod) {
+
+    // 注册 latex.LatexError
+    g_latexErrorClass = new jc2::Class("LatexError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_latexErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("LatexError", *g_latexErrorClass);
 
     mod.register_function("to_latex", global_to_latex, 1, 1, {"obj"});
     mod.register_function("eval", global_eval, 1, 1, {"formula"});

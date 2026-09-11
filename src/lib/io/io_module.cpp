@@ -135,10 +135,10 @@ struct FileContext {
 };
 
 static FileContext* getFile(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("Type Error: Expected a File instance.");
+    if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a File instance.");
     auto ptr = val.get_native_data<FileContext>();
-    if (!ptr) jc2::throw_error("IO Error: Invalid File object.");
-    if (!ptr->is_open) jc2::throw_error("IO Error: File is already closed.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::IOError, "Invalid File object.");
+    if (!ptr->is_open) jc2::throw_error(jc2::ErrorType::IOError, "File is already closed.");
     return ptr;
 }
 
@@ -225,20 +225,20 @@ METHOD(close) {
 
 METHOD(readBuf) {
     GET_SELF;
-    if (argc < 2) jc2::throw_error("Type Error: readBuf expects a buffer object.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "readBuf expects a buffer object.");
     size_t bsize = 0;
     void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
-    if (!bdata) jc2::throw_error("Type Error: Expected a valid buffer object (e.g., from bytes module).");
+    if (!bdata) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
 
     size_t read_size = bsize;
     if (argc >= 3) {
         read_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
-        if (read_size > bsize) jc2::throw_error("IO Error: Requested read size exceeds buffer capacity.");
+        if (read_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Requested read size exceeds buffer capacity.");
     }
     size_t offset = 0;
     if (argc >= 4) {
         offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
-        if (offset + read_size > bsize) jc2::throw_error("IO Error: Read offset + size exceeds buffer capacity.");
+        if (offset + read_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Read offset + size exceeds buffer capacity.");
     }
 
     stream.read(static_cast<char*>(bdata) + offset, read_size);
@@ -247,20 +247,20 @@ METHOD(readBuf) {
 
 METHOD(writeBuf) {
     GET_SELF;
-    if (argc < 2) jc2::throw_error("Type Error: writeBuf expects a buffer object.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "writeBuf expects a buffer object.");
     size_t bsize = 0;
     void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
-    if (!bdata) jc2::throw_error("Type Error: Expected a valid buffer object (e.g., from bytes module).");
+    if (!bdata) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
 
     size_t write_size = bsize;
     if (argc >= 3) {
         write_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
-        if (write_size > bsize) jc2::throw_error("IO Error: Requested write size exceeds buffer capacity.");
+        if (write_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Requested write size exceeds buffer capacity.");
     }
     size_t offset = 0;
     if (argc >= 4) {
         offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
-        if (offset + write_size > bsize) jc2::throw_error("IO Error: Write offset + size exceeds buffer capacity.");
+        if (offset + write_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Write offset + size exceeds buffer capacity.");
     }
 
     stream.write(static_cast<const char*>(bdata) + offset, write_size);
@@ -269,7 +269,7 @@ METHOD(writeBuf) {
 
 METHOD(seek) {
     GET_SELF;
-    if (argc < 2) jc2::throw_error("Type Error: seek expects an offset.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "seek expects an offset.");
     long long offset = 0;
     if (jc2::Value(argv[1]).is_double() || jc2::Value(argv[1]).is_int()) {
         offset = static_cast<long long>(std::round(jc2::Value(argv[1]).as_double()));
@@ -319,7 +319,7 @@ METHOD(next) {
 
 static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim, const std::string& encoding) {
     std::ifstream file(to_path(path), std::ios::binary);
-    if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    if (!file.is_open()) jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'.");
     
     std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
     content = decode_to_utf8(content, encoding);
@@ -366,7 +366,7 @@ static std::vector<std::vector<std::string>> parseCSV(const std::string& path, c
 }
 
 JC2_ValueHandle io_readCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.readCSV expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.readCSV expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     char delim = ',';
     if (argc >= 2) {
@@ -388,7 +388,7 @@ JC2_ValueHandle io_readCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*
 }
 
 JC2_ValueHandle io_parseCSVNum(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.parseCSVNum expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.parseCSVNum expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     char delim = ',';
     if (argc >= 2) {
@@ -418,7 +418,7 @@ JC2_ValueHandle io_parseCSVNum(JC2_VMContext, int argc, JC2_ValueHandle* argv, v
 }
 
 JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 2) jc2::throw_error("Type Error: io.writeCSV expects path and data.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "io.writeCSV expects path and data.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string delim = ",";
     if (argc >= 3) delim = jc2::Value(argv[2]).as_string();
@@ -426,7 +426,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
     if (argc >= 4) encoding = jc2::Value(argv[3]).as_string();
     
     std::ofstream file(to_path(path), std::ios::binary);
-    if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
+    if (!file.is_open()) jc2::throw_error(jc2::ErrorType::IOError, "Cannot write to file '" + path + "'.");
     
     jc2::Value data = jc2::Value(argv[1]);
     std::ostringstream oss;
@@ -481,7 +481,7 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
             oss << "\r\n";
         }
     } else {
-        jc2::throw_error("Type Error: writeCSV expects a matrix or list.");
+        jc2::throw_error(jc2::ErrorType::TypeError, "writeCSV expects a matrix or list.");
     }
     
     std::string encoded = encode_from_utf8(oss.str(), encoding);
@@ -492,53 +492,53 @@ JC2_ValueHandle io_writeCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void
 
 JC2_ValueHandle io_readFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
-    if (argc < 1) jc2::throw_error("Type Error: io.readFile expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.readFile expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string encoding = "utf-8";
     if (argc >= 2) encoding = jc2::Value(argv[1]).as_string();
 
     std::ifstream file(to_path(path), std::ios::binary | std::ios::ate);
-    if (!file.is_open()) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    if (!file.is_open()) jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'.");
     std::streamsize size = file.tellg();
     file.seekg(0, std::ios::beg);
     std::string content(static_cast<size_t>(size), '\0');
     if (file.read(&content[0], size)) {
         return jc2::Value(decode_to_utf8(content, encoding)).get_handle();
     }
-    jc2::throw_error("IO Error: Failed to read file.");
+    jc2::throw_error(jc2::ErrorType::IOError, "Failed to read file.");
 }
 
 JC2_ValueHandle io_writeFile(JC2_VMContext ctx, int argc, JC2_ValueHandle* argv, void* user_data) {
     (void)ctx; (void)user_data;
-    if (argc < 2) jc2::throw_error("Type Error: io.writeFile expects path and content.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "io.writeFile expects path and content.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string content = jc2::Value(argv[1]).to_string();
     std::string encoding = "utf-8";
     if (argc >= 3) encoding = jc2::Value(argv[2]).as_string();
 
     std::ofstream file(to_path(path), std::ios::binary | std::ios::trunc);
-    if (!file.is_open()) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
+    if (!file.is_open()) jc2::throw_error(jc2::ErrorType::IOError, "Cannot write to file '" + path + "'.");
     std::string encoded = encode_from_utf8(content, encoding);
     file.write(encoded.data(), encoded.size());
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_copy(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 2) jc2::throw_error("Type Error: io.copy expects source and destination paths.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "io.copy expects source and destination paths.");
     std::string src = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string dst = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::copy(to_path(src), to_path(dst), std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) jc2::throw_error("IO Error: Cannot copy '" + src + "' to '" + dst + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot copy '" + src + "' to '" + dst + "'.");
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.stat expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.stat expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
     auto st = std::filesystem::status(to_path(path), ec);
-    if (ec || !std::filesystem::exists(st)) jc2::throw_error("IO Error: Cannot stat path '" + path + "'.");
+    if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "'.");
     
     jc2::Dict d;
     d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
@@ -552,38 +552,38 @@ JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
 }
 
 JC2_ValueHandle io_mkdir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.mkdir expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.mkdir expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     bool recursive = false;
     if (argc >= 2) recursive = jc2::Value(argv[1]).truthy();
     std::error_code ec;
     if (recursive) std::filesystem::create_directories(to_path(path), ec);
     else std::filesystem::create_directory(to_path(path), ec);
-    if (ec) jc2::throw_error("IO Error: Cannot create directory '" + path + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot create directory '" + path + "'.");
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_remove(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.remove expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.remove expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
     std::filesystem::remove(to_path(path), ec);
-    if (ec) jc2::throw_error("IO Error: Cannot remove '" + path + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot remove '" + path + "'.");
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_rename(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 2) jc2::throw_error("Type Error: io.rename expects old and new paths.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "io.rename expects old and new paths.");
     std::string old_p = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string new_p = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::rename(to_path(old_p), to_path(new_p), ec);
-    if (ec) jc2::throw_error("IO Error: Cannot rename '" + old_p + "' to '" + new_p + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot rename '" + old_p + "' to '" + new_p + "'.");
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_exists(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.exists expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.exists expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
     return jc2::Value(std::filesystem::exists(to_path(path), ec)).get_handle();
@@ -593,7 +593,7 @@ JC2_ValueHandle io_listDir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*
     std::string path = jc2::Env::resolve_path(argc >= 1 ? jc2::Value(argv[0]).as_string() : ".");
     std::error_code ec;
     if (!std::filesystem::exists(to_path(path), ec) || !std::filesystem::is_directory(to_path(path), ec)) {
-        jc2::throw_error("IO Error: Directory '" + path + "' does not exist.");
+        jc2::throw_error(jc2::ErrorType::IOError, "Directory '" + path + "' does not exist.");
     }
     jc2::List l;
     for (const auto& entry : std::filesystem::directory_iterator(to_path(path), ec)) {
@@ -603,7 +603,7 @@ JC2_ValueHandle io_listDir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*
 }
 
 JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    if (argc < 1) jc2::throw_error("Type Error: io.open expects a path.");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.open expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::string mode = "r";
     if (argc >= 2) mode = jc2::Value(argv[1]).as_string();
@@ -618,14 +618,14 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     else if (mode == "r+") ios_mode |= std::ios::in | std::ios::out;
     else if (mode == "w+") ios_mode |= std::ios::in | std::ios::out | std::ios::trunc;
     else if (mode == "a+") ios_mode |= std::ios::in | std::ios::out | std::ios::app;
-    else jc2::throw_error("IO Error: Unsupported mode '" + mode + "'.");
+    else jc2::throw_error(jc2::ErrorType::IOError, "Unsupported mode '" + mode + "'.");
 
     auto ctx = new FileContext();
     ctx->encoding = encoding;
     ctx->stream.open(to_path(path), ios_mode);
     if (!ctx->stream.is_open()) {
         delete ctx;
-        jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+        jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'.");
     }
     ctx->is_open = true;
 

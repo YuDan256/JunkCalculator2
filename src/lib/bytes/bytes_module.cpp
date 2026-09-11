@@ -15,6 +15,11 @@ static std::filesystem::path to_path(const std::string& utf8_str) {
 }
 
 static jc2::Class* g_bytesClass = nullptr;
+static jc2::Class* g_bytesErrorClass = nullptr;
+
+[[noreturn]] inline void throwBytesError(const std::string& msg) {
+    jc2::throw_error_class(*g_bytesErrorClass, msg);
+}
 
 struct ByteBufferContext {
     std::shared_ptr<std::vector<uint8_t>> shared_data;
@@ -24,9 +29,9 @@ struct ByteBufferContext {
 };
 
 static ByteBufferContext* getBuf(const jc2::Value& val) {
-    if (!val.is_instance()) jc2::throw_error("Type Error: Expected a Bytes instance.");
+    if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Bytes instance.");
     auto ptr = val.get_native_data<ByteBufferContext>();
-    if (!ptr) jc2::throw_error("Type Error: Expected a Bytes native object.");
+    if (!ptr) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Bytes native object.");
     return ptr;
 }
 
@@ -68,7 +73,7 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
         }
         return r;
     }
-    jc2::throw_error("Type Error: " + f + "() requires a list or real matrix.");
+    jc2::throw_error(jc2::ErrorType::TypeError, "" + f + "() requires a list or real matrix.");
 }
 
 struct BufWrapper {
@@ -93,10 +98,10 @@ struct BufWrapper {
 
 METHOD(writeFile) {
     GET_SELF;
-    if (!jc2::Value(argv[1]).is_string()) jc2::throw_error("Type Error: expects string path.");
+    if (!jc2::Value(argv[1]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "expects string path.");
     std::string path = jc2::Value(argv[1]).as_string();
     std::ofstream f(to_path(path), std::ios::binary);
-    if (!f) jc2::throw_error("IO Error: Cannot write to file '" + path + "'.");
+    if (!f) jc2::throw_error(jc2::ErrorType::IOError, "Cannot write to file '" + path + "'.");
     f.write(reinterpret_cast<const char*>(buf.data()), buf.size());
     return jc2::Value().get_handle();
 }
@@ -104,20 +109,20 @@ METHOD(writeFile) {
 METHOD(set) {
     GET_SELF;
     size_t offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
-    if (!jc2::Value(argv[3]).is_string()) jc2::throw_error("Type Error: type must be string.");
+    if (!jc2::Value(argv[3]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "type must be string.");
     std::string type = jc2::Value(argv[3]).as_string();
 
     auto writeMem = [&](const void* data, size_t size) {
-        if (offset + size > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds.");
+        if (offset + size > buf.size()) throwBytesError("Write out of bounds.");
         std::memcpy(buf.data() + offset, data, size);
     };
 
     if (type == "str") {
-        if (!jc2::Value(argv[2]).is_string()) jc2::throw_error("Type Error: Expected string for 'str' type.");
+        if (!jc2::Value(argv[2]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected string for 'str' type.");
         std::string s = jc2::Value(argv[2]).as_string();
         writeMem(s.data(), s.size());
     } else if (type == "i64" || type == "u64") {
-        if (!jc2::Value(argv[2]).is_bigint()) jc2::throw_error("Type Error: Expected BigInt for 64-bit integer.");
+        if (!jc2::Value(argv[2]).is_bigint()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected BigInt for 64-bit integer.");
         std::string s = jc2::BigInt(argv[2]).to_string();
         int64_t v = std::stoll(s);
         writeMem(&v, 8);
@@ -131,7 +136,7 @@ METHOD(set) {
         else if (type == "i32") { int32_t  v = static_cast<int32_t>(val);  writeMem(&v, 4); }
         else if (type == "f32") { float    v = static_cast<float>(val);    writeMem(&v, 4); }
         else if (type == "f64") { double   v = val;                        writeMem(&v, 8); }
-        else jc2::throw_error("Buffer Error: Unknown format type '" + type + "'.");
+        else throwBytesError("Unknown format type '" + type + "'.");
     }
     return jc2::Value().get_handle();
 }
@@ -140,21 +145,21 @@ METHOD(write_arr) {
     GET_SELF;
     size_t offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
     auto arr = extractDS(jc2::Value(argv[2]), "write_arr");
-    if (!jc2::Value(argv[3]).is_string()) jc2::throw_error("Type Error: type must be string.");
+    if (!jc2::Value(argv[3]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "type must be string.");
     std::string type = jc2::Value(argv[3]).as_string();
 
     if (type == "i16") {
-        if (offset + arr.size() * 2 > buf.size()) jc2::throw_error("Buffer out of bounds.");
+        if (offset + arr.size() * 2 > buf.size()) throwBytesError("Buffer out of bounds.");
         int16_t* ptr = reinterpret_cast<int16_t*>(buf.data() + offset);
         for (size_t i = 0; i < arr.size(); ++i) {
             double val = std::max(-1.0, std::min(1.0, arr[i]));
             ptr[i] = static_cast<int16_t>(val * 32767.0);
         }
     } else if (type == "f64") {
-        if (offset + arr.size() * 8 > buf.size()) jc2::throw_error("Buffer out of bounds.");
+        if (offset + arr.size() * 8 > buf.size()) throwBytesError("Buffer out of bounds.");
         std::memcpy(buf.data() + offset, arr.data(), arr.size() * sizeof(double));
     } else {
-        jc2::throw_error("b_write_arr currently supports 'i16' and 'f64'");
+        throwBytesError("b_write_arr currently supports 'i16' and 'f64'");
     }
     return jc2::Value().get_handle();
 }
@@ -162,22 +167,22 @@ METHOD(write_arr) {
 METHOD(get) {
     GET_SELF;
     size_t offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
-    if (!jc2::Value(argv[2]).is_string()) jc2::throw_error("Type Error: type must be string.");
+    if (!jc2::Value(argv[2]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "type must be string.");
     std::string type = jc2::Value(argv[2]).as_string();
 
     auto readMem = [&](void* data, size_t size) {
-        if (offset + size > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds.");
+        if (offset + size > buf.size()) throwBytesError("Read out of bounds.");
         std::memcpy(data, buf.data() + offset, size);
     };
 
     if (type == "str") {
-        if (argc != 4) jc2::throw_error("Buffer Error: String read requires length.");
+        if (argc != 4) throwBytesError("String read requires length.");
         size_t len = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
-        if (offset + len > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds.");
+        if (offset + len > buf.size()) throwBytesError("Read out of bounds.");
         return jc2::Value(std::string(reinterpret_cast<char*>(buf.data() + offset), len)).get_handle();
     }
 
-    if (argc != 3) jc2::throw_error("Buffer Error: Incorrect argument count.");
+    if (argc != 3) throwBytesError("Incorrect argument count.");
     if (type == "u8") { uint8_t  v; readMem(&v, 1); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
     else if (type == "i8") { int8_t   v; readMem(&v, 1); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
     else if (type == "u16") { uint16_t v; readMem(&v, 2); return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
@@ -188,7 +193,7 @@ METHOD(get) {
     else if (type == "u64") { uint64_t v; readMem(&v, 8); return jc2::BigInt(std::to_string(v)).get_handle(); }
     else if (type == "f32") { float    v; readMem(&v, 4); return jc2::Value(static_cast<double>(v)).get_handle(); }
     else if (type == "f64") { double   v; readMem(&v, 8); return jc2::Value(v).get_handle(); }
-    else jc2::throw_error("Buffer Error: Unknown format type '" + type + "'.");
+    else throwBytesError("Unknown format type '" + type + "'.");
 }
 
 METHOD(len) {
@@ -213,14 +218,14 @@ METHOD(toHex) {
 
 METHOD(view) {
     GET_SELF;
-    if (argc < 2) jc2::throw_error("Type Error: view expects at least a start offset.");
+    if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "view expects at least a start offset.");
     size_t start = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
     size_t len = buf.size() > start ? buf.size() - start : 0;
     if (argc >= 3) {
         len = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
     }
     if (start > buf.size() || start + len > buf.size()) {
-        jc2::throw_error("Buffer Error: View out of bounds.");
+        throwBytesError("View out of bounds.");
     }
     return makeBytesView(ctx->shared_data, buf.data() + start, len).get_handle();
 }
@@ -254,25 +259,25 @@ METHOD(isEnd) { GET_SELF; return jc2::Value(pos >= buf.size()).get_handle(); }
 METHOD(writeStr) {
     GET_SELF;
     std::string s = jc2::Value(argv[1]).as_string();
-    if (pos + s.size() > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds.");
+    if (pos + s.size() > buf.size()) throwBytesError("Write out of bounds.");
     std::memcpy(buf.data() + pos, s.data(), s.size());
     pos += s.size();
     return argv[0];
 }
-METHOD(writeU8) { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); buf[pos++] = static_cast<uint8_t>(jc2::Value(argv[1]).as_double()); return argv[0]; }
-METHOD(writeI8)  { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int8_t v = static_cast<int8_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 1); pos += 1; return argv[0]; }
-METHOD(writeU16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); uint16_t v = static_cast<uint16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
-METHOD(writeU32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); uint32_t v = static_cast<uint32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeF32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); float v = static_cast<float>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeF64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); double v = jc2::Value(argv[1]).as_double(); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
-METHOD(writeI16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int16_t v = static_cast<int16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
-METHOD(writeI32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int32_t v = static_cast<int32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeI64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); int64_t v = std::stoll(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
-METHOD(writeU64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds."); uint64_t v = std::stoull(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeU8) { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); buf[pos++] = static_cast<uint8_t>(jc2::Value(argv[1]).as_double()); return argv[0]; }
+METHOD(writeI8)  { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); int8_t v = static_cast<int8_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 1); pos += 1; return argv[0]; }
+METHOD(writeU16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); uint16_t v = static_cast<uint16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
+METHOD(writeU32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); uint32_t v = static_cast<uint32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); float v = static_cast<float>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); double v = jc2::Value(argv[1]).as_double(); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeI16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); int16_t v = static_cast<int16_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
+METHOD(writeI32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); int32_t v = static_cast<int32_t>(jc2::Value(argv[1]).as_double()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeI64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); int64_t v = std::stoll(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeU64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); uint64_t v = std::stoull(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
 METHOD(writePcmArray) {
     GET_SELF;
     auto arr = extractDS(jc2::Value(argv[1]), "writePcmArray");
-    if (pos + arr.size() * 2 > buf.size()) jc2::throw_error("Buffer Error: Write out of bounds.");
+    if (pos + arr.size() * 2 > buf.size()) throwBytesError("Write out of bounds.");
     int16_t* ptr = reinterpret_cast<int16_t*>(buf.data() + pos);
     for (size_t i = 0; i < arr.size(); ++i) {
         double val = std::max(-1.0, std::min(1.0, arr[i]));
@@ -286,28 +291,28 @@ METHOD(writePcmArray) {
 METHOD(readStr) {
     GET_SELF;
     size_t len = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
-    if (pos + len > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds.");
+    if (pos + len > buf.size()) throwBytesError("Read out of bounds.");
     std::string s(reinterpret_cast<char*>(buf.data() + pos), len);
     pos += len;
     return jc2::Value(s).get_handle();
 }
-METHOD(readU8) { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint8_t v = buf[pos++]; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
-METHOD(readI8)  { GET_SELF; if (pos + 1 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int8_t v; std::memcpy(&v, buf.data() + pos, 1); pos += 1; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
-METHOD(readU16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
-METHOD(readU32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::BigInt(std::to_string(v)).get_handle(); }
-METHOD(readF32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); float v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(static_cast<double>(v)).get_handle(); }
-METHOD(readF64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); double v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::Value(v).get_handle(); }
-METHOD(readI16) { GET_SELF; if (pos + 2 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
-METHOD(readI32) { GET_SELF; if (pos + 4 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(v).get_handle(); }
-METHOD(readI64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); int64_t v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::BigInt(std::to_string(v)).get_handle(); }
-METHOD(readU64) { GET_SELF; if (pos + 8 > buf.size()) jc2::throw_error("Buffer Error: Read out of bounds."); uint64_t v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::BigInt(std::to_string(v)).get_handle(); }
+METHOD(readU8) { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Read out of bounds."); uint8_t v = buf[pos++]; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readI8)  { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Read out of bounds."); int8_t v; std::memcpy(&v, buf.data() + pos, 1); pos += 1; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readU16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Read out of bounds."); uint16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readU32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Read out of bounds."); uint32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::BigInt(std::to_string(v)).get_handle(); }
+METHOD(readF32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Read out of bounds."); float v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(static_cast<double>(v)).get_handle(); }
+METHOD(readF64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Read out of bounds."); double v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::Value(v).get_handle(); }
+METHOD(readI16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Read out of bounds."); int16_t v; std::memcpy(&v, buf.data() + pos, 2); pos += 2; return jc2::Value(static_cast<int32_t>(v)).get_handle(); }
+METHOD(readI32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Read out of bounds."); int32_t v; std::memcpy(&v, buf.data() + pos, 4); pos += 4; return jc2::Value(v).get_handle(); }
+METHOD(readI64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Read out of bounds."); int64_t v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::BigInt(std::to_string(v)).get_handle(); }
+METHOD(readU64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Read out of bounds."); uint64_t v; std::memcpy(&v, buf.data() + pos, 8); pos += 8; return jc2::BigInt(std::to_string(v)).get_handle(); }
 
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
 FUNC(alloc) {
-    if (argc < 1) jc2::throw_error("TypeError: Bytes() takes exactly 1 argument (size).");
+    if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "Bytes() takes exactly 1 argument (size).");
     int size = static_cast<int>(std::round(jc2::Value(argv[0]).as_double()));
-    if (size < 0) jc2::throw_error("Math Error: buffer size cannot be negative.");
+    if (size < 0) jc2::throw_error(jc2::ErrorType::MathError, "buffer size cannot be negative.");
     return makeBytesInstance(std::vector<uint8_t>(size, 0)).get_handle();
 }
 
@@ -325,7 +330,7 @@ FUNC(pack) {
 }
 
 FUNC(fromHex) {
-    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: fromHex expects a string.");
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "fromHex expects a string.");
     std::string s = jc2::Value(argv[0]).as_string();
     std::vector<uint8_t> buf;
     buf.reserve(s.size() / 2);
@@ -334,7 +339,7 @@ FUNC(fromHex) {
             if (c >= '0' && c <= '9') return c - '0';
             if (c >= 'a' && c <= 'f') return c - 'a' + 10;
             if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-            jc2::throw_error("Value Error: Invalid hex character.");
+            jc2::throw_error(jc2::ErrorType::ValueError, "Invalid hex character.");
         };
         buf.push_back((char2int(s[i]) << 4) | char2int(s[i+1]));
     }
@@ -342,7 +347,7 @@ FUNC(fromHex) {
 }
 
 FUNC(fromBase64) {
-    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: fromBase64 expects a string.");
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "fromBase64 expects a string.");
     std::string s = jc2::Value(argv[0]).as_string();
     std::vector<uint8_t> buf;
     std::vector<int> T(256, -1);
@@ -362,22 +367,28 @@ FUNC(fromBase64) {
 
 FUNC(readFile) {
     (void)argc;
-    if (!jc2::Value(argv[0]).is_string()) jc2::throw_error("Type Error: expects string path.");
+    if (!jc2::Value(argv[0]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "expects string path.");
     std::string path = jc2::Value(argv[0]).as_string();
     std::ifstream f(to_path(path), std::ios::binary | std::ios::ate);
-    if (!f) jc2::throw_error("IO Error: Cannot open file '" + path + "'.");
+    if (!f) jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'.");
     std::streamsize size = f.tellg();
     f.seekg(0, std::ios::beg);
     std::vector<uint8_t> buffer(static_cast<size_t>(size));
     if (f.read(reinterpret_cast<char*>(buffer.data()), size)) {
         return makeBytesInstance(std::move(buffer)).get_handle();
     }
-    jc2::throw_error("IO Error: Failed to read file.");
+    jc2::throw_error(jc2::ErrorType::IOError, "Failed to read file.");
 }
 
 int jc2_init(jc2::Module& mod) {
     g_bytesClass = new jc2::Class("Bytes");
     mod.register_value("Bytes", *g_bytesClass);
+
+    // 注册 bytes 模块自己的错误类 bytes.BytesError（继承 Exception）
+    g_bytesErrorClass = new jc2::Class("BytesError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_bytesErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("BytesError", *g_bytesErrorClass);
 
     g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, {"path"});
     g_bytesClass->bind_method("save", bytes_writeFile, 1, 1, {"path"});

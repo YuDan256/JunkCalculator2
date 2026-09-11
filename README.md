@@ -89,7 +89,7 @@ JC2 standard libraries loaded via `import`:
 
 ### Try/Catch Reworked — Catch Chains
 - **Catch reuses `match` syntax**: `catch { pattern => body, ... }` supports multiple branches, tried in order until one matches.
-- **Soft type matching**: a type annotation in a catch pattern (`catch { e: TypeError => ... }`) skips the branch and re-throws if the error's type doesn't match.
+- **Soft type matching**: a catch pattern like `catch { {type: "TypeError", message} => ... }` destructures the exception's `type` field; if it doesn't match, the branch is skipped and the error re-throws.
 - **Or-patterns & guards**: `catch { e: A, e: B => ... }` matches either type; `catch { e if (cond) => ... }` adds a guard.
 - **Shorthand**: `catch(pattern) body` is sugar for `catch { pattern => body }`, and supports or-patterns (comma) but not guards.
 

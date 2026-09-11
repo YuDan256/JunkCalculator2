@@ -3460,8 +3460,8 @@
       "      try {",
       "          risky_code()",
       "      } catch {",
-      "          e: TypeError  => print(\"Type error:\", e),",
-      "          e: ValueError => print(\"Value error:\", e),",
+      "          {type: \"TypeError\", message}  => print(\"Type error:\", message),",
+      "          {type: \"ValueError\", message} => print(\"Value error:\", message),",
       "          e             => print(\"Other error:\", e)",
       "      }",
       "    Branches are tried in order; the first matching branch wins.",
@@ -3479,7 +3479,7 @@
       "      try { throw \"oops\" } catch { e: int => print(\"int\") }   // \"oops\" is str → re-thrown",
       "",
       "    ★ Or-patterns (comma) & guards (if):",
-      "      catch { e: TypeError, e: ValueError => ... }   // either type",
+      "      catch { {type: \"TypeError\"}, {type: \"ValueError\"} => ... }   // either error type",
       "      catch { e if (e.code == 404) => ... }          // guard",
       "",
       "    ★ Bare try (no catch):",
@@ -5830,7 +5830,7 @@
       ],
       "examples": [
         "try { 1 / 0 } catch (e) { print(\"Error:\", e) }",
-        "try { riskyOp() } catch { e: TypeError => \"type\", e => \"other\" }",
+        "try { riskyOp() } catch { {type: \"TypeError\", message} => message, e => \"other\" }",
         "result = try { riskyOp() } catch (e) { \"fallback\" }",
         "x = try { riskyOp() }            // error → x = none"
       ]
@@ -5851,7 +5851,7 @@
       ],
       "examples": [
         "try { error(\"oops\") } catch (e) { print(e) }",
-        "try { risky() } catch { e: TypeError => print(\"type\"), e => print(\"other\") }",
+        "try { risky() } catch { {type: \"TypeError\", message} => print(message), e => print(\"other\") }",
         "try { throw {code: 404} } catch ({message: {code}}) { print(code) }"
       ]
     },

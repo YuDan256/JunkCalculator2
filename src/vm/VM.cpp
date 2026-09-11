@@ -67,7 +67,7 @@ extern bool g_enableJit;
         jit::g_jit_pending_exception = 1; \
         return 0; \
     } catch (const Jc2Error& e) { \
-        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, Value(e.message)); \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.errorClass, e.typeName, Value(e.message)); \
         jit::g_jit_pending_exception = 1; \
         return 0; \
     } catch (const std::exception& e) { \
@@ -86,7 +86,7 @@ extern bool g_enableJit;
         jit::g_jit_pending_exception = 1; \
         return; \
     } catch (const Jc2Error& e) { \
-        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.type, Value(e.message)); \
+        VM::activeVM->jit_exception_value = VM::activeVM->wrapException(e.errorClass, e.typeName, Value(e.message)); \
         jit::g_jit_pending_exception = 1; \
         return; \
     } catch (const std::exception& e) { \
@@ -435,7 +435,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
         } catch (const ValueException& ex) {
             if (currentException) {
-                Value deferEx = wrapException("Exception", ex.val);
+                Value deferEx = wrapException(nullptr, "Exception", ex.val);
                 auto inst = currentException->asInstance();
                 if (inst) {
                     auto it = inst->properties.find("suppressed");
@@ -451,7 +451,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             }
         } catch (const std::exception& ex) {
             if (currentException) {
-                Value deferEx = wrapException("Exception", Value(ex.what()));
+                Value deferEx = wrapException(nullptr, "Exception", Value(ex.what()));
                 auto inst = currentException->asInstance();
                 if (inst) {
                     auto it = inst->properties.find("suppressed");
@@ -467,7 +467,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
             }
         } catch (...) {
             if (currentException) {
-                Value deferEx = wrapException("Exception", Value("Unknown Error in defer"));
+                Value deferEx = wrapException(nullptr, "Exception", Value("Unknown Error in defer"));
                 auto inst = currentException->asInstance();
                 if (inst) {
                     auto it = inst->properties.find("suppressed");
@@ -2443,7 +2443,7 @@ Value VM::execImport(const std::string& name) {
             modFn = BytecodeSerializer::loadJCB(jcbPath, this);
             executePath = jcbPath;
         } catch (const jc::Jc2Error& e) {
-            if (e.type == jc::err::IOError && (e.message == "MAGIC_MISMATCH" || e.message == "VERSION_MISMATCH")) {
+            if (e.errorClass == jc::err::IOErrorClass && (e.message == "MAGIC_MISMATCH" || e.message == "VERSION_MISMATCH")) {
                 if (jc2Path.empty()) {
                     jc2Path = helpers::safeResolvePath(name + ".jc2");
                     if (!std::filesystem::is_regular_file(jc2Path)) {
@@ -2683,7 +2683,7 @@ void VM::execCompileTimeImport(const std::string& name) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
-        Value errVal = wrapException("Exception", ex.val);
+        Value errVal = wrapException(nullptr, "Exception", ex.val);
         try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
@@ -2788,7 +2788,7 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
     return false;
 }
 
-Value VM::wrapException(const std::string& type, Value val) {
+Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     if (isExceptionInstance(val)) {
         auto inst = val.asInstance();
         auto it = inst->properties.find("traceback");
@@ -2801,11 +2801,11 @@ Value VM::wrapException(const std::string& type, Value val) {
         return val;
     }
     
-    Value classVal = getBuiltinValue("Exception");
-    if (!classVal.isClass()) return val;
+    ObjClass* cls = errorClass ? errorClass : exceptionClass;
+    if (!cls) return val;
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
-    inst->classDef = static_cast<ObjClass*>(classVal.asObj());
+    inst->classDef = cls;
     
     if (val.isString()) {
         std::string msgStr = val.asString();
@@ -2818,7 +2818,9 @@ Value VM::wrapException(const std::string& type, Value val) {
         }
     }
     
-    inst->properties["type"] = {Value(type), false, false};
+    // type 字段：运行时错误用类名，兜底（编译期/内部错误）用 typeName
+    const char* tn = errorClass ? errorClass->name.c_str() : (typeName ? typeName : "Exception");
+    inst->properties["type"] = {Value(std::string(tn)), false, false};
     inst->properties["message"] = {val, false, false};
     inst->properties["traceback"] = {Value(buildStackTrace()), false, false};
     inst->properties["suppressed"] = {Value(GcHeap::get().allocate<ObjList>()), false, false};
@@ -3780,7 +3782,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
         while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= targetDepth) {
             exceptionHandlers.pop_back();
         }
-        Value errVal = wrapException("Exception", ex.val);
+        Value errVal = wrapException(nullptr, "Exception", ex.val);
         try { runDefersDownTo(frames[targetDepth].deferBase, &errVal); } catch (...) {}
         while (frameCount > targetDepth) {
             CallFrame* f = &frames[frameCount - 1];
@@ -6230,16 +6232,16 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value errVal = getReg(a);
                 frame->ip = ip;
-                errVal = wrapException("Exception", errVal);
+                errVal = wrapException(nullptr, "Exception", errVal);
                 throw ValueException(errVal);
             }
             case OpCode::THROW_TYPED: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 Value errVal = getReg(a);
-                std::string type = chunk->constants.data()[bx].asString();
+                ObjClass* errCls = static_cast<ObjClass*>(chunk->constants.data()[bx].asObj());
                 frame->ip = ip;
-                errVal = wrapException(type, errVal);
+                errVal = wrapException(errCls, nullptr, errVal);
                 throw ValueException(errVal);
             }
             case OpCode::CLASS: {
@@ -8009,7 +8011,7 @@ Value VM::run(int targetFrameDepth) {
             throw;
         } catch (const ValueException& ex) {
             frame->ip = ip;
-            Value errVal = wrapException("Exception", ex.val);
+            Value errVal = wrapException(nullptr, "Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }
@@ -8020,7 +8022,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const Jc2Error& ex) {
             frame->ip = ip;
-            Value errVal = wrapException(ex.type, Value(ex.message));
+            Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }
@@ -8031,7 +8033,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const std::exception& ex) {
             frame->ip = ip;
-            Value errVal = wrapException("Exception", Value(ex.what()));
+            Value errVal = wrapException(nullptr, "Exception", Value(ex.what()));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }
@@ -8042,7 +8044,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (...) {
             frame->ip = ip;
-            Value errVal = wrapException("Exception", Value("Unknown VM Error"));
+            Value errVal = wrapException(nullptr, "Exception", Value("Unknown VM Error"));
             if (!handleExceptionUnwind(&errVal)) {
                 throw ValueException(errVal);
             }

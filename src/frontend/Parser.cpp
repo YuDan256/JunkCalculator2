@@ -344,7 +344,7 @@ namespace jc {
             try { fn = std::filesystem::path(sourceFile).filename().string(); }
             catch (...) {}
             if (fn.empty()) fn = "Script";
-            throw jc::Jc2Error(e.type, "[" + fn + " : " + std::to_string(errLine) + "] " + e.message);
+            throw jc::Jc2Error(e.errorClass, e.typeName, "[" + fn + " : " + std::to_string(errLine) + "] " + e.message);
         }
         catch (const std::exception& e) {
             if (VM::activeVM) {

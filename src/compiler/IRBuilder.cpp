@@ -4580,7 +4580,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         IRNode* errStr = graph->createConstant(Value("Destructuring pattern match failed."));
         errStr->setControl(failMerge);
         throwNode->addData(errStr);
-        IRNode* typeStr = graph->createConstant(Value(jc::err::TypeError));
+        IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));
         typeStr->setControl(failMerge);
         throwNode->addData(typeStr);
         recordExitNode(throwNode);
@@ -5232,7 +5232,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
     throwNode->setControl(currentControl);
     throwNode->addData(concatNode);
-    IRNode* typeStr = graph->createConstant(Value(jc::err::MatchError));
+    IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));
     typeStr->setControl(currentControl);
     throwNode->addData(typeStr);
     recordExitNode(throwNode);

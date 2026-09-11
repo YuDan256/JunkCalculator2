@@ -12,46 +12,50 @@
 
 namespace jc {
 
-    // ★ 统一异常类型标签（显式类型化，取代字符串前缀编码）
+    struct ObjClass;  // 前向声明（完整定义见 Value.h）
+
+    // ★ 统一异常类型标签：类指针（运行时错误由 PredefinedClasses 注册时赋值；
+    //   编译期/内部错误恒为 nullptr，不进运行时类注册）
     namespace err {
         // 运行时错误（可被 try/catch 捕获）
-        constexpr const char* TypeError = "TypeError";
-        constexpr const char* ValueError = "ValueError";
-        constexpr const char* MathError = "MathError";
-        constexpr const char* MatchError = "MatchError";
-        constexpr const char* IOError = "IOError";
-        constexpr const char* RuntimeError = "RuntimeError";
-        constexpr const char* OverflowError = "OverflowError";
-        constexpr const char* FFIError = "FFIError";
-        constexpr const char* TensorError = "TensorError";
-        constexpr const char* CalculusError = "CalculusError";
-        constexpr const char* SymbolicError = "SymbolicError";
+        extern ObjClass* TypeErrorClass;
+        extern ObjClass* ValueErrorClass;
+        extern ObjClass* MathErrorClass;
+        extern ObjClass* MatchErrorClass;
+        extern ObjClass* IOErrorClass;
+        extern ObjClass* RuntimeErrorClass;
+        extern ObjClass* OverflowErrorClass;
+        extern ObjClass* CalculusErrorClass;
+        extern ObjClass* SymbolicErrorClass;
         // 编译期错误（不进运行时）
-        constexpr const char* SyntaxError = "SyntaxError";
-        constexpr const char* ParserError = "ParserError";
-        constexpr const char* LexerError = "LexerError";
-        constexpr const char* EmitterError = "EmitterError";
+        extern ObjClass* SyntaxErrorClass;
+        extern ObjClass* ParserErrorClass;
+        extern ObjClass* LexerErrorClass;
+        extern ObjClass* EmitterErrorClass;
         // 内部错误（不变量破坏，用户不该触发）
-        constexpr const char* InternalError = "InternalError";
+        extern ObjClass* InternalErrorClass;
     }
 
-    // ★ 轻量异常：type + message 都是 std::string，不依赖 Value 完整定义，
-    // 因此任何文件（含 Value 类的内联方法）都能抛出；VM 层 catch 后包装成 Exception 对象。
+    // ★ 轻量异常：携带异常类指针（运行时）或 nullptr（编译期/内部），不依赖 Value 完整定义，
+    // 因此任何文件（含 Value 类的内联方法）都能抛出；VM 层 catch 后包装成异常类实例。
+    // typeName 仅用于 what() 消息与兜底 type 字段显示，不参与任何查找。
     struct Jc2Error : public std::runtime_error {
-        std::string type;
+        ObjClass* errorClass;
+        const char* typeName;
         std::string message;
         mutable std::string whatBuffer;
-        Jc2Error(std::string t, std::string msg) : std::runtime_error(msg), type(std::move(t)), message(std::move(msg)) {}
+        Jc2Error(ObjClass* cls, const char* tn, std::string msg)
+            : std::runtime_error(msg), errorClass(cls), typeName(tn), message(std::move(msg)) {}
         const char* what() const noexcept override {
             if (whatBuffer.empty()) {
-                whatBuffer = type.empty() ? message : type + ": " + message;
+                whatBuffer = (typeName && *typeName) ? std::string(typeName) + ": " + message : message;
             }
             return whatBuffer.c_str();
         }
     };
 
     // ★ 统一抛出入口：类型与消息显式分离，替代 throw std::runtime_error("前缀: 消息")
-    #define JC2_THROW(T, msg) throw ::jc::Jc2Error(::jc::err::T, (msg))
+    #define JC2_THROW(T, msg) throw ::jc::Jc2Error(::jc::err::T##Class, #T, (msg))
 
     // ★ 重复错误 helper：消除同一错误在多处重复抛出（后续新代码也直接复用）
     [[noreturn]] inline void errDivByZero() { JC2_THROW(MathError, "Division by zero."); }

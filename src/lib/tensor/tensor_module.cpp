@@ -3,6 +3,7 @@
 #include <memory>
 
 static jc2::Class* g_tensorClass = nullptr;
+jc2::Class* g_tensorErrorClass = nullptr;
 
 static jc::Tensor* getTensor(const jc2::Value& val) {
     if (!val.is_instance()) jc2::throw_error("TypeError: Expected a Tensor instance.");
@@ -508,6 +509,12 @@ FUNC(no_grad) {
 int jc2_init(jc2::Module& mod) {
     g_tensorClass = new jc2::Class("Tensor");
     mod.register_value("Tensor", *g_tensorClass);
+
+    // 注册 tensor 模块自己的错误类 tensor.TensorError（继承 Exception）
+    g_tensorErrorClass = new jc2::Class("TensorError");
+    jc2::Value exceptionCls = jc2::get_global("Exception");
+    g_tensorErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    mod.register_value("TensorError", *g_tensorErrorClass);
 
     g_tensorClass->bind_method("__str__", tensor___str__, 0, 0);
     g_tensorClass->bind_method("__add__", tensor___add__, 1, 1, {"other"});

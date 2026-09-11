@@ -333,8 +333,10 @@ static void host_throw_error(JC2_VMContext, const char* msg) {
     JC2_THROW(RuntimeError, msg);
 }
 
-static void host_throw_error_typed(JC2_VMContext, const char* type, const char* msg) {
-    throw jc::Jc2Error(type ? type : "", msg ? msg : "");
+static void host_throw_error_class(JC2_VMContext, JC2_ValueHandle clsHandle, const char* msg) {
+    Value c = from_handle(clsHandle);
+    jc::ObjClass* clsp = c.isClass() ? static_cast<jc::ObjClass*>(c.asObj()) : nullptr;
+    throw jc::Jc2Error(clsp, clsp ? clsp->name.c_str() : "Exception", msg ? msg : "");
 }
 
 static JC2_ValueHandle host_make_list(JC2_VMContext) {
@@ -770,6 +772,10 @@ static JC2_ValueHandle host_get_global(JC2_VMContext, const char* name) {
     if (!builtinVal.isNone()) {
         return protect(builtinVal);
     }
+    builtinVal = VM::activeVM->getBuiltinValue(name);
+    if (!builtinVal.isNone()) {
+        return protect(builtinVal);
+    }
     return Value::none().as_bits;
 }
 
@@ -900,7 +906,7 @@ static const JC2_HostAPI host_api = {
     host_instance_get_field,
     host_instance_set_field,
     host_freeze_object,
-    host_throw_error_typed
+    host_throw_error_class
 };
 
 const JC2_HostAPI* get_host_api() {

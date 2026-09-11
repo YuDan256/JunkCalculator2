@@ -3511,11 +3511,11 @@ namespace jc {
                     return std::nullopt;
                 } catch (const std::runtime_error& e) {
                     if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Risch Algorithm Failed" << std::endl;
-                    risch_error = jc::Jc2Error(jc::err::MathError, e.what());
+                    risch_error = jc::Jc2Error(jc::err::MathErrorClass, "MathError", e.what());
                     return std::nullopt;
                 } catch (...) {
                     if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Risch Algorithm Failed" << std::endl;
-                    risch_error = jc::Jc2Error(jc::err::MathError, "Unknown Risch Error");
+                    risch_error = jc::Jc2Error(jc::err::MathErrorClass, "MathError", "Unknown Risch Error");
                     return std::nullopt;
                 }
             }});
@@ -3586,7 +3586,7 @@ namespace jc {
                         throw;
                     } catch (const jc::Jc2Error& e2) {
                         // 如果展开后再次失败，保留新的资源限制错误
-                        if (e2.type == jc::err::MathError &&
+                        if (e2.errorClass == jc::err::MathErrorClass &&
                             (e2.message.find("Integration depth limit exceeded") != std::string::npos ||
                              e2.message.find("Integration AST size limit exceeded") != std::string::npos)) {
                             err = e2;
@@ -3595,7 +3595,7 @@ namespace jc {
                 }
                 
                 // 资源限制类错误（深度/AST 超限），直接向外传递
-                if (err.type == jc::err::MathError &&
+                if (err.errorClass == jc::err::MathErrorClass &&
                     (err.message.find("Integration depth limit exceeded") != std::string::npos ||
                      err.message.find("Integration AST size limit exceeded") != std::string::npos)) {
                     throw err;

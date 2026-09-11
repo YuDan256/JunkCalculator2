@@ -151,7 +151,7 @@ private:
     bool handleExceptionUnwind(Value* errValPtr);
     std::string buildStackTrace() const;
 public:
-    Value wrapException(const std::string& type, Value val);
+    Value wrapException(ObjClass* errorClass, const char* typeName, Value val);
 private:
     std::string formatException(const Value& errVal);
 

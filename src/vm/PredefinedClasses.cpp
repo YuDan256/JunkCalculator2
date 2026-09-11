@@ -909,6 +909,33 @@ void registerPredefinedClasses() {
     VM::activeVM->registerBuiltinValue("TokenStream", Value(tokenStreamClass));
     VM::activeVM->registerBuiltinValue("Exception", Value(exceptionClass));
     VM::activeVM->exceptionClass = exceptionClass;
+
+    // --- 内置异常类（extends Exception，永生代）---
+    // 在 registerAll 的 isInitializing=true 期间 allocate，自动永生代；
+    // 同时把类指针写回 err::XxxClass，供 JC2_THROW 编译期绑定。
+    {
+        struct ExceptionClassEntry { const char* name; ObjClass** slot; };
+        const ExceptionClassEntry exceptionClasses[] = {
+            {"TypeError",     &err::TypeErrorClass},
+            {"ValueError",    &err::ValueErrorClass},
+            {"MathError",     &err::MathErrorClass},
+            {"MatchError",    &err::MatchErrorClass},
+            {"IOError",       &err::IOErrorClass},
+            {"RuntimeError",  &err::RuntimeErrorClass},
+            {"OverflowError", &err::OverflowErrorClass},
+            {"CalculusError", &err::CalculusErrorClass},
+            {"SymbolicError", &err::SymbolicErrorClass},
+        };
+        for (const auto& entry : exceptionClasses) {
+            ObjClass* cls = GcHeap::get().allocate<ObjClass>();
+            GcObjGuard clsGuard(cls);
+            cls->name = entry.name;
+            cls->parent = exceptionClass;
+            VM::activeVM->registerBuiltinValue(entry.name, Value(cls));
+            *entry.slot = cls;
+        }
+    }
+
     VM::activeVM->registerBuiltinValue("BaseNum", Value(baseNumClass));
 }
 

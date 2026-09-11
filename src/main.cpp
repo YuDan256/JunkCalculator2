@@ -221,7 +221,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
             if (isImport) throw;
             std::cerr << "\n^C KeyboardInterrupt in script '" << resolvedPath << "'" << std::endl;
         } catch (const jc::Jc2Error& ex) {
-            if (ex.type == jc::err::IOError && (ex.message == "MAGIC_MISMATCH" || ex.message == "VERSION_MISMATCH")) {
+            if (ex.errorClass == jc::err::IOErrorClass && (ex.message == "MAGIC_MISMATCH" || ex.message == "VERSION_MISMATCH")) {
                 fallbackToSource = true;
             } else {
                 if (isImport) throw;

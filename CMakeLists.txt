@@ -46,6 +46,7 @@ set(JC2_HEADERS
 )
 
 set(JC2_SOURCES
+    "src/memory/Exceptions.cpp"
     "src/lib/ExtensionBridge.cpp"
     "src/jit/backend/ExecutableMemory.cpp"
     "src/jit/backend/MacroAssembler.cpp"

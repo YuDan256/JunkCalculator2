@@ -391,8 +391,42 @@ public:
     }
 };
 
-[[noreturn]] inline void throw_error_typed(const std::string& type, const std::string& msg) {
-    Env::api->throw_error_typed(Env::ctx, type.c_str(), msg.c_str());
+// 内置异常类型枚举（与主程序内置异常类同名同序）
+enum class ErrorType : uint8_t {
+    TypeError, ValueError, MathError, MatchError, IOError, RuntimeError,
+    OverflowError, CalculusError, SymbolicError,
+};
+
+constexpr const char* error_type_name(ErrorType t) {
+    switch (t) {
+        case ErrorType::TypeError: return "TypeError";
+        case ErrorType::ValueError: return "ValueError";
+        case ErrorType::MathError: return "MathError";
+        case ErrorType::MatchError: return "MatchError";
+        case ErrorType::IOError: return "IOError";
+        case ErrorType::RuntimeError: return "RuntimeError";
+        case ErrorType::OverflowError: return "OverflowError";
+        case ErrorType::CalculusError: return "CalculusError";
+        case ErrorType::SymbolicError: return "SymbolicError";
+    }
+    return "RuntimeError";
+}
+
+// 获取全局内置值（如 Exception、MathError 类）
+inline Value get_global(const std::string& name) {
+    return Value(Env::api->get_global(Env::ctx, name.c_str()));
+}
+
+// 强类型错误抛出：枚举 → 内置错误类（get_global 拿类指针，零字符串比较）
+[[noreturn]] inline void throw_error(ErrorType type, const std::string& msg) {
+    Value cls = get_global(error_type_name(type));
+    Env::api->throw_error_class(Env::ctx, cls.get_handle(), msg.c_str());
+    throw std::runtime_error(msg);
+}
+
+// 按类抛异常（DLL 自定义错误类）
+[[noreturn]] inline void throw_error_class(const Class& cls, const std::string& msg) {
+    Env::api->throw_error_class(Env::ctx, cls.get_handle(), msg.c_str());
     throw std::runtime_error(msg);
 }
 

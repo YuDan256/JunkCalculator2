@@ -1089,7 +1089,7 @@ namespace jc {
                     return result.asSymbolic();
                 }
                 catch (const jc::Jc2Error& e) {
-                    if (e.type == jc::err::MathError || e.type == jc::err::CalculusError || e.type == jc::err::SymbolicError)
+                    if (e.errorClass == jc::err::MathErrorClass || e.errorClass == jc::err::CalculusErrorClass || e.errorClass == jc::err::SymbolicErrorClass)
                         throw;
                 }
                 catch (const std::runtime_error& e) {

@@ -74,7 +74,7 @@ bool isKeywordLike(TokenType t) {
     case TokenType::IN: case TokenType::IS: case TokenType::AS:
     case TokenType::MATCH:
     case TokenType::TRY: case TokenType::CATCH:
-    case TokenType::ELSE: case TokenType::CLASS: case TokenType::EXTENDS:
+    case TokenType::ELSE: case TokenType::CLASS: case TokenType::TRAIT: case TokenType::WITH: case TokenType::EXTENDS:
     case TokenType::NAMESPACE: case TokenType::ENUM: case TokenType::DEFER:
     case TokenType::MACRO: case TokenType::SYNTAX: case TokenType::QUOTE:
         return true;
@@ -322,6 +322,7 @@ public:
     void visitClassDefExpr(ClassDefExpr* e) override {
         collectOuterBraces(e->startPos, e->endPos);
         if (e->superClassExpr) e->superClassExpr->accept(*this);
+        for (auto& t : e->traitExprs) if (t) t->accept(*this);
         for (auto& p : e->staticProperties) if (p.value) p.value->accept(*this);
         for (auto& p : e->instanceProperties) if (p.value) p.value->accept(*this);
     }

@@ -434,6 +434,7 @@ public:
                 pair->vec.push_back(result);
                 pair->vec.push_back(Value(p.isLocal));
                 pair->vec.push_back(Value(p.isConst));
+                pair->vec.push_back(Value(p.is_abstract));
                 list->vec.push_back(Value(pair));
             }
             return list;
@@ -443,12 +444,21 @@ public:
         GcObjGuard spGuard(staticProps);
         ObjList* instanceProps = serializeProps(expr->instanceProperties);
         GcObjGuard ipGuard(instanceProps);
+
+        ObjList* traits = GcHeap::get().allocate<ObjList>();
+        GcObjGuard trGuard(traits);
+        for (auto& t : expr->traitExprs) {
+            t->accept(*this);
+            traits->vec.push_back(result);
+        }
         
         result = makeASTNode("ClassDefExpr", expr->name.line, {
             {"name", Value(expr->name.lexeme)},
             {"superClassExpr", sup},
             {"staticProperties", Value(staticProps)},
-            {"instanceProperties", Value(instanceProps)}
+            {"instanceProperties", Value(instanceProps)},
+            {"isTrait", Value(expr->isTrait)},
+            {"traits", Value(traits)}
         });
     }
 
@@ -1064,7 +1074,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
                             Token pName(TokenType::IDENTIFIER, pList->vec[0].asString(), line);
                             bool isLoc = pList->vec.size() > 2 ? pList->vec[2].truthy() : false;
                             bool isCon = pList->vec.size() > 3 ? pList->vec[3].truthy() : false;
-                            properties.push_back({pName, toAST(pList->vec[1]), isLoc, isCon});
+                            bool isAbs = pList->vec.size() > 4 ? pList->vec[4].truthy() : false;
+                            properties.push_back({pName, toAST(pList->vec[1]), isLoc, isCon, isAbs});
                         }
                     }
                 }
@@ -1077,12 +1088,19 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
 
         std::string clsName = "";
         if (getProp("name").isString()) clsName = getProp("name").asString();
-        return std::make_unique<ClassDefExpr>(
+        auto clsExpr = std::make_unique<ClassDefExpr>(
             Token(TokenType::IDENTIFIER, clsName, line),
             toAST(getProp("superClassExpr")),
             std::move(staticProperties),
             std::move(instanceProperties)
         );
+        clsExpr->isTrait = getProp("isTrait").truthy();
+        if (getProp("traits").isObjType(ObjType::LIST)) {
+            for (const auto& tVal : static_cast<ObjList*>(getProp("traits").asObj())->vec) {
+                clsExpr->traitExprs.push_back(toAST(tVal));
+            }
+        }
+        return clsExpr;
     } else if (type == "NamespaceDecl") {
         std::string nsName = "";
         if (getProp("name").isString()) nsName = getProp("name").asString();

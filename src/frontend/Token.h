@@ -62,6 +62,8 @@ namespace jc {
         QUOTE,               // ★ 新增
         DEFER,               // ★ 新增
         CLASS,
+        TRAIT,               // ★ 新增（trait 接口）
+        WITH,                // ★ 新增（组合）
         EXTENDS, 
         NAMESPACE,           // ★ 新增
         ENUM,                // ★ 新增
@@ -160,6 +162,8 @@ namespace jc {
         case TokenType::AT:            return "AT(@)";
         case TokenType::DOLLAR:        return "DOLLAR($)";
         case TokenType::CLASS:         return "CLASS";
+        case TokenType::TRAIT:         return "TRAIT";
+        case TokenType::WITH:          return "WITH";
         case TokenType::NAMESPACE:     return "NAMESPACE";
         case TokenType::ENUM:          return "ENUM";
         case TokenType::SUPER:         return "SUPER";
@@ -262,6 +266,8 @@ namespace jc {
         if (s == "AT") return TokenType::AT;
         if (s == "DOLLAR") return TokenType::DOLLAR;
         if (s == "CLASS") return TokenType::CLASS;
+        if (s == "TRAIT") return TokenType::TRAIT;
+        if (s == "WITH") return TokenType::WITH;
         if (s == "NAMESPACE") return TokenType::NAMESPACE;
         if (s == "ENUM") return TokenType::ENUM;
         if (s == "SUPER") return TokenType::SUPER;

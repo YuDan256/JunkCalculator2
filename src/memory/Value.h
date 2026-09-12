@@ -538,6 +538,7 @@ namespace jc {
         Value val;
         bool is_const = false;
         bool is_local = false;
+        bool is_abstract = false;   // ★ 抽象方法标记（trait 契约）
     };
 
     struct ObjClass : public Obj {
@@ -546,6 +547,10 @@ namespace jc {
         ObjClass* parent = nullptr;
         std::unordered_map<std::string, PropertyDescriptor> properties;
         bool is_native = false;
+        bool isTrait = false;                // ★ trait 标记
+        bool is_frozen = false;              // ★ trait 定义后冻结
+        std::vector<ObjClass*> traits;       // ★ 组合的 trait（含继承，已平铺）
+        std::unordered_set<std::string> ownMembers;  // ★ 自身定义的成员名（区别于 trait 复制的）
         std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
             static uint64_t nextId = 1;

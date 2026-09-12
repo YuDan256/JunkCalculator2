@@ -3721,6 +3721,15 @@ void BuiltinRegistry::registerIntrospection() {
             JC2_THROW(TypeError, "isinstance() second argument must be a class.");
         auto inst = args[0].asInstance();
         auto cls = static_cast<ObjClass*>(args[1].asObj());
+        if (cls->isTrait) {
+            // trait：沿 parent 链查每个类的 traits 表（含平铺的祖先 trait）
+            auto c = inst->classDef;
+            while (c) {
+                if (std::find(c->traits.begin(), c->traits.end(), cls) != c->traits.end()) return Value(true);
+                c = c->parent;
+            }
+            return Value(false);
+        }
         auto c = inst->classDef;
         while (c) { if (c == cls) return Value(true); c = c->parent; }
         return Value(false);

@@ -115,6 +115,8 @@ enum class IROp {
     MethodConst,
     MethodPrivateConst,
     Inherit,
+    WithTrait,
+    FreezeClass,
     GetProperty,
     GetPrivate,
     TryGetProperty,
@@ -246,6 +248,8 @@ inline std::string irOpToString(IROp op) {
         case IROp::MethodConst: return "MethodConst";
         case IROp::MethodPrivateConst: return "MethodPrivateConst";
         case IROp::Inherit: return "Inherit";
+        case IROp::WithTrait: return "WithTrait";
+        case IROp::FreezeClass: return "FreezeClass";
         case IROp::GetProperty: return "GetProperty";
         case IROp::GetPrivate: return "GetPrivate";
         case IROp::TryGetProperty: return "TryGetProperty";

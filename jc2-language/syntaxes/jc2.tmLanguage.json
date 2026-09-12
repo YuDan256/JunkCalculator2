@@ -416,7 +416,7 @@
                 },
                 {
                     "name": "keyword.declaration.jc2",
-                    "match": "\\b(class|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b"
+                    "match": "\\b(class|trait|with|extends|const|state|delete|ref|import|local|namespace|macro|syntax|quote|enum|static)\\b"
                 }
             ]
         },

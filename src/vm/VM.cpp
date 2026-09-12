@@ -116,6 +116,51 @@ static bool isExceptionInstance(const Value& v) {
     return false;
 }
 
+// trait 签名校验：抽象方法 vs 实现方法（参数名/rest/kwarg/参数类型/返回类型 全相等）
+static bool traitSignatureMatches(const ObjClosure* a, const ObjClosure* b) {
+    if (!a || !b) return false;
+    if (a->paramNames != b->paramNames) return false;
+    if (a->restName != b->restName) return false;
+    if (a->kwargNames != b->kwargNames) return false;
+    if (a->kwargsName != b->kwargsName) return false;
+    if (a->paramTypesCount != b->paramTypesCount) return false;
+    for (int i = 0; i < a->paramTypesCount; ++i) {
+        if (a->paramTypes[i].as_bits != b->paramTypes[i].as_bits) return false;
+    }
+    if (a->returnType.as_bits != b->returnType.as_bits) return false;
+    return true;
+}
+
+// 应用 trait：复制默认方法/字段（类自身不覆盖）+ 校验抽象方法 + 平铺 traits
+static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::string>& ownMembers) {
+    // 递归平铺祖先 trait
+    for (auto* ancestor : tr->traits) {
+        applyTrait(cls, ancestor, ownMembers);
+    }
+    // 平铺 tr 本身（去重）
+    if (std::find(cls->traits.begin(), cls->traits.end(), tr) == cls->traits.end()) {
+        cls->traits.push_back(tr);
+    }
+    // 复制默认方法/字段 + 校验抽象方法
+    for (auto& [name, pd] : tr->properties) {
+        if (pd.is_abstract) {
+            auto it = cls->properties.find(name);
+            if (it == cls->properties.end()) {
+                JC2_THROW(TypeError, "Class does not implement abstract method '" + name + "'.");
+            }
+            auto* afn = pd.val.isFunctionClosure() ? pd.val.asFunction() : nullptr;
+            auto* ifn = it->second.val.isFunctionClosure() ? it->second.val.asFunction() : nullptr;
+            if (!traitSignatureMatches(afn, ifn)) {
+                JC2_THROW(TypeError, "Method '" + name + "' does not match trait signature.");
+            }
+        } else {
+            // 默认方法：类自身已存在的不覆盖
+            if (ownMembers.count(name)) continue;
+            cls->properties[name] = pd;
+        }
+    }
+}
+
 // 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
 static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
 
@@ -229,6 +274,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             }
         } else if (callee.isClass()) {
             auto cls = static_cast<ObjClass*>(callee.asObj());
+            if (cls->isTrait) JC2_THROW(TypeError, "'" + cls->name + "' is a trait and cannot be instantiated.");
             if (cls->native_allocator) {
                 Value res = cls->native_allocator(args);
                 VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
@@ -1054,6 +1100,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         }
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
+        if (cls->isTrait) JC2_THROW(TypeError, "'" + cls->name + "' is a trait and cannot be instantiated.");
         
         if (cls->native_allocator) {
             if (kwArgc > 0) JC2_THROW(TypeError, "Native class allocator does not support keyword arguments.");
@@ -6245,19 +6292,22 @@ Value VM::run(int targetFrameDepth) {
                 errVal = wrapException(errCls, nullptr, errVal);
                 throw ValueException(errVal);
             }
-            case OpCode::CLASS: {
+            case OpCode::CLASS: case OpCode::TRAIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 const std::string& name = chunk->constants.data()[bx].asString();
                 auto cls = GcHeap::get().allocate<ObjClass>();
                 cls->name = name;
+                cls->isTrait = (op == OpCode::TRAIT);
                 getReg(a) = Value(cls);
                 break;
             }
             case OpCode::METHOD:
             case OpCode::METHOD_PRIVATE:
             case OpCode::METHOD_CONST:
-            case OpCode::METHOD_PRIVATE_CONST: {
+            case OpCode::METHOD_PRIVATE_CONST:
+            case OpCode::METHOD_ABSTRACT:
+            case OpCode::METHOD_ABSTRACT_PRIVATE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
@@ -6271,13 +6321,20 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (closureVal.isFunctionClosure()) {
                     ObjClosure* fn = closureVal.asFunction();
-                    if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST) {
+                    bool isAbstract = (op == OpCode::METHOD_ABSTRACT || op == OpCode::METHOD_ABSTRACT_PRIVATE);
+                    if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST || op == OpCode::METHOD_ABSTRACT_PRIVATE) {
                         fn->is_local = true;
                         fn->owner_class = cls;
                         std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
-                        if (cls) cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true};
+                        if (cls) {
+                            cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
+                            cls->ownMembers.insert(mangledName);
+                        }
                     } else {
-                        if (cls) cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false};
+                        if (cls) {
+                            cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false, isAbstract};
+                            cls->ownMembers.insert(methodName);
+                        }
                     }
                 } else {
                     JC2_THROW(RuntimeError, "Invalid closure type for method.");
@@ -6296,6 +6353,27 @@ Value VM::run(int targetFrameDepth) {
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
                 if (sub) sub->parent = sup;
+                break;
+            }
+            case OpCode::WITH_TRAIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                
+                Value classVal = getReg(a);
+                Value traitVal = getReg(b);
+                if (!classVal.isClass() || !traitVal.isClass()) JC2_THROW(RuntimeError, "WITH_TRAIT requires two classes.");
+                auto cls = static_cast<ObjClass*>(classVal.asObj());
+                auto tr = static_cast<ObjClass*>(traitVal.asObj());
+                if (!tr->isTrait) JC2_THROW(TypeError, "'" + tr->name + "' is not a trait.");
+                applyTrait(cls, tr, cls->ownMembers);
+                break;
+            }
+            case OpCode::FREEZE_CLASS: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value classVal = getReg(a);
+                if (!classVal.isClass()) JC2_THROW(RuntimeError, "FREEZE_CLASS requires a class.");
+                auto cls = static_cast<ObjClass*>(classVal.asObj());
+                cls->is_frozen = true;
                 break;
             }
             case OpCode::GET_PRIVATE: {
@@ -7194,7 +7272,10 @@ Value VM::run(int targetFrameDepth) {
                         std::string mangledName = manglePrivate(cls->classId, keyStr);
                         auto it = cls->properties.find(mangledName);
                         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
-                        if (cls) cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                        if (cls) {
+                            cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                            cls->ownMembers.insert(mangledName);
+                        }
                     }
                 } else {
                     JC2_THROW(RuntimeError, "Cannot set private property on this type.");
@@ -7231,7 +7312,10 @@ Value VM::run(int targetFrameDepth) {
                     if (it != cls->properties.end()) {
                         JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
                     }
-                    if (cls) cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
+                    if (cls) {
+                        cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
+                        cls->ownMembers.insert(keyStr);
+                    }
                 } else {
                     JC2_THROW(RuntimeError, "Cannot define property on this type.");
                 }
@@ -8244,11 +8328,12 @@ uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t s
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk) {
+uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk, int isTrait) {
     JIT_CALLOUT_TRY
     const std::string& name = chunk->constants[nameIdx].asString();
     auto cls = GcHeap::get().allocate<ObjClass>();
     cls->name = name;
+    cls->isTrait = (isTrait != 0);
     Value res(cls);
     VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -11821,17 +11906,45 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
         ObjClosure* fn = closureVal.asFunction();
         bool isPrivate = (kind & 1) != 0;
         bool isConst = (kind & 2) != 0;
+        bool isAbstract = (kind & 4) != 0;
         if (isPrivate) {
             fn->is_local = true;
             fn->owner_class = cls;
             std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
-            if (cls) cls->properties[mangledName] = {closureVal, isConst, true};
+            if (cls) {
+                cls->properties[mangledName] = {closureVal, isConst, true, isAbstract};
+                cls->ownMembers.insert(mangledName);
+            }
         } else {
-            if (cls) cls->properties[methodName] = {closureVal, isConst, false};
+            if (cls) {
+                cls->properties[methodName] = {closureVal, isConst, false, isAbstract};
+                cls->ownMembers.insert(methodName);
+            }
         }
     } else {
         JC2_THROW(RuntimeError, "Invalid closure type for method.");
     }
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_with_trait(uint64_t cls_bits, uint64_t trait_bits) {
+    JIT_CALLOUT_TRY
+    Value classVal = Value::fromRawBits(cls_bits);
+    Value traitVal = Value::fromRawBits(trait_bits);
+    if (!classVal.isClass() || !traitVal.isClass()) JC2_THROW(RuntimeError, "WITH_TRAIT requires two classes.");
+    auto cls = static_cast<ObjClass*>(classVal.asObj());
+    auto tr = static_cast<ObjClass*>(traitVal.asObj());
+    if (!tr->isTrait) JC2_THROW(TypeError, "'" + tr->name + "' is not a trait.");
+    applyTrait(cls, tr, cls->ownMembers);
+    JIT_CALLOUT_CATCH_VOID
+}
+
+void jc2_jit_freeze_class(uint64_t cls_bits) {
+    JIT_CALLOUT_TRY
+    Value classVal = Value::fromRawBits(cls_bits);
+    if (!classVal.isClass()) JC2_THROW(RuntimeError, "FREEZE_CLASS requires a class.");
+    auto cls = static_cast<ObjClass*>(classVal.asObj());
+    cls->is_frozen = true;
     JIT_CALLOUT_CATCH_VOID
 }
 

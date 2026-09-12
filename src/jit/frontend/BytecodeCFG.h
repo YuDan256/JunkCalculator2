@@ -70,7 +70,8 @@ public:
                 case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
                 case OpCode::GET_SUPER: case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
                 case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST:
-                case OpCode::METHOD_PRIVATE_CONST: case OpCode::CALL: case OpCode::TAIL_CALL:
+                case OpCode::METHOD_PRIVATE_CONST: case OpCode::METHOD_ABSTRACT: case OpCode::METHOD_ABSTRACT_PRIVATE:
+                case OpCode::CALL: case OpCode::TAIL_CALL:
                 case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     if (b == ESCAPE_NORMAL_8) fetchExtra();
@@ -83,7 +84,7 @@ public:
                     break;
 
                 case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
-                case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
+                case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::LIST_APPEND:
                 case OpCode::MATRIX_COMP_APPEND:
                 case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
                 case OpCode::IMPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
@@ -96,11 +97,12 @@ public:
                 case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
                 case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT:
                 case OpCode::DICT_INIT: case OpCode::THROW: case OpCode::DEFER: case OpCode::RUN_DEFERS:
+                case OpCode::FREEZE_CLASS:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     break;
 
                 case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
-                case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS:
+                case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS: case OpCode::TRAIT:
                 case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
                 case OpCode::THROW_TYPED:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();

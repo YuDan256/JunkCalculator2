@@ -396,7 +396,7 @@ uint64_t jc2_jit_build_dict(uint64_t* values, uint32_t count);
 uint64_t jc2_jit_build_set(uint64_t* values, uint32_t count);
 uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, const Chunk* chunk);
 uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t step_bits);
-uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk);
+uint64_t jc2_jit_build_class(uint32_t nameIdx, const Chunk* chunk, int isTrait);
 uint64_t jc2_jit_get_global(uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_set_global(uint32_t icIdx, uint64_t val_bits, const Chunk* chunk);
 uint64_t jc2_jit_get_ref_param(uint32_t bx);
@@ -474,6 +474,8 @@ void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
 void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk);
 void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx, const Chunk* chunk, int kind);
 void jc2_jit_inherit(uint64_t sub_bits, uint64_t super_bits);
+void jc2_jit_with_trait(uint64_t cls_bits, uint64_t trait_bits);
+void jc2_jit_freeze_class(uint64_t cls_bits);
 // 容器构建与操作
 uint64_t jc2_jit_list_init();
 void jc2_jit_list_append(uint64_t list_bits, uint64_t val_bits);

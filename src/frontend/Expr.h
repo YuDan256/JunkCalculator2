@@ -648,11 +648,14 @@ namespace jc {
     struct ClassDefExpr : public Expr {
         Token name;
         std::unique_ptr<Expr> superClassExpr;
+        std::vector<std::unique_ptr<Expr>> traitExprs;  // ★ with 组合的 trait 列表
+        bool isTrait = false;                            // ★ 是否 trait 定义
         struct PropertyDef {
             Token name;
             std::unique_ptr<Expr> value;
             bool isLocal = false;
             bool isConst = false;
+            bool is_abstract = false;  // ★ 抽象方法（无实现签名）
         };
         std::vector<PropertyDef> staticProperties;
         std::vector<PropertyDef> instanceProperties;

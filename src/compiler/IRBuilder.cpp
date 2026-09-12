@@ -3806,6 +3806,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     IRNode* classNode = graph->createValueNode(IROp::Class);
     classNode->setControl(currentControl);
     classNode->name = expr->name.lexeme;
+    classNode->payload1 = expr->isTrait ? 1 : 0;
     currentControl = classNode;
         
     if (expr->superClassExpr) {
@@ -3859,6 +3860,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             methodNode->addData(classNode);
             methodNode->addData(closureNode);
             methodNode->name = emitName;
+            methodNode->payload1 = p.is_abstract ? 1 : 0;
             currentControl = methodNode;
         }
     }
@@ -3882,6 +3884,23 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         setPropNode->addData(valNode);
         setPropNode->name = emitName;
         currentControl = setPropNode;
+    }
+
+    for (auto& t : expr->traitExprs) {
+        t->accept(*this);
+        IRNode* traitNode = lastValue;
+        IRNode* withNode = graph->createNode(IROp::WithTrait);
+        withNode->setControl(currentControl);
+        withNode->addData(classNode);
+        withNode->addData(traitNode);
+        currentControl = withNode;
+    }
+
+    if (expr->isTrait) {
+        IRNode* freezeNode = graph->createNode(IROp::FreezeClass);
+        freezeNode->setControl(currentControl);
+        freezeNode->addData(classNode);
+        currentControl = freezeNode;
     }
         
     popScope();

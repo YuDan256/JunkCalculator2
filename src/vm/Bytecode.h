@@ -98,11 +98,16 @@ enum class OpCode : uint8_t {
     GET_SELF,       // R(A) := self
     GET_CURRENT_CLOSURE, // R(A) := current_closure
     CLASS,          // R(A) := Class(nameIdx = Bx) [Ext]
+    TRAIT,          // R(A) := Trait(nameIdx = Bx) [Ext]
     METHOD,         // R(A).Method(nameIdx = B) := R(C) [Ext]
     METHOD_PRIVATE, // R(A).PrivateMethod(nameIdx = B) := R(C) [Ext]
     METHOD_CONST,   // R(A).ConstMethod(nameIdx = B) := R(C) [Ext]
     METHOD_PRIVATE_CONST, // R(A).PrivateConstMethod(nameIdx = B) := R(C) [Ext]
+    METHOD_ABSTRACT, // R(A).AbstractMethod(nameIdx = B) := R(C) [Ext]
+    METHOD_ABSTRACT_PRIVATE, // R(A).AbstractPrivateMethod(nameIdx = B) := R(C) [Ext]
     INHERIT,        // R(A) inherits R(B)
+    WITH_TRAIT,     // R(A) with R(B)（组合 trait）
+    FREEZE_CLASS,   // R(A).is_frozen := true
 
     // 容器构建与操作
     BUILD_LIST,     // R(A) := List(R(B) ... R(B+C-1)) [Ext B, C]
@@ -229,11 +234,16 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::GET_SELF: return "GET_SELF";
         case OpCode::GET_CURRENT_CLOSURE: return "GET_CURRENT_CLOSURE";
         case OpCode::CLASS: return "CLASS";
+        case OpCode::TRAIT: return "TRAIT";
         case OpCode::METHOD: return "METHOD";
         case OpCode::METHOD_PRIVATE: return "METHOD_PRIVATE";
         case OpCode::METHOD_CONST: return "METHOD_CONST";
         case OpCode::METHOD_PRIVATE_CONST: return "METHOD_PRIVATE_CONST";
+        case OpCode::METHOD_ABSTRACT: return "METHOD_ABSTRACT";
+        case OpCode::METHOD_ABSTRACT_PRIVATE: return "METHOD_ABSTRACT_PRIVATE";
         case OpCode::INHERIT: return "INHERIT";
+        case OpCode::WITH_TRAIT: return "WITH_TRAIT";
+        case OpCode::FREEZE_CLASS: return "FREEZE_CLASS";
         case OpCode::BUILD_LIST: return "BUILD_LIST";
         case OpCode::BUILD_DICT: return "BUILD_DICT";
         case OpCode::DICT_REST: return "DICT_REST";
@@ -550,7 +560,7 @@ public:
                 }
                 break;
 
-            case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST: case OpCode::METHOD_PRIVATE_CONST:
+            case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST: case OpCode::METHOD_PRIVATE_CONST: case OpCode::METHOD_ABSTRACT: case OpCode::METHOD_ABSTRACT_PRIVATE:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
                     std::cout << "  ; " << constants[b].asString();
@@ -560,7 +570,7 @@ public:
             case OpCode::MOVE: case OpCode::LOAD_NIL:
             case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
             case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
-            case OpCode::INHERIT: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
+            case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::FREEZE_CLASS: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
             case OpCode::STRINGIFY: case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
                 break;
@@ -620,7 +630,7 @@ public:
                 }
                 break;
 
-            case OpCode::CLASS:
+            case OpCode::CLASS: case OpCode::TRAIT:
                 std::cout << "R(" << a << ") " << bx;
                 if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
                     std::cout << "  ; " << constants[bx].asString();

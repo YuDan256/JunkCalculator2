@@ -109,7 +109,7 @@
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
       "    if  else  while  for  in  is  as  break  continue  return  match  defer",
-      "    class  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
+      "    class  trait  with  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
       "    try  catch  throw  import  true  false  none  macro  syntax  quote",
       "",
       "  Native Libraries (require `import` before use, use `/help <library>` for details)",

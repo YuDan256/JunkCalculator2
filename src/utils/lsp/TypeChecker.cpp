@@ -281,6 +281,7 @@ namespace lsp {
         }
     }
     void TypeChecker::visitClassDefExpr(ClassDefExpr* e) {
+        for (auto& t : e->traitExprs) if (t) t->accept(*this);
         for (auto& p : e->staticProperties) if (p.value) p.value->accept(*this);
         for (auto& p : e->instanceProperties) if (p.value) p.value->accept(*this);
     }

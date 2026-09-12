@@ -446,6 +446,7 @@ namespace lsp {
         range.end = doc->offsetToPosition(e->endPos);
         enterScope(current, range, false, false, true);
         current->hasSuper = (e->superClassExpr != nullptr);
+        for (auto& t : e->traitExprs) { if (t) t->accept(*this); }
         // 先 declare 所有属性（含方法），再 visit 值：方法体里的 self.xxx 需要能先看到同类的其它方法，
         // 否则 self.generateLevel / self.tryMove / self.drawCentered 会被误报 Unknown method。
         for (auto& p : e->staticProperties) {

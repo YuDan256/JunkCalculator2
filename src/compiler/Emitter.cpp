@@ -558,7 +558,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::Class: {
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        auto w = buildInstABx(OpCode::CLASS, node->physicalReg, nameIdx);
+                        OpCode op = node->payload1 ? OpCode::TRAIT : OpCode::CLASS;
+                        auto w = buildInstABx(op, node->physicalReg, nameIdx);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -566,10 +567,15 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int c = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));
-                        OpCode op = OpCode::METHOD;
-                        if (node->op == IROp::MethodPrivate) op = OpCode::METHOD_PRIVATE;
-                        else if (node->op == IROp::MethodConst) op = OpCode::METHOD_CONST;
-                        else if (node->op == IROp::MethodPrivateConst) op = OpCode::METHOD_PRIVATE_CONST;
+                        OpCode op;
+                        if (node->payload1) {
+                            op = (node->op == IROp::MethodPrivate) ? OpCode::METHOD_ABSTRACT_PRIVATE : OpCode::METHOD_ABSTRACT;
+                        } else {
+                            op = OpCode::METHOD;
+                            if (node->op == IROp::MethodPrivate) op = OpCode::METHOD_PRIVATE;
+                            else if (node->op == IROp::MethodConst) op = OpCode::METHOD_CONST;
+                            else if (node->op == IROp::MethodPrivateConst) op = OpCode::METHOD_PRIVATE_CONST;
+                        }
                         auto w = buildInstABC(op, a, nameIdx, c, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
@@ -578,6 +584,19 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
                         auto w = buildInstAB(OpCode::INHERIT, a, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::WithTrait: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int b = ensureReg(node->dataInputs[1], inst.words, chunk, 125);
+                        auto w = buildInstAB(OpCode::WITH_TRAIT, a, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::FreezeClass: {
+                        int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstA(OpCode::FREEZE_CLASS, a);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

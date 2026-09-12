@@ -28,7 +28,7 @@ static bool isControlSpine(IROp op) {
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
         case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
         case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
-        case IROp::Inherit: case IROp::Import:
+        case IROp::Inherit: case IROp::WithTrait: case IROp::FreezeClass: case IROp::Import:
         case IROp::Defer: case IROp::RunDefers:
         case IROp::ListInit: case IROp::ListAppend: case IROp::MatrixCompInit: case IROp::MatrixCompAppend: case IROp::MatrixCompEnd:
         case IROp::SetInit: case IROp::SetAppend: case IROp::DictInit: case IROp::DictAppend:

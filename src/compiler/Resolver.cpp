@@ -389,6 +389,7 @@ void Resolver::visitImportExpr(ImportExpr* expr) {
 
 void Resolver::visitClassDefExpr(ClassDefExpr* expr) {
     if (expr->superClassExpr) resolve(expr->superClassExpr.get());
+    for (auto& t : expr->traitExprs) resolve(t.get());
     
     beginScope(false, false);
     declareVariable("<class>", VarScope::Local, true, true);

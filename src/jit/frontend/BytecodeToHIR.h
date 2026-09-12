@@ -303,7 +303,8 @@ public:
                     case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
                     case OpCode::GET_SUPER: case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
                     case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST:
-                    case OpCode::METHOD_PRIVATE_CONST: case OpCode::CALL: case OpCode::TAIL_CALL:
+                    case OpCode::METHOD_PRIVATE_CONST: case OpCode::METHOD_ABSTRACT: case OpCode::METHOD_ABSTRACT_PRIVATE:
+                    case OpCode::CALL: case OpCode::TAIL_CALL:
                     case OpCode::MATCH_SHAPE: case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (b == ESCAPE_NORMAL_8) b = fetchExtra();
@@ -316,7 +317,7 @@ public:
                         break;
 
                     case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
-                    case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::LIST_APPEND:
+                    case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::LIST_APPEND:
                     case OpCode::MATRIX_COMP_APPEND: case OpCode::MAKE_SPREAD:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
                     case OpCode::IMPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
@@ -329,11 +330,12 @@ public:
                     case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
                     case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT:
                     case OpCode::DICT_INIT: case OpCode::THROW: case OpCode::DEFER: case OpCode::RUN_DEFERS:
+                    case OpCode::FREEZE_CLASS:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         break;
 
                     case OpCode::LOADK: case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
-                    case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS:
+                    case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: case OpCode::CLASS: case OpCode::TRAIT:
                     case OpCode::CLOSURE: case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
                     case OpCode::THROW_TYPED:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
@@ -916,11 +918,12 @@ public:
                         setLocalSync(a, callout);
                         break;
                     }
-                    case OpCode::CLASS: {
+                    case OpCode::CLASS: case OpCode::TRAIT: {
                         auto fs = captureFrameState(currentIp);
                         auto nameIdxNode = builder_.createInt32Constant(bx);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_class), JITType::TaggedValue, 2, {nameIdxNode, chunkNode}, fs);
+                        auto isTraitNode = builder_.createInt32Constant(op == OpCode::TRAIT ? 1 : 0);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_class), JITType::TaggedValue, 3, {nameIdxNode, chunkNode, isTraitNode}, fs);
                         setLocalSync(a, callout);
                         break;
                     }
@@ -1411,9 +1414,43 @@ public:
                         builder_.setCurrentEffect(callout);
                         break;
                     }
+                    case OpCode::METHOD_ABSTRACT: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(4);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::METHOD_ABSTRACT_PRIVATE: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* classVal = getBoxedRKNode(a);
+                        HIRNode* closureVal = getBoxedRKNode(c);
+                        auto nameIdxNode = builder_.createInt32Constant(b);
+                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
+                        auto kindNode = builder_.createInt32Constant(5);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_method), JITType::Effect, 5, {classVal, closureVal, nameIdxNode, chunkNode, kindNode}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
                     case OpCode::INHERIT: {
                         auto fs = captureFrameState(currentIp);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_inherit), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::WITH_TRAIT: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_with_trait), JITType::Effect, 2, {getBoxedRKNode(a), getBoxedRKNode(b)}, fs);
+                        builder_.setCurrentEffect(callout);
+                        break;
+                    }
+                    case OpCode::FREEZE_CLASS: {
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_freeze_class), JITType::Effect, 1, {getBoxedRKNode(a)}, fs);
                         builder_.setCurrentEffect(callout);
                         break;
                     }

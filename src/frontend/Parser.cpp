@@ -1570,8 +1570,16 @@ namespace jc {
             return withPos(std::make_unique<SelfExpr>(), startPos, endPos);
         }
         if (match({ TokenType::CLASS })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::EXTENDS)) {
-                return classDefExpr();
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::EXTENDS) || check(TokenType::WITH)) {
+                return classDefExpr(false);
+            }
+            int startPos = previous().position;
+            int endPos = startPos + static_cast<int>(previous().lexeme.length());
+            return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
+        }
+        if (match({ TokenType::TRAIT })) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::WITH)) {
+                return classDefExpr(true);
             }
             int startPos = previous().position;
             int endPos = startPos + static_cast<int>(previous().lexeme.length());
@@ -3549,7 +3557,7 @@ namespace jc {
         return enumExpr;
     }
 
-    std::unique_ptr<Expr> Parser::classDefExpr() {
+    std::unique_ptr<Expr> Parser::classDefExpr(bool isTrait) {
         int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
@@ -3573,7 +3581,15 @@ namespace jc {
             superClassExpr = expression();
         }
 
-        if (isNamed || superClassExpr) {
+        std::vector<std::unique_ptr<Expr>> traitExprs;
+        if (check(TokenType::WITH)) {
+            advance();
+            do {
+                traitExprs.push_back(assignment());
+            } while (match({ TokenType::COMMA }));
+        }
+
+        if (isNamed || superClassExpr || !traitExprs.empty()) {
             while (match({ TokenType::NEWLINE })) {}
         }
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after class definition.");
@@ -3617,6 +3633,7 @@ namespace jc {
             }
 
             std::unique_ptr<Expr> value;
+            bool isAbstract = false;
             if (match({ TokenType::ASSIGN })) {
                 value = ternary();
             } else {
@@ -3744,33 +3761,46 @@ namespace jc {
                 consume(TokenType::RPAREN, "Parser Error: Expect ')' after method parameters.");
 
                 std::shared_ptr<Expr> retType = nullptr;
+                int savedArrow = current;
                 while (match({ TokenType::NEWLINE })) {}
                 if (match({ TokenType::RIGHT_ARROW })) {
                     retType = std::shared_ptr<Expr>(ternary().release());
-                }
-                while (match({ TokenType::NEWLINE })) {}
-
-                consume(TokenType::ASSIGN, "Parser Error: Expect '=' after method signature.");
-
-                int bodyStart = current;
-                auto body = check(TokenType::LBRACE) ? parseBlock() : assignment();
-                int bodyEnd = current;
-
-                std::string rawBody;
-                for (int i = bodyStart; i < bodyEnd; ++i) {
-                    if (tokens[i].type == TokenType::NEWLINE) continue;
-                    if (tokens[i].type == TokenType::STRING) rawBody += "\"" + tokens[i].lexeme + "\"";
-                    else rawBody += tokens[i].lexeme;
-                    if (i < bodyEnd - 1 && tokens[i + 1].type != TokenType::NEWLINE) rawBody += " ";
+                } else {
+                    current = savedArrow;
                 }
 
                 std::shared_ptr<Expr> finalBody;
-                if (!destructStmts.empty()) {
-                    destructStmts.push_back(std::move(body));
-                    finalBody = std::make_shared<Block>(std::move(destructStmts));
-                }
-                else {
-                    finalBody = std::shared_ptr<Expr>(body.release());
+                std::string rawBody;
+
+                // 跳过换行判断是否有 '=' 实现（抽象方法无 '='）；无则回退换行让成员结束检查可见
+                int saved = current;
+                while (match({ TokenType::NEWLINE })) {}
+                if (match({ TokenType::ASSIGN })) {
+                    int bodyStart = current;
+                    auto body = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                    int bodyEnd = current;
+
+                    for (int i = bodyStart; i < bodyEnd; ++i) {
+                        if (tokens[i].type == TokenType::NEWLINE) continue;
+                        if (tokens[i].type == TokenType::STRING) rawBody += "\"" + tokens[i].lexeme + "\"";
+                        else rawBody += tokens[i].lexeme;
+                        if (i < bodyEnd - 1 && tokens[i + 1].type != TokenType::NEWLINE) rawBody += " ";
+                    }
+
+                    if (!destructStmts.empty()) {
+                        destructStmts.push_back(std::move(body));
+                        finalBody = std::make_shared<Block>(std::move(destructStmts));
+                    }
+                    else {
+                        finalBody = std::shared_ptr<Expr>(body.release());
+                    }
+                } else {
+                    current = saved;
+                    if (!isTrait) {
+                        JC2_THROW(ParserError, "Expect '=' after method signature.");
+                    }
+                    isAbstract = true;
+                    finalBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
                 }
 
                 value = std::make_unique<LambdaExpr>(
@@ -3789,9 +3819,9 @@ namespace jc {
             }
 
             if (isStatic) {
-                staticProperties.push_back({ memberName, std::move(value), isLocal, isConst });
+                staticProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract });
             } else {
-                instanceProperties.push_back({ memberName, std::move(value), isLocal, isConst });
+                instanceProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract });
             }
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {
@@ -3802,6 +3832,8 @@ namespace jc {
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after class body.");
         int endPos = previous().position + static_cast<int>(previous().lexeme.length());
         auto classExpr = withPos(std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(staticProperties), std::move(instanceProperties)), startPos, endPos);
+        classExpr->isTrait = isTrait;
+        classExpr->traitExprs = std::move(traitExprs);
         if (isNamed) {
             return withPos(std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false), startPos, endPos);
         }

@@ -124,6 +124,26 @@ std::vector<ObjClass*> traits;       // 组合的 trait，含继承、已平铺
 
 **`class ... with X, Y`**：建类、填自身成员；遍历 trait，默认方法与字段复制（自身已存在的不覆盖）；抽象方法校验「已实现 + 签名相等」，否则抛 `TypeError`；平铺 trait 及祖先 trait 进 `traits`；合并父类 `parent->traits`。
 
+### 2.1 字段默认值初始化（`<fieldinit>`）
+
+字段默认值**不能**由 `init` 承担。`<init>` 是按**名字**存进类成员表的，而 trait 组合时成员按名复制，若字段初始化器也叫 `<init>`：
+
+- `with F1, F2`（两者都有同名字段）时后者覆盖前者，字段收敛成同一个值；
+- 类自身写了 `init` 时，trait 的字段初始化器被整个覆盖，trait 字段默认值丢失（读字段报「未找到」）。
+
+因此每个类/trait 各自持有一份**保留名**初始化器 `<fieldinit>`（`Bytecode.h` 的 `JC2_FIELD_INIT_NAME`），实例化时按以下顺序全部执行：
+
+1. 沿 `parent` 链**派生优先**（最派生的类先跑，与原先「沿 parent 链取第一个 `<init>`」的覆盖语义一致）；
+2. 每级内部先跑该级 `traits`（trait 声明顺序，后者覆盖先者），再跑该级自身的 `<fieldinit>`。
+
+每个初始化器以**声明它的类**同时作为 `self` 的类上下文与词法类，因此私有字段按各自的 classId 落键、互不覆盖，`self.x = v` 也能写回正确的 key。
+
+配套约定：
+- 字段默认值只由 `<fieldinit>` 负责，用户 `init` 只写用户逻辑（否则两处都 `DEFINE_PROP` 会重复定义）。`init` 在字段就绪后执行。
+- 用户没写 `init` 且该类有字段默认值时，仍补一个**空的** `<init>`，保持子类 `super.init()` 可解析。
+- `DEFINE_PROP` 命中已存在字段时不再是「重复定义」错误，而是覆盖写入（同名多次初始化时以最后写入者为准，配合派生优先即正确的覆盖语义）。真·重复声明仍由编译期重定义检查拦截。
+
+
 ### 3. 类型检查整合
 
 `isinstance(obj, T)`：沿 `classDef` 的 `parent` 链，查每个类的 `traits` 表是否含 `T`。trait 表极短，线性比对；无 bitmask、无上限。
@@ -146,7 +166,9 @@ std::vector<ObjClass*> traits;       // 组合的 trait，含继承、已平铺
 | 循环组合 | 定义时检测，抛 `TypeError` |
 | trait `parent` | `nullptr`（`with` 只用 `traits` 表） |
 | trait 字段与类字段冲突 | 后覆盖先（类自身覆盖 trait） |
-| trait 字段默认值求值 | trait 定义时求值一次（与普通类一致） |
+| trait 字段默认值求值 | 每个类/trait 各自持有 `<fieldinit>`，实例化时按「派生优先 → trait 声明顺序」全部执行 |
+| trait 的 local 字段初始化 | 以**声明它的 trait** 为类上下文落键，同名私有字段各归其主、每实例独立 |
+| 消费者类代码访问 trait 的 local 字段 | 不可见（需由 trait 自己暴露公开方法），与词法私有解析一致 |
 | 方法查找顺序 | 类自身 > trait 默认 > 父类 |
 | 父类 with 的 trait | 子类继承（traits 合并） |
 | 修饰符 local/const/static | 复制时原样带 |
@@ -164,8 +186,11 @@ std::vector<ObjClass*> traits;       // 组合的 trait，含继承、已平铺
 9. 循环组合 `A with B`、`B with A` → 定义时抛错。
 10. `isinstance(obj, T)` / `e: T` / `x: T` 命中；父类 with 的 trait 子类也命中。
 11. trait 表平铺：`class C with B`（B with A），`isinstance(c, A)` 命中。
-12. trait 定义后修改成员抛错（冻结）；trait 字段默认值只在定义时求值一次。
+12. trait 定义后修改成员抛错（冻结）。
 13. 修饰符 local/const/static 复制后语义与类原生一致。
+14. 字段默认值：`with F1, F2` 两 trait 同名字段各归其主（1 与 2）；类自身 `init` 不吞掉 trait 字段默认值；类继承链逐级初始化；`super.init()` 仍可用；每实例独立持有自己的那份。
+15. trait 的 local 私有成员按词法作用域解析：trait 方法只见自己 trait 的私有；类自身的同名私有互不干扰。
+16. 组合链上的私有不可跨作用域取用：`trait Deep with LA` 的方法调 LA 的 local → 报错（词法作用域的正确结果）。
 
 ## 十、明确不做（第一版）
 

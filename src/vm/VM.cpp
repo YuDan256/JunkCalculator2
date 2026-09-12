@@ -131,34 +131,222 @@ static bool traitSignatureMatches(const ObjClosure* a, const ObjClosure* b) {
     return true;
 }
 
-// 应用 trait：复制默认方法/字段（类自身不覆盖）+ 校验抽象方法 + 平铺 traits
-static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::string>& ownMembers) {
-    // 递归平铺祖先 trait
+// 递归平铺 trait：祖先在前，自身在后；返回「祖先在前、自身在后」且已去重的顺序表
+static void flattenTrait(ObjClass* tr, std::vector<ObjClass*>& out) {
+    if (!tr) return;
+    if (std::find(out.begin(), out.end(), tr) != out.end()) return;
     for (auto* ancestor : tr->traits) {
-        applyTrait(cls, ancestor, ownMembers);
+        flattenTrait(ancestor, out);
     }
-    // 平铺 tr 本身（去重）
-    if (std::find(cls->traits.begin(), cls->traits.end(), tr) == cls->traits.end()) {
-        cls->traits.push_back(tr);
-    }
-    // 复制默认方法/字段 + 校验抽象方法
-    for (auto& [name, pd] : tr->properties) {
-        if (pd.is_abstract) {
-            auto it = cls->properties.find(name);
-            if (it == cls->properties.end()) {
-                JC2_THROW(TypeError, "Class does not implement abstract method '" + name + "'.");
-            }
-            auto* afn = pd.val.isFunctionClosure() ? pd.val.asFunction() : nullptr;
-            auto* ifn = it->second.val.isFunctionClosure() ? it->second.val.asFunction() : nullptr;
-            if (!traitSignatureMatches(afn, ifn)) {
-                JC2_THROW(TypeError, "Method '" + name + "' does not match trait signature.");
-            }
-        } else {
-            // 默认方法：类自身已存在的不覆盖
-            if (ownMembers.count(name)) continue;
-            cls->properties[name] = pd;
+    out.push_back(tr);
+}
+
+// 收集 tr 及全部祖先 trait 的抽象方法（去重）。若某个名字在更派生的 trait 里已被具体实现
+// 覆盖，则它不再是待实现的契约（`trait B with I { run(x) = ... }` 即满足了 I 的 run）。
+static void collectAbstractMethods(ObjClass* tr, std::vector<std::pair<std::string, PropertyDescriptor>>& out) {
+    std::vector<ObjClass*> chain;
+    flattenTrait(tr, chain);
+    std::unordered_set<std::string> satisfied;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
+        for (auto& [name, pd] : (*it)->properties) {
+            if (!pd.is_abstract) satisfied.insert(name);
         }
     }
+    std::unordered_set<std::string> seen;
+    for (auto* t : chain) {
+        if (!t) continue;
+        for (auto& [name, pd] : t->properties) {
+            if (!pd.is_abstract || satisfied.count(name)) continue;
+            if (seen.insert(name).second) out.emplace_back(name, pd);
+        }
+    }
+}
+
+// 派生 → 祖先：对每个成员名，找出最靠前的来源（更派生的 trait 覆盖其祖先 trait）
+static void computeShadowed(const std::vector<ObjClass*>& chain, std::unordered_map<std::string, ObjClass*>& firstBy) {
+    firstBy.clear();
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
+        for (auto& [name, pd] : (*it)->properties) {
+            (void)pd;
+            firstBy.emplace(name, *it);   // 先写入者即最派生来源
+        }
+    }
+}
+
+// 应用 trait：
+//   ① 复制阶段——按「后列出的 trait 覆盖先列出的」逆序处理各个待组合 trait；单个 trait
+//      内部按其自身平铺链的「派生覆盖祖先」顺序合并（合并表 base 只保留有效项，被派生
+//      trait 遮蔽的祖先同名成员不再重复写入），再落进类的成员表；
+//   ② 校验阶段——复制全部完成后才校验抽象方法，实现来源为：类自身成员 → 已合并的
+//      默认实现 → 父类链。这样 `trait B with I` 中 I 的抽象方法既能由类实现，也能由
+//      B 的默认实现满足，而不会误报 "does not implement abstract method"。
+static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::string>& ownMembers) {
+    std::vector<ObjClass*> chain;
+    flattenTrait(tr, chain);
+    if (chain.empty()) return;
+
+    // ★ 先备份类自身成员：trait 只能填补类未提供的名字，绝不能覆盖类自身定义
+    std::vector<std::pair<std::string, PropertyDescriptor>> ownBackup;
+    for (auto& name : ownMembers) {
+        auto it = cls->properties.find(name);
+        if (it != cls->properties.end()) ownBackup.emplace_back(name, it->second);
+    }
+
+    // ★ 平铺 traits 表（祖先在前、自身在后；已存在的不重复添加）
+    for (auto* t : chain) {
+        if (std::find(cls->traits.begin(), cls->traits.end(), t) == cls->traits.end()) {
+            cls->traits.push_back(t);
+        }
+    }
+
+    // ★ 复制阶段：单个 trait 内部派生覆盖祖先，合并成有序 base 后写入类成员表
+    std::unordered_map<std::string, PropertyDescriptor> base;
+    std::vector<std::string> baseOrder;
+    std::unordered_map<std::string, ObjClass*> firstBy;
+    for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 祖先 → 派生
+        ObjClass* t = *it;
+        computeShadowed(chain, firstBy);
+        for (auto& [name, pd] : t->properties) {
+            if (ownMembers.count(name)) continue;               // 类自身成员优先
+            auto f = firstBy.find(name);
+            if (f != firstBy.end() && f->second != t) continue; // 已被更派生的 trait 覆盖
+            auto ins = base.emplace(name, pd);
+            if (ins.second) baseOrder.push_back(name);
+            else ins.first->second = pd;                        // 更派生者后写入 → 生效
+        }
+    }
+    for (auto& name : baseOrder) cls->properties[name] = base[name];
+
+    // ★ 记录 trait 方法的词法归属：非 local 方法的闭包在 METHOD 定义时不会写 owner_class，
+    // 而经 trait 复制进类的方法需要知道「自己来自哪个 trait」，否则 trait 的 local 成员
+    // 无法按词法作用域解析（owner_class 只在定义时设置一次，故只补 nullptr 的情形）。
+    for (auto& name : baseOrder) {
+        auto pit = cls->properties.find(name);
+        if (pit == cls->properties.end()) continue;
+        Value& v = pit->second.val;
+        if (v.isFunctionClosure()) {
+            ObjClosure* fn = v.asFunction();
+            if (fn && !fn->owner_class) fn->owner_class = tr;
+        }
+    }
+
+    // ★ 还原类自身成员，确保 trait 永远不能覆盖类自身的定义
+    for (auto& [name, pd] : ownBackup) {
+        cls->properties[name] = pd;
+    }
+
+    // ★ 目标本身是 trait（trait 组合 trait）：抽象方法无需在此实现，继续向下传递，
+    // 等真正 with 它的类来满足。
+    if (cls->isTrait) return;
+
+    // ★ 校验阶段：抽象方法必须已被实现，且签名严格相等
+    std::vector<std::pair<std::string, PropertyDescriptor>> abstracts;
+    collectAbstractMethods(tr, abstracts);
+    for (auto& [name, pd] : abstracts) {
+        const PropertyDescriptor* impl = nullptr;
+        auto it = cls->properties.find(name);
+        if (it != cls->properties.end() && !it->second.is_abstract) {
+            impl = &it->second;
+        } else {
+            // 父类链：父类已实现的抽象方法，子类可继承
+            for (ObjClass* p = cls->parent; p && !impl; p = p->parent) {
+                auto pit = p->properties.find(name);
+                if (pit != p->properties.end() && !pit->second.is_abstract) impl = &pit->second;
+            }
+        }
+        if (!impl) {
+            JC2_THROW(TypeError, "Class does not implement abstract method '" + name + "'.");
+        }
+        auto* afn = pd.val.isFunctionClosure() ? pd.val.asFunction() : nullptr;
+        auto* ifn = impl->val.isFunctionClosure() ? impl->val.asFunction() : nullptr;
+        if (!traitSignatureMatches(afn, ifn)) {
+            JC2_THROW(TypeError, "Method '" + name + "' does not match trait signature.");
+        }
+    }
+}
+
+// ★ 私有成员查找（含 trait 定义、由类复制的 local 方法/字段）。
+// private 成员按「定义它的类的 classId」混淆存储，而派发点的 classContext 未必等于那个类
+// （trait 的 local 成员存在 trait 自己的表里，调用点 classContext 却是 with 它的类）。
+// 因此这里传入**未混淆的私有名**，按固定优先级枚举候选 owner 类，每个候选都用**它自己的
+// classId** 构造精确 mangled 名查找。两类私有语义不同，不能一刀切：
+//   • trait 的 local 是**词法**的：trait 方法永远看自己 trait 的私有，即使消费者类有同名
+//     私有成员也不受影响（trait 之间同名私有也各归其主）。
+//   • 类的 local 是**按实例**的：`self.x()` 要看最派生类的私有（父类方法里调用 `self.x()`
+//     应命中子类重写的私有），所以类链从实例实际类开始、最派生优先。
+// 因此顺序为：词法 trait 自身（仅当 owner 是 trait）→ 实例实际类链（最派生 → 祖先，含各自
+// trait 表）→ 词法定义类 → classContext。trait 表接在类链之后，使 trait 的私有只在类自身
+// 没有同名私有成员时才被解析到。全程精确匹配，无后缀/模糊扫描。
+static void collectPrivateCandidates(const ObjClass* lexical, ObjClass* ctx, ObjClass* instCls,
+                                     std::vector<ObjClass*>& out) {
+    auto add = [&out](ObjClass* c) {
+        if (c && std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
+    };
+    if (lexical && lexical->isTrait) add(const_cast<ObjClass*>(lexical));
+    for (ObjClass* p = instCls; p; p = p->parent) {
+        add(p);                             // 类私有：最派生优先
+        for (auto* t : p->traits) add(t);   // trait 表：trait 自身的 local 成员存于此
+    }
+    add(const_cast<ObjClass*>(lexical));
+    add(ctx);
+}
+
+bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
+                           const PropertyDescriptor*& found, ObjClass* lexical, ObjClass** foundIn) {
+    found = nullptr;
+    if (foundIn) *foundIn = nullptr;
+
+    // ① 实例自身属性（私有**字段**会随类模板复制到实例上）。先看词法 trait，再按实例类链
+    //    最派生优先，保持与 ② 的候选顺序一致。
+    if (inst) {
+        if (lexical && lexical->isTrait) {
+            auto it = inst->properties.find(manglePrivate(lexical->classId, name));
+            if (it != inst->properties.end()) { found = &it->second; return true; }
+        }
+        for (ObjClass* p = inst->classDef; p; p = p->parent) {
+            auto it = inst->properties.find(manglePrivate(p->classId, name));
+            if (it != inst->properties.end()) { found = &it->second; return true; }
+            for (auto* t : p->traits) {
+                auto tit = inst->properties.find(manglePrivate(t->classId, name));
+                if (tit != inst->properties.end()) { found = &tit->second; return true; }
+            }
+        }
+        if (lexical && !lexical->isTrait) {
+            auto it = inst->properties.find(manglePrivate(lexical->classId, name));
+            if (it != inst->properties.end()) { found = &it->second; return true; }
+        }
+        if (cls) {
+            auto it = inst->properties.find(manglePrivate(cls->classId, name));
+            if (it != inst->properties.end()) { found = &it->second; return true; }
+        }
+    }
+
+    // ② 候选 owner 类自己的成员表（顺序见 collectPrivateCandidates 注释）
+    std::vector<ObjClass*> candidates;
+    collectPrivateCandidates(lexical, cls, inst ? inst->classDef : nullptr, candidates);
+    for (ObjClass* c : candidates) {
+        auto it = c->properties.find(manglePrivate(c->classId, name));
+        if (it != c->properties.end()) {
+            found = &it->second;
+            if (foundIn) *foundIn = c;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool VM::findPrivateMember(const Value& obj, const std::string& name,
+                           const PropertyDescriptor*& found, ObjClass* lexical, ObjClass** foundIn) {
+    if (obj.isInstance()) {
+        auto inst = obj.asInstance();
+        return findPrivateMember(inst->classDef, inst, name, found, lexical, foundIn);
+    }
+    if (obj.isClass()) {
+        return findPrivateMember(static_cast<ObjClass*>(obj.asObj()), nullptr, name, found, lexical, foundIn);
+    }
+    found = nullptr;
+    if (foundIn) *foundIn = nullptr;
+    return false;
 }
 
 // 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
@@ -1710,60 +1898,49 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     const std::string& methodName = keyVal.asString();
 
     if (isPrivate) {
+        // 私有派发的词法定义类：闭包定义时所在类（trait 定义的 local 方法即 trait 自身）
+        ObjClass* lexical = currentFrame->closure ? currentFrame->closure->owner_class : nullptr;
         if (obj.isInstance()) {
             auto inst = obj.asInstance();
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
             std::string mangledName = manglePrivate(owner->classId, methodName);
-            auto it = inst->properties.find(mangledName);
-            if (it != inst->properties.end()) {
-                Value fv = it->second.val;
-                if (fv.isFunctionClosure()) {
-                    method = fv.asFunction();
-                    owningClass = owner;
-                    goto invoke_method;
-                } else {
-                    registers[currentFrame->registerBase + a] = fv;
-                    execCall(a, b, kwArgc, a, isTailCall);
-                    return;
-                }
+            const PropertyDescriptor* pd = nullptr;
+            ObjClass* foundIn = nullptr;
+            if (!findPrivateMember(owner, inst, methodName, pd, lexical, &foundIn)) {
+                JC2_THROW(RuntimeError, "Private method '" + methodName + "' not found.");
             }
-            
-            auto cit = owner->properties.find(mangledName);
-            if (cit != owner->properties.end()) {
-                Value fv = cit->second.val;
-                if (fv.isFunctionClosure()) {
-                    method = fv.asFunction();
-                    owningClass = owner;
-                    goto invoke_method;
-                } else {
-                    registers[currentFrame->registerBase + a] = fv;
-                    execCall(a, b, kwArgc, a, isTailCall);
-                    return;
-                }
+            Value fv = pd->val;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+                owningClass = foundIn ? foundIn : owner;   // ★ 绑定到真正定义该成员的类
+                goto invoke_method;
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, kwArgc, a, isTailCall);
+                return;
             }
-            
-            JC2_THROW(RuntimeError, "Private method '" + methodName + "' not found.");
         } else if (obj.isClass()) {
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
             std::string mangledName = manglePrivate(owner->classId, methodName);
-            auto it = owner->properties.find(mangledName);
-            if (it != owner->properties.end()) {
-                Value fv = it->second.val;
-                if (fv.isFunctionClosure()) {
-                    method = fv.asFunction();
-                    owningClass = owner;
-                    goto invoke_method;
-                } else {
-                    registers[currentFrame->registerBase + a] = fv;
-                    execCall(a, b, kwArgc, a, isTailCall);
-                    return;
-                }
+            const PropertyDescriptor* pd = nullptr;
+            ObjClass* foundIn = nullptr;
+            if (!findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), methodName, pd, lexical, &foundIn)) {
+                JC2_THROW(RuntimeError, "Private static method '" + methodName + "' not found.");
             }
-            JC2_THROW(RuntimeError, "Private static method '" + methodName + "' not found.");
+            Value fv = pd->val;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+                owningClass = foundIn ? foundIn : owner;
+                goto invoke_method;
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, kwArgc, a, isTailCall);
+                return;
+            }
         }
         JC2_THROW(RuntimeError, "Cannot invoke private method on this type.");
     }
@@ -2026,6 +2203,12 @@ invoke_method:
             }
         }
         
+        // 说明：这里**不做**「按类名兜底解析私有成员」的尝试。私有调用完全由编译期决定：
+        // `self.name()` 只在 name 属于当前类/trait body 声明的 local 成员时才编译成
+        // INVOKE_PRIVATE，因此私有解析严格遵循词法作用域。`trait Deep with LA` 的 body 在
+        // LA 被组合进来之前就已编译，其中的 `self.tg()` 是普通调用，LA 的私有 `tg` 对它
+        // 不可见 —— 这是词法作用域的正确结果，而不是需要兜底的缺陷（要跨层复用私有逻辑，
+        // 应在声明它的 trait 自己体内调用，或把该逻辑提升为非私有成员）。
         JC2_THROW(RuntimeError, "Cannot invoke method '" + methodName + "' on this type.");
     }
 
@@ -6389,18 +6572,14 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) errAccessPrivateOutsideClass();
+                    ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-                    auto it = inst->properties.find(mangledName);
-                    if (it != inst->properties.end()) {
-                        getReg(a) = it->second.val;
-                        break;
-                    }
-                    
-                    auto cit = owner->properties.find(mangledName);
-                    if (cit != owner->properties.end()) {
-                        if (cit->second.val.isFunctionClosure()) {
-                            auto rawMethod = cit->second.val.asFunction();
+                    const PropertyDescriptor* pd = nullptr;
+                    ObjClass* foundIn = nullptr;
+                    if (VM::findPrivateMember(owner, inst, keyVal.asString(), pd, lexical, &foundIn)) {
+                        if (pd->val.isFunctionClosure()) {
+                            auto rawMethod = pd->val.asFunction();
                             auto bound = GcHeap::get().allocate<ObjClosure>(
                                 std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
                             );
@@ -6426,11 +6605,11 @@ Value VM::run(int targetFrameDepth) {
                             bound->returnType = rawMethod->returnType;
                             bound->nativeFn = rawMethod->nativeFn;
                             bound->boundSelf = Value(inst);
-                            bound->boundClass = Value(owner);
+                            bound->boundClass = Value(foundIn ? foundIn : owner);
                             bound->is_local = true;
                             getReg(a) = Value(bound);
                         } else {
-                            getReg(a) = cit->second.val;
+                            getReg(a) = pd->val;
                         }
                         break;
                     }
@@ -6439,12 +6618,14 @@ Value VM::run(int targetFrameDepth) {
                 } else if (obj.isClass()) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) errAccessPrivateOutsideClass();
+                    ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-                    auto it = owner->properties.find(mangledName);
-                    if (it != owner->properties.end()) {
-                        if (it->second.val.isFunctionClosure()) {
-                            auto rawMethod = it->second.val.asFunction();
+                    const PropertyDescriptor* pd = nullptr;
+                    ObjClass* foundIn = nullptr;
+                    if (VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pd, lexical, &foundIn)) {
+                        if (pd->val.isFunctionClosure()) {
+                            auto rawMethod = pd->val.asFunction();
                             auto bound = GcHeap::get().allocate<ObjClosure>(
                                 std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
                             );
@@ -6470,11 +6651,11 @@ Value VM::run(int targetFrameDepth) {
                             bound->returnType = rawMethod->returnType;
                             bound->nativeFn = rawMethod->nativeFn;
                             bound->boundSelf = Value::none();
-                            bound->boundClass = Value(owner);
+                            bound->boundClass = Value(foundIn ? foundIn : owner);
                             bound->is_local = true;
                             getReg(a) = Value(bound);
                         } else {
-                            getReg(a) = it->second.val;
+                            getReg(a) = pd->val;
                         }
                         break;
                     }
@@ -7246,15 +7427,20 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) errAccessPrivateOutsideClass();
+                    ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
                     std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-                    auto it = inst->properties.find(mangledName);
                     if (op == OpCode::SET_PRIVATE) {
-                        if (it == inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
-                        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
-                        it->second.val = val;
+                        const PropertyDescriptor* pd = nullptr;
+                        ObjClass* foundIn = nullptr;
+                        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pd, lexical, &foundIn)) {
+                            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+                        }
+                        if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
+                        // 直接就地改写命中的描述符（实例属性 / 类表 / trait 表均适用）
+                        const_cast<PropertyDescriptor*>(pd)->val = val;
                     } else {
-                        if (it != inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+                        if (inst->properties.count(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
                         inst->properties[mangledName] = {val, op == OpCode::DEFINE_PRIVATE_CONST, true};
                     }
                 } else if (obj.isClass()) {
@@ -7264,11 +7450,15 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::SET_PRIVATE) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (!owner) errAccessPrivateOutsideClass();
+                        ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                         std::string mangledName = manglePrivate(owner->classId, keyStr);
-                        auto it = owner->properties.find(mangledName);
-                        if (it == owner->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' not found.");
-                        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
-                        it->second.val = val;
+                        const PropertyDescriptor* pd = nullptr;
+                        ObjClass* foundIn = nullptr;
+                        if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pd, lexical, &foundIn)) {
+                            JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' not found.");
+                        }
+                        if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
+                        const_cast<PropertyDescriptor*>(pd)->val = val;
                     } else {
                         std::string mangledName = manglePrivate(cls->classId, keyStr);
                         auto it = cls->properties.find(mangledName);
@@ -8951,7 +9141,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                     }
                                     c = c->parent;
                                 }
-                                
+
                                 if (initMethod) {
                                     if (initMethod->isBytecode()) {
                                         VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
@@ -9083,7 +9273,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                     }
                                     c = c->parent;
                                 }
-                                
+
                                 if (initMethod) {
                                     if (initMethod->isBytecode()) {
                                         VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
@@ -9568,7 +9758,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                     }
                                     c = c->parent;
                                 }
-                                
+
                                 if (initMethod) {
                                     if (initMethod->isBytecode()) {
                                         VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
@@ -9700,7 +9890,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                     }
                                     c = c->parent;
                                 }
-                                
+
                                 if (initMethod) {
                                     if (initMethod->isBytecode()) {
                                         VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
@@ -11708,35 +11898,32 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         auto inst = obj.asInstance();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
+        ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = inst->properties.find(mangledName);
-        if (it != inst->properties.end()) {
-            result = it->second.val;
+        const PropertyDescriptor* pd = nullptr;
+        ObjClass* foundIn = nullptr;
+        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pd, lexical, &foundIn)) {
+            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+        }
+        if (pd->val.isFunctionClosure()) {
+            result = bindPrivate(pd->val.asFunction(), foundIn ? foundIn : owner, Value(inst));
         } else {
-            auto cit = owner->properties.find(mangledName);
-            if (cit != owner->properties.end()) {
-                if (cit->second.val.isFunctionClosure()) {
-                    result = bindPrivate(cit->second.val.asFunction(), owner, Value(inst));
-                } else {
-                    result = cit->second.val;
-                }
-            } else {
-                JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
-            }
+            result = pd->val;
         }
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
+        ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = owner->properties.find(mangledName);
-        if (it != owner->properties.end()) {
-            if (it->second.val.isFunctionClosure()) {
-                result = bindPrivate(it->second.val.asFunction(), owner, Value::none());
-            } else {
-                result = it->second.val;
-            }
-        } else {
+        const PropertyDescriptor* pd = nullptr;
+        ObjClass* foundIn = nullptr;
+        if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pd, lexical, &foundIn)) {
             JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+        }
+        if (pd->val.isFunctionClosure()) {
+            result = bindPrivate(pd->val.asFunction(), foundIn ? foundIn : owner, Value::none());
+        } else {
+            result = pd->val;
         }
     } else {
         JC2_THROW(RuntimeError, "Cannot get private property on this type.");
@@ -11761,19 +11948,27 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
+        ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = inst->properties.find(mangledName);
-        if (it == inst->properties.end()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
-        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
-        it->second.val = val;
+        const PropertyDescriptor* pd = nullptr;
+        ObjClass* foundIn = nullptr;
+        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pd, lexical, &foundIn)) {
+            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+        }
+        if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
+        const_cast<PropertyDescriptor*>(pd)->val = val;
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
+        ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = owner->properties.find(mangledName);
-        if (it == owner->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
-        if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyVal.asString() + "'.");
-        it->second.val = val;
+        const PropertyDescriptor* pd = nullptr;
+        ObjClass* foundIn = nullptr;
+        if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pd, lexical, &foundIn)) {
+            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+        }
+        if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyVal.asString() + "'.");
+        const_cast<PropertyDescriptor*>(pd)->val = val;
     } else {
         JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }

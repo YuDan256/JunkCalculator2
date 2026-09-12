@@ -159,3 +159,190 @@ test_trait_frozen() = {
     assert(throws(() => { trait K { m() = "m" }; K.m = 2 }), "frozen trait method modification should throw")
 }
 test_trait_frozen()
+
+// 12. trait 组合 trait：父 trait 的抽象方法由类实现（回归：曾误报未实现）
+test_trait_composition_abstract() = {
+    trait I { run(x) }
+    trait B with I { extra() = "b" }
+    class D with B { run(x) = "D" }
+    d = D()
+    assert(d.run(1) == "D", "class implementation of inherited abstract method failed")
+    assert(d.extra() == "b", "composed trait default method failed")
+    assert(isinstance(d, I), "inherited abstract trait should be recognized")
+}
+test_trait_composition_abstract()
+
+// 13. trait 组合 trait：父 trait 的抽象方法由子 trait 默认实现满足
+test_trait_composition_default_satisfies() = {
+    trait I { run(x) }
+    trait B with I { run(x) = "B" }
+    class D with B {}
+    assert(D().run(1) == "B", "child trait default should satisfy parent abstract method")
+}
+test_trait_composition_default_satisfies()
+
+// 14. 三层 trait 组合 + 同名方法派生覆盖祖先
+test_trait_composition_chain() = {
+    trait A { name() = "A" }
+    trait B with A { name() = "B" }
+    trait C with B { }
+    class D with C {}
+    assert(D().name() == "B", "derived trait should override ancestor trait default")
+    assert(isinstance(D(), A), "3-level flattened ancestor trait isinstance failed")
+    assert(isinstance(D(), B) && isinstance(D(), C), "3-level direct trait isinstance failed")
+
+    // 子 trait 无覆盖时沿用祖先默认实现
+    trait E with A { extra() = "e" }
+    class F with E {}
+    assert(F().name() == "A", "ancestor default should be inherited when child does not override")
+}
+test_trait_composition_chain()
+
+// 15. trait 组合后签名校验仍然生效（错误发生在继承来的抽象方法上）
+test_trait_composition_signature() = {
+    trait I { run(x, y) -> int }
+    trait B with I { extra() = "b" }
+
+    assert(throws(() => class with B { run(x) -> int = x }), "inherited abstract param count should be checked")
+    assert(throws(() => class with B { run(a, b) -> int = a }), "inherited abstract param name should be checked")
+    assert(throws(() => class with B { run(x, y) -> string = "s" }), "inherited abstract return type should be checked")
+
+    class C with B { run(x, y) -> int = x + y }
+    assert(C().run(1, 2) == 3, "valid inherited abstract implementation failed")
+    assert(C().extra() == "b", "composed default method should still be copied")
+}
+test_trait_composition_signature()
+
+// 16. trait 定义的 local（私有）方法可从 trait 默认方法内调用
+test_trait_private_method() = {
+    trait I {
+        local hidden() = "h"
+        call() = self.hidden()
+    }
+    class C with I {}
+    c = C()
+    assert(c.call() == "h", "trait private method should be callable from trait default method")
+    assert(throws(() => c.hidden()), "trait private method should stay private")
+}
+test_trait_private_method()
+
+// 17. trait 私有字段 + 私有方法组合访问
+test_trait_private_state() = {
+    trait Counter {
+        local count = 0
+        local bump() = { self.count = self.count + 1; return self.count }
+        inc() = self.bump()
+    }
+    class C with Counter {}
+    c = C()
+    assert(c.inc() == 1, "trait private state first increment failed")
+    assert(c.inc() == 2, "trait private state second increment failed")
+    assert(c.inc() == 3, "trait private state third increment failed")
+}
+test_trait_private_state()
+
+// 18. trait 的 local 成员与类的同名 local 成员互不干扰（各自的私有命名空间）
+test_trait_private_namespace_isolation() = {
+    trait I {
+        local tag() = "trait"
+        traitTag() = self.tag()
+    }
+    class C with I {
+        local tag() = "class"
+        classTag() = self.tag()
+    }
+    c = C()
+    assert(c.classTag() == "class", "class own method should see class own private")
+    assert(c.traitTag() == "trait", "trait method should see trait own private")
+    assert(throws(() => c.tag()), "private members should stay private")
+}
+test_trait_private_namespace_isolation()
+
+// 19. 不同 trait 的同名私有成员按**词法作用域**各自解析（确定性，不依赖哈希顺序）
+//     回归：早期实现按 mangled 名后缀模糊匹配，命中哪个取决于哈希表遍历顺序。
+test_trait_private_lexical_scope() = {
+    trait A {
+        local tag() = "A"
+        readA() = self.tag()
+    }
+    trait B {
+        local tag() = "B"
+        readB() = self.tag()
+    }
+
+    // 类未定义同名私有成员：各 trait 的默认方法看到各自 trait 的私有方法
+    class C2 with A, B {}
+    c2 = C2()
+    assert(c2.readA() == "A", "trait A method should see trait A private (A,B order)")
+    assert(c2.readB() == "B", "trait B method should see trait B private (A,B order)")
+
+    class C3 with B, A {}
+    c3 = C3()
+    assert(c3.readA() == "A", "trait A method should see trait A private (B,A order)")
+    assert(c3.readB() == "B", "trait B method should see trait B private (B,A order)")
+
+    // 类自身也定义同名私有成员：类的私有归类的，trait 的私有归 trait 的
+    class C4 with A, B {
+        local tag() = "C"
+        readC() = self.tag()
+    }
+    c4 = C4()
+    assert(c4.readC() == "C", "class own method should see class private")
+    assert(c4.readA() == "A", "trait A private should stay lexically scoped to A")
+    assert(c4.readB() == "B", "trait B private should stay lexically scoped to B")
+
+    // 反复构造仍应稳定（排除依赖容器状态的偶然性）
+    for (i = 0; i < 50; i = i + 1) {
+        assert(C2().readA() == "A", "private resolution must be stable across instances")
+        assert(C2().readB() == "B", "private resolution must be stable across instances")
+    }
+}
+test_trait_private_lexical_scope()
+
+// 21. trait 组合链上的私有方法按词法作用域解析（不做跨作用域兜底）
+//     `trait Deep with LA` 的 body 在 LA 被组合进来之前就已编译，其中的 self.tg() 是普通
+//     调用，LA 的私有 tg 对它不可见 —— 报错是词法作用域的正确结果，而不是缺陷。
+test_trait_private_composed_chain() = {
+    trait LA {
+        local tg() = "A"
+        readA() = self.tg()
+    }
+    trait Deep with LA {
+        readD() = self.tg()
+        // 要跨层复用私有逻辑，应在声明它的 trait 体内完成（readA 即如此）
+    }
+
+    class LD with Deep {}
+    assert(LD().readA() == "A", "leaf trait private via its own body should work")
+    assert(throws(() => LD().readD()), "composed-trait method must not see ancestor trait private")
+
+    // 消费者类定义同名私有成员：也不会被跨作用域取用
+    class LE with Deep {
+        local tg() = "E"
+        readOwn() = self.tg()
+    }
+    assert(LE().readOwn() == "E", "class own method should see class own private")
+    assert(LE().readA() == "A", "leaf trait private should stay lexically scoped to LA")
+    assert(throws(() => LE().readD()), "class private must not leak into composed-trait method")
+}
+test_trait_private_composed_chain()
+
+// 22. trait 私有字段跨方法读写 + trait 定义后冻结
+test_trait_private_state_across_methods() = {
+    trait Counter {
+        local hits = 0
+        bump() = { self.hits = self.hits + 1; return self.hits }
+        peek() = self.hits
+    }
+    class C with Counter {}
+    c = C()
+    assert(c.bump() == 1, "trait private field first bump failed")
+    assert(c.bump() == 2, "trait private field second bump failed")
+    assert(c.peek() == 2, "trait private field should be shared across trait methods")
+    assert(throws(() => c.hits), "trait private field should stay private")
+
+    // 冻结：定义后不可增改成员
+    assert(throws(() => { trait T { static const X = 1 }; T.X = 2 }), "frozen trait static const should be read-only")
+    assert(throws(() => { trait U { m() = "m" }; U.added = 1 }), "frozen trait should reject new members")
+}
+test_trait_private_state_across_methods()

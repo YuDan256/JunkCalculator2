@@ -152,6 +152,20 @@ private:
     std::string buildStackTrace() const;
 public:
     Value wrapException(ObjClass* errorClass, const char* typeName, Value val);
+
+    // ★ trait 组合：私有成员（local 方法/字段）查找。
+    // 私有成员按「定义它的类的 classId」混淆存储（trait 的 local 成员保留 trait 自己的
+    // classId），而调用点的 classId 未必是那个类；因此这里传入**未混淆的私有成员名**，
+    // 由本函数按确定性优先级枚举候选 owner 类（lexical 词法定义类 → cls 当前上下文 →
+    // 实例实际类及其祖先链与各自 trait 表），每个候选都用其自身 classId 做**精确**查找。
+    // 全程无后缀/模糊匹配，结果与容器遍历顺序无关。
+    // foundIn 可选：返回命中的 owner 类（用于把绑定闭包的 classContext 指向正确的作用域）。
+    static bool findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
+                                  const PropertyDescriptor*& found,
+                                  ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
+    static bool findPrivateMember(const Value& obj, const std::string& name,
+                                  const PropertyDescriptor*& found,
+                                  ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
 private:
     std::string formatException(const Value& errVal);
 

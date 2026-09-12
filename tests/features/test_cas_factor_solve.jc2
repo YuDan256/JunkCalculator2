@@ -35,6 +35,7 @@ test_solve_all_roots_present() = {
     // x^6-1 曾因等价判定假阳性把共轭根当成同一个，只剩 4 个根
     assert(len(cas.solve(x ^ 6 - 1, x)) == 6, "x^6-1 has 6 roots")
     assert(len(cas.solve(x ^ 7 - 1, x)) == 7, "x^7-1 has 7 roots")
+    assert(len(cas.solve(x ^ 8 - 1, x)) == 8, "x^8-1 has 8 roots")
 }
 test_solve_all_roots_present()
 
@@ -68,3 +69,32 @@ test_structural_inequality() = {
     assert(!(sqrt(2) == sqrt(3)), "sqrt2 != sqrt3")
 }
 test_structural_inequality()
+
+test_cube_identities() = {
+    // A^3 ± B^3 = (A ± B)(A^2 ∓ A*B + B^2)
+    // 注意：这里直接断言因式形式，而不是用 expand(...) == expand(...) 比对——
+    // cas.expand 不合并同类项（expand((x+1)(x^2-x+1)) 会留下 x^2 - x^2），
+    // 所以那种写法会因"相等判定拿不到规范形"而误报失败。
+    x = sym("x")
+    y = sym("y")
+    assert(str(cas.factor(x ^ 3 + y ^ 3)) == "(-x * y + x^2 + y^2) * (x + y)", "x^3+y^3")
+    assert(str(cas.factor(x ^ 3 + 1)) == "(x + 1) * (x^2 - x + 1)", "x^3+1")
+    assert(str(cas.factor(x ^ 3 - y ^ 3)) != "x^3 - y^3", "x^3-y^3 factored")
+    // 不匹配的形状不应被改写
+    assert(str(cas.factor(x ^ 2 + y ^ 2)) == "x^2 + y^2", "x^2+y^2 untouched")
+    assert(str(cas.factor(x ^ 3 + y ^ 2)) == "x^3 + y^2", "x^3+y^2 untouched")
+}
+test_cube_identities()
+
+test_high_degree_roots_stay_rootof() = {
+    // 4 次及以上保留 RootOf：Ferrari 展开会给出几十行嵌套根式，无可用性收益。
+    // 1~3 次仍给紧凑根式。
+    x = sym("x")
+    assert(str(cas.solve(x ^ 5 - 1, x)) != "", "x^5-1 solvable")
+    r = cas.solve(x ^ 4 + x + 1, x)
+    assert(len(r) == 4, "quartic has 4 roots")
+    assert(str(r) != "", "quartic roots printable")
+    // RootOf 必须可数值化
+    assert(cas.evalf(cas.subs(x ^ 5 - 1, x, cas.solve(x ^ 5 - 1, x)[0])) == 0, "RootOf numeric")
+}
+test_high_degree_roots_stay_rootof()

@@ -1,3 +1,5 @@
+import math
+
 test_explicit_init() = {
     counterA() = {
         state n = 0
@@ -84,8 +86,8 @@ test_memoization() = {
     }
     memo_sin = make_memo(sin)
     memo_cos = make_memo(cos)
-    assert(memo_sin(PI/2) == 1.0, "memo sin 1")
-    assert(memo_sin(PI/2) == 1.0, "memo sin 2 (cached)") 
+    assert(memo_sin(math.PI/2) == 1.0, "memo sin 1")
+    assert(memo_sin(math.PI/2) == 1.0, "memo sin 2 (cached)") 
     assert(memo_cos(0) == 1.0, "memo cos 1")
     assert(memo_cos(0) == 1.0, "memo cos 2 (cached)")    
 }

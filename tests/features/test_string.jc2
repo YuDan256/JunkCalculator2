@@ -3,7 +3,7 @@ test_fstring() = {
     s = f"Value: {x * 2}"
     assert(s == "Value: 20", "f-string basic failed")
     
-    pi_str = f"PI: {PI::.2f}"
+    pi_str = f"PI: {pi()::.2f}"
     assert(pi_str == "PI: 3.14", "f-string formatting failed")
 }
 test_fstring()

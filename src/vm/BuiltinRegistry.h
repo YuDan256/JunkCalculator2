@@ -417,6 +417,9 @@ private:
         builtinReturnType[name] = std::move(returnType);
     }
 
+    // ★ 数学常量（math.PI / math.E / math.i / math.I）：初始化与 sys.resetConst 共用
+    void populateMathConstants();
+
     void registerMath();
     void registerComplex();
     void registerFraction();

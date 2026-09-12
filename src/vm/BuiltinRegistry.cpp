@@ -365,6 +365,18 @@ void BuiltinRegistry::regModule(ObjNamespace* ns, const std::string& name, std::
     builtinReturnType[key] = std::move(returnType);
 }
 
+// ★ 数学常量归属 math 命名空间：math.PI / math.E / math.i / math.I
+// 原因：`i` 作为裸全局是高频循环变量名（`for (i in ...)`），顶层循环会把它静默覆写，
+// 导致 i*i 不再是 -1；`PI`/`E` 虽撞名概率低，但常量本就该与数学函数同域。
+// 值本身通过 setField 存入命名空间对象，重置走同一个入口，避免两处各写一份数值。
+void BuiltinRegistry::populateMathConstants() {
+    if (!math_ns) return;
+    math_ns->setField("PI", Value(3.14159265358979323846));
+    math_ns->setField("E", Value(2.71828182845904523536));
+    math_ns->setField("i", Value(Complex(0.0, 1.0)));
+    math_ns->setField("I", Value(Complex(0.0, 1.0)));
+}
+
 void BuiltinRegistry::registerAll() {
     sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
     cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
@@ -405,6 +417,7 @@ void BuiltinRegistry::registerAll() {
     registerTypeChecks();
     registerSetFunctions();
     registerPredefinedClasses();
+    populateMathConstants();
     
     if (VM::activeVM) {
         Value baseCls = VM::activeVM->getBuiltinValue("BaseNum");
@@ -461,9 +474,21 @@ void BuiltinRegistry::registerMath() {
         };
 
     // 我们在此插入您要求的常量工厂和泛类型构造：
+    // 注意：这里只注册 **函数形式** 的常量工厂。π/e 的常量名是 PI/E，函数名是 pi()/e()。
+    // 虚数单位不在此注册：`i`/`I` 是启动时由 main.cpp setGlobal 建立的**全局常量**
+    // （并有 `3i` 字面量语法），再注册一个 0 参函数 `i()` 会被该常量遮蔽而永远不可达
+    // （调用只会抛 "Target is not callable"），故已删除。
     reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
     reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); }, {});
-    reg("i", { 0 }, [](const std::vector<Value>&) -> Value { return Value(Complex(0.0, 1.0)); }, {});
+    // ★ 非有限值构造函数：语言层面禁止除零（0/0、1.0/0.0 均抛 MathError），
+    //   因此 NaN 无法由算术产生，必须提供显式构造，否则 isnan/isinf 不可达。
+    //   （Inf 还可能由上溢产生，如 exp(1000.0)；但 NaN 没有任何其它产生途径。）
+    reg("nan", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(std::numeric_limits<double>::quiet_NaN());
+        }, {});
+    reg("inf", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(std::numeric_limits<double>::infinity());
+        }, {});
     regMath("sin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSin());
@@ -4558,12 +4583,12 @@ void BuiltinRegistry::registerErrorHandling() {
 // =================================================================
 void BuiltinRegistry::registerSystemShell() {
 
-    regModule(sys_ns, "resetConst", { 0 }, [](const std::vector<Value>&) -> Value {
+    regModule(sys_ns, "resetConst", { 0 }, [this](const std::vector<Value>&) -> Value {
+        // ★ 常量已归 math 命名空间（math.PI / math.E / math.i / math.I），
+        //   不再往全局注入裸名，避免 `for (i in ...)` 之类的顶层循环覆写虚数单位。
+        populateMathConstants();
         if (helpers::setGlobalCallback) {
-            helpers::setGlobalCallback("PI", Value(3.14159265358979323846));
-            helpers::setGlobalCallback("E", Value(2.71828182845904523536));
-            helpers::setGlobalCallback("i", Value(Complex(0.0, 1.0)));
-            helpers::setGlobalCallback("I", Value(Complex(0.0, 1.0)));
+            helpers::setGlobalCallback("ANS", Value::none());
         }
         return Value::none();
         }, {});

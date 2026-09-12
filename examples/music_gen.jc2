@@ -55,7 +55,7 @@ for (measure in range(8)) {
             f = freq(target_note)
             
             note_wave = [
-                sgn(sin(2.0 * PI * f * (i / SAMPLE_RATE))) * exp(-6.0 * (i / SAMPLE_RATE)) * 0.4
+                sgn(sin(2.0 * pi() * f * (i / SAMPLE_RATE))) * exp(-6.0 * (i / SAMPLE_RATE)) * 0.4
                 for (i in range(samples_per_note))
             ]
             

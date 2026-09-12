@@ -185,7 +185,10 @@ class LatexParser {
 
         if (cmd != "") {
             pos += cmd.size();
-            if (cmd == "\\pi") return "PI";
+            // ★ π 生成 `pi()` 而不是裸 `PI`：数学常量已移入 math 命名空间
+            //   （math.PI 需要 import math），工厂函数 pi() 全局可用且保持符号性
+            //   （latex.eval(r"\sin(\pi/2)") 仍能得到精确的 1）。
+            if (cmd == "\\pi") return "pi()";
             return cmd.substr(1);
         }
         if (pos < src.size() && std::isalpha(static_cast<unsigned char>(src[pos]))) {

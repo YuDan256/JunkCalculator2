@@ -439,10 +439,6 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
 
         // Reset Environment
         vm.clearGlobals();
-        vm.setGlobal("PI", jc::Value(3.14159265358979323846));
-        vm.setGlobal("E", jc::Value(2.71828182845904523536));
-        vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
-        vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
         vm.setGlobal("ANS", jc::Value::none());
         jc::helpers::g_scriptDirStack.clear();
 
@@ -525,11 +521,9 @@ int main(int argc, char* argv[]) {
         // ★ 我们把内置方法只留给原生表处理！彻底释放 Globals 字典空间供用户自由重载调用！
     }
 
-    // 初始化系统常量 (普通赋予即可！它无法通过系统的 delete 指令销毁，但你能将 PI 暂时盖为别的值)
-    vm.setGlobal("PI", jc::Value(3.14159265358979323846));
-    vm.setGlobal("E", jc::Value(2.71828182845904523536));
-    vm.setGlobal("i", jc::Value(jc::Complex(0.0, 1.0)));
-    vm.setGlobal("I", jc::Value(jc::Complex(0.0, 1.0)));
+    // 初始化系统常量
+    // ★ 数学常量（PI/E/i/I）已移入 math 命名空间（math.PI / math.E / math.i / math.I），
+    //   不再注入裸全局名：`i` 常被用作循环变量，顶层 `for (i in ...)` 会静默覆写虚数单位。
     vm.setGlobal("ANS", jc::Value::none());
 
     // 绑定虚拟机外包服务给系统级运行时回调！

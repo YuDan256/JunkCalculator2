@@ -793,6 +793,111 @@ namespace jc {
     // =================================================================
     // 因式分解主入口
     // =================================================================
+    // =================================================================
+    // 二项式分圆分解：x^n - 1 = ∏_{d|n} Φ_d(x)
+    //   Φ_d 用 Möbius 关系 Φ_d(x) = (x^d - 1) / ∏_{e|d, e<d} Φ_e(x) 精确相除得到。
+    //   这一步覆盖 x^2-1 / x^3-1 / x^4-1 / x^6-1 / x^8-1 等，factor 与 solve 同时受益
+    //   （solve 的第一步就是 factor）。
+    // =================================================================
+    static SymExpr cyclotomicPoly(int64_t d) {
+        SymExpr num = (SymExpr::makeVar("x") ^ SymExpr(BigInt(d))) - SymExpr(BigInt(1));
+        for (int64_t e = 1; e < d; ++e) {
+            if (d % e == 0) {
+                // ★ 必须用多项式精确除法。SymExpr 的 operator/ 只是乘倒数
+                //   （会得到 (x^2-1)*(x-1)^(-1) 这种"没除干净"的形状，乘起来又还原成 x^4-1）。
+                auto [q, r] = polyDiv(num, cyclotomicPoly(e), "x");
+                if (r.isZero()) num = q;
+                else num = num / cyclotomicPoly(e);
+            }
+        }
+        return simplifyCore(num);
+    }
+
+    // 形如 c * x^n + b 或 c * x^n - b（b 为非零整数）时给出 (c, n, b, 是否减号)
+    struct BinomialForm {
+        bool ok = false;
+        BigInt c{1};
+        int64_t n = 0;
+        BigInt b{1};
+        bool minus = false;
+    };
+
+    static BinomialForm detectBinomial(const SymExpr& expr, const std::string& var) {
+        BinomialForm r;
+        if (!expr.ptr || expr.ptr->getType() != SymType::ADD) return r;
+        auto add = static_cast<SymAdd*>(expr.ptr);
+        if (add->args.size() != 2) return r;
+
+        SymNode* powNode = nullptr;
+        SymNode* constNode = nullptr;
+        for (SymNode* t : add->args) {
+            if (t->getType() == SymType::NUM) { if (constNode) return r; constNode = t; }
+            else { if (powNode) return r; powNode = t; }
+        }
+        if (!powNode || !constNode) return r;
+
+        BigInt c(1);
+        SymNode* base = powNode;
+        if (powNode->getType() == SymType::MUL) {
+            auto mul = static_cast<SymMul*>(powNode);
+            std::vector<SymNode*> rest;
+            for (SymNode* m : mul->args) {
+                if (m->getType() == SymType::NUM) {
+                    auto [isI, v] = extractExactInt(static_cast<SymNum*>(m)->value);
+                    if (!isI) return r;
+                    c = c * BigInt(v);
+                } else rest.push_back(m);
+            }
+            if (rest.size() != 1) return r;
+            base = rest[0];
+        }
+        if (base->getType() != SymType::POW) return r;
+        auto p = static_cast<SymPow*>(base);
+        if (p->base->getType() != SymType::VAR) return r;
+        if (static_cast<SymVar*>(p->base)->name != var) return r;
+        auto [isN, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
+        if (!isN || n < 2) return r;
+
+        auto [isB, b] = extractExactInt(static_cast<SymNum*>(constNode)->value);
+        if (!isB || b == 0) return r;
+
+        r.ok = true;
+        r.c = c;
+        r.n = n;
+        if (b < 0) { r.b = BigInt(-b); r.minus = true; }
+        else { r.b = BigInt(b); r.minus = false; }
+        return r;
+    }
+
+    // 尝试按分圆分解 x^n ± 1；不成或规模过大则原样返回
+    static SymExpr tryCyclotomicFactor(const SymExpr& expr, const std::string& var) {
+        BinomialForm f = detectBinomial(expr, var);
+        if (!f.ok) return expr;
+        if (f.c != BigInt(1)) return expr;          // 带非平凡系数时留给其他路径
+        if (f.n < 2 || f.n > 12) return expr;       // 规模上限：避免深层递归与系数爆炸
+        if (f.b != BigInt(1)) return expr;          // 只做 x^n ± 1
+
+        SymExpr x = SymExpr::makeVar(var);
+        SymExpr result(BigInt(1));
+        if (f.minus) {
+            // x^n - 1 = ∏_{d|n} Φ_d(x)
+            for (int64_t d = 1; d <= f.n; ++d) {
+                if (f.n % d == 0) result = result * cyclotomicPoly(d);
+            }
+        } else {
+            // x^n + 1：n 为偶数时自身不可约式（在 ℚ 上）之外可直接给 x^n+1 不变；
+            // n 为奇数时 x^n + 1 = (x + 1) * ∏_{d|n, d>1} Φ_{2d}(x)
+            if (f.n % 2 == 0) return expr;
+            result = x + SymExpr(BigInt(1));
+            for (int64_t d = 3; d <= f.n; d += 2) {
+                if (f.n % d == 0) result = result * cyclotomicPoly(2 * d);
+            }
+        }
+        SymExpr simp = simplifyCore(result);
+        if (simp.ptr == expr.ptr) return expr;
+        return simp;
+    }
+
     SymExpr factor(const SymExpr& expr, int depth) {      // 增加 depth 签名
         if (!expr.ptr || depth > SymConfig::maxDepth) return expr;          // 极限保险
         SymExpr quadResult = multivariatePolynomialFactor(expr, depth);  // 接入 depth
@@ -800,6 +905,17 @@ namespace jc {
         
         SymExpr czResult = factorPolynomialCZ(expr, depth);
         if (czResult.ptr != expr.ptr) return czResult;
+
+        // ★ 二项式分圆分解：x^n - 1 = ∏_{d|n} Φ_d(x)（以及奇数次 x^n + 1）
+        {
+            std::set<std::string> vars;
+            collectAllVars(expr.ptr, vars);
+            if (vars.size() == 1) {
+                SymExpr cyc = tryCyclotomicFactor(expr, *vars.begin());
+                if (cyc.ptr != expr.ptr) return cyc;
+            }
+        }
+
         // ══════════════════════════════════════════
         // 递归处理非加法节点
         // ══════════════════════════════════════════

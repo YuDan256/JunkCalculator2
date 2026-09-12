@@ -2545,14 +2545,46 @@ namespace jc {
     //      造成的等价写法（(x+1)(x-1) vs x^2-1、2(x+y) vs 2x+2y）。
     //   规模上限用于避免对超大表达式做代价失控的展开。
     // =================================================================
+    // 表达式中是否含符号常量（i / pi / e）或浮点近似。
+    // 这类表达式不能走"展开成规范多项式"的等价回退：i 的存在会让共轭根
+    // 1/2(√3·i − 1) 与 1/2(−√3·i − 1) 在机械比较下被误判为相等，
+    // 从而把 solve 的去重（用 == 判等）变成"吃掉不同的根"。
+    static bool hasNonPolynomialAtom(SymNode* node, int depth = 0) {
+        if (!node || depth > 64) return false;
+        switch (node->getType()) {
+        case SymType::CONST:
+            return true;                       // pi / e / i
+        case SymType::NUM:
+            return std::holds_alternative<double>(static_cast<SymNum*>(node)->value);
+        case SymType::VAR:
+            return false;
+        case SymType::ADD:
+            for (auto& a : static_cast<SymAdd*>(node)->args)
+                if (hasNonPolynomialAtom(a, depth + 1)) return true;
+            return false;
+        case SymType::MUL:
+            for (auto& a : static_cast<SymMul*>(node)->args)
+                if (hasNonPolynomialAtom(a, depth + 1)) return true;
+            return false;
+        case SymType::POW:
+            return hasNonPolynomialAtom(static_cast<SymPow*>(node)->base, depth + 1) ||
+                   hasNonPolynomialAtom(static_cast<SymPow*>(node)->exp, depth + 1);
+        case SymType::FUNC:
+            for (auto& a : static_cast<SymFunc*>(node)->args)
+                if (hasNonPolynomialAtom(a, depth + 1)) return true;
+            return false;
+        }
+        return true;
+    }
+
     bool symEquivalent(const SymExpr& a, const SymExpr& b) {
         if (a.ptr == b.ptr) return true;
         if (!a.ptr || !b.ptr) return false;
-        if (a.ptr->getType() != b.ptr->getType()) {
-            // 类型不同仍可能是等价写法（如 2 * x 与 x + x），继续走展开回退
-        } else if (a.ptr->equals(b.ptr)) {
-            return true;
+        if (a.ptr->getType() == b.ptr->getType()) {
+            if (a.ptr->equals(b.ptr)) return true;
         }
+        // ★ 含 i/pi/e 或浮点近似时，只用结构比较，不做展开回退
+        if (hasNonPolynomialAtom(a.ptr) || hasNonPolynomialAtom(b.ptr)) return false;
         constexpr int64_t kMaxNodesForExpand = 400;
         constexpr int64_t kMaxExpandTerms = 4000;
         if (getAstNodeCount(a) > kMaxNodesForExpand) return false;

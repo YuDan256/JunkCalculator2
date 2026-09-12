@@ -325,6 +325,25 @@ namespace jc {
     // 乘法节点排版：原教旨安全版 
     // 自动拦截开头的负系数，且绝不误伤内部括号
     // ==========================================
+
+    // 整数 k 次方根的下取整（二分）。仅用于排版时判断完美幂，v 不会很大。
+    static BigInt nthRootFloor(const BigInt& v, int64_t k) {
+        if (k <= 1) return v;
+        if (v <= BigInt(1)) return BigInt(1);   // 调用点只处理 v >= 1
+        BigInt lo(0), hi(v);
+        while (lo < hi) {
+            BigInt mid = (lo + hi + BigInt(1)) / BigInt(2);
+            BigInt mp(1);
+            bool over = false;
+            for (int64_t i = 0; i < k; ++i) {
+                mp = mp * mid;
+                if (mp > v) { over = true; break; }
+            }
+            if (!over && mp <= v) lo = mid; else hi = mid - BigInt(1);
+        }
+        return lo;
+    }
+
     std::string SymMul::computeString() const {
         if (args.empty()) return "1";
         std::string res;
@@ -335,6 +354,77 @@ namespace jc {
         });
 
         size_t startIdx = 0;
+
+        // ★ 整数系数与负单位分数幂合并排版。
+        //   指数归约会把 p^(k*m/n) 写成 p^(q+1) / p^((n-r)/n)，乘积于是长成
+        //   "2 * 4^(-1/5)"（即 NUM 2 × POW(4, -1/5)），平铺出来是 "2 * 1 / root(4, 5)"。
+        //   这里把整数系数折回根号内：c * b^(-1/n) = root(c^n / b, n)，
+        //   于是 2^(3/5) → root(8, 5)、2^(4/7) → root(16, 7)。
+        //   仅当「整数 × 负单位分数幂」这一形状成立时才改写，其余情形一律走原路径。
+        {
+            bool haveC = false;
+            int64_t cInt = 0;
+            SymNode* recipBase = nullptr;
+            int64_t recipN = 0;
+            bool onlyThese = true;
+            int numConsts = 0, numRecips = 0;
+            for (SymNode* a : args) {
+                if (a->getType() == SymType::NUM) {
+                    auto [isI, iv] = extractExactInt(static_cast<SymNum*>(a)->value);
+                    if (!isI || iv < 1 || iv > 1000000) { onlyThese = false; break; }
+                    cInt = iv;
+                    haveC = true;
+                    ++numConsts;
+                } else if (a->getType() == SymType::POW) {
+                    auto pw = static_cast<SymPow*>(a);
+                    if (pw->exp->getType() != SymType::NUM) { onlyThese = false; break; }
+                    Fraction ef = std::get<Fraction>(static_cast<SymNum*>(pw->exp)->value);
+                    if (ef.getNum() != BigInt(-1) || ef.getDen() <= BigInt(1)) { onlyThese = false; break; }
+                    if (pw->base->getType() != SymType::NUM) { onlyThese = false; break; }
+                    auto [isIB, bv] = extractExactInt(static_cast<SymNum*>(pw->base)->value);
+                    if (!isIB || bv < 1 || bv > 1000000) { onlyThese = false; break; }
+                    recipBase = pw->base;
+                    recipN = ef.getDen().toInt64();
+                    ++numRecips;
+                } else {
+                    onlyThese = false;
+                    break;
+                }
+            }
+            if (onlyThese && haveC && numConsts == 1 && numRecips == 1 && recipBase != nullptr) {
+                auto [isB, bInt] = extractExactInt(static_cast<SymNum*>(recipBase)->value);
+                // c * b^(-1/n) = (c^n / b)^(1/n)
+                BigInt cBig(cInt), bBig(bInt);
+                BigInt powC(1);
+                bool overflow = false;
+                for (int64_t i = 0; i < recipN; ++i) {
+                    powC = powC * cBig;
+                    if (powC > BigInt(1000000000000LL)) { overflow = true; break; }
+                }
+                if (!overflow) {
+                    BigInt numer = powC;
+                    BigInt denom = bBig;
+                    BigInt g = BigInt::gcd(numer, denom);   // 约分 c^n / b
+                    if (g > BigInt(1)) { numer = numer / g; denom = denom / g; }
+                    if (denom == BigInt(1)) {
+                        // 分母已消失：整体 = numer^(1/n)。若是完美 n 次幂则直接给出整数。
+                        BigInt root = nthRootFloor(numer, recipN);
+                        BigInt chk(1);
+                        bool over = false;
+                        for (int64_t i = 0; i < recipN; ++i) {
+                            chk = chk * root;
+                            if (chk > numer) { over = true; break; }
+                        }
+                        if (!over && chk == numer) return root.toString();
+                        std::string s = numer.toString();
+                        if (recipN == 2) return "sqrt(" + s + ")";
+                        if (recipN == 3) return "cbrt(" + s + ")";
+                        return "root(" + s + ", " + std::to_string(recipN) + ")";
+                    }
+                    // 仍有分母：不是干净的单根式，交回原有排版路径
+                }
+            }
+        }
 
         // 探查乘积的第一项是不是确凿的常数，且以 '-' 开头
         if (sortedArgs[0]->getType() == SymType::NUM) {
@@ -403,36 +493,57 @@ namespace jc {
                     SymExpr posPart(new SymPow(base, SymExpr(-f).ptr));
                     return "1 / " + posPart.toString();
                 }
-                // ★ 真分数指数排版：base^(p/n)（1 < p < n）排版为 root(base^p, n)。
+                // ★ 真分数指数排版：base^(p/n)（1 < p < n）排版为 [系数 *] root(被开方数, n)。
                 //   原先此情形落到通用分支，分子 p 被整个丢掉，2^(2/3) 会被印成 cbrt(2)
                 //   （数值其实是 1.5874 而非 1.2599），属于实实在在的错误输出。
-                //   这里把 p 放进根号内，与 2^(3/7) → root(8, 7) 的既有形式保持一致。
+                //   ★ 规范形式：base^(p/n) = (base^p)^(1/n)，故取被开方数 M = base^p；若 M 是
+                //   完美 n 次幂（M = A^n）则整体可约成一个整数 A。于是
+                //   2^(3/5) → root(8, 5)，2^(2/5) → root(4, 5)，2^(4/7) → root(16, 7)，
+                //   都避免了 "2 * 1 / root(4, 5)" 这类带倒数的形状。
                 if (f.getDen() > BigInt(1) && f.getNum() > BigInt(1) && f.getNum() < f.getDen()) {
                     try {
                         int64_t p = f.getNum().toInt64();
                         int64_t n = f.getDen().toInt64();
-                        if (p > 0 && n > 1 && n < 1000000) {
+                        if (p > 0 && p < 1000000 && n > 1 && n < 1000000) {
                             std::string bStr = base->toString();
                             bool bParen = base->getType() == SymType::ADD || base->getType() == SymType::MUL;
                             std::string outer = bParen ? "(" + bStr + ")" : bStr;
-                            // 整数底数时把 base^p 精确算出来，输出 cbrt(4) 而不是 cbrt(2^2)，
-                            // 与 2^(3/7) → root(8, 7) 的既有形式一致。
                             std::string inner;
+                            BigInt coeff(1);
                             bool folded = false;
-                            if (!bParen && p <= 1000000 && base->getType() == SymType::NUM) {
+                            if (!bParen && base->getType() == SymType::NUM) {
                                 auto [isBInt, bInt] = extractExactInt(static_cast<SymNum*>(base)->value);
                                 if (isBInt) {
-                                    BigInt pw(1);
+                                    // M = base^p
+                                    BigInt M(1);
                                     const BigInt bBig(bInt);
-                                    for (int64_t i = 0; i < p; ++i) pw = pw * bBig;
-                                    inner = pw.toString();
+                                    for (int64_t i = 0; i < p; ++i) M = M * bBig;
+                                    // 尝试把 M 化成完美 n 次幂
+                                    BigInt A = nthRootFloor(M, n);
+                                    BigInt chk(1);
+                                    bool over = false;
+                                    for (int64_t i = 0; i < n; ++i) {
+                                        chk = chk * A;
+                                        if (chk > M) { over = true; break; }
+                                    }
+                                    if (!over && chk == M) {
+                                        coeff = A;      // 整体是整数
+                                        inner = "1";
+                                    } else {
+                                        inner = M.toString();
+                                    }
                                     folded = true;
                                 }
                             }
                             if (!folded) inner = outer + "^" + std::to_string(p);
-                            if (n == 2) return "sqrt(" + inner + ")";
-                            if (n == 3) return "cbrt(" + inner + ")";
-                            return "root(" + inner + ", " + std::to_string(n) + ")";
+                            if (coeff == BigInt(1) && inner == "1") return "1";
+                            std::string rad;
+                            if (inner == "1") return coeff.toString();
+                            if (n == 2) rad = "sqrt(" + inner + ")";
+                            else if (n == 3) rad = "cbrt(" + inner + ")";
+                            else rad = "root(" + inner + ", " + std::to_string(n) + ")";
+                            if (coeff != BigInt(1)) return coeff.toString() + " * " + rad;
+                            return rad;
                         }
                     }
                     catch (...) {}

@@ -1,0 +1,70 @@
+import cas
+import math
+
+// ── factor / solve 增强回归 ──
+// 覆盖：有理根分母吸收、二项式分圆分解、等价判定规范化。
+
+test_rational_roots_no_denominators() = {
+    // 有理根路径曾产出 6 * (x + 1/2) * (x + 1/3)：数值对但不是惯用形式。
+    // 现应把分母吸收进因子，得到整系数因式。
+    x = sym("x")
+    assert(str(cas.factor(6 * x ^ 2 + 5 * x + 1)) == "(2 * x + 1) * (3 * x + 1)", "absorb denominators")
+    assert(str(cas.factor(2 * x ^ 2 + 7 * x + 3)) == "(2 * x + 1) * (x + 3)", "absorb one denominator")
+    assert(str(cas.factor(12 * x ^ 2 + 7 * x + 1)) == "(3 * x + 1) * (4 * x + 1)", "absorb two denominators")
+    // 无分母时不应改变既有输出
+    assert(str(cas.factor(x ^ 2 + 5 * x + 6)) == "(x + 2) * (x + 3)", "no denominators untouched")
+}
+test_rational_roots_no_denominators()
+
+test_cyclotomic_factorization() = {
+    // x^n - 1 = ∏_{d|n} Φ_d(x)
+    x = sym("x")
+    assert(str(cas.factor(x ^ 4 - 1)) == "(x + 1) * (x - 1) * (x^2 + 1)", "x^4-1")
+    assert(str(cas.factor(x ^ 3 - 1)) == "(x - 1) * (x^2 + x + 1)", "x^3-1")
+    assert(str(cas.factor(x ^ 6 - 1)) == "(x + 1) * (x - 1) * (x^2 + x + 1) * (x^2 - x + 1)", "x^6-1")
+    assert(str(cas.factor(x ^ 8 - 1)) == "(x + 1) * (x - 1) * (x^2 + 1) * (x^4 + 1)", "x^8-1")
+}
+test_cyclotomic_factorization()
+
+test_solve_all_roots_present() = {
+    // 分圆分解后 solve 走因式分解，根数必须等于次数
+    x = sym("x")
+    assert(len(cas.solve(x ^ 3 - 1, x)) == 3, "x^3-1 has 3 roots")
+    assert(len(cas.solve(x ^ 4 - 1, x)) == 4, "x^4-1 has 4 roots")
+    assert(len(cas.solve(x ^ 5 - 1, x)) == 5, "x^5-1 has 5 roots")
+    // x^6-1 曾因等价判定假阳性把共轭根当成同一个，只剩 4 个根
+    assert(len(cas.solve(x ^ 6 - 1, x)) == 6, "x^6-1 has 6 roots")
+    assert(len(cas.solve(x ^ 7 - 1, x)) == 7, "x^7-1 has 7 roots")
+}
+test_solve_all_roots_present()
+
+test_structural_equality() = {
+    // 相等判定曾只比指针，代数等价一律判不等
+    x = sym("x")
+    y = sym("y")
+    assert(x + x == 2 * x, "x+x == 2x")
+    assert(2 * (x + y) == 2 * x + 2 * y, "distribute")
+    assert(x * (y + 1) == x * y + x, "factor out")
+    assert((x + 1) * (x - 1) == x ^ 2 - 1, "(x+1)(x-1) == x^2-1")
+    assert(cas.factor(x ^ 2 - 1) == x ^ 2 - 1, "factor result equals input")
+    assert((x - y) ^ 2 == (y - x) ^ 2, "square sign")
+    assert((y - x) * (x + y) == (x - y) * (x + y) * -1, "sign normalization")
+    assert(sqrt(4) == 2, "sqrt(4) == 2")
+    assert(cas.i() ^ 2 == -1, "i^2 == -1")
+}
+test_structural_equality()
+
+test_structural_inequality() = {
+    // 规范化不得制造假阳性（假阳性比假阴性危险：会让 solve 吃掉不同的根）
+    x = sym("x")
+    y = sym("y")
+    assert(!(x + 1 == x + 2), "x+1 != x+2")
+    assert(!(x ^ 2 - 1 == x ^ 2 + 1), "different polys")
+    assert(!((x + 1) * (x - 1) == x ^ 2 + 1), "(x+1)(x-1) != x^2+1")
+    assert(!(sin(x) == cos(x)), "sin != cos")
+    assert(!(x == y), "x != y")
+    assert(!(cas.pi() == cas.e()), "pi != e")
+    assert(!(cas.i() == 1), "i != 1")
+    assert(!(sqrt(2) == sqrt(3)), "sqrt2 != sqrt3")
+}
+test_structural_inequality()

@@ -196,6 +196,14 @@ namespace jc {
             if (a->getType() != SymType::NUM && b->getType() == SymType::NUM) return 1;
         }
 
+        // 虚数单位 i 是常数而非普通变量，恒排在普通符号之后
+        // (否则字典序会把 i 插到 sqrt(2) 之前，得到 "2 * i * sqrt(2)")
+        auto isImagUnit = [](SymNode* n) -> bool {
+            return n->getType() == SymType::VAR && static_cast<SymVar*>(n)->name == "i";
+        };
+        if (isImagUnit(a) && !isImagUnit(b)) return 1;
+        if (!isImagUnit(a) && isImagUnit(b)) return -1;
+
         auto getCore = [](SymNode* n) -> std::tuple<SymNode*, double, double> {
             SymNode* core = n;
             if (n->getType() == SymType::MUL) {
@@ -925,13 +933,33 @@ namespace jc {
         if (isCasZero(prodConst)) return SymExpr(0);
 
         // ★ 尝试将 prodConst 与 symFactors 中的 NUM base 合并 (例如 2 * 2^(-1/2) -> 2^(1/2))
+        //   合并判据：仅当吸收后指数仍是「可读形式」才吸收。
+        //   可读形式 = 整数，或真分数 p/n (0 < p < n)，二者都能由 computeString 直接排版。
+        //   若吸收后指数变成假分数 (p > n)，系数会被 embed 进指数而失去与外层常数约分的机会，
+        //   于是 1/2 * 2^(3/2) 这类结果无法再化回 sqrt(2)。此时宁可保留显式系数 2 * 2^(1/2)。
         if (!isCasOne(prodConst)) {
+            // 指数 +1 后是否仍可读
+            auto expPlusOneListable = [](const CASVal& e) -> bool {
+                return std::visit([](auto&& arg) -> bool {
+                    using T = std::decay_t<decltype(arg)>;
+                    if constexpr (std::is_same_v<T, Fraction>) {
+                        // exp+1 仍为真分数 <=> (分子+分母) < 分母，即分子 < 0
+                        return (arg.getNum() + arg.getDen()) < arg.getDen();
+                    } else if constexpr (std::is_same_v<T, double>) {
+                        return arg != std::floor(arg);
+                    } else {
+                        return true; // 整型指数 +1 仍是整数
+                    }
+                    }, e);
+            };
             auto processMerge = [&](FactorData& data) {
                 if (data.baseNode->getType() == SymType::NUM) {
                     CASVal bVal = static_cast<SymNum*>(data.baseNode)->value;
                     auto [isBInt, bInt] = extractExactInt(bVal);
                     if (isBInt && bInt != 0 && bInt != 1 && bInt != -1) {
                         while (true) {
+                            // ★ 吸收前先确认吸收后的指数仍可读，否则停止（保留显式系数以便约分）
+                            if (!expPlusOneListable(data.exp)) break;
                             bool extracted = false;
                             if (std::holds_alternative<int32_t>(prodConst)) {
                                 int32_t p = std::get<int32_t>(prodConst);

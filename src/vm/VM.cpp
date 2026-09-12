@@ -352,6 +352,59 @@ bool VM::findPrivateMember(const Value& obj, const std::string& name,
 // 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
 static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
 
+// ★ 用户构造函数查找（沿 parent 链）
+ObjClosure* VM::findInitMethod(ObjClass* cls) {
+    for (ObjClass* c = cls; c; c = c->parent) {
+        auto it = c->properties.find(JC2_USER_INIT_NAME);
+        if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+            return it->second.val.asFunction();
+        }
+    }
+    return nullptr;
+}
+
+// ★ 字段默认值初始化：祖先类 → 本类；每一级先跑其 trait 表里的初始化器（trait 声明顺序，
+//   后者覆盖先者），再跑该级自身的成员初始化器。每个初始化器以「声明它的类」同时作为
+//   self 的类上下文与词法类，从而让私有字段按各自的 classId 落键、互不覆盖。
+void VM::runFieldInitializers(ObjClass* cls, const Value& self) {
+    if (!cls) return;
+    auto runOne = [&](ObjClass* declClass, ObjClass* ownerChain) {
+        auto it = declClass->properties.find(JC2_FIELD_INIT_NAME);
+        if (it == declClass->properties.end() || !it->second.val.isFunctionClosure()) return;
+        ObjClosure* fn = it->second.val.asFunction();
+        if (!fn->isBytecode()) return;
+        callVMFunction(fn->compiledFnIndex, {}, fn, self, Value(ownerChain ? ownerChain : declClass));
+    };
+    for (ObjClass* p = cls; p; p = p->parent) {
+        for (auto* t : p->traits) runOne(t, t);
+        runOne(p, p);
+    }
+}
+
+// ★ 实例化统一入口：分配实例 → 字段默认值 → 用户 init（若存在且为可调用闭包）
+void VM::runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std::vector<Value>& initArgs) {
+    runFieldInitializers(cls, self);
+    ObjClosure* initMethod = findInitMethod(cls);
+    if (!initMethod) return;
+    if (initMethod->isBytecode()) {
+        callVMFunction(initMethod->compiledFnIndex, initArgs, initMethod, self, Value(cls));
+    } else if (initMethod->isNative()) {
+        helpers::nativeSelfStack.push_back(self);
+        helpers::nativeClassStack.push_back(Value(cls));
+        // NOLINTNEXTLINE(bugprone-empty-catch) — 与原有各调用点保持一致：确保栈平衡
+        try {
+            auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
+            fn(initArgs);
+        } catch (...) {
+            helpers::nativeSelfStack.pop_back();
+            helpers::nativeClassStack.pop_back();
+            throw;
+        }
+        helpers::nativeSelfStack.pop_back();
+        helpers::nativeClassStack.pop_back();
+    }
+}
+
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {
     JIT_CALLOUT_TRY
     (void)current_regs;
@@ -1305,6 +1358,12 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto instance = GcHeap::get().allocate<ObjInstance>();
         registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
+
+        // ★ 字段默认值初始化：用独立调用执行（callVMFunction 走标准帧基址，不会踩到本次构造
+        // 参数所在的 calleeReg+1 起那段寄存器）。先于用户 init 执行，保证 init 内能读到字段
+        // 默认值。这是为修复「trait/父类的字段初始化器都叫 <init>、按名复制时互相覆盖」导致的
+        // 字段默认值丢失（详见 IRBuilder 中 JC2_FIELD_INIT_NAME 的合成处）。
+        runFieldInitializers(cls, Value(instance));
         
         ObjClosure* initMethod = nullptr;
         auto c = cls;
@@ -7492,7 +7551,12 @@ Value VM::run(int targetFrameDepth) {
                     auto it = inst->properties.find(keyStr);
                     if (it != inst->properties.end()) {
                         if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
-                        JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
+                        // ★ 字段默认值初始化可能来自多个初始化器（本类 + 各 trait + 父类），
+                        // 按「派生优先」顺序执行时后写者即为最终值，因此这里**不是**重复定义错误。
+                        // 只有真·重复声明才报错，而那种情况由编译期的重定义检查拦截。
+                        it->second.val = val;
+                        it->second.is_const = (op == OpCode::DEFINE_PROP_CONST) || it->second.is_const;
+                        break;
                     }
                     
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
@@ -9131,29 +9195,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                 GcValueGuard guard(res);
                                 instance->classDef = cls;
                                 
-                                ObjClosure* initMethod = nullptr;
-                                auto c = cls;
-                                while (c) {
-                                    auto it = c->properties.find("<init>");
-                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                                        initMethod = it->second.val.asFunction();
-                                        break;
-                                    }
-                                    c = c->parent;
-                                }
-
-                                if (initMethod) {
-                                    if (initMethod->isBytecode()) {
-                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
-                                    } else if (initMethod->isNative()) {
-                                        helpers::nativeSelfStack.push_back(res);
-                                        helpers::nativeClassStack.push_back(Value(cls));
-                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
-                                        fn(fullArgs);
-                                        helpers::nativeSelfStack.pop_back();
-                                        helpers::nativeClassStack.pop_back();
-                                    }
-                                }
+                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
                                 return res;
                             }
                         }
@@ -9263,29 +9305,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                 GcValueGuard guard(res);
                                 instance->classDef = cls;
                                 
-                                ObjClosure* initMethod = nullptr;
-                                auto c = cls;
-                                while (c) {
-                                    auto it = c->properties.find("<init>");
-                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                                        initMethod = it->second.val.asFunction();
-                                        break;
-                                    }
-                                    c = c->parent;
-                                }
-
-                                if (initMethod) {
-                                    if (initMethod->isBytecode()) {
-                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
-                                    } else if (initMethod->isNative()) {
-                                        helpers::nativeSelfStack.push_back(res);
-                                        helpers::nativeClassStack.push_back(Value(cls));
-                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
-                                        fn(fullArgs);
-                                        helpers::nativeSelfStack.pop_back();
-                                        helpers::nativeClassStack.pop_back();
-                                    }
-                                }
+                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
                                 return res;
                             }
                         }
@@ -9748,29 +9768,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                 GcValueGuard guard(res);
                                 instance->classDef = cls;
                                 
-                                ObjClosure* initMethod = nullptr;
-                                auto c = cls;
-                                while (c) {
-                                    auto it = c->properties.find("<init>");
-                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                                        initMethod = it->second.val.asFunction();
-                                        break;
-                                    }
-                                    c = c->parent;
-                                }
-
-                                if (initMethod) {
-                                    if (initMethod->isBytecode()) {
-                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
-                                    } else if (initMethod->isNative()) {
-                                        helpers::nativeSelfStack.push_back(res);
-                                        helpers::nativeClassStack.push_back(Value(cls));
-                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
-                                        fn(fullArgs);
-                                        helpers::nativeSelfStack.pop_back();
-                                        helpers::nativeClassStack.pop_back();
-                                    }
-                                }
+                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
                                 return res;
                             }
                         }
@@ -9880,29 +9878,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                 GcValueGuard guard(res);
                                 instance->classDef = cls;
                                 
-                                ObjClosure* initMethod = nullptr;
-                                auto c = cls;
-                                while (c) {
-                                    auto it = c->properties.find("<init>");
-                                    if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                                        initMethod = it->second.val.asFunction();
-                                        break;
-                                    }
-                                    c = c->parent;
-                                }
-
-                                if (initMethod) {
-                                    if (initMethod->isBytecode()) {
-                                        VM::activeVM->callVMFunction(initMethod->compiledFnIndex, fullArgs, initMethod, res, Value(cls));
-                                    } else if (initMethod->isNative()) {
-                                        helpers::nativeSelfStack.push_back(res);
-                                        helpers::nativeClassStack.push_back(Value(cls));
-                                        auto& fn = std::any_cast<NativeCallable&>(initMethod->nativeFn);
-                                        fn(fullArgs);
-                                        helpers::nativeSelfStack.pop_back();
-                                        helpers::nativeClassStack.pop_back();
-                                    }
-                                }
+                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
                                 return res;
                             }
                         }

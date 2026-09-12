@@ -166,6 +166,14 @@ public:
     static bool findPrivateMember(const Value& obj, const std::string& name,
                                   const PropertyDescriptor*& found,
                                   ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
+
+    // ★ 字段默认值初始化（见 Bytecode.h 的 JC2_FIELD_INIT_NAME）。
+    // 沿「祖先类 → 本类」顺序执行各级自己的字段初始化器；每一级内部先跑该级 trait 表里的
+    // 初始化器（trait 声明顺序，后者覆盖先者），再跑该级自身的成员初始化器。
+    // runFieldInitializers 需要当前已有一个活动帧（内部通过 callVMFunction 调用）。
+    static ObjClosure* findInitMethod(ObjClass* cls);
+    void runFieldInitializers(ObjClass* cls, const Value& self);
+    void runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std::vector<Value>& initArgs);
 private:
     std::string formatException(const Value& errVal);
 

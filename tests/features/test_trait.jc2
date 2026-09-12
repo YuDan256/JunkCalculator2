@@ -346,3 +346,81 @@ test_trait_private_state_across_methods() = {
     assert(throws(() => { trait U { m() = "m" }; U.added = 1 }), "frozen trait should reject new members")
 }
 test_trait_private_state_across_methods()
+
+// 23. 字段默认值初始化：多个 trait 的同名字段各归其主
+//     回归：字段初始化器曾统一叫 <init>，按名复制时后组合的 trait 覆盖前一个，
+//     导致两个 trait 的同名字段收敛成同一个值（读到 2 2 而不是 1 2）。
+test_trait_field_defaults_distinct() = {
+    trait F1 { local v = 1; get1() = self.v }
+    trait F2 { local v = 2; get2() = self.v }
+    class FF with F1, F2 {}
+    ff = FF()
+    assert(ff.get1() == 1, "trait F1 private field default should stay 1")
+    assert(ff.get2() == 2, "trait F2 private field default should stay 2")
+
+    // 反序组合同样各归其主
+    class GG with F2, F1 {}
+    gg = GG()
+    assert(gg.get1() == 1, "reversed composition: F1 field should stay 1")
+    assert(gg.get2() == 2, "reversed composition: F2 field should stay 2")
+
+    // 每个实例各自持有一份，修改互不影响
+    trait M1 { local n = 0; bump() = { self.n = self.n + 1; return self.n } }
+    class MM with M1 {}
+    m1 = MM()
+    m2 = MM()
+    assert(m1.bump() == 1 && m1.bump() == 2, "first instance private counter failed")
+    assert(m2.bump() == 1, "second instance should have its own field copy")
+}
+test_trait_field_defaults_distinct()
+
+// 24. 类自身 init 与 trait 字段默认值共存
+//     回归：类写了 init 时，trait 的字段默认值初始化器被 init 覆盖而整个丢失（读字段报未找到）。
+test_trait_field_defaults_with_user_init() = {
+    trait Seeded { local seeded = 7; getSeed() = self.seeded }
+    class C with Seeded {
+        init() = { self.tag = "x" }
+        getTag() = self.tag
+    }
+    c = C()
+    assert(c.getTag() == "x", "user init body should run")
+    assert(c.getSeed() == 7, "trait field default should survive a user-defined init")
+
+    // 字段默认值先于用户 init：init 内可经 trait 的公开方法读到默认值
+    // （trait 的 local 字段对消费者类不可见，需由 trait 自己暴露——这是既有的封装边界，
+    // 与「trait 私有成员按词法作用域解析」一致）
+    trait Base2 { local base = 5; getBase() = self.base }
+    class D with Base2 {
+        init() = { self.doubled = self.getBase() * 2 }
+        getDoubled() = self.doubled
+    }
+    assert(D().getDoubled() == 10, "field defaults must be ready before user init runs")
+
+    // trait 自己的默认方法内部直接读私有字段
+    trait Calc { local n = 3; calc() = self.n * 7 }
+    class E with Calc {
+        init() = { self.r = self.calc() }
+        getR() = self.r
+    }
+    assert(E().getR() == 21, "trait default method should read own private field")
+}
+test_trait_field_defaults_with_user_init()
+
+// 25. 字段默认值沿类继承链逐级初始化（且 super.init() 仍可用）
+test_field_defaults_inheritance() = {
+    class Base { x = 10; getX() = self.x }
+    class Mid extends Base { y = 20; getY() = self.y }
+    class Leaf extends Mid { z = 30; getZ() = self.z }
+    leaf = Leaf()
+    assert(leaf.getX() == 10, "grandparent field default missing")
+    assert(leaf.getY() == 20, "parent field default missing")
+    assert(leaf.getZ() == 30, "own field default missing")
+
+    // 子类 init 里调用 super.init() 不应报「父类没有 <init>」
+    class P2 { a = 1; getA() = self.a }
+    class C2 extends P2 { init() = { super.init(); self.b = 2 }; getB() = self.b }
+    c2 = C2()
+    assert(c2.getA() == 1, "parent field default missing when child defines init")
+    assert(c2.getB() == 2, "child init body should run after super.init()")
+}
+test_field_defaults_inheritance()

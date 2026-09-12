@@ -3779,23 +3779,37 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         if (p.name.lexeme == "init") hasInit = true;
     }
     
-    if (!hasInit) {
-        bool needsInit = false;
-        for (auto& p : expr->instanceProperties) {
-            if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
-                needsInit = true;
-                break;
-            }
-        }
-        if (needsInit) {
-            auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
-            auto initLambda = std::make_unique<LambdaExpr>(
-                "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, "", std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
+    // ★ 字段默认值初始化器：独立于用户 init，用保留名承载。
+    // 原因：`<init>` 是按**名字**存进类成员表的，而 trait 组合时成员按名字复制，若字段初始化器
+    // 也叫 `<init>`，后组合的 trait（或类自身的 init）会把前一个覆盖掉，导致部分字段默认值
+    // 丢失（`with F1, F2` 两个 trait 同名私有字段会收敛成同一个；类自身写 init 时 trait 字段
+    // 直接丢失）。改名后每个类/trait 各自持有一份自己的字段初始化器，实例化时按继承链与 trait
+    // 顺序全部执行。
+    bool hasFieldDefaults = false;
+    for (auto& p : expr->instanceProperties) {
+        if (!dynamic_cast<LambdaExpr*>(p.value.get())) { hasFieldDefaults = true; break; }
+    }
+    if (hasFieldDefaults) {
+        auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+        auto initLambda = std::make_unique<LambdaExpr>(
+            JC2_FIELD_INIT_NAME, std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, "", std::vector<std::shared_ptr<Expr>>{}, nullptr, "", initBody
+        );
+        expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, JC2_FIELD_INIT_NAME, expr->name.line), std::move(initLambda), false, false});
+
+        // ★ 保留「父类有 <init>」这一既有可用性：用户没写 init 时补一个空的 <init>，
+        // 使子类里的 `super.init()` 仍能解析到（字段默认值已由 <fieldinit> 完成，
+        // 这里不需要再初始化字段，否则会与 <fieldinit> 重复写入）。
+        if (!hasInit) {
+            auto noopBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
+            auto noopLambda = std::make_unique<LambdaExpr>(
+                "init", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{}, std::vector<std::shared_ptr<Expr>>{}, "", std::vector<std::shared_ptr<Expr>>{}, nullptr, "", noopBody
             );
-            expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(initLambda), false, false});
+            expr->instanceProperties.push_back({Token(TokenType::IDENTIFIER, "init", expr->name.line), std::move(noopLambda), false, false});
         }
     }
 
+    // 字段默认值只由 <fieldinit> 负责；用户 init 不再承担（否则两处都会 DEFINE_PROP，
+    // 触发 "Property 'x' already defined"）。因此 isInitMethod 只对 <fieldinit> 生效。
     std::vector<ClassDefExpr::PropertyDef*> fieldsToInit;
     for (auto& p : expr->instanceProperties) {
         if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
@@ -3831,7 +3845,8 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         
     for (auto& p : expr->instanceProperties) {
         if (auto* lambda = dynamic_cast<LambdaExpr*>(p.value.get())) {
-            bool isInit = (p.name.lexeme == "init");
+            // 仅 <fieldinit> 负责字段默认值；用户 init 只写用户逻辑（字段此时已就绪）
+            bool isInit = (p.name.lexeme == JC2_FIELD_INIT_NAME);
             
             if (isInit) {
                 this->isInitMethod = true;

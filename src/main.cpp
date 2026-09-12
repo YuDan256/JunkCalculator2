@@ -578,28 +578,8 @@ int main(int argc, char* argv[]) {
             jc::Value res(instance);
             jc::GcValueGuard guard(res);
             instance->classDef = cls;
-            jc::ObjClosure* initMethod = nullptr;
-            auto c = cls;
-            while (c) {
-                auto it = c->properties.find("<init>");
-                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                    initMethod = it->second.val.asFunction();
-                    break;
-                }
-                c = c->parent;
-            }
-            if (initMethod) {
-                if (initMethod->isBytecode()) {
-                    vm.callVMFunction(initMethod->compiledFnIndex, args, initMethod, res, jc::Value(cls));
-                } else if (initMethod->isNative()) {
-                    jc::helpers::nativeSelfStack.push_back(res);
-                    jc::helpers::nativeClassStack.push_back(jc::Value(cls));
-                    auto& fn = std::any_cast<jc::NativeCallable&>(initMethod->nativeFn);
-                    fn(args);
-                    jc::helpers::nativeSelfStack.pop_back();
-                    jc::helpers::nativeClassStack.pop_back();
-                }
-            }
+            // ★ 字段默认值初始化 + 用户 init（与 VM 内各实例化路径共用同一实现）
+            vm.runFieldInitializersAndInit(cls, res, args);
             return res;
         }
         if (callee.isInstance()) {

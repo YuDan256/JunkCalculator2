@@ -396,6 +396,47 @@ namespace jc {
                         return "root(" + base->toString() + ", " + std::to_string(n) + ")";
                     }
                 }
+                // ★ 负分数指数排版：base^(-p/n) 排版为 1 / base^(p/n)。
+                //   若写成 "base^(-p/n)"，负号与分数叠在一起难以阅读，重解析也易产生歧义，
+                //   这里显式还原成除法。
+                if (f.getDen() > BigInt(1) && f.getNum().isNegative()) {
+                    SymExpr posPart(new SymPow(base, SymExpr(-f).ptr));
+                    return "1 / " + posPart.toString();
+                }
+                // ★ 真分数指数排版：base^(p/n)（1 < p < n）排版为 root(base^p, n)。
+                //   原先此情形落到通用分支，分子 p 被整个丢掉，2^(2/3) 会被印成 cbrt(2)
+                //   （数值其实是 1.5874 而非 1.2599），属于实实在在的错误输出。
+                //   这里把 p 放进根号内，与 2^(3/7) → root(8, 7) 的既有形式保持一致。
+                if (f.getDen() > BigInt(1) && f.getNum() > BigInt(1) && f.getNum() < f.getDen()) {
+                    try {
+                        int64_t p = f.getNum().toInt64();
+                        int64_t n = f.getDen().toInt64();
+                        if (p > 0 && n > 1 && n < 1000000) {
+                            std::string bStr = base->toString();
+                            bool bParen = base->getType() == SymType::ADD || base->getType() == SymType::MUL;
+                            std::string outer = bParen ? "(" + bStr + ")" : bStr;
+                            // 整数底数时把 base^p 精确算出来，输出 cbrt(4) 而不是 cbrt(2^2)，
+                            // 与 2^(3/7) → root(8, 7) 的既有形式一致。
+                            std::string inner;
+                            bool folded = false;
+                            if (!bParen && p <= 1000000 && base->getType() == SymType::NUM) {
+                                auto [isBInt, bInt] = extractExactInt(static_cast<SymNum*>(base)->value);
+                                if (isBInt) {
+                                    BigInt pw(1);
+                                    const BigInt bBig(bInt);
+                                    for (int64_t i = 0; i < p; ++i) pw = pw * bBig;
+                                    inner = pw.toString();
+                                    folded = true;
+                                }
+                            }
+                            if (!folded) inner = outer + "^" + std::to_string(p);
+                            if (n == 2) return "sqrt(" + inner + ")";
+                            if (n == 3) return "cbrt(" + inner + ")";
+                            return "root(" + inner + ", " + std::to_string(n) + ")";
+                        }
+                    }
+                    catch (...) {}
+                }
                 // ★ 带分数指数拆解：base^(p/n)（p > n > 1）排版为 base^q * base^(r/n)，
                 //   与 sqrt(12) → 2 * sqrt(3) 的形式保持一致；否则会打印成 2^(3/2) 这类
                 //   虽正确但不直观的形式（sqrt(8) 的期望输出是 2 * sqrt(2)）。
@@ -1174,7 +1215,6 @@ namespace jc {
                     if (isNeg) baseInt = baseInt.abs();
                     
                     SymExpr outside(BigInt(1));
-                    BigInt insideInt(1);
                     
                     if (baseInt > BigInt(1)) {
                         auto factors = baseInt.factorize();
@@ -1189,39 +1229,46 @@ namespace jc {
                                 r = r + n_den;
                                 q = q - BigInt(1);
                             }
-                            // ★ 指数归约：余数 r > n/2 时把 p^(r/n) 改写成 p * p^((n-r)/n)，
-                            //   即余数换成更小的 n-r，并从已并入 outside 的指数里扣掉一个 p。
-                            //   作用有二：(a) 避免产出 2^(3/2) 这类非规范形式（sqrt(8) 应为 2*sqrt(2)）；
-                            //   (b) 使分数指数分解始终递归到更小的指数，配合入口护栏彻底断开递归。
-                            BigInt rOrig = r;
+                            // ★ 指数归约：余数 r > n/2 时把 p^(r/n) 改写为更小的 p^((n-r)/n)，
+                            //   使分解始终朝更小的指数递归（配合入口护栏断开递归），并避免
+                            //   2^(3/2) 这类非规范形式（sqrt(8) 应为 2*sqrt(2)）。
+                            //   ★ 恒等式：p^(k*m/n) = p^(q+1) / p^((n-r)/n)，因为
+                            //   k*m/n = (q+1) + (r-n)/n 且 r-n = -(n-r)。
+                            //   换了余数就必须把 q 加一，并用倒数还原多出来的那一份指数；
+                            //   漏掉加一（把商当 q）或去改 outside 都会破坏等式
+                            //   （4^(1/3) 会错成 2^(1/3) 或 2*cbrt(2)）。
                             BigInt rEff = r;
-                            if (r * BigInt(2) > n_den) rEff = n_den - r;
+                            bool useDiv = false;
+                            if (r * BigInt(2) > n_den) {
+                                rEff = n_den - r;
+                                q = q + BigInt(1);
+                                useDiv = true;
+                            }
                             
                             if (!q.isZero()) {
                                 SymExpr term = SymExpr(p) ^ SymExpr(q);
                                 if (outside.isOne()) outside = term;
                                 else outside = outside * term;
                             }
-                            if (rEff > rOrig) {
-                                // 余数被换成更小的 n-r 后，指数里多算了一个 p，这里扣掉
-                                outside = outside / SymExpr(p);
-                            }
                             if (!rEff.isZero()) {
                                 BigInt pr(1);
                                 for(BigInt i(0); i < rEff; i = i + BigInt(1)) pr = pr * p;
-                                insideInt = insideInt * pr;
+                                SymExpr fracPart = SymExpr(pr) ^ SymExpr(Fraction(BigInt(1), n_den));
+                                if (useDiv) {
+                                    // 倒数：p^(-(n-r)/n) 用 1 / p^((n-r)/n) 表示，避免负指数
+                                    SymExpr inv = SymExpr(BigInt(1)) / fracPart;
+                                    if (outside.isOne()) outside = inv;
+                                    else outside = outside * inv;
+                                } else {
+                                    if (outside.isOne()) outside = fracPart;
+                                    else outside = outside * fracPart;
+                                }
                             }
                         }
                     }
                     
+                    // 剩余分数幂已在上面按因子折进 outside，这里直接用其结果
                     SymExpr res = outside;
-                    if (insideInt > BigInt(1)) {
-                        SymExpr insideSym(insideInt);
-                        SymExpr fracSym(Fraction(BigInt(1), n_den));
-                        SymExpr powPart(new SymPow(insideSym.ptr, fracSym.ptr));
-                        if (res.isOne()) res = powPart;
-                        else res = res * powPart;
-                    }
                     
                     if (isNeg) {
                         BigInt q_neg = m / n_den;

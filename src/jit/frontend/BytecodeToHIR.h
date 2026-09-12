@@ -1037,7 +1037,7 @@ public:
                         bool isMathIntrinsic = false;
                         bool allowInt32Promotion = false;
                         
-                        if (funcName == "sqrtD" || funcName == "sin" || funcName == "cos") {
+                        if (funcName == "sqrtF" || funcName == "sin" || funcName == "cos") {
                             isMathIntrinsic = true;
                             allowInt32Promotion = true; // 这些函数语义上保证返回 Double，允许 Int32 提升
                         } else if (funcName == "sqrt" || funcName == "abs") {
@@ -1069,7 +1069,7 @@ public:
 
                         // Step 68: 识别目标是否为已知的 math 内置函数
                         // Step 69: 结合 Profiling 数据，如果参数为 Double，则将内置函数调用直接替换为对应的 HIR 数学节点。
-                        // Step 70: 仅对语义安全的函数（如 sqrtD, sin）实现 Int32 -> Double 的自动类型提升。
+                        // Step 70: 仅对语义安全的函数（如 sqrtF, sin）实现 Int32 -> Double 的自动类型提升。
                         if (isMathIntrinsic && c == 1 && (fb == 0x02 || (fb == 0x01 && allowInt32Promotion))) {
                             auto fs = captureFrameState(currentIp);
                             HIRNode* unbox = nullptr;
@@ -1083,7 +1083,7 @@ public:
                             }
                             
                             HIRNode* mathNode = nullptr;
-                            if (funcName == "sqrt" || funcName == "sqrtD") mathNode = builder_.createSqrtF64(unbox);
+                            if (funcName == "sqrt" || funcName == "sqrtF") mathNode = builder_.createSqrtF64(unbox);
                             else if (funcName == "sin") mathNode = builder_.createSinF64(unbox);
                             else if (funcName == "cos") mathNode = builder_.createCosF64(unbox);
                             else if (funcName == "abs") mathNode = builder_.createAbsF64(unbox);

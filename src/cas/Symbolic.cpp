@@ -388,6 +388,26 @@ namespace jc {
                         return "root(" + base->toString() + ", " + std::to_string(n) + ")";
                     }
                 }
+                // ★ 带分数指数拆解：base^(p/n)（p > n > 1）排版为 base^q * base^(r/n)，
+                //   与 sqrt(12) → 2 * sqrt(3) 的形式保持一致；否则会打印成 2^(3/2) 这类
+                //   虽正确但不直观的形式（sqrt(8) 的期望输出是 2 * sqrt(2)）。
+                //   指数本身仍是精确分数（合并走 casAdd），这里只影响显示。
+                if (f.getDen() > BigInt(1) && f.getNum() > f.getDen()) {
+                    try {
+                        int64_t q = f.getNum().toInt64() / f.getDen().toInt64();
+                        int64_t n = f.getDen().toInt64();
+                        Fraction frac(f.getNum() - BigInt(q) * f.getDen(), f.getDen());
+                        if (q > 0 && n > 0 && frac.getNum() > BigInt(0) && q < 1000000) {
+                            std::string bStr = base->toString();
+                            bool bParen = base->getType() == SymType::ADD || base->getType() == SymType::MUL;
+                            std::string outer = bParen ? "(" + bStr + ")" : bStr;
+                            if (q > 1) outer = outer + "^" + std::to_string(q);
+                            SymExpr fracPart(new SymPow(base, SymExpr(frac).ptr));
+                            return outer + " * " + fracPart.toString();
+                        }
+                    }
+                    catch (...) {}
+                }
             }
         }
 
@@ -1274,7 +1294,15 @@ namespace jc {
                         r = r + n_den;
                         q = q - BigInt(1);
                     }
-                    if (!q.isZero() && !r.isZero()) {
+                    if (!q.isZero() && !r.isZero() && fracDecompDepth < 8) {
+                        // ★ 与整数底数分支同样的护栏：part1*part2 会把同底幂指数重新相加，
+                        //   可能还原出原来的 m/n（x^(3/2) → x^1 * x^(1/2) → x^(3/2)），
+                        //   造成无限递归；达到嵌套上限时直接落到下面的 makePow 构造幂节点。
+                        struct VDecompGuard {
+                            int& d;
+                            VDecompGuard(int& x) : d(x) { ++d; }
+                            ~VDecompGuard() { --d; }
+                        } vdg(fracDecompDepth);
                         SymExpr part1 = a ^ SymExpr(q);
                         SymExpr part2 = a ^ SymExpr(Fraction(r, n_den));
                         return part1 * part2;

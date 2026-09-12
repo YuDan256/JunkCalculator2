@@ -5674,38 +5674,13 @@ namespace jc {
                     roots.push_back(simplifyCore((-b + sqrtDelta) / twoA));
                     roots.push_back(simplifyCore((-b - sqrtDelta) / twoA));
                 }
-            } else if (degree >= 3) {
-                // 引入代数数节点 RootOf
-                // 对于 3 次及以上不可约多项式，直接返回 RootOf 节点，避免卡尔丹公式爆炸
-                bool isBinomial = true;
-                for (int i = 1; i < degree; ++i) {
-                    if (!coeffs[i].isZero()) {
-                        isBinomial = false;
-                        break;
-                    }
-                }
-                if (isBinomial) {
-                    SymExpr a = coeffs[degree];
-                    SymExpr b = coeffs[0];
-                    if (!a.isZero()) {
-                        SymExpr rhs = simplifyCore(-b / a);
-                        SymExpr principal = simplifyCore(rhs ^ SymExpr(Fraction(1, degree)));
-                        for (int k = 0; k < degree; ++k) {
-                            if (k == 0) {
-                                roots.push_back(principal);
-                            } else {
-                                SymExpr E = SymExpr::makeConst(SymConstId::E);
-                                SymExpr PI = SymExpr::makeConst(SymConstId::Pi);
-                                SymExpr I = SymExpr::makeConst(SymConstId::I);
-                                SymExpr exponent = SymExpr(Fraction(BigInt(2 * k), BigInt(degree))) * PI * I;
-                                SymExpr unity = E ^ exponent;
-                                roots.push_back(simplifyCore(principal * unity));
-                            }
-                        }
-                    }
-                } else {
-                    // 非二项式的高次不可约多项式，返回 RootOf 节点
-                    // 格式: RootOf(f(var), var, k)
+            } else if (degree == 3) {
+                // ★ 3 次仍给根式解（卡尔丹/二项式），形式紧凑可读。
+                //   4 次及以上改走 RootOf（见下），因为 Ferrari 展开会爆炸：
+                //   Φ_5 = x^4+x^3+x^2+x+1 曾输出几十行嵌套根式。
+                auto radicalRoots = getExactRoots(coeffs);
+                for (auto& rr : radicalRoots) roots.push_back(rr);
+                if (radicalRoots.empty()) {
                     SymExpr f_monic = f;
                     if (!coeffs[degree].isOne()) {
                         f_monic = simplifyCore(expand_core(f / coeffs[degree], SymConfig::maxExpandTerms));
@@ -5715,6 +5690,19 @@ namespace jc {
                             f_monic.ptr, SymExpr::makeVar(var).ptr, SymExpr(BigInt(k)).ptr
                         }));
                     }
+                }
+            } else if (degree >= 4) {
+                // ★ 4 次及以上默认返回 RootOf：紧凑、精确、可数值化，
+                //   避免 Ferrari 展开成不可读的嵌套根式。
+                //   （根式解仍可通过 getExactRoots 在需要处取得，例如积分里的部分分式。）
+                SymExpr f_monic = f;
+                if (!coeffs[degree].isOne()) {
+                    f_monic = simplifyCore(expand_core(f / coeffs[degree], SymConfig::maxExpandTerms));
+                }
+                for (int k = 1; k <= degree; ++k) {
+                    roots.push_back(SymExpr::makeFunc("RootOf", std::vector<SymNode*>{
+                        f_monic.ptr, SymExpr::makeVar(var).ptr, SymExpr(BigInt(k)).ptr
+                    }));
                 }
             }
         };

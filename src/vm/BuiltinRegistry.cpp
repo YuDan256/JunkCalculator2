@@ -5657,7 +5657,10 @@ void BuiltinRegistry::registerCAS() {
                     
                     auto coeffs = jc::extractCoeffs(P, dummy);
                     int deg = static_cast<int>(coeffs.size()) - 1;
-                    if (deg >= 1 && deg <= 4) {
+                    // ★ 只把 1~3 次的 RootOf 展开成根式。4 次的 Ferrari 展开会爆炸
+                    //   （Φ_5 = x^4+x^3+x^2+x+1 曾输出几十行嵌套根式），
+                    //   保留 RootOf 更紧凑且同样精确、可数值化。
+                    if (deg >= 1 && deg <= 3) {
                         auto exactRoots = jc::getExactRoots(coeffs);
                         if (!exactRoots.empty() && k >= 1 && k <= deg) {
                             L->vec.push_back(Value(exactRoots[k - 1]));

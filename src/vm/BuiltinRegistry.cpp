@@ -6,6 +6,7 @@
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
+#include "../compiler/Resolver.h"
 #include "../compiler/IRBuilder.h"
 #include "../compiler/IROptimizer.h"
 #include "../compiler/RegisterAllocator.h"
@@ -4707,10 +4708,17 @@ void BuiltinRegistry::registerSystemShell() {
         mainFn->maxArity = 0;
         mainFn->restName = "";
         
-        auto fns = VM::activeVM->getCompiledFunctions();
+        auto& fns = VM::activeVM->getCompiledFunctions();
+        
+        // ★ 必须像主编译管线一样先跑 Resolver：IRBuilder 在处理 Call/变量时会解引用
+        //   exprSymbols/patternSymbols/deleteSyms 这些旁侧表，传 nullptr 会在含函数调用的
+        //   代码上直接访问违例（纯算术表达式恰好不触发，故此前未被发现）。
+        Resolver resolver;
+        resolver.setKnownConstGlobals(&VM::activeVM->getConstGlobals());
+        resolver.resolve(ast.get());
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get(), &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
         fnBuilder.build(ast.get());
         
         IROptimizer::optimize(&fnGraph);
@@ -4766,10 +4774,17 @@ void BuiltinRegistry::registerSystemShell() {
         mainFn->maxArity = 0;
         mainFn->restName = "";
         
-        auto fns = VM::activeVM->getCompiledFunctions();
+        auto& fns = VM::activeVM->getCompiledFunctions();
+        
+        // ★ 必须像主编译管线一样先跑 Resolver：IRBuilder 在处理 Call/变量时会解引用
+        //   exprSymbols/patternSymbols/deleteSyms 这些旁侧表，传 nullptr 会在含函数调用的
+        //   代码上直接访问违例（纯算术表达式恰好不触发，故此前未被发现）。
+        Resolver resolver;
+        resolver.setKnownConstGlobals(&VM::activeVM->getConstGlobals());
+        resolver.resolve(ast.get());
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get());
+        IRBuilder fnBuilder(&fnGraph, &fns, nullptr, mainFn.get(), &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
         fnBuilder.build(ast.get());
         
         IROptimizer::optimize(&fnGraph);

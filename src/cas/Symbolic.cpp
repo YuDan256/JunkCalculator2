@@ -1022,6 +1022,11 @@ namespace jc {
     // operator^（乘方 → 委托 Value 常数折叠）
     // ==========================================
     SymExpr operator^(const SymExpr& a, const SymExpr& b) {
+        // ★ 递归护栏：分解 p^(m/n) 时会递归求 p^(q) 与 p^(r/n)，随后用 operator* 重新合并，
+        //   而乘法对同底幂会相加指数，可能又得到原来的 m/n（例如 2^(3/2) → 2^1 * 2^(1/2)
+        //   → 重新合并回 2^(3/2)），造成无限递归直至栈溢出。这里限制同一线程内该分解的嵌套
+        //   深度：达到上限时跳过「整数底 + 分数指数」的分解，直接构造幂节点，循环即被打断。
+        static thread_local int fracDecompDepth = 0;
         if (!a.ptr) return SymExpr(BigInt(0));
         if (!b.ptr) return SymExpr(BigInt(1));
 
@@ -1105,6 +1110,17 @@ namespace jc {
                 auto processIntBase = [&](BigInt baseInt) -> SymExpr {
                     if (baseInt.isZero()) return SymExpr(BigInt(0));
                     if (baseInt == BigInt(1)) return SymExpr(BigInt(1));
+                    // 已在一次分数幂分解中：不再进入分解，直接构造幂节点（见函数入口的护栏说明）
+                    if (fracDecompDepth >= 8) {
+                        SymExpr baseSym(baseInt);
+                        SymExpr expFrac(Fraction(m, n_den));
+                        return SymExpr(new SymPow(baseSym.ptr, expFrac.ptr));
+                    }
+                    struct DecompGuard {
+                        int& d;
+                        DecompGuard(int& x) : d(x) { ++d; }
+                        ~DecompGuard() { --d; }
+                    } dg(fracDecompDepth);
                     
                     bool isNeg = baseInt.isNegative();
                     if (isNeg) baseInt = baseInt.abs();
@@ -1125,15 +1141,26 @@ namespace jc {
                                 r = r + n_den;
                                 q = q - BigInt(1);
                             }
+                            // ★ 指数归约：余数 r > n/2 时把 p^(r/n) 改写成 p * p^((n-r)/n)，
+                            //   即余数换成更小的 n-r，并从已并入 outside 的指数里扣掉一个 p。
+                            //   作用有二：(a) 避免产出 2^(3/2) 这类非规范形式（sqrt(8) 应为 2*sqrt(2)）；
+                            //   (b) 使分数指数分解始终递归到更小的指数，配合入口护栏彻底断开递归。
+                            BigInt rOrig = r;
+                            BigInt rEff = r;
+                            if (r * BigInt(2) > n_den) rEff = n_den - r;
                             
                             if (!q.isZero()) {
                                 SymExpr term = SymExpr(p) ^ SymExpr(q);
                                 if (outside.isOne()) outside = term;
                                 else outside = outside * term;
                             }
-                            if (!r.isZero()) {
+                            if (rEff > rOrig) {
+                                // 余数被换成更小的 n-r 后，指数里多算了一个 p，这里扣掉
+                                outside = outside / SymExpr(p);
+                            }
+                            if (!rEff.isZero()) {
                                 BigInt pr(1);
-                                for(BigInt i(0); i < r; i = i + BigInt(1)) pr = pr * p;
+                                for(BigInt i(0); i < rEff; i = i + BigInt(1)) pr = pr * p;
                                 insideInt = insideInt * pr;
                             }
                         }

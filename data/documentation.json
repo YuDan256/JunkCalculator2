@@ -6961,7 +6961,7 @@
       "examples": [
         "import cas; import math; math.solve(1, 0, -1)",
         "import cas; import math; math.solve((x) => x^2 - 4, 3)",
-        "x = sym(\"x\"); import cas; import math; cas.solve(x^2 - 1/4, x)"
+        "x = sym(\"x\"); import cas; import math; cas.solve(x^2 - 2, x)"
       ]
     },
     "factorial": {

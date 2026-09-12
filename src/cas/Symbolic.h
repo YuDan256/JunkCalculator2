@@ -109,6 +109,11 @@ namespace jc {
     // ==========================================
     // 符号表达式代理类 (The Value Proxy)
     // ==========================================
+    class SymExpr;
+
+    // 结构相等，必要时回退到展开后的规范多项式比较（见 SymExpr::operator==）
+    bool symEquivalent(const SymExpr& a, const SymExpr& b);
+
     class SymExpr {
     public:
         SymNode* ptr;
@@ -156,13 +161,20 @@ namespace jc {
         // 单目负号可以保留为成员
         SymExpr operator-() const;
 
+        // ★ 结构相等 + 代数回退。
+        //   曾经这里只比较 ptr（指针/内部化身份），于是"展开后同一个多项式"也判不等：
+        //   expand((x+1)*(x-1)) 与 expand(x^2-1) 都打印 x^2 - 1，却 a == b 为 false。
+        //   节点自身已实现 equals()（结构比较），这里改为调用它；纯结构不等时再回退到
+        //   "展开成规范多项式后比较"，以覆盖结合律/交换律/分配律造成的等价写法。
         bool operator==(const SymExpr& other) const {
-            return ptr == other.ptr;
+            if (ptr == other.ptr) return true;
+            return symEquivalent(*this, other);
         }
         bool operator!=(const SymExpr& other) const {
             return !(*this == other);
         }
     };
+
 
     // ★ 必须在类外提供全局声明，否则某些编译器无法在普通查找中找到这些运算符
     SymExpr operator+(const SymExpr& a, const SymExpr& b);

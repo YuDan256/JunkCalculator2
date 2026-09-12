@@ -709,7 +709,10 @@ namespace jc {
         const auto* o = static_cast<const SymAdd*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i] != o->args[i]) return false;
+            if (args[i] == o->args[i]) continue;
+            // ★ 递归结构比较，而不是比指针：内部化池只保证"同一构造路径"复用节点，
+            //   expand 出来的 x^2 - 1 与字面写的 x^2 - 1 子节点并不共享指针。
+            if (!args[i]->equals(o->args[i])) return false;
         }
         return true;
     }
@@ -723,7 +726,8 @@ namespace jc {
         const auto* o = static_cast<const SymMul*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i] != o->args[i]) return false;
+            if (args[i] == o->args[i]) continue;
+            if (!args[i]->equals(o->args[i])) return false;
         }
         return true;
     }
@@ -733,7 +737,8 @@ namespace jc {
     }
     bool SymPow::equals(const SymNode* other) const {
         const auto* o = static_cast<const SymPow*>(other);
-        return base == o->base && exp == o->exp;
+        if (base == o->base && exp == o->exp) return true;
+        return base->equals(o->base) && exp->equals(o->exp);
     }
 
     SymFunc::SymFunc(std::string n, std::vector<SymNode*> a) : name(n == "ln" ? "log" : std::move(n)), args(std::move(a)) {
@@ -745,7 +750,8 @@ namespace jc {
         const auto* o = static_cast<const SymFunc*>(other);
         if (name != o->name || args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
-            if (args[i] != o->args[i]) return false;
+            if (args[i] == o->args[i]) continue;
+            if (!args[i]->equals(o->args[i])) return false;
         }
         return true;
     }
@@ -2497,6 +2503,56 @@ namespace jc {
 
     SymExpr expand(const SymExpr& expr, int64_t maxPowTerms) {
         return expand_internal(expr, maxPowTerms, true);
+    }
+
+    // =================================================================
+    // 表达式等价判定
+    //   1) 先做结构比较（节点自身的 equals，递归比对类型与子节点，按内部化身份比原子）
+    //   2) 结构不等时回退到"展开成规范多项式"再比一次，覆盖分配律/交换律/结合律
+    //      造成的等价写法（(x+1)(x-1) vs x^2-1、2(x+y) vs 2x+2y）。
+    //   规模上限用于避免对超大表达式做代价失控的展开。
+    // =================================================================
+    bool symEquivalent(const SymExpr& a, const SymExpr& b) {
+        if (a.ptr == b.ptr) return true;
+        if (!a.ptr || !b.ptr) return false;
+        if (a.ptr->getType() != b.ptr->getType()) {
+            // 类型不同仍可能是等价写法（如 2 * x 与 x + x），继续走展开回退
+        } else if (a.ptr->equals(b.ptr)) {
+            return true;
+        }
+        constexpr int64_t kMaxNodesForExpand = 400;
+        constexpr int64_t kMaxExpandTerms = 4000;
+        if (getAstNodeCount(a) > kMaxNodesForExpand) return false;
+        if (getAstNodeCount(b) > kMaxNodesForExpand) return false;
+        try {
+            SymExpr ea = expand_core(a, kMaxExpandTerms);
+            SymExpr eb = expand_core(b, kMaxExpandTerms);
+            if (ea.ptr == eb.ptr) return true;
+            if (ea.ptr->equals(eb.ptr)) return true;
+            // ★ 展开后仍可能只是 ADD/MUL 的项序不同（x^2 + (-1)y^2 与 (-1)y^2 + x^2）。
+            //   排版层对 ADD/MUL 会做规范排序，因此比较规范文本可以吸收交换律/结合律
+            //   造成的排列差异，而不必给每个节点都实现无序比较。
+            if (ea.ptr->getType() == eb.ptr->getType() &&
+                (ea.ptr->getType() == SymType::ADD || ea.ptr->getType() == SymType::MUL ||
+                 ea.ptr->getType() == SymType::POW || ea.ptr->getType() == SymType::FUNC)) {
+                if (ea.toString() == eb.toString()) return true;
+            }
+            // ★ 再回退一次 simplify：它比 expand 更强（会把 x*(y+1) 归成 x*y+x、
+            //   把 2*(x+y) 归成 2x+2y），覆盖 expand 留着未分配乘积的情形。
+            SymExpr sa = simplifyCore(a);
+            SymExpr sb = simplifyCore(b);
+            if (sa.ptr == sb.ptr) return true;
+            if (sa.ptr->equals(sb.ptr)) return true;
+            sa = expand_core(sa, kMaxExpandTerms);
+            sb = expand_core(sb, kMaxExpandTerms);
+            return sa.toString() == sb.toString();
+        }
+        catch (const EngineInterruptError&) {
+            throw;
+        }
+        catch (...) {
+            return false;
+        }
     }
 
     static std::pair<bool, Value> tryEvalConst(const SymExpr& expr) {

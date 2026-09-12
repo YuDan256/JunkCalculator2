@@ -4564,7 +4564,7 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("any", VM::activeVM->getBuiltinValue("any"));
             VM::activeVM->setGlobal("never", VM::activeVM->getBuiltinValue("never"));
             VM::activeVM->setGlobal("int", VM::activeVM->getBuiltinValue("int"));
-            VM::activeVM->setGlobal("double", VM::activeVM->getBuiltinValue("double"));
+            VM::activeVM->setGlobal("float", VM::activeVM->getBuiltinValue("float"));
             VM::activeVM->setGlobal("real", VM::activeVM->getBuiltinValue("real"));
             VM::activeVM->setGlobal("number", VM::activeVM->getBuiltinValue("number"));
             VM::activeVM->setGlobal("exact", VM::activeVM->getBuiltinValue("exact"));

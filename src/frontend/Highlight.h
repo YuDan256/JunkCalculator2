@@ -282,7 +282,7 @@ namespace jc {
     // ═══════════════════════════════════════════
     inline std::string colorizeType(const std::string& typeName) {
         if (!colorsEnabled) return "";
-        if (typeName == "double" || typeName == "BigInt" || typeName == "Fraction")
+        if (typeName == "float" || typeName == "BigInt" || typeName == "Fraction")
             return col(Ansi::BRIGHT_YELLOW);
         if (typeName == "Complex")
             return col(Ansi::BRIGHT_MAGENTA);

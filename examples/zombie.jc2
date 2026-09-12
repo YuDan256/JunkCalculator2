@@ -17,7 +17,7 @@ class FpsProbe {
         
         if (self.idx % 10 == 0) {
             sum_dt = self.history.reduce((acc, x) => acc + x, 0.0)
-            avg_dt = sum_dt / double(self.max_samples)
+            avg_dt = sum_dt / float(self.max_samples)
             if (avg_dt > 0.0) self.avg_fps = int(1.0 / avg_dt)
         }
     }
@@ -203,7 +203,7 @@ class Raycaster3D extends engine.GameEngine {
         // 将墙体随机替换为 1~4 的纹理索引
         for (r = 0; r < self.size; r += 1) {
             for (c = 0; c < self.size; c += 1) {
-                if (self.map[r][c] == 1.0) self.map[r][c] = double(random.randint(1, 4))
+                if (self.map[r][c] == 1.0) self.map[r][c] = float(random.randint(1, 4))
             }
         }
         self.map[self.size - 2][self.size - 2] = 5.0
@@ -218,14 +218,14 @@ class Raycaster3D extends engine.GameEngine {
                     if (r > 5 || c > 5) {
                         rng = random.rand()
                         if (rng > 0.88) {
-                            z_hp = 100.0 + (self.level - 1) * 25.0 + double(random.randint(-10, 10)) // 动态递增难度血量
-                            self.zombies.push({x: double(r) + 0.5, y: double(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
+                            z_hp = 100.0 + (self.level - 1) * 25.0 + float(random.randint(-10, 10)) // 动态递增难度血量
+                            self.zombies.push({x: float(r) + 0.5, y: float(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
                         } else if (rng > 0.83) {
                             // 血包道具（白底红十字）
-                            self.items.push({x: double(r) + 0.5, y: double(c) + 0.5, type: "HP", active: true})
+                            self.items.push({x: float(r) + 0.5, y: float(c) + 0.5, type: "HP", active: true})
                         } else if (rng > 0.76) {
                             // 弹药盒（绿底黄束）
-                            self.items.push({x: double(r) + 0.5, y: double(c) + 0.5, type: "AMMO", active: true})
+                            self.items.push({x: float(r) + 0.5, y: float(c) + 0.5, type: "AMMO", active: true})
                         }
                     }
                 }
@@ -323,9 +323,9 @@ class Raycaster3D extends engine.GameEngine {
     tryMove(new_x, new_y, axis) = {
         // 边界钳制：防止 dt 突刺导致一步跨出地图（索引越界）
         if (new_x < 0.0) new_x = 0.0
-        if (new_x > double(self.size - 1)) new_x = double(self.size - 1)
+        if (new_x > float(self.size - 1)) new_x = float(self.size - 1)
         if (new_y < 0.0) new_y = 0.0
-        if (new_y > double(self.size - 1)) new_y = double(self.size - 1)
+        if (new_y > float(self.size - 1)) new_y = float(self.size - 1)
         val = self.map[int(new_x)][int(new_y)]
         if (val == 5.0) { 
             if (self.level >= self.MAX_LEVEL) {
@@ -437,7 +437,7 @@ class Raycaster3D extends engine.GameEngine {
         // 1. 投射墙体并构建 ZBuffer
         x = 0
         while (x < self.W) {
-            camera_x = 2.0 * x / double(self.W) - 1.0
+            camera_x = 2.0 * x / float(self.W) - 1.0
             ray_dir_x = self.dir_x + self.plane_x * camera_x
             ray_dir_y = self.dir_y + self.plane_y * camera_x
             map_x = int(self.pos_x)

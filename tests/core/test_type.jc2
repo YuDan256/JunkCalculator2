@@ -44,12 +44,12 @@ test_type_annotations() = {
         f(3.14)
     } catch (e) {
         caught_param = true
-        assert(e.type == "TypeError", "Should throw TypeError for double")
+        assert(e.type == "TypeError", "Should throw TypeError for float")
     }
     assert(caught_param, "Should throw on invalid param type")
     
-    g(x) -> double = x
-    assert(g(3.14) == 3.14, "Return type double accepted")
+    g(x) -> float = x
+    assert(g(3.14) == 3.14, "Return type float accepted")
     
     caught_return = false
     try {

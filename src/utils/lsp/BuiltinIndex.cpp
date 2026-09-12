@@ -28,7 +28,7 @@ namespace lsp {
     // 类型名 → 返回类型签名（类型构造函数的返回类型）
     static TypeSig typeSigFromName(const std::string& name) {
         if (name == "int") return TypeSig::bt(BuiltinType::INT);
-        if (name == "double") return TypeSig::bt(BuiltinType::FLOAT);
+        if (name == "float") return TypeSig::bt(BuiltinType::FLOAT);
         if (name == "string") return TypeSig::bt(BuiltinType::STRING);
         if (name == "bool") return TypeSig::bt(BuiltinType::BOOL);
         if (name == "none_type") return TypeSig::bt(BuiltinType::NONE_TYPE);
@@ -199,7 +199,7 @@ namespace lsp {
     void BuiltinIndex::buildTypes() {
         // Value.h BuiltinType 枚举名 + complex（去 bigint）。表面名与内部名一并纳入。
         static const std::vector<std::string> names = {
-            "any", "int", "double", "string", "bool", "none_type", "list", "dict", "set",
+            "any", "int", "float", "string", "bool", "none_type", "list", "dict", "set",
             "fraction", "symbolic", "realmatrix", "complexmatrix", "symmatrix", "function",
             "class_type", "instance", "namespace_type", "custom_class", "type", "slice",
             "complex", "matrix"

@@ -36,7 +36,7 @@ namespace jcsym {
 
     struct Constant {
         std::string name;
-        std::string type;        // "int" / "double" / "string" / "value"
+        std::string type;        // "int" / "float" / "string" / "value"
         std::string value;
     };
 

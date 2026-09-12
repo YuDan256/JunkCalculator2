@@ -23,7 +23,7 @@ test_ffi_real_call() = {
     
     if (lib != none) {
         // Test 1: Math function (f64)
-        // double pow(double x, double y)
+        // float pow(float x, float y)
         c_pow = lib.bind("pow", "f64", "f64", "f64")
         assert(isinstance(c_pow, ffi.FFIFunction), "bind should return FFIFunction")
         

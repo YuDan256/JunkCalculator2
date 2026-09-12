@@ -3241,7 +3241,7 @@ VM::VM() {
     builtinValues["any"] = makeType(BuiltinType::ANY);
     builtinValues["never"] = Value(internType({}));
     builtinValues["int"] = makeType(BuiltinType::INT);
-    builtinValues["double"] = makeType(BuiltinType::FLOAT);
+    builtinValues["float"] = makeType(BuiltinType::FLOAT);
     builtinValues["real"] = Value(internType({BuiltinType::INT, BuiltinType::FLOAT, BuiltinType::FRACTION, BuiltinType::BOOL}));
     builtinValues["number"] = Value(internType({BuiltinType::INT, BuiltinType::FLOAT, BuiltinType::FRACTION, BuiltinType::COMPLEX, BuiltinType::BOOL}));
     builtinValues["exact"] = Value(internType({BuiltinType::INT, BuiltinType::FRACTION, BuiltinType::SYMBOLIC, BuiltinType::BOOL}));
@@ -3352,7 +3352,7 @@ VM::VM() {
             return Value(val.asBigInt());
         });
 
-        bind("double", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
+        bind("float", {1}, {"x"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
             Value val = evalIfSym(args[0]);
             // 1×1 矩阵 → 取元素降维
             if (val.isObjType(ObjType::REAL_MATRIX)) {

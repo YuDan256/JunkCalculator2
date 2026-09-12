@@ -52,7 +52,7 @@ namespace jc {
 
     inline DType stringToDType(const std::string& s) {
         if (s == "float32" || s == "f32") return DType::Float32;
-        if (s == "float64" || s == "f64" || s == "double") return DType::Float64;
+        if (s == "float64" || s == "f64" || s == "float") return DType::Float64;
         if (s == "int32" || s == "i32") return DType::Int32;
         if (s == "int64" || s == "i64") return DType::Int64;
         if (s == "bool") return DType::Bool;

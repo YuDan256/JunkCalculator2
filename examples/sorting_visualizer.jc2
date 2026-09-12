@@ -16,7 +16,7 @@ to_hex(v) = {
 }
 
 val_to_rgb(val, max_val) = {
-    ratio = double(val) / double(max_val)
+    ratio = float(val) / float(max_val)
     r = 255 * ratio; g = 60; b = 255 * (1.0 - ratio)
     return "#" + to_hex(r) + to_hex(g) + to_hex(b)
 }
@@ -27,7 +27,7 @@ class VisualSorter {
         self.N = N
         self.W = W
         self.H = H
-        self.bar_w = double(W) / N
+        self.bar_w = float(W) / N
         self.data = list()
         self.im = image.img(W, H, "#111118")
         self.win = none
@@ -67,8 +67,8 @@ class VisualSorter {
         self.im.clear("#111118")
         for (k in range(self.N)) {
             val = self.data[k]
-            bar_h = int(val * (self.H / double(self.N)))
-            color = (double(k) in self.active_indices) ? "#FFFFFF" : val_to_rgb(val, self.N)
+            bar_h = int(val * (self.H / float(self.N)))
+            color = (float(k) in self.active_indices) ? "#FFFFFF" : val_to_rgb(val, self.N)
             self.im.fillRect(int(k * self.bar_w), self.H - bar_h, int(self.bar_w), bar_h, color)
         }
         if (self.win != none) { self.win.show(self.im) }
@@ -100,7 +100,7 @@ class VisualSorter {
         // Final sweep animation (skip if user forcibly closed the window)
         if (self.win.isOpen()) {
             for (i = 0; i < self.N; i += 1) {
-                self.active_indices = set(double(i))
+                self.active_indices = set(float(i))
                 if (self.N <= 100 || i % 2 == 0) { self.render_frame() }
             }
         }
@@ -127,7 +127,7 @@ insertion_sort(vis) = {
         }
         vis.data[j + 1] = key
         
-        vis.active_indices = set(double(j + 1), double(i))
+        vis.active_indices = set(float(j + 1), float(i))
         if(i % 2 == 0) {vis.render_frame()}  // Insertion sort is slow; render every 2 operations
     }
 }
@@ -148,8 +148,8 @@ quick_sort(vis) = {
             tmp = vis.data[i + 1]; vis.data[i + 1] = vis.data[high]; vis.data[high] = tmp
             pi = i + 1
             
-            // ★ Sync active indices as doubles for the Set container
-            vis.active_indices = set(double(pi))
+            // ★ Sync active indices as floats for the Set container
+            vis.active_indices = set(float(pi))
             vis.render_frame()
             
             qs(low, pi - 1)
@@ -185,7 +185,7 @@ merge_sort(vis) = {
         while (i < n1) { vis.data[k] = L[i]; i += 1; k += 1 }
         while (j < n2) { vis.data[k] = R[j]; j += 1; k += 1 }
         
-        vis.active_indices = set(double(l), double(r))
+        vis.active_indices = set(float(l), float(r))
         vis.render_frame()
     }
     

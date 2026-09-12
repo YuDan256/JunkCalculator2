@@ -34,7 +34,7 @@ namespace lsp {
     // sidecar 返回类型名 → TypeSig（内置类型 + 类名）
     static TypeSig nameToTypeSig(const std::string& name) {
         if (name == "int") return TypeSig::bt(BuiltinType::INT);
-        if (name == "double") return TypeSig::bt(BuiltinType::FLOAT);
+        if (name == "float") return TypeSig::bt(BuiltinType::FLOAT);
         if (name == "string") return TypeSig::bt(BuiltinType::STRING);
         if (name == "bool") return TypeSig::bt(BuiltinType::BOOL);
         if (name == "list") return TypeSig::bt(BuiltinType::LIST);
@@ -54,8 +54,8 @@ namespace lsp {
         globalScope.name = "<global>";
         current = &globalScope;
         // 可覆盖的预置全局变量（当普通变量，不报 shadowing）
-        declare("PI", UserSymbol::Variable, 0, 0, "double");
-        declare("E", UserSymbol::Variable, 0, 0, "double");
+        declare("PI", UserSymbol::Variable, 0, 0, "float");
+        declare("E", UserSymbol::Variable, 0, 0, "float");
         declare("i", UserSymbol::Variable, 0, 0, "complex");
         declare("I", UserSymbol::Variable, 0, 0, "complex");
         declare("ANS", UserSymbol::Variable, 0, 0, "any");

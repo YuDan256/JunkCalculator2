@@ -602,7 +602,7 @@ namespace jc {
                     switch (std::get<BuiltinType>(types[i])) {
                         case BuiltinType::ANY: res += "any"; break;
                         case BuiltinType::INT: res += "int"; break;
-                        case BuiltinType::FLOAT: res += "double"; break;
+                        case BuiltinType::FLOAT: res += "float"; break;
                         case BuiltinType::STRING: res += "string"; break;
                         case BuiltinType::BOOL: res += "bool"; break;
                         case BuiltinType::NONE_TYPE: res += "none_type"; break;
@@ -2177,7 +2177,7 @@ namespace jc {
         if (isUninit()) return "uninit";
         if (isBool()) return "bool";
         if (isInt32()) return "int";
-        if (isDouble()) return "double";
+        if (isDouble()) return "float";
         Obj* obj = asObj();
         switch (obj->type) {
             case ObjType::STRING: return "string";

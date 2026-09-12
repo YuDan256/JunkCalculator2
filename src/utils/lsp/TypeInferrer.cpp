@@ -6,7 +6,7 @@ namespace lsp {
     // 类型名 → Type（对应运行时 builtinValues 的类型对象）
     static Type builtinTypeObject(const std::string& name) {
         if (name == "int") return Type(BuiltinType::INT);
-        if (name == "double") return Type(BuiltinType::FLOAT);
+        if (name == "float") return Type(BuiltinType::FLOAT);
         if (name == "string") return Type(BuiltinType::STRING);
         if (name == "bool") return Type(BuiltinType::BOOL);
         if (name == "none_type") return Type(BuiltinType::NONE_TYPE);

@@ -12,8 +12,8 @@
     "complex": {
       "signature": "complex(real, [imag])"
     },
-    "double": {
-      "signature": "double(x)"
+    "float": {
+      "signature": "float(x)"
     },
     "int": {
       "signature": "int(x)"

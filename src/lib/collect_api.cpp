@@ -82,7 +82,7 @@ namespace jcsym {
     static void cb_register_double(JC2_VMContext, JC2_ModuleHandle, const char* name, double val) {
         Constant c;
         c.name = name ? name : "";
-        c.type = "double";
+        c.type = "float";
         c.value = std::to_string(val);
         g_collected.constants.push_back(std::move(c));
     }

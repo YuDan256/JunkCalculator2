@@ -127,7 +127,7 @@ class Tetris extends engine.GameEngine {
                     br = self.curr_r + r
                     bc = self.curr_c + c
                     if (br >= 0 && br < self.ROWS) {
-                        self.board[br][bc] = double(self.curr_color)
+                        self.board[br][bc] = float(self.curr_color)
                     }
                 }
             }
@@ -169,7 +169,7 @@ class Tetris extends engine.GameEngine {
             if (cleared >= 4) self.score += 800
             
             self.lines += cleared
-            self.fall_speed -= double(cleared) * 0.001
+            self.fall_speed -= float(cleared) * 0.001
             if (self.fall_speed < 0.20) self.fall_speed = 0.20 // Terminal velocity
         }
     }

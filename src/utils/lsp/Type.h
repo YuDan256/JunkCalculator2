@@ -94,7 +94,7 @@ namespace lsp {
         switch (bt) {
         case BuiltinType::ANY: return "any";
         case BuiltinType::INT: return "int";
-        case BuiltinType::FLOAT: return "double";
+        case BuiltinType::FLOAT: return "float";
         case BuiltinType::STRING: return "string";
         case BuiltinType::BOOL: return "bool";
         case BuiltinType::NONE_TYPE: return "none_type";

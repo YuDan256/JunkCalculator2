@@ -254,8 +254,8 @@ namespace lsp {
             if (it != typeAliases.end()) return it->second;  // 类型别名
             if (index.isTypeName(name)) return builtinTypeObject(name);  // 内置类型名
             const NameRes* nr = resolver.resolveAt(e);
-            if (nr && nr->origin == NameRes::User && nr->user && nr->user->kind == UserSymbol::Class) {
-                return Type(name);  // 用户类
+            if (nr && nr->origin == NameRes::User && nr->user && (nr->user->kind == UserSymbol::Class || nr->user->kind == UserSymbol::Trait)) {
+                return Type(name);  // 用户类 / trait
             }
             return Type::any();
         }

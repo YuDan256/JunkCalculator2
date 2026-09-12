@@ -875,6 +875,12 @@
     "class": {
       "signature": "class [Name] [extends Parent] { ... }  |  class"
     },
+    "trait": {
+      "signature": "trait Name [with A, B] { ... }  |  trait"
+    },
+    "with": {
+      "signature": "class C with A, B { ... }  |  trait R with A, B { ... }"
+    },
     "enum": {
       "signature": "enum Name { A, B, C }  |  enum { A, B, C }"
     },

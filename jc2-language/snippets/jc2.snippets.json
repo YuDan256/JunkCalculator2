@@ -57,6 +57,16 @@
         ],
         "description": "Class definition"
     },
+    "Trait Definition": {
+        "prefix": "trait",
+        "body": [
+            "trait ${1:TraitName} {",
+            "\t${2:method}(${3:args})",
+            "\t$0",
+            "}"
+        ],
+        "description": "Trait definition"
+    },
     "Namespace Definition": {
         "prefix": "namespace",
         "body": [

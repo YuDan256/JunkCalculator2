@@ -517,6 +517,23 @@
                     }
                 },
                 {
+                    "match": "\\b(trait)\\s+([A-Za-z_][A-Za-z0-9_]*)(?:\\s+(with)\\s+([A-Za-z_][A-Za-z0-9_]*))?",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.trait.jc2"
+                        },
+                        "2": {
+                            "name": "entity.name.type.trait.jc2"
+                        },
+                        "3": {
+                            "name": "keyword.declaration.with.jc2"
+                        },
+                        "4": {
+                            "name": "entity.other.inherited-class.jc2"
+                        }
+                    }
+                },
+                {
                     "match": "\\b(namespace)\\s+([A-Za-z_][A-Za-z0-9_]*)",
                     "captures": {
                         "1": {

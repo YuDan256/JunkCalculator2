@@ -274,6 +274,7 @@ namespace lsp {
                             std::string kindStr = "variable";
                             if (nr->user->kind == UserSymbol::Function) kindStr = "function";
                             else if (nr->user->kind == UserSymbol::Class) kindStr = "class";
+                            else if (nr->user->kind == UserSymbol::Trait) kindStr = "interface";
                             else if (nr->user->kind == UserSymbol::Parameter) kindStr = "parameter";
                             else if (nr->user->kind == UserSymbol::Property) kindStr = "property";
                             else if (nr->user->kind == UserSymbol::Namespace) kindStr = "namespace";
@@ -585,6 +586,7 @@ namespace lsp {
                             int kind = 6; // Variable
                             if (sym->kind == UserSymbol::Function) kind = 3; // Function
                             else if (sym->kind == UserSymbol::Class) kind = 7; // Class
+                            else if (sym->kind == UserSymbol::Trait) kind = 11; // Interface
                             else if (sym->kind == UserSymbol::Property) kind = 10; // Property
                             else if (sym->kind == UserSymbol::Namespace) kind = 9; // Module
                             
@@ -851,6 +853,7 @@ namespace lsp {
                         int kind = 13; // Variable
                         if (sym.kind == UserSymbol::Function) kind = 12;
                         else if (sym.kind == UserSymbol::Class) kind = 5;
+                        else if (sym.kind == UserSymbol::Trait) kind = 11;
                         else if (sym.kind == UserSymbol::Namespace) kind = 2;
                         ds["kind"] = Json((double)kind);
                         Range range;
@@ -960,6 +963,7 @@ namespace lsp {
                             case TokenType::IN: case TokenType::IS: case TokenType::AS:
                             case TokenType::TRUE_KW: case TokenType::FALSE_KW: case TokenType::NONE_KW:
                             case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
+                            case TokenType::TRAIT: case TokenType::WITH:
                             case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
                             case TokenType::QUOTE:
                             case TokenType::STATIC: case TokenType::LOCAL: case TokenType::CONST:
@@ -1016,6 +1020,7 @@ namespace lsp {
                                     } else if (nr->origin == NameRes::User && nr->user) {
                                         if (nr->user->kind == UserSymbol::Function) tokenType = 12;
                                         else if (nr->user->kind == UserSymbol::Class) tokenType = 2;
+                                        else if (nr->user->kind == UserSymbol::Trait) tokenType = 2;
                                         else if (nr->user->kind == UserSymbol::Parameter) tokenType = 7;
                                         else if (nr->user->kind == UserSymbol::Property) tokenType = 9;
                                         else if (nr->user->kind == UserSymbol::Namespace) tokenType = 0;

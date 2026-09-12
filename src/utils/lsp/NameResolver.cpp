@@ -287,10 +287,10 @@ namespace lsp {
             if (auto* a = dynamic_cast<Assign*>(stmt.get())) {
                 if (dynamic_cast<LambdaExpr*>(a->value.get())) {
                     declare(a->name.lexeme, UserSymbol::Function, a->name.position, a->name.position + (int)a->name.lexeme.size());
-                } else if (dynamic_cast<ClassDefExpr*>(a->value.get())) {
+                } else if (auto* cde = dynamic_cast<ClassDefExpr*>(a->value.get())) {
                     // class Foo {...} 被 Parser 解析成 Assign(name, ClassDefExpr)，必须声明为 Class 而非 Function，
-                    // 否则 hover/高亮会把类识别成函数。
-                    declare(a->name.lexeme, UserSymbol::Class, a->name.position, a->name.position + (int)a->name.lexeme.size());
+                    // 否则 hover/高亮会把类识别成函数。trait 同理声明为 Trait。
+                    declare(a->name.lexeme, cde->isTrait ? UserSymbol::Trait : UserSymbol::Class, a->name.position, a->name.position + (int)a->name.lexeme.size());
                 }
             } else if (auto* ld = dynamic_cast<LocalDecl*>(stmt.get())) {
                 declare(ld->name.lexeme, UserSymbol::Variable, ld->name.position, ld->name.position + (int)ld->name.lexeme.size());
@@ -301,7 +301,7 @@ namespace lsp {
             } else if (auto* cd = dynamic_cast<ConstDecl*>(stmt.get())) {
                 declare(cd->name.lexeme, UserSymbol::Variable, cd->name.position, cd->name.position + (int)cd->name.lexeme.size());
             } else if (auto* cls = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                declare(cls->name.lexeme, UserSymbol::Class, cls->name.position, cls->name.position + (int)cls->name.lexeme.size());
+                declare(cls->name.lexeme, cls->isTrait ? UserSymbol::Trait : UserSymbol::Class, cls->name.position, cls->name.position + (int)cls->name.lexeme.size());
             } else if (auto* ns = dynamic_cast<NamespaceDecl*>(stmt.get())) {
                 declare(ns->name.lexeme, UserSymbol::Namespace, ns->name.position, ns->name.position + (int)ns->name.lexeme.size());
             }

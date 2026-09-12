@@ -18,7 +18,7 @@ namespace lsp {
     // 用户声明的符号
     struct UserSymbol {
         std::string name;
-        enum Kind { Variable, Function, Class, Parameter, Property, Namespace } kind = Variable;
+        enum Kind { Variable, Function, Class, Trait, Parameter, Property, Namespace } kind = Variable;
         Position defPos;
         Position defEndPos;
         std::string typeHint;

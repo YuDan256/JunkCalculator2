@@ -5544,6 +5544,39 @@
         "p = Point(3, 4); p2 = p.clone()"
       ]
     },
+    "trait": {
+      "signature": "trait Name [with A, B] { ... }  |  trait",
+      "desc": [
+        "Defines an interface (trait): abstract methods (contract) + default methods (mixin).",
+        "• `trait Name { ... }` is syntactic sugar for `Name = trait { ... }`.",
+        "• Abstract methods have no '=' implementation; classes must implement them.",
+        "• Default methods have an implementation and may be overridden.",
+        "• Traits cannot be instantiated and are frozen after definition.",
+        "• Classes and traits compose traits via `with`.",
+        "See also: /help with, /help class"
+      ],
+      "examples": [
+        "trait Drawable {",
+        "    draw(ctx)               // abstract method",
+        "    describe() = \"drawable\"  // default method",
+        "}",
+        "class Circle with Drawable { draw(ctx) = { ... } }"
+      ]
+    },
+    "with": {
+      "signature": "class C with A, B { ... }  |  trait R with A, B { ... }",
+      "desc": [
+        "Composes traits into a class or another trait.",
+        "• Later traits override earlier ones on name conflicts.",
+        "• The class's own members override all trait members.",
+        "• Abstract methods from composed traits must be implemented (signature must match).",
+        "See also: /help trait, /help class"
+      ],
+      "examples": [
+        "class Circle with Drawable, Serializable { ... }",
+        "trait Renderable with Drawable { ... }"
+      ]
+    },
     "enum": {
       "signature": "enum Name { A, B, C }  |  enum { A, B, C }",
       "desc": [

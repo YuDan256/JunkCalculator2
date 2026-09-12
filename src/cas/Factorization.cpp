@@ -898,6 +898,84 @@ namespace jc {
         return simp;
     }
 
+    // =================================================================
+    // 立方和/差：x^3 ± y^3 = (x ± y)(x^2 ∓ xy + y^2)
+    //   覆盖二项式分圆分解管不到的多元情形（x^3 + y^3 不是 x 的单变量二项式）。
+    // =================================================================
+    static bool asCube(SymNode* node, SymNode*& baseOut) {
+        if (node->getType() == SymType::POW) {
+            auto p = static_cast<SymPow*>(node);
+            auto [isN, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
+            if (isN && n == 3) { baseOut = p->base; return true; }
+            return false;
+        }
+        if (node->getType() == SymType::MUL) {
+            auto mul = static_cast<SymMul*>(node);
+            BigInt c(1);
+            SymNode* base = nullptr;
+            for (SymNode* m : mul->args) {
+                if (m->getType() == SymType::NUM) {
+                    auto [isI, v] = extractExactInt(static_cast<SymNum*>(m)->value);
+                    if (!isI) return false;
+                    c = c * BigInt(v);
+                } else {
+                    if (base) return false;
+                    base = m;
+                }
+            }
+            if (c <= BigInt(0)) return false;
+            // 立方根：base^(1/3) = (c^(1/3)) * base
+            BigInt r(1);
+            while ((r + BigInt(1)) * (r + BigInt(1)) * (r + BigInt(1)) <= c) r = r + BigInt(1);
+            if (r * r * r != c) return false;
+            baseOut = (r == BigInt(1)) ? base : (SymExpr(r) * SymExpr(base)).ptr;
+            return true;
+        }
+        return false;
+    }
+
+    static SymExpr tryCubeIdentity(const SymExpr& expr) {
+        if (!expr.ptr || expr.ptr->getType() != SymType::ADD) return expr;
+        auto add = static_cast<SymAdd*>(expr.ptr);
+        if (add->args.size() != 2) return expr;
+
+        SymNode* a = nullptr;
+        SymNode* b = nullptr;
+        bool secondNeg = false;
+        if (!asCube(add->args[0], a)) return expr;
+        if (asCube(add->args[1], b)) {
+            secondNeg = false;
+        } else if (add->args[1]->getType() == SymType::MUL) {
+            // -(y^3) 记作 (-1)*y^3
+            auto mul = static_cast<SymMul*>(add->args[1]);
+            BigInt c(1);
+            SymNode* inner = nullptr;
+            for (SymNode* m : mul->args) {
+                if (m->getType() == SymType::NUM) {
+                    auto [isI, v] = extractExactInt(static_cast<SymNum*>(m)->value);
+                    if (!isI) return expr;
+                    c = c * BigInt(v);
+                } else {
+                    if (inner) return expr;
+                    inner = m;
+                }
+            }
+            if (!inner || c != BigInt(-1)) return expr;
+            if (!asCube(inner, b)) return expr;
+            secondNeg = true;
+        } else {
+            return expr;
+        }
+
+        SymExpr A(a), B(b);
+        if (!secondNeg) {
+            // A^3 + B^3 = (A + B)(A^2 - A*B + B^2)
+            return simplifyCore((A + B) * (A * A - A * B + B * B));
+        }
+        // A^3 - B^3 = (A - B)(A^2 + A*B + B^2)
+        return simplifyCore((A - B) * (A * A + A * B + B * B));
+    }
+
     SymExpr factor(const SymExpr& expr, int depth) {      // 增加 depth 签名
         if (!expr.ptr || depth > SymConfig::maxDepth) return expr;          // 极限保险
         SymExpr quadResult = multivariatePolynomialFactor(expr, depth);  // 接入 depth
@@ -914,6 +992,12 @@ namespace jc {
                 SymExpr cyc = tryCyclotomicFactor(expr, *vars.begin());
                 if (cyc.ptr != expr.ptr) return cyc;
             }
+        }
+
+        // ★ 立方和/差（多元）：A^3 ± B^3
+        {
+            SymExpr cube = tryCubeIdentity(expr);
+            if (cube.ptr != expr.ptr) return cube;
         }
 
         // ══════════════════════════════════════════

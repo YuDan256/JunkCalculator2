@@ -9,6 +9,79 @@
 namespace jc {
 
     // =================================================================
+    // 有理根因子规范化：把 (x + p/q) 这种带分母的线性因子吸收成整系数因子。
+    //   6*(x + 1/2)*(x + 1/3)  →  (2*x + 1) * (3*x + 1)
+    //   线性因子 (x + c)，c = p/q：q*(x + p/q) = q*x + p，把 q 从系数里扣掉。
+    //   仅当系数是精确整数、可被各分母整除时改写；否则原样返回
+    //   （无分母可吸收时也不动，避免改变既有输出）。
+    // =================================================================
+    static SymExpr normalizeRationalFactors(const SymExpr& expr) {
+        if (!expr.ptr || expr.ptr->getType() != SymType::MUL) return expr;
+        auto mul = static_cast<SymMul*>(expr.ptr);
+
+        BigInt coeffVal(1);
+        std::vector<SymNode*> otherArgs;
+        struct LinFac { SymNode* varNode; BigInt p; BigInt q; SymNode* node; };
+        std::vector<LinFac> lins;
+        bool anyDenom = false;
+
+        for (SymNode* arg : mul->args) {
+            if (arg->getType() == SymType::NUM) {
+                auto [isI, v] = extractExactInt(static_cast<SymNum*>(arg)->value);
+                if (!isI) return expr;
+                coeffVal = coeffVal * BigInt(v);
+                continue;
+            }
+            if (arg->getType() != SymType::ADD) { otherArgs.push_back(arg); continue; }
+            auto add = static_cast<SymAdd*>(arg);
+            if (add->args.size() != 2) { otherArgs.push_back(arg); continue; }
+            // 线性因子形如 (x + c)：一个一次项 + 一个常数项
+            SymNode* varNode = nullptr;
+            SymNode* constNode = nullptr;
+            bool ok = true;
+            for (SymNode* t : add->args) {
+                if (t->getType() == SymType::VAR) {
+                    if (varNode) { ok = false; break; }
+                    varNode = t;
+                } else if (t->getType() == SymType::NUM) {
+                    if (constNode) { ok = false; break; }
+                    constNode = t;
+                } else { ok = false; break; }
+            }
+            if (!ok || !varNode || !constNode) { otherArgs.push_back(arg); continue; }
+            // c = p/q
+            const CASVal& cv = static_cast<SymNum*>(constNode)->value;
+            BigInt p(0), q(1);
+            if (std::holds_alternative<int32_t>(cv)) p = BigInt(std::get<int32_t>(cv));
+            else if (std::holds_alternative<BigInt>(cv)) p = std::get<BigInt>(cv);
+            else if (std::holds_alternative<Fraction>(cv)) {
+                p = std::get<Fraction>(cv).getNum();
+                q = std::get<Fraction>(cv).getDen();
+            } else return expr;
+            if (p.isZero() || q <= BigInt(1)) { otherArgs.push_back(arg); continue; }
+            anyDenom = true;
+            lins.push_back({ varNode, p, q, arg });
+        }
+
+        if (!anyDenom || lins.empty()) return expr;
+
+        std::vector<SymNode*> newArgs;
+        BigInt newCoeff = coeffVal;
+        for (auto& L : lins) {
+            if ((newCoeff % L.q) != BigInt(0)) return expr;   // 除不尽就整体放弃
+            newCoeff = newCoeff / L.q;
+            SymNode* lin = (SymExpr(L.q) * SymExpr(L.varNode) + SymExpr(L.p)).ptr;
+            newArgs.push_back(lin);
+        }
+        for (SymNode* o : otherArgs) newArgs.push_back(o);
+        if (newArgs.empty()) return expr;
+
+        SymExpr res = SymExpr(newCoeff);
+        for (SymNode* a : newArgs) res = res * SymExpr(a);
+        return res;
+    }
+
+    // =================================================================
     // 全域多元全次因式分解 (Multivariate Polynomial Factorization)
     // 包含: 二次求解 + N次完全平方式提取
     // =================================================================
@@ -84,8 +157,8 @@ namespace jc {
                 SymExpr r1 = simplifyCore(num1 / factTwoA);
                 SymExpr r2 = simplifyCore(num2 / factTwoA);
 
-                if (A.isOne()) return (X - r1) * (X - r2);
-                return A * (X - r1) * (X - r2);
+                if (A.isOne()) return normalizeRationalFactors((X - r1) * (X - r2));
+                return normalizeRationalFactors(A * (X - r1) * (X - r2));
             }
         }
         return expr;
@@ -964,8 +1037,8 @@ namespace jc {
                             SymExpr f1 = X * X - u1;
                             SymExpr f2 = X * X - u2;
                             
-                            if (A.isOne()) return process(f1) * process(f2);
-                            return A * process(f1) * process(f2);
+                            if (A.isOne()) return normalizeRationalFactors(process(f1) * process(f2));
+                            return normalizeRationalFactors(A * process(f1) * process(f2));
                         } else {
                             // delta < 0, 必定有 A 和 C 同号，可配方为平方差
                             SymExpr CA = simplifyCore(C / A);

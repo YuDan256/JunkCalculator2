@@ -1,0 +1,161 @@
+// Trait 测试套件
+// 覆盖 docs/TRAIT_DESIGN.md 的验证点
+
+throws(f) = { try { f(); return false } catch (e) { return true } }
+
+// 1. trait 定义 + 实现 + 默认方法 + isinstance
+test_trait_basic() = {
+    trait Drawable {
+        draw(ctx)
+        describe() = "a drawable"
+    }
+
+    class Circle with Drawable {
+        draw(ctx) = { self.ctx = ctx }
+    }
+
+    c = Circle()
+    c.draw("test")
+    assert(c.ctx == "test", "abstract method implementation failed")
+    assert(c.describe() == "a drawable", "default method failed")
+    assert(isinstance(c, Drawable), "isinstance with trait failed")
+}
+test_trait_basic()
+
+// 2. trait 不可实例化
+test_trait_instantiation() = {
+    trait I { run(x) }
+    assert(throws(() => I()), "trait instantiation should throw TypeError")
+}
+test_trait_instantiation()
+
+// 3. 抽象方法未实现 → 类定义时抛 TypeError
+test_trait_abstract_unimplemented() = {
+    trait I { run(x) }
+    caught = false
+    try {
+        class C with I {}
+    } catch (e) {
+        caught = e.type == "TypeError"
+    }
+    assert(caught, "unimplemented abstract method should throw TypeError")
+}
+test_trait_abstract_unimplemented()
+
+// 4. 签名不符 → 抛 TypeError（参数个数、参数名、返回类型）
+test_trait_signature_mismatch() = {
+    trait I { run(x, y) -> int }
+
+    // 参数个数不符
+    assert(throws(() => class with I { run(x) -> int = x }), "wrong param count should throw")
+
+    // 参数名不符
+    assert(throws(() => class with I { run(a, b) -> int = a }), "wrong param name should throw")
+
+    // 返回类型不符
+    assert(throws(() => class with I { run(x, y) -> string = "x" }), "wrong return type should throw")
+
+    // 正确实现
+    class C with I { run(x, y) -> int = x + y }
+    assert(C().run(1, 2) == 3, "correct implementation failed")
+}
+test_trait_signature_mismatch()
+
+// 5. 默认方法可选覆盖
+test_trait_default_override() = {
+    trait I {
+        describe() = "default"
+    }
+    class A with I {}
+    class B with I {
+        describe() = "override"
+    }
+    assert(A().describe() == "default", "default method should be used")
+    assert(B().describe() == "override", "override should win")
+}
+test_trait_default_override()
+
+// 5b. 抽象方法带默认值/const/static → trait 定义时抛错（编译期，用 eval 捕获）
+test_trait_abstract_invalid() = {
+    assert(throws(() => eval("trait I1 { run(x = 1) }")), "abstract method with default param should throw")
+    assert(throws(() => eval("trait I2 { const run(x) }")), "abstract method with const should throw")
+    assert(throws(() => eval("trait I3 { static run(x) }")), "abstract method with static should throw")
+}
+test_trait_abstract_invalid()
+
+// 6. 多 trait 组合 + 后覆盖先
+test_trait_multi_trait() = {
+    trait A { name() = "A" }
+    trait B { name() = "B" }
+    class C with A, B {}
+    class D with B, A {}
+    assert(C().name() == "B", "later trait should override (C with A, B)")
+    assert(D().name() == "A", "later trait should override (D with B, A)")
+}
+test_trait_multi_trait()
+
+// 7. trait 组合 trait + 平铺
+test_trait_composition() = {
+    trait Base { base() = "base" }
+    trait Derived with Base { derived() = "derived" }
+    class E with Derived {}
+    e = E()
+    assert(e.base() == "base", "composed trait method failed")
+    assert(e.derived() == "derived", "own trait method failed")
+    assert(isinstance(e, Base), "flattened ancestor trait isinstance failed")
+    assert(isinstance(e, Derived), "direct trait isinstance failed")
+}
+test_trait_composition()
+
+// 8. 父类已实现抽象方法，子类不实现也算已实现
+test_trait_parent_implements() = {
+    trait I { run() = "impl" }
+    class Parent with I {
+        run() = "parent impl"
+    }
+    class Child extends Parent {}
+    assert(Child().run() == "parent impl", "parent implementation should be inherited")
+    assert(isinstance(Child(), I), "inherited trait should be recognized")
+}
+test_trait_parent_implements()
+
+// 9. isinstance 父类 with 的 trait 子类也命中
+test_trait_isinstance_inheritance() = {
+    trait I { m() = "m" }
+    class Parent with I {}
+    class Child extends Parent {}
+    assert(isinstance(Child(), I), "child should inherit parent's trait")
+    assert(isinstance(Parent(), I), "parent should have trait")
+}
+test_trait_isinstance_inheritance()
+
+// 10. 修饰符 local/const/static 复制
+test_trait_modifiers() = {
+    trait I {
+        local hidden() = "hidden"
+        static const MAX = 100
+        static get_max() = I.MAX
+    }
+    class C with I {}
+    c = C()
+    assert(C.MAX == 100, "static const should be copied")
+    assert(C.get_max() == 100, "static method should be copied")
+    assert(c.get_max() == 100, "static method accessible via instance")
+    assert(throws(() => c.hidden()), "local method should stay private")
+}
+test_trait_modifiers()
+
+// 11. trait 字段默认值 + 冻结
+test_trait_frozen() = {
+    trait I {
+        const version = "1.0"
+        get_version() = self.version
+    }
+    class C with I {}
+    assert(C().get_version() == "1.0", "trait field should be copied")
+
+    // 冻结后修改成员抛错
+    assert(throws(() => { trait J { m() = "m" }; J.x = 1 }), "frozen trait field modification should throw")
+    assert(throws(() => { trait K { m() = "m" }; K.m = 2 }), "frozen trait method modification should throw")
+}
+test_trait_frozen()

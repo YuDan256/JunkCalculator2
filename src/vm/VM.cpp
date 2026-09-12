@@ -7259,6 +7259,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
+                    if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen trait '" + cls->name + "'.");
                     std::string keyStr = keyVal.asString();
                     if (op == OpCode::SET_PRIVATE) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
@@ -7307,6 +7308,7 @@ Value VM::run(int targetFrameDepth) {
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
+                    if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen trait '" + cls->name + "'.");
                     std::string keyStr = keyVal.asString();
                     auto it = cls->properties.find(keyStr);
                     if (it != cls->properties.end()) {
@@ -7386,6 +7388,7 @@ Value VM::run(int targetFrameDepth) {
                     ns->setField(keyVal.asString(), val);
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
+                    if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen trait '" + cls->name + "'.");
                     std::string keyStr = keyVal.asString();
                     
                     bool found = false;

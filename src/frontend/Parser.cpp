@@ -3799,6 +3799,15 @@ namespace jc {
                     if (!isTrait) {
                         JC2_THROW(ParserError, "Expect '=' after method signature.");
                     }
+                    // 抽象方法校验：不允许默认值参数、const、static（local 允许）
+                    for (auto& d : defaultExprs) {
+                        if (d) JC2_THROW(ParserError, "Abstract method cannot have default parameter values.");
+                    }
+                    for (auto& d : kwargDefaultExprs) {
+                        if (d) JC2_THROW(ParserError, "Abstract method cannot have default parameter values.");
+                    }
+                    if (isConst) JC2_THROW(ParserError, "Abstract method cannot be const.");
+                    if (isStatic) JC2_THROW(ParserError, "Abstract method cannot be static.");
                     isAbstract = true;
                     finalBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
                 }

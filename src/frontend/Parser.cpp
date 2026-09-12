@@ -2332,7 +2332,7 @@ namespace jc {
         resolver.resolve(assign.get());
 
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols);
+        IRBuilder fnBuilder(&fnGraph, &VM::activeVM->getCompiledFunctions(), nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
         fnBuilder.allowInternalNames = true; // 宏定义内部编译使用 <macro_temp_xxx> 等内部名，跳过保留名检查
         fnBuilder.build(assign.get());
 

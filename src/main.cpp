@@ -165,7 +165,7 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     resolver.resolve(ast.get());
 
     jc::IRGraph graph;
-    jc::IRBuilder builder(&graph, &fns, nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols);
+    jc::IRBuilder builder(&graph, &fns, nullptr, nullptr, &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
     builder.build(ast.get());
     
     if (g_showIR) graph.print(isFile ? "Script Unoptimized" : "REPL Unoptimized");
@@ -858,7 +858,7 @@ int main(int argc, char* argv[]) {
             modFn->restName = "";
 
             jc::IRGraph graph;
-            jc::IRBuilder builder(&graph, &fns, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
+            jc::IRBuilder builder(&graph, &fns, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
             builder.build(targetAst);
             
             jc::IROptimizer::optimize(&graph);

@@ -293,7 +293,28 @@ void Resolver::visitStateDecl(StateDecl* expr) {
 }
 void Resolver::visitConstDecl(ConstDecl* expr) { checkExplicitDecl(expr, expr->name.lexeme); declareVariable(expr->name.lexeme, VarScope::Local, true, false); }
 
-void Resolver::visitDeleteExpr(DeleteExpr* /*expr*/) {}
+void Resolver::visitDeleteExpr(DeleteExpr* expr) {
+    std::vector<ResolvedSym> syms;
+    syms.reserve(expr->names.size());
+    for (auto& tok : expr->names) {
+        ResolvedSym sym = resolveName(tok.lexeme);
+        syms.push_back(sym);
+        if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState) {
+            JC2_THROW(SyntaxError, "Cannot delete captured variable '" + tok.lexeme + "'.");
+        }
+        // 局部遮蔽：从 scopes 移除，让后续 resolveName 回落到外层作用域（内置/全局/外层局部）
+        if (sym.scope == VarScope::Local || sym.scope == VarScope::RefParam) {
+            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+                auto it = scopes[i].symbols.find(tok.lexeme);
+                if (it != scopes[i].symbols.end()) {
+                    scopes[i].symbols.erase(it);
+                    break;
+                }
+            }
+        }
+    }
+    deleteSyms[expr] = std::move(syms);
+}
 
 void Resolver::visitCompoundAssign(CompoundAssign* expr) {
     resolve(expr->target.get());

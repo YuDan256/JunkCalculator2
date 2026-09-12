@@ -33,6 +33,7 @@ public:
     // 旁侧表 (Side Tables)：记录 AST 节点对应的符号解析结果
     std::unordered_map<Expr*, ResolvedSym> exprSymbols;
     std::unordered_map<Pattern*, ResolvedSym> patternSymbols;
+    std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>> deleteSyms;  // ★ delete 多名字符号
 
     void resolve(Expr* expr);
 

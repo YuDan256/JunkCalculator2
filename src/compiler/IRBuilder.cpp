@@ -188,8 +188,8 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
     envStack.back()[name] = value;
 }
 
-IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols) 
-    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), currentControl(graph->startNode), lastValue(nullptr) {
+IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols, const std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>>* deleteSyms) 
+    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), deleteSyms(deleteSyms), currentControl(graph->startNode), lastValue(nullptr) {
     if (parent) {
         classStack = parent->classStack;
         isInitMethod = parent->isInitMethod;
@@ -2699,11 +2699,31 @@ void IRBuilder::visitConstDecl(ConstDecl* expr) {
 
 void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
     if (!expr->names.empty()) graph->currentLine = expr->names[0].line;
-    for (auto& tok : expr->names) {
-        IRNode* delNode = graph->createNode(IROp::DeleteGlobal);
-        delNode->setControl(currentControl);
-        delNode->name = tok.lexeme;
-        currentControl = delNode;
+    std::vector<ResolvedSym> syms;
+    if (deleteSyms) {
+        auto it = deleteSyms->find(expr);
+        if (it != deleteSyms->end()) syms = it->second;
+    }
+    for (size_t i = 0; i < expr->names.size(); ++i) {
+        const std::string& name = expr->names[i].lexeme;
+        ResolvedSym sym = (i < syms.size()) ? syms[i] : ResolvedSym{};
+        if (sym.scope == VarScope::Global) {
+            IRNode* delNode = graph->createNode(IROp::DeleteGlobal);
+            delNode->setControl(currentControl);
+            delNode->name = name;
+            currentControl = delNode;
+        } else {
+            // 局部遮蔽：编译期已在 Resolver 回落外层；这里把 envStack 的局部标记为 uninit，防闭包/后续误引用
+            IRNode* uninit = graph->createConstant(Value::uninit());
+            uninit->setControl(currentControl);
+            for (int j = static_cast<int>(envStack.size()) - 1; j >= 0; --j) {
+                auto envIt = envStack[j].find(name);
+                if (envIt != envStack[j].end()) {
+                    envStack[j][name] = uninit;
+                    break;
+                }
+            }
+        }
     }
     lastValue = graph->createConstant(Value::none());
     lastValue->setControl(currentControl);
@@ -3242,7 +3262,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         fnDef->name = expr->name.empty() ? "lambda" : expr->name;
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols, deleteSyms);
         fnBuilder.allowInternalNames = this->allowInternalNames;
         
         fnBuilder.currentReturnTypeHint = expr->returnType;
@@ -4990,7 +5010,7 @@ void IRBuilder::visitDeferExpr(DeferExpr* expr) {
         fnDef->name = "<defer>";
         
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols);
+        IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols, deleteSyms);
         
         fnBuilder.buildFunctionParams({}, {}, "", {}, {}, {});
         fnBuilder.build(expr->body.get());

@@ -2483,7 +2483,7 @@ Value VM::execImport(const std::string& name) {
         resolver.resolve(nsDecl.get());
 
         IRGraph fnGraph;
-        IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
+        IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
         fnBuilder.build(nsDecl.get());
 
         if (g_showIR) fnGraph.print("Module '" + baseName + "' Unoptimized");
@@ -2617,7 +2617,7 @@ void VM::execCompileTimeImport(const std::string& name) {
     resolver.resolve(nsDecl.get());
 
     IRGraph fnGraph;
-    IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols);
+    IRBuilder fnBuilder(&fnGraph, &compiledFunctions, nullptr, modFn.get(), &resolver.exprSymbols, &resolver.patternSymbols, &resolver.deleteSyms);
     fnBuilder.build(nsDecl.get());
 
     IROptimizer::optimize(&fnGraph);

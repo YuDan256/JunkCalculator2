@@ -137,11 +137,12 @@ private:
 public:
     const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr;
     const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr;
+    const std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>>* deleteSyms = nullptr;
 
     // 宏定义等 VM 内部生成的 AST 编译时置 true，跳过 <...> 保留名检查（<macro_temp_xxx> 等）。
     bool allowInternalNames = false;
 
-    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr);
+    explicit IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions = nullptr, IRBuilder* parent = nullptr, CompiledFunction* currentFunction = nullptr, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols = nullptr, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr, const std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>>* deleteSyms = nullptr);
     void build(Expr* ast);
 
     void visitBinary(Binary* expr) override;

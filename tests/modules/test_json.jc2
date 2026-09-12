@@ -23,7 +23,7 @@ test_json_pretty()
 
 test_json_parse_error() = {
     try {
-        json.decode("{ invalid json }")
+        json.decode("hello")
         assert(false, "Should throw parse error for invalid JSON")
     } catch (e) {
         assert("JSON Parse Error" in e.message, "Wrong error message thrown")

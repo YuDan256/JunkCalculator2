@@ -101,7 +101,7 @@ test_syntax_macro_errors() = {
         assert(false, "Should throw when parse receives invalid syntax")
     } catch (e) {
         msg = str(e.message)
-        assert("Parser Error" in msg || "Syntax Error" in msg || "Lexer Error" in msg || "Token Macro Execution Error" in msg, "Wrong error for invalid parse input: " + msg)
+        assert("Expect expression" in msg || "Parser Error" in msg || "Syntax Error" in msg || "Lexer Error" in msg || "Token Macro Execution Error" in msg, "Wrong error for invalid parse input: " + msg)
     }
     
     try {

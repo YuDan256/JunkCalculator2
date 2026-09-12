@@ -5364,6 +5364,19 @@ void BuiltinRegistry::registerCAS() {
         return Value(SymMatrix(1, static_cast<int>(syms.size()), syms));
         }, {"names"});
 
+    // ★ 符号常量工厂：cas.pi() / cas.e() / cas.i() 返回**符号**常量节点。
+    //   全局 pi()/e() 仍是浮点函数（数值代码不改），符号场景走这三个入口。
+    //   常量是独立的 SymType::CONST 节点，不是普通变量，所以不会被同名用户符号冒充。
+    regModule(cas_ns, "pi", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(SymExpr::makeConst(SymConstId::Pi));
+        }, {});
+    regModule(cas_ns, "e", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(SymExpr::makeConst(SymConstId::E));
+        }, {});
+    regModule(cas_ns, "i", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(SymExpr::makeConst(SymConstId::I));
+        }, {});
+
     regModule(cas_ns, "RootOf", { 3 }, [getVarName](const std::vector<Value>& args) -> Value {
         SymExpr poly = args[0].asSymbolic();
         std::string var = getVarName(args[1], "RootOf");

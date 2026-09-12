@@ -199,7 +199,7 @@ namespace jc {
         // 虚数单位 i 是常数而非普通变量，恒排在普通符号之后
         // (否则字典序会把 i 插到 sqrt(2) 之前，得到 "2 * i * sqrt(2)")
         auto isImagUnit = [](SymNode* n) -> bool {
-            return n->getType() == SymType::VAR && static_cast<SymVar*>(n)->name == "i";
+            return n->getType() == SymType::CONST && static_cast<SymConst*>(n)->id == SymConstId::I;
         };
         if (isImagUnit(a) && !isImagUnit(b)) return 1;
         if (!isImagUnit(a) && isImagUnit(b)) return -1;
@@ -370,7 +370,14 @@ namespace jc {
             int numConsts = 0, numRecips = 0;
             for (SymNode* a : args) {
                 if (a->getType() == SymType::NUM) {
-                    auto [isI, iv] = extractExactInt(static_cast<SymNum*>(a)->value);
+                    // ★ 只接受整数形态的 CASVal。e/pi 这类常量在表里是 double，
+                    //   直接交给 extractExactInt 会在 Complex/double 上做无保护的
+                    //   std::get，抛 bad variant access（factor 的打印路径曾因此崩溃）。
+                    const CASVal& cv = static_cast<SymNum*>(a)->value;
+                    if (!std::holds_alternative<int32_t>(cv) && !std::holds_alternative<BigInt>(cv)) {
+                        onlyThese = false; break;
+                    }
+                    auto [isI, iv] = extractExactInt(cv);
                     if (!isI || iv < 1 || iv > 1000000) { onlyThese = false; break; }
                     cInt = iv;
                     haveC = true;
@@ -378,10 +385,16 @@ namespace jc {
                 } else if (a->getType() == SymType::POW) {
                     auto pw = static_cast<SymPow*>(a);
                     if (pw->exp->getType() != SymType::NUM) { onlyThese = false; break; }
-                    Fraction ef = std::get<Fraction>(static_cast<SymNum*>(pw->exp)->value);
+                    const CASVal& ev = static_cast<SymNum*>(pw->exp)->value;
+                    if (!std::holds_alternative<Fraction>(ev)) { onlyThese = false; break; }
+                    Fraction ef = std::get<Fraction>(ev);
                     if (ef.getNum() != BigInt(-1) || ef.getDen() <= BigInt(1)) { onlyThese = false; break; }
                     if (pw->base->getType() != SymType::NUM) { onlyThese = false; break; }
-                    auto [isIB, bv] = extractExactInt(static_cast<SymNum*>(pw->base)->value);
+                    const CASVal& bvv = static_cast<SymNum*>(pw->base)->value;
+                    if (!std::holds_alternative<int32_t>(bvv) && !std::holds_alternative<BigInt>(bvv)) {
+                        onlyThese = false; break;
+                    }
+                    auto [isIB, bv] = extractExactInt(bvv);
                     if (!isIB || bv < 1 || bv > 1000000) { onlyThese = false; break; }
                     recipBase = pw->base;
                     recipN = ef.getDen().toInt64();
@@ -636,6 +649,56 @@ namespace jc {
     bool SymVar::equals(const SymNode* other) const {
         return name == static_cast<const SymVar*>(other)->name;
     }
+    std::string SymVar::computeString() const {
+        return unescapeConstVarName(name);
+    }
+
+    // ==========================================
+    // ★ 符号常量：单一事实来源的查询入口
+    // ==========================================
+    // 只有规范名（pi/e/i）代表常量。历史上内部用大写 "PI"/"E"/"I"，那些名字
+    // 现在一律当作普通变量（见 makeVar 的转义），否则用户定义的同名符号会被
+    // 悄悄当成常数（log(sym("E")) 曾直接化简成 1）。
+    bool lookupSymbolicConstant(const std::string& name, SymConstId& outId) {
+        for (const auto& d : kSymConstDefs) {
+            if (name == d.name) { outId = d.id; return true; }
+        }
+        return false;
+    }
+
+    // 用户符号若与常量规范名冲名，转义成内部名保留，显示时再还原。
+    std::string escapeConstVarName(const std::string& name) {
+        return "<var:" + name + ">";
+    }
+    std::string unescapeConstVarName(const std::string& name) {
+        const std::string pre = "<var:", suf = ">";
+        if (name.size() > pre.size() + suf.size() &&
+            name.compare(0, pre.size(), pre) == 0 &&
+            name.compare(name.size() - suf.size(), suf.size(), suf) == 0) {
+            return name.substr(pre.size(), name.size() - pre.size() - suf.size());
+        }
+        return name;
+    }
+
+    static const SymConstDef& constDef(SymConstId id) {
+        for (const auto& d : kSymConstDefs) if (d.id == id) return d;
+        return kSymConstDefs[0];
+    }
+
+    Complex symbolicConstantValue(SymConstId id) {
+        if (id == SymConstId::I) return Complex(0.0, 1.0);
+        return Complex(constDef(id).value, 0.0);
+    }
+
+    SymConst::SymConst(SymConstId i) : id(i) {
+        hashValue = hashCombine(static_cast<uint64_t>(SymType::CONST), static_cast<uint64_t>(id));
+    }
+    bool SymConst::equals(const SymNode* other) const {
+        return id == static_cast<const SymConst*>(other)->id;
+    }
+    std::string SymConst::computeString() const {
+        return constDef(id).display;
+    }
 
     SymAdd::SymAdd(std::vector<SymNode*> a) : args(std::move(a)) {
         uint64_t h = static_cast<uint64_t>(SymType::ADD);
@@ -744,12 +807,12 @@ namespace jc {
             ptr = makeNum(v.real).ptr;
         } else if (v.real == 0.0) {
             SymExpr imagPart(v.imag);
-            SymExpr iVar = SymExpr::makeVar("i");
+            SymExpr iVar = SymExpr::makeConst(SymConstId::I);
             ptr = makeMul({imagPart.ptr, iVar.ptr}).ptr;
         } else {
             SymExpr realPart(v.real);
             SymExpr imagPart(v.imag);
-            SymExpr iVar = SymExpr::makeVar("i");
+            SymExpr iVar = SymExpr::makeConst(SymConstId::I);
             ptr = makeAdd({realPart.ptr, makeMul({imagPart.ptr, iVar.ptr}).ptr}).ptr;
         }
     }
@@ -768,15 +831,33 @@ namespace jc {
         return SymExpr::fromInterned(newNode);
     }
 
-    SymExpr SymExpr::makeVar(const std::string& name) {
-        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(name));
+    SymExpr SymExpr::makeConst(SymConstId id) {
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::CONST), static_cast<uint64_t>(id));
         auto& bucket = g_symPool[h];
         for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::VAR && static_cast<SymVar*>(existing)->name == name) {
+            if (existing->getType() == SymType::CONST && static_cast<SymConst*>(existing)->id == id) {
                 return SymExpr::fromInterned(existing);
             }
         }
-        SymNode* newNode = new SymVar(name);
+        SymNode* newNode = new SymConst(id);
+        bucket.push_back(newNode);
+        return SymExpr::fromInterned(newNode);
+    }
+
+    SymExpr SymExpr::makeVar(const std::string& name) {
+        // ★ 与常量规范名冲名的用户符号一律转义后当普通变量处理。
+        //   makeVar("pi") 曾经直接产出常量节点，等于让 sym("pi") 静默变成 π。
+        //   常量节点只经 makeConst 显式构造。
+        std::string actual = name;
+        if (isSymbolicConstantName(name)) actual = escapeConstVarName(name);
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(actual));
+        auto& bucket = g_symPool[h];
+        for (SymNode* existing : bucket) {
+            if (existing->getType() == SymType::VAR && static_cast<SymVar*>(existing)->name == actual) {
+                return SymExpr::fromInterned(existing);
+            }
+        }
+        SymNode* newNode = new SymVar(actual);
         bucket.push_back(newNode);
         return SymExpr::fromInterned(newNode);
     }
@@ -1271,7 +1352,7 @@ namespace jc {
                             if (c.real == std::round(c.real) && c.imag == std::round(c.imag)) {
                                 SymExpr res(BigInt(static_cast<int64_t>(std::round(c.real))));
                                 if (std::round(c.imag) != 0.0) {
-                                    res = res + SymExpr(BigInt(static_cast<int64_t>(std::round(c.imag)))) * SymExpr::makeVar("i");
+                                    res = res + SymExpr(BigInt(static_cast<int64_t>(std::round(c.imag)))) * SymExpr::makeConst(SymConstId::I);
                                 }
                                 return res;
                             }
@@ -1279,6 +1360,32 @@ namespace jc {
                     } catch (const EngineInterruptError&) {
                         throw;
                     } catch (...) {}
+                }
+            }
+        }
+
+        // ★ i 的整数次幂精确折叠。i 是常量节点，取幂会落到复数浮点路径，
+        //   i^2 于是得到 -1.0 + 1.22e-16i（浮点噪音），既约不掉也不好显示。
+        //   这里直接按 i 的周期性给出精确结果。
+        if (a.ptr->getType() == SymType::CONST && static_cast<SymConst*>(a.ptr)->id == SymConstId::I &&
+            b.ptr->getType() == SymType::NUM) {
+            auto& bv = static_cast<SymNum*>(b.ptr)->value;
+            if (std::holds_alternative<int32_t>(bv) || std::holds_alternative<BigInt>(bv)) {
+                BigInt e = std::holds_alternative<int32_t>(bv)
+                    ? BigInt(std::get<int32_t>(bv)) : std::get<BigInt>(bv);
+                bool negExp = e.isNegative();
+                BigInt ea = negExp ? e.abs() : e;
+                BigInt rem = ea % BigInt(4);
+                int64_t r4 = 0;
+                try { r4 = rem.toInt64(); } catch (...) { r4 = -1; }
+                if (r4 >= 0) {
+                    // i^0=1, i^1=i, i^2=-1, i^3=-i
+                    SymExpr pos;
+                    if (r4 == 0) pos = SymExpr(BigInt(1));
+                    else if (r4 == 1) pos = SymExpr::makeConst(SymConstId::I);
+                    else if (r4 == 2) pos = SymExpr(BigInt(-1));
+                    else pos = SymExpr(BigInt(0)) - SymExpr::makeConst(SymConstId::I);
+                    return negExp ? (SymExpr(BigInt(1)) / pos) : pos;
                 }
             }
         }
@@ -1404,7 +1511,7 @@ namespace jc {
                                     multiplyRes(SymExpr(BigInt(-1)));
                                 }
                             } else if (n_den == BigInt(2) && r_neg == BigInt(1)) {
-                                multiplyRes(SymExpr::makeVar("i"));
+                                multiplyRes(SymExpr::makeConst(SymConstId::I));
                             } else {
                                 SymExpr minusOne(BigInt(-1));
                                 SymExpr fracSym(Fraction(r_neg, n_den));
@@ -2399,10 +2506,11 @@ namespace jc {
                 return {true, casValToValue(static_cast<SymNum*>(expr.ptr)->value)};
             case SymType::VAR: {
                 auto name = static_cast<SymVar*>(expr.ptr)->name;
-                if (name == "PI") return {true, Value(3.14159265358979323846)};
-                if (name == "E") return {true, Value(2.71828182845904523536)};
-                if (name == "i" || name == "I") return {true, Value(Complex(0.0, 1.0))};
                 return {false, Value()};
+            }
+            case SymType::CONST: {
+                Complex _c = symbolicConstantValue(static_cast<SymConst*>(expr.ptr)->id);
+                return {true, Value(_c)};
             }
             case SymType::ADD: {
                 Value sum(0.0);
@@ -2667,11 +2775,10 @@ namespace jc {
         }
 
         case SymType::VAR: {
-            auto v = static_cast<SymVar*>(expr.ptr);
-            if (v->name == "PI") return SymExpr(3.14159265358979323846);
-            if (v->name == "E") return SymExpr(2.71828182845904523536);
-            if (v->name == "i" || v->name == "I") return SymExpr(Complex(0.0, 1.0));
             return expr;
+        }
+        case SymType::CONST: {
+            return SymExpr(symbolicConstantValue(static_cast<SymConst*>(expr.ptr)->id));
         }
 
         case SymType::ADD: {
@@ -3062,25 +3169,25 @@ namespace jc {
                     return SymExpr(BigInt(0));
                 }
                 if (name == "deg") {
-                    return (SymExpr(BigInt(180)) / SymExpr::makeVar("PI")) * du;
+                    return (SymExpr(BigInt(180)) / SymExpr::makeConst(SymConstId::Pi)) * du;
                 }
                 if (name == "rad") {
-                    return (SymExpr::makeVar("PI") / SymExpr(BigInt(180))) * du;
+                    return (SymExpr::makeConst(SymConstId::Pi) / SymExpr(BigInt(180))) * du;
                 }
                 if (name == "erf") {
-                    SymExpr pi = SymExpr::makeVar("PI");
+                    SymExpr pi = SymExpr::makeConst(SymConstId::Pi);
                     SymExpr minus_u2 = -(u ^ SymExpr(BigInt(2)));
                     SymExpr exp_u(new SymFunc("exp", std::vector<SymNode*>{minus_u2.ptr}));
                     return (SymExpr(BigInt(2)) / (pi ^ SymExpr(Fraction(1, 2)))) * exp_u * du;
                 }
                 if (name == "fresnel_s") {
-                    SymExpr pi = SymExpr::makeVar("PI");
+                    SymExpr pi = SymExpr::makeConst(SymConstId::Pi);
                     SymExpr arg = (pi / SymExpr(BigInt(2))) * (u ^ SymExpr(BigInt(2)));
                     SymExpr sin_u(new SymFunc("sin", std::vector<SymNode*>{arg.ptr}));
                     return sin_u * du;
                 }
                 if (name == "fresnel_c") {
-                    SymExpr pi = SymExpr::makeVar("PI");
+                    SymExpr pi = SymExpr::makeConst(SymConstId::Pi);
                     SymExpr arg = (pi / SymExpr(BigInt(2))) * (u ^ SymExpr(BigInt(2)));
                     SymExpr cos_u(new SymFunc("cos", std::vector<SymNode*>{arg.ptr}));
                     return cos_u * du;
@@ -3550,7 +3657,7 @@ namespace jc {
                             SymExpr B = coeffs[1];
                             if (!containsVar(A.ptr, "i") && !containsVar(B.ptr, "i")) {
                                 if (A.isZero()) {
-                                    SymExpr inv = simplifyCore(-SymExpr::makeVar("i") * (B ^ SymExpr(BigInt(-1))));
+                                    SymExpr inv = simplifyCore(-SymExpr::makeConst(SymConstId::I) * (B ^ SymExpr(BigInt(-1))));
                                     SymExpr res(BigInt(1));
                                     for (int64_t i = 0; i < -n; ++i) {
                                         res = simplifyCore(expand_core(res * inv, SymConfig::maxExpandTerms));
@@ -3559,7 +3666,7 @@ namespace jc {
                                 } else {
                                     SymExpr den = simplifyCore(A * A + B * B);
                                     if (!den.isZero()) {
-                                        SymExpr conj = simplifyCore(A - SymExpr::makeVar("i") * B);
+                                        SymExpr conj = simplifyCore(A - SymExpr::makeConst(SymConstId::I) * B);
                                         SymExpr inv = simplifyCore(expand_core(conj * (den ^ SymExpr(BigInt(-1))), SymConfig::maxExpandTerms));
                                         SymExpr res(BigInt(1));
                                         for (int64_t i = 0; i < -n; ++i) {
@@ -3588,7 +3695,8 @@ namespace jc {
                 
                 if (func->name == "log") {
                     if (inner.isOne()) return SymExpr(BigInt(0));
-                    if (inner.ptr->getType() == SymType::VAR && static_cast<SymVar*>(inner.ptr)->name == "E") {
+                    if (inner.ptr->getType() == SymType::CONST &&
+                        static_cast<SymConst*>(inner.ptr)->id == SymConstId::E) {
                         return SymExpr(BigInt(1));
                     }
                     if (inner.ptr->getType() == SymType::FUNC) {
@@ -3597,7 +3705,8 @@ namespace jc {
                     }
                     if (inner.ptr->getType() == SymType::POW) {
                         auto powNode = static_cast<SymPow*>(inner.ptr);
-                        if (powNode->base->getType() == SymType::VAR && static_cast<SymVar*>(powNode->base)->name == "E") {
+                        if (powNode->base->getType() == SymType::CONST &&
+                            static_cast<SymConst*>(powNode->base)->id == SymConstId::E) {
                             return SymExpr(powNode->exp);
                         }
                         SymExpr baseLog(new SymFunc("log", std::vector<SymNode*>{powNode->base}));
@@ -3685,8 +3794,11 @@ namespace jc {
                         }
                     }
                     
-                    auto getPiCoeff = [](const SymExpr& e) -> std::pair<bool, Fraction> {
-                        if (e.ptr->getType() == SymType::VAR && static_cast<SymVar*>(e.ptr)->name == "PI") {
+                    auto isPiConst = [](SymNode* n) -> bool {
+                        return n->getType() == SymType::CONST && static_cast<SymConst*>(n)->id == SymConstId::Pi;
+                        };
+                    auto getPiCoeff = [&](const SymExpr& e) -> std::pair<bool, Fraction> {
+                        if (isPiConst(e.ptr)) {
                             return {true, Fraction(1)};
                         }
                         if (e.ptr->getType() == SymType::MUL) {
@@ -3695,7 +3807,7 @@ namespace jc {
                             Fraction coeff(1);
                             bool valid = true;
                             for (auto& arg : mul->args) {
-                                if (arg->getType() == SymType::VAR && static_cast<SymVar*>(arg)->name == "PI") {
+                                if (isPiConst(arg)) {
                                     hasPi = true;
                                 } else if (arg->getType() == SymType::NUM) {
                                     auto num = static_cast<SymNum*>(arg);
@@ -3894,6 +4006,7 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::NUM:
             case SymType::VAR:
+            case SymType::CONST:   // ★ 常量（pi/e/i）是系数，不破坏多项式的性质
                 return true; // 非 var 的其他变量 (如 y) 在这里返回 true，视为常数
             case SymType::ADD: {
                 auto add = static_cast<SymAdd*>(expr.ptr);
@@ -4605,6 +4718,7 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::NUM:
             case SymType::VAR:
+            case SymType::CONST:   // 符号常量是"整块"的有理数意义上的原子，分母为 1
                 return {expr, SymExpr(BigInt(1))};
             case SymType::ADD: {
                 auto add = static_cast<SymAdd*>(expr.ptr);
@@ -5254,7 +5368,7 @@ namespace jc {
                 v_val = -p / (SymExpr(3) * u);
             }
             
-            SymExpr I = SymExpr::makeVar("i");
+            SymExpr I = SymExpr::makeConst(SymConstId::I);
             SymExpr sqrt3 = SymExpr(3) ^ SymExpr(Fraction(1, 2));
             SymExpr omega = (SymExpr(-1) + I * sqrt3) / SymExpr(2);
             SymExpr omega2 = (SymExpr(-1) - I * sqrt3) / SymExpr(2);
@@ -5436,7 +5550,7 @@ namespace jc {
                             }
                         }
                         if (isNeg) {
-                            SymExpr I = SymExpr::makeVar("i");
+                            SymExpr I = SymExpr::makeConst(SymConstId::I);
                             auto [ok2, sqrtPosDelta] = trySquareRoot(-delta, true);
                             if (ok2) {
                                 sqrtDelta = simplifyCore(I * sqrtPosDelta);
@@ -5470,9 +5584,9 @@ namespace jc {
                             if (k == 0) {
                                 roots.push_back(principal);
                             } else {
-                                SymExpr E = SymExpr::makeVar("E");
-                                SymExpr PI = SymExpr::makeVar("PI");
-                                SymExpr I = SymExpr::makeVar("i");
+                                SymExpr E = SymExpr::makeConst(SymConstId::E);
+                                SymExpr PI = SymExpr::makeConst(SymConstId::Pi);
+                                SymExpr I = SymExpr::makeConst(SymConstId::I);
                                 SymExpr exponent = SymExpr(Fraction(BigInt(2 * k), BigInt(degree))) * PI * I;
                                 SymExpr unity = E ^ exponent;
                                 roots.push_back(simplifyCore(principal * unity));
@@ -6645,10 +6759,11 @@ namespace jc {
             auto varName = static_cast<SymVar*>(node)->name;
             auto it = env.find(varName);
             if (it != env.end()) return it->second;
-            if (varName == "PI") return 3.14159265358979323846;
-            if (varName == "E") return 2.71828182845904523536;
-            if (varName == "i" || varName == "I") return std::complex<double>(0.0, 1.0);
             return 0.0;
+        }
+        case SymType::CONST: {
+            Complex c = symbolicConstantValue(static_cast<SymConst*>(node)->id);
+            return std::complex<double>(c.real, c.imag);
         }
         case SymType::ADD: {
             std::complex<double> sum = 0.0;
@@ -6738,10 +6853,10 @@ namespace jc {
             auto varName = static_cast<SymVar*>(node)->name;
             auto it = env.find(varName);
             if (it != env.end()) return it->second;
-            if (varName == "PI") return Value(3.14159265358979323846);
-            if (varName == "E") return Value(2.71828182845904523536);
-            if (varName == "i" || varName == "I") return Value(Complex(0.0, 1.0));
             return Value(0.0);
+        }
+        case SymType::CONST: {
+            return Value(symbolicConstantValue(static_cast<SymConst*>(node)->id));
         }
         case SymType::ADD: {
             Value sum(0.0);

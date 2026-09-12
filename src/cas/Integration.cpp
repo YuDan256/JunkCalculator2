@@ -587,7 +587,7 @@ namespace jc {
                 
                 if (nArgs.size() == 1) {
                     SymExpr arg(nArgs[0]);
-                    SymExpr I = SymExpr::makeVar("i");
+                    SymExpr I = SymExpr::makeConst(SymConstId::I);
                     if (f->name == "sin") {
                         SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
                         SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
@@ -685,7 +685,7 @@ namespace jc {
                         SymExpr B = coeffs[1];
                         SymExpr cos_B(new SymFunc("cos", std::vector<SymNode*>{B.ptr}));
                         SymExpr sin_B(new SymFunc("sin", std::vector<SymNode*>{B.ptr}));
-                        SymExpr I = SymExpr::makeVar("i");
+                        SymExpr I = SymExpr::makeConst(SymConstId::I);
                         SymExpr trig_part = cos_B + I * sin_B;
                         if (A.isZero()) return trig_part;
                         SymExpr exp_A(new SymFunc("exp", std::vector<SymNode*>{A.ptr}));
@@ -2756,7 +2756,7 @@ namespace jc {
                                 
                                 SymExpr n_sym = SymExpr(BigInt(n));
                                 SymExpr res(BigInt(0));
-                                SymExpr PI = SymExpr::makeVar("PI");
+                                SymExpr PI = SymExpr::makeConst(SymConstId::Pi);
                                 
                                 auto makeCos = [&](SymExpr theta) {
                                     return SymExpr::makeFunc("cos", std::vector<SymNode*>{theta.ptr});
@@ -3047,7 +3047,7 @@ namespace jc {
                     
                     SymExpr res = unprotectTrig(simplifyTerms(real_part));
                     if (!imag_part.isZero()) {
-                        res = res + unprotectTrig(simplifyTerms(imag_part)) * SymExpr::makeVar("i");
+                        res = res + unprotectTrig(simplifyTerms(imag_part)) * SymExpr::makeConst(SymConstId::I);
                     }
                     return res;
                 };

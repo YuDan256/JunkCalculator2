@@ -45,7 +45,42 @@ namespace jc {
     // ==========================================
     // AST 节点定义
     // ==========================================
-    enum class SymType { NUM, VAR, ADD, MUL, POW, FUNC };
+    // CONST = 数学常量节点（pi / e / i）。常量不是普通变量：它们有自己的类型，
+    // 因此用户定义的同名符号（sym("PI") 等）不会被常量逻辑误当成常数。
+    enum class SymType { NUM, VAR, ADD, MUL, POW, FUNC, CONST };
+
+    // ★ 符号常量表：单一事实来源（身份 / 名称 / 显示 / 数值）
+    //   新增常量只需在此加一行，辨识、求值、打印三处自动跟随。
+    enum class SymConstId { Pi = 0, E = 1, I = 2 };
+
+    struct SymConstDef {
+        SymConstId id;
+        const char* name;       // 规范化名称（唯一身份）
+        const char* display;    // 打印形式
+        double value;
+    };
+
+    inline constexpr SymConstDef kSymConstDefs[] = {
+        { SymConstId::Pi, "pi", "pi", 3.14159265358979323846 },
+        { SymConstId::E,  "e",  "e",  2.71828182845904523536 },
+        { SymConstId::I,  "i",  "i",  0.0 },
+    };
+
+    // 按名称查常量（仅规范名 pi / e / i）；找不到返回 false。
+    bool lookupSymbolicConstant(const std::string& name, SymConstId& outId);
+
+    // 用户符号与常量规范名冲名时的转义（sym("e") 不应变成常量 e）
+    std::string escapeConstVarName(const std::string& name);
+    std::string unescapeConstVarName(const std::string& name);
+
+    // 常量的数值（pi/e 为实数，i 为虚数单位）。★ 只提供数，不把复数塞进符号节点。
+    Complex symbolicConstantValue(SymConstId id);
+
+    // 该名称是否代表某个符号常量
+    inline bool isSymbolicConstantName(const std::string& name) {
+        SymConstId id;
+        return lookupSymbolicConstant(name, id);
+    }
 
     class SymNode {
     protected:
@@ -93,6 +128,7 @@ namespace jc {
         static SymExpr makeMul(std::vector<SymNode*> args);
         static SymExpr makePow(SymNode* base, SymNode* exp);
         static SymExpr makeFunc(std::string name, std::vector<SymNode*> args);
+        static SymExpr makeConst(SymConstId id);
 
         SymExpr();
         explicit SymExpr(SymNode* p) : ptr(intern(p)) {}
@@ -219,7 +255,18 @@ namespace jc {
         std::string name;
         explicit SymVar(std::string n);
         SymType getType() const override { return SymType::VAR; }
-        std::string computeString() const override { return name; }
+        std::string computeString() const override;
+        bool equals(const SymNode* other) const override;
+    };
+
+    // ★ 数学常量节点（pi / e / i）。与 SymVar 彻底区分：常量有自己的类型，
+    //   所以变量检查（SymType::VAR）不会把它当变量，用户同名符号也无法冒充它。
+    class SymConst : public SymNode {
+    public:
+        SymConstId id;
+        explicit SymConst(SymConstId i);
+        SymType getType() const override { return SymType::CONST; }
+        std::string computeString() const override;
         bool equals(const SymNode* other) const override;
     };
 

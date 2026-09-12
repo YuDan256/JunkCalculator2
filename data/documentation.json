@@ -7177,6 +7177,27 @@
         "x = sym(\"x\"); import cas; cas.RootOf(x^5 - x + 1, x, 1)"
       ]
     },
+    "pi": {
+      "signature": "cas.pi()",
+      "desc": "Returns the symbolic constant pi (stays exact, unlike the floating-point pi()).",
+      "examples": [
+        "import cas; cas.solve(sym(\"x\")^2 - cas.pi(), sym(\"x\"))"
+      ]
+    },
+    "e": {
+      "signature": "cas.e()",
+      "desc": "Returns the symbolic constant e (stays exact, unlike the floating-point e()).",
+      "examples": [
+        "import cas; cas.e() * cas.e()"
+      ]
+    },
+    "i": {
+      "signature": "cas.i()",
+      "desc": "Returns the symbolic imaginary unit; integer powers fold exactly (i^2 = -1).",
+      "examples": [
+        "import cas; cas.i()^2"
+      ]
+    },
     "RootSum": {
       "signature": "cas.RootSum(expr, var, poly)",
       "desc": "Represents the sum of expr evaluated over all roots of poly.",

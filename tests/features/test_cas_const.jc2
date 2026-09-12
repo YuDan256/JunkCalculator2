@@ -1,0 +1,83 @@
+import cas
+import math
+
+// ── 符号常量：cas.pi() / cas.e() / cas.i() ──
+// 全局 pi()/e() 保持浮点（数值代码不受影响），符号场景走 cas 命名空间的工厂。
+// 常量是独立的 SymType::CONST 节点，不是普通变量，因此不会被同名用户符号冒充。
+
+test_const_display() = {
+    assert(str(cas.pi()) == "pi", "cas.pi() should print as pi")
+    assert(str(cas.e()) == "e", "cas.e() should print as e")
+    assert(str(cas.i()) == "i", "cas.i() should print as i")
+}
+test_const_display()
+
+test_const_symbolic_arithmetic() = {
+    // 保持符号性，不被折叠成浮点
+    assert(str(2 * cas.pi()) == "2 * pi", "2*pi should stay symbolic")
+    assert(str(cas.pi() + cas.pi()) == "2 * pi", "pi+pi should be 2*pi")
+    assert(str(cas.e() * cas.e()) == "e^2", "e*e should be e^2")
+}
+test_const_symbolic_arithmetic()
+
+test_imaginary_unit_exact() = {
+    // i 的整数次幂必须精确折叠（曾落到复数浮点路径，得到 -1.0 + 1.22e-16i）
+    assert(cas.i() ^ 1 == cas.i(), "i^1 = i")
+    assert(cas.i() ^ 2 == -1, "i^2 = -1")
+    assert(cas.i() ^ 3 == -cas.i(), "i^3 = -i")
+    assert(cas.i() ^ 4 == 1, "i^4 = 1")
+    assert(cas.i() ^ 0 == 1, "i^0 = 1")
+}
+test_imaginary_unit_exact()
+
+test_const_numeric_value() = {
+    // 常量仍能数值化
+    assert(cas.evalv(cas.pi()) > 3.14159 && cas.evalv(cas.pi()) < 3.1416, "evalv(pi) approx")
+    assert(cas.evalv(cas.e()) > 2.71828 && cas.evalv(cas.e()) < 2.71829, "evalv(e) approx")
+    assert(cas.evalv(cas.i() ^ 2) == -1, "evalv(i^2) = -1")
+}
+test_const_numeric_value()
+
+test_global_pi_e_stay_float() = {
+    // 全局工厂函数保持浮点语义
+    assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")
+    assert(e() > 2.71828 && e() < 2.71829, "e() stays float")
+    assert(abs(pi() * 2 - 6.283185307179586) < 1e-12, "pi()*2 numeric")
+}
+test_global_pi_e_stay_float()
+
+test_const_in_calculus() = {
+    // 常量参与求导/展开/求解时保持符号
+    x = sym("x")
+    assert(str(cas.diff(sin(cas.pi() * x), x)) == "cos(pi * x) * pi", "diff with pi")
+    assert(str(cas.solve(x ^ 2 - cas.pi(), x)) == "@[sqrt(pi), -sqrt(pi)]", "exact solve with pi")
+    assert(str(cas.subs(cas.pi() * x, x, 2)) == "2 * pi", "subs with pi")
+}
+test_const_in_calculus()
+
+test_user_symbols_not_hijacked() = {
+    // ★ 用户定义的同名符号必须保持普通符号，不能被常量逻辑悄悄当成常数。
+    //   （曾出现 log(sym("E")) 直接被化简成 1，以及 evalv(sym("PI")) 得到 3.14159）
+    x = sym("x")
+    E = sym("E")
+    PI = sym("PI")
+    I = sym("i")
+    assert(str(E) == "E", "user E prints as E")
+    assert(str(PI) == "PI", "user PI prints as PI")
+    assert(str(I) == "i", "user i prints as i")
+    assert(str(cas.simplify(log(E))) == "log(E)", "user E must not become e")
+    assert(str(cas.diff(E * x, x)) == "E", "user E is a constant w.r.t. x")
+    assert(str(cas.expand(E ^ 2)) == "E^2", "user E^2 stays symbolic")
+    assert(str(I ^ 2) == "i^2", "user i must not fold to -1")
+}
+test_user_symbols_not_hijacked()
+
+test_factor_with_constants() = {
+    // 常量系数不应破坏因式分解：既不能崩（曾有 bad variant access），
+    // 也不能把原式缩放成首一形式（x^2 - pi 曾变成 x^2 * pi^(-1) - 1）。
+    x = sym("x")
+    assert(str(cas.factor(x ^ 2 - cas.pi())) == "x^2 - pi", "factor keeps constant polys intact")
+    assert(str(cas.factor(cas.pi() * x ^ 2 - cas.pi())) == "pi * (x + 1) * (x - 1)", "factor extracts const content")
+    assert(str(cas.factor(x ^ 2 - 1)) == "(x + 1) * (x - 1)", "integer factoring still works")
+}
+test_factor_with_constants()

@@ -529,8 +529,11 @@ namespace jc {
             }
             
             if (!allInt) {
-                result = result * (part ^ SymExpr(BigInt(power)));
-                continue;
+                // ★ 含符号常量（pi/e/i）等非整数系数的多项式不走 CZ 路径。
+                //   此处必须整体放弃，不能把 part 按首一形式改写：那会把
+                //   x^2 - pi 变成 x^2 * pi^(-1) - 1（只是整体缩放了 1/pi），
+                //   既不是因式分解，也把调用方原本的表达式改坏了。
+                return expr;
             }
             
             BigInt content(0);
@@ -1064,7 +1067,7 @@ namespace jc {
                                 if (m == 11) return -(sqrt6 + sqrt2) / SymExpr(BigInt(4));
                             }
                             
-                            SymExpr theta = simplifyCore(SymExpr(Fraction(m, n_val)) * SymExpr::makeVar("PI"));
+                            SymExpr theta = simplifyCore(SymExpr(Fraction(m, n_val)) * SymExpr::makeConst(SymConstId::Pi));
                             return simplifyCore(SymExpr::makeFunc("cos", std::vector<SymNode*>{theta.ptr}));
                         };
 
@@ -1107,7 +1110,10 @@ namespace jc {
                             bool hasComplex = false;
                             std::function<void(SymNode*)> checkComplex = [&](SymNode* node) {
                                 if (!node || hasComplex) return;
-                                if (node->getType() == SymType::VAR) {
+                                // i 现在是 SymType::CONST 常量节点，不再是名为 "i" 的变量
+                                if (node->getType() == SymType::CONST) {
+                                    if (static_cast<SymConst*>(node)->id == SymConstId::I) hasComplex = true;
+                                } else if (node->getType() == SymType::VAR) {
                                     auto varNode = static_cast<SymVar*>(node);
                                     if (varNode->name == "i" || varNode->name == "I") hasComplex = true;
                                 } else if (node->getType() == SymType::ADD) {

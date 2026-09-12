@@ -40,14 +40,14 @@ void registerPredefinedClasses() {
         
         double start = 0, end = 0, step = 1;
         if (args.size() == 1) {
-            end = args[0].asDouble();
+            end = args[0].asFloat();
         } else if (args.size() == 2) {
-            start = args[0].asDouble();
-            end = args[1].asDouble();
+            start = args[0].asFloat();
+            end = args[1].asFloat();
         } else if (args.size() == 3) {
-            start = args[0].asDouble();
-            end = args[1].asDouble();
-            step = args[2].asDouble();
+            start = args[0].asFloat();
+            end = args[1].asFloat();
+            step = args[2].asFloat();
         } else {
             JC2_THROW(TypeError, "range expected 1 to 3 arguments.");
         }
@@ -99,7 +99,7 @@ void registerPredefinedClasses() {
     rangeGetItem->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
-        int64_t idx = static_cast<int64_t>(std::round(args[0].asDouble()));
+        int64_t idx = static_cast<int64_t>(std::round(args[0].asFloat()));
         if (idx < 0) idx += data.length;
         if (idx < 0 || idx >= data.length) JC2_THROW(ValueError, "range object index " + std::to_string(idx) + " out of range (length " + std::to_string(data.length) + ")");
         
@@ -240,13 +240,13 @@ void registerPredefinedClasses() {
         auto itLine = inst->properties.find("line");
         if (itLine != inst->properties.end()) {
             Value lineVal = itLine->second.val;
-            if (lineVal.isNumber()) line = static_cast<int>(lineVal.asDouble());
+            if (lineVal.isNumber()) line = static_cast<int>(lineVal.asFloat());
         }
         
         auto itPos = inst->properties.find("position");
         if (itPos != inst->properties.end()) {
             Value posVal = itPos->second.val;
-            if (posVal.isNumber()) position = static_cast<int>(posVal.asDouble());
+            if (posVal.isNumber()) position = static_cast<int>(posVal.asFloat());
         }
         
         std::ostringstream oss;
@@ -420,7 +420,7 @@ void registerPredefinedClasses() {
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->properties["cursor"].val.asInt32();
         
-        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
         if (idx < 0 || idx > static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Insert index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
@@ -459,7 +459,7 @@ void registerPredefinedClasses() {
         Value tokensVal = inst->properties["_tokens"].val;
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         
-        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
         if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Set index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
@@ -495,7 +495,7 @@ void registerPredefinedClasses() {
         ObjList* list = static_cast<ObjList*>(tokensVal.asObj());
         int cursor = inst->properties["cursor"].val.asInt32();
         
-        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (idx < 0) idx += static_cast<int>(list->vec.size());
         if (idx < 0 || idx >= static_cast<int>(list->vec.size())) JC2_THROW(LexerError, "Remove index " + std::to_string(idx) + " out of bounds (size " + std::to_string(list->vec.size()) + ").");
         
@@ -745,7 +745,7 @@ void registerPredefinedClasses() {
         fn->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>& args) -> Value {
             Value self = helpers::nativeSelfStack.back();
             auto inst = self.asInstance();
-            inst->nativeData = std::make_any<BaseNum>(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asDouble()))));
+            inst->nativeData = std::make_any<BaseNum>(BaseNum(args[0].asBigInt(), static_cast<int>(std::round(args[1].asFloat()))));
             inst->is_frozen = true;
             return self;
         });
@@ -783,8 +783,8 @@ void registerPredefinedClasses() {
     bindBin("__bitand__", [](const BaseNum& a, const BaseNum& b) { return a.bitAnd(b); });
     bindBin("__bitor__", [](const BaseNum& a, const BaseNum& b) { return a.bitOr(b); });
     bindBin("__bitxor__", [](const BaseNum& a, const BaseNum& b) { return a.bitXor(b); });
-    bindBin("__lshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftLeft(static_cast<int>(b.getValue().toDouble())); });
-    bindBin("__rshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftRight(static_cast<int>(b.getValue().toDouble())); });
+    bindBin("__lshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftLeft(static_cast<int>(b.getValue().toFloat())); });
+    bindBin("__rshift__", [](const BaseNum& a, const BaseNum& b) { return a.shiftRight(static_cast<int>(b.getValue().toFloat())); });
 
     // 一元运算
     auto bindUnary = [&](const std::string& name, const std::function<BaseNum(const BaseNum&)>& op) {
@@ -860,7 +860,7 @@ void registerPredefinedClasses() {
             Value res(inst);
             GcValueGuard guard(res);
             inst->classDef = baseNumClass;
-            inst->nativeData = std::make_any<BaseNum>(BaseNum(a.getValue(), static_cast<int>(std::round(args[0].asDouble()))));
+            inst->nativeData = std::make_any<BaseNum>(BaseNum(a.getValue(), static_cast<int>(std::round(args[0].asFloat()))));
             inst->is_frozen = true;
             return res;
         });
@@ -889,7 +889,7 @@ void registerPredefinedClasses() {
         auto fn = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"str", "r"}, std::vector<bool>{false, false}, "fromString", nullptr);
         GcObjGuard g(fn);
         fn->nativeFn = std::make_any<NativeCallable>([baseNumClass](const std::vector<Value>& args) -> Value {
-            BaseNum b = BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asDouble())));
+            BaseNum b = BaseNum::fromString(args[0].asString(), static_cast<int>(std::round(args[1].asFloat())));
             auto inst = GcHeap::get().allocate<ObjInstance>();
             Value res(inst);
             GcValueGuard guard(res);

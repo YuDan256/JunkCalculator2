@@ -737,11 +737,11 @@ std::unique_ptr<Pattern> jc2ToPattern(const Value& val, MacroExpandFunc expander
     } else if (type == "VariablePattern") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
         std::shared_ptr<Expr> typeHint = getProp("typeHint").isNone() ? nullptr : std::shared_ptr<Expr>(toAST(getProp("typeHint")).release());
-        return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy(), std::move(typeHint));
+        return std::make_unique<VariablePattern>(name, static_cast<ScopeModifier>(getProp("modifier").asFloat()), getProp("isConst").truthy(), std::move(typeHint));
     } else if (type == "RestPattern") {
         Token name(TokenType::IDENTIFIER, getProp("name").asString(), 0);
         std::shared_ptr<Expr> typeHint = getProp("typeHint").isNone() ? nullptr : std::shared_ptr<Expr>(toAST(getProp("typeHint")).release());
-        return std::make_unique<RestPattern>(name, static_cast<ScopeModifier>(getProp("modifier").asDouble()), getProp("isConst").truthy(), std::move(typeHint));
+        return std::make_unique<RestPattern>(name, static_cast<ScopeModifier>(getProp("modifier").asFloat()), getProp("isConst").truthy(), std::move(typeHint));
     } else if (type == "ListPattern") {
         std::vector<std::unique_ptr<Pattern>> elements;
         Value elemsVal = getProp("elements");
@@ -829,7 +829,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
     };
 
     std::string type = getProp("type").asString();
-    int line = getProp("line").isInt32() ? getProp("line").asInt32() : static_cast<int>(getProp("line").asDouble());
+    int line = getProp("line").isInt32() ? getProp("line").asInt32() : static_cast<int>(getProp("line").asFloat());
 
     if (type == "Binary") {
         auto left = toAST(getProp("left"));
@@ -932,7 +932,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         }
         return std::make_unique<DeleteExpr>(std::move(names));
     } else if (type == "CompoundAssign") {
-        return std::make_unique<CompoundAssign>(toAST(getProp("target")), static_cast<TokenType>(getProp("op").asDouble()), toAST(getProp("value")), getProp("isRef").truthy(), getProp("isState").truthy(), getProp("isLocal").truthy());
+        return std::make_unique<CompoundAssign>(toAST(getProp("target")), static_cast<TokenType>(getProp("op").asFloat()), toAST(getProp("value")), getProp("isRef").truthy(), getProp("isState").truthy(), getProp("isLocal").truthy());
     } else if (type == "InvokeExpr") {
         return std::make_unique<InvokeExpr>(toAST(getProp("callee")), getExprList(getProp("arguments")));
     } else if (type == "ThrowExpr") {

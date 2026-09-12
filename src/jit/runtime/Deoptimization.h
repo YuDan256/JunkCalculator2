@@ -155,7 +155,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
         } else if (slot.location.isPhysicalXMM()) {
             double rawVal = regs->xmm[slot.location.pregXMM().id()];
             if (slot.type == JITType::Double) {
-                reconstructed = Value::fromDouble(rawVal);
+                reconstructed = Value::fromFloat(rawVal);
             }
         } else if (slot.location.isStackSlot()) {
             uint64_t frame_rbp = regs->gpr[5];
@@ -165,7 +165,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Double) {
                 double d;
                 std::memcpy(&d, slotPtr, sizeof(double));
-                reconstructed = Value::fromDouble(d);
+                reconstructed = Value::fromFloat(d);
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(*slotPtr != 0);
             } else if (slot.type == JITType::TaggedValue) {
@@ -182,7 +182,7 @@ inline void jc2_jit_sync_frame(SavedRegisters* regs, uint32_t bailoutId) {
                 double d;
                 uint64_t bits = slot.location.imm64();
                 std::memcpy(&d, &bits, sizeof(double));
-                reconstructed = Value::fromDouble(d);
+                reconstructed = Value::fromFloat(d);
             } else if (slot.type == JITType::TaggedValue) {
                 reconstructed = Value::fromRawBits(slot.location.imm64());
             }
@@ -234,7 +234,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
         } else if (slot.location.isPhysicalXMM()) {
             double rawVal = regs->xmm[slot.location.pregXMM().id()];
             if (slot.type == JITType::Double) {
-                reconstructed = Value::fromDouble(rawVal);
+                reconstructed = Value::fromFloat(rawVal);
             }
         } else if (slot.location.isStackSlot()) {
             // 从机器栈槽位恢复 (栈槽相对于 RBP)
@@ -246,7 +246,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
             } else if (slot.type == JITType::Double) {
                 double d;
                 std::memcpy(&d, slotPtr, sizeof(double));
-                reconstructed = Value::fromDouble(d);
+                reconstructed = Value::fromFloat(d);
             } else if (slot.type == JITType::Bool) {
                 reconstructed = Value(*slotPtr != 0);
             } else if (slot.type == JITType::TaggedValue) {
@@ -263,7 +263,7 @@ inline void jc2_jit_deoptimize(SavedRegisters* regs, uint32_t bailoutId) {
                 double d;
                 uint64_t bits = slot.location.imm64();
                 std::memcpy(&d, &bits, sizeof(double));
-                reconstructed = Value::fromDouble(d);
+                reconstructed = Value::fromFloat(d);
             } else if (slot.type == JITType::TaggedValue) {
                 reconstructed = Value::fromRawBits(slot.location.imm64());
             }

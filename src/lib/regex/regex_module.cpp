@@ -869,7 +869,7 @@ JC2_ValueHandle global_getcontext(JC2_VMContext, int, JC2_ValueHandle*, void*) {
 
 JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc > 0) {
-        int steps = static_cast<int>(jc2::Value(argv[0]).as_double());
+        int steps = static_cast<int>(jc2::Value(argv[0]).as_float());
         if (steps < -1) {
             jc2::throw_error(jc2::ErrorType::ValueError, "max_steps cannot be less than -1.");
         }

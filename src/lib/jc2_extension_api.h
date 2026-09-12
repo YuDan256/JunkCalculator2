@@ -56,7 +56,7 @@ typedef struct JC2_HostAPI {
     JC2_ValueHandle (*make_none)(JC2_VMContext ctx);
     JC2_ValueHandle (*make_bool)(JC2_VMContext ctx, bool b);
     JC2_ValueHandle (*make_int)(JC2_VMContext ctx, int32_t i);
-    JC2_ValueHandle (*make_double)(JC2_VMContext ctx, double d);
+    JC2_ValueHandle (*make_float)(JC2_VMContext ctx, double d);
     JC2_ValueHandle (*make_string)(JC2_VMContext ctx, const char* str, size_t len);
     JC2_ValueHandle (*make_complex)(JC2_VMContext ctx, double real, double imag);
     
@@ -64,7 +64,7 @@ typedef struct JC2_HostAPI {
     bool (*is_none)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_bool)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_int)(JC2_VMContext ctx, JC2_ValueHandle v);
-    bool (*is_double)(JC2_VMContext ctx, JC2_ValueHandle v);
+    bool (*is_float)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_string)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_complex)(JC2_VMContext ctx, JC2_ValueHandle v);
     bool (*is_instance)(JC2_VMContext ctx, JC2_ValueHandle v);
@@ -73,7 +73,7 @@ typedef struct JC2_HostAPI {
     /* --- 值提取 (Value Extraction) --- */
     bool (*as_bool)(JC2_VMContext ctx, JC2_ValueHandle v);
     int32_t (*as_int)(JC2_VMContext ctx, JC2_ValueHandle v);
-    double (*as_double)(JC2_VMContext ctx, JC2_ValueHandle v);
+    double (*as_float)(JC2_VMContext ctx, JC2_ValueHandle v);
     /* 返回的字符串指针由 JC2 引擎管理生命周期，DLL 不可 free */
     const char* (*as_string)(JC2_VMContext ctx, JC2_ValueHandle v, size_t* out_len);
     double (*complex_get_real)(JC2_VMContext ctx, JC2_ValueHandle v);
@@ -98,7 +98,7 @@ typedef struct JC2_HostAPI {
     void (*register_function_help)(JC2_VMContext ctx, const char* name, const char* signature, const char* desc, const char* example);
     void (*register_function)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_NativeFunc fn, int min_arity, int max_arity, const char** param_names, int param_count, const char* rest_name, const char** kwarg_names, int kwarg_count, const char* kwargs_name, int kwarg_default_count, const char* return_type, void* user_data);
     void (*register_int)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, int32_t val);
-    void (*register_double)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, double val);
+    void (*register_float)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, double val);
     void (*register_string)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, const char* val);
     void (*register_value)(JC2_VMContext ctx, JC2_ModuleHandle mod, const char* name, JC2_ValueHandle val);
     

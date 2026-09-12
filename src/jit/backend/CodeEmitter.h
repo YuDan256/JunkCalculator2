@@ -117,17 +117,17 @@ private:
     // callout 后：恢复 pin 的 refCount（call 会破坏 rax/xmm0，先保存返回值）
     void emitGcUnpin(LIRInst* inst) {
         bool hasRet = !inst->defs().empty();
-        bool isDouble = hasRet && inst->defs()[0].isPhysicalXMM();
+        bool isFloat = hasRet && inst->defs()[0].isPhysicalXMM();
         if (hasRet) {
             masm_.push(rax);
-            if (isDouble) {
+            if (isFloat) {
                 masm_.subq(rsp, 16);
                 masm_.movsd(Operand(rsp, 0), xmm0);
             }
         }
         masm_.callCFunction(reinterpret_cast<void*>(jc2_jit_gc_unpin));
         if (hasRet) {
-            if (isDouble) {
+            if (isFloat) {
                 masm_.movsd(xmm0, Operand(rsp, 0));
                 masm_.addq(rsp, 16);
             }
@@ -1056,11 +1056,11 @@ private:
                 masm_.movabs(r10, 0x7FFC000000000000ULL);
                 masm_.andq(r11, r10);
                 masm_.cmpq(r11, r10);
-                Label isDouble;
-                masm_.jcc(Condition::NotEqual, isDouble);
+                Label isFloat;
+                masm_.jcc(Condition::NotEqual, isFloat);
                 masm_.mov(r10, static_cast<int32_t>(inst->bailoutId()));
                 masm_.jmp(deoptTrampolineLabel_);
-                masm_.bind(isDouble);
+                masm_.bind(isFloat);
                 break;
             }
             case LIROpcode::GuardIsBool: {

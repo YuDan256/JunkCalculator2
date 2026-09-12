@@ -1389,7 +1389,7 @@ void IRBuilder::visitLiteral(Literal* expr) {
             else if (s[1] == 'o' || s[1] == 'O') base = 8;
             std::string numPart = s.substr(2);
             try {
-                imagPart = BaseNum::fromString(numPart, base).getValue().toDouble();
+                imagPart = BaseNum::fromString(numPart, base).getValue().toFloat();
             } catch (...) {
                 error("Syntax Error: Invalid imaginary literal '" + s + "'.");
             }
@@ -3907,7 +3907,7 @@ static Value evaluateConstantExpr(Expr* expr) {
                 else if (s[1] == 'b' || s[1] == 'B') base = 2;
                 else if (s[1] == 'o' || s[1] == 'O') base = 8;
                 std::string numPart = s.substr(2);
-                imagPart = BaseNum::fromString(numPart, base).getValue().toDouble();
+                imagPart = BaseNum::fromString(numPart, base).getValue().toFloat();
             } else {
                 imagPart = std::stod(s);
             }

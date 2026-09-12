@@ -26,7 +26,7 @@ public:
     Value() : handle(Env::api->make_none(Env::ctx)) {}
     Value(bool b) : handle(Env::api->make_bool(Env::ctx, b)) {}
     Value(int32_t i) : handle(Env::api->make_int(Env::ctx, i)) {}
-    Value(double d) : handle(Env::api->make_double(Env::ctx, d)) {}
+    Value(double d) : handle(Env::api->make_float(Env::ctx, d)) {}
     Value(const char* s) : handle(Env::api->make_string(Env::ctx, s, strlen(s))) {}
     Value(const std::string& s) : handle(Env::api->make_string(Env::ctx, s.c_str(), s.length())) {}
 
@@ -37,7 +37,7 @@ public:
     bool is_none() const { return Env::api->is_none(Env::ctx, handle); }
     bool is_bool() const { return Env::api->is_bool(Env::ctx, handle); }
     bool is_int() const { return Env::api->is_int(Env::ctx, handle); }
-    bool is_double() const { return Env::api->is_double(Env::ctx, handle); }
+    bool is_float() const { return Env::api->is_float(Env::ctx, handle); }
     bool is_string() const { return Env::api->is_string(Env::ctx, handle); }
     bool is_complex() const { return Env::api->is_complex(Env::ctx, handle); }
     bool is_instance() const { return Env::api->is_instance(Env::ctx, handle); }
@@ -76,7 +76,7 @@ public:
     bool as_bool() const { return Env::api->as_bool(Env::ctx, handle); }
     bool truthy() const { return as_bool(); }
     int32_t as_int() const { return Env::api->as_int(Env::ctx, handle); }
-    double as_double() const { return Env::api->as_double(Env::ctx, handle); }
+    double as_float() const { return Env::api->as_float(Env::ctx, handle); }
     std::string as_string() const {
         size_t len = 0;
         const char* s = Env::api->as_string(Env::ctx, handle, &len);
@@ -378,8 +378,8 @@ public:
         Env::api->register_int(Env::ctx, mod, name.c_str(), val);
     }
 
-    void register_double(const std::string& name, double val) {
-        Env::api->register_double(Env::ctx, mod, name.c_str(), val);
+    void register_float(const std::string& name, double val) {
+        Env::api->register_float(Env::ctx, mod, name.c_str(), val);
     }
 
     void register_string(const std::string& name, const std::string& val) {

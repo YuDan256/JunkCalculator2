@@ -120,7 +120,7 @@ namespace jc {
     static CASVal valueToCasVal(const Value& v) {
         if (v.isObjType(ObjType::BIGINT))    return static_cast<ObjBigInt*>(v.asObj())->num;
         if (v.isObjType(ObjType::FRACTION))  return static_cast<ObjFraction*>(v.asObj())->frac;
-        if (v.isDouble())                    return v.asDoubleRaw();
+        if (v.isFloat())                    return v.asFloatRaw();
         if (v.isInt32())                     return v.asInt32();
         JC2_THROW(MathError, "Cannot convert value to CAS type.");
     }
@@ -133,7 +133,7 @@ namespace jc {
     }
 
     bool isCasOne(const CASVal& v) {
-        try { return casValToValue(v).asDouble() == 1.0; }
+        try { return casValToValue(v).asFloat() == 1.0; }
         catch (...) { return false; }
     }
 
@@ -165,14 +165,14 @@ namespace jc {
         return valueToCasVal(casValToValue(a) * casValToValue(b));
     }
 
-    // 从 CASVal 提取整数（委托 Value::asDouble）
+    // 从 CASVal 提取整数（委托 Value::asFloat）
     static std::pair<bool, int> casToInt(const CASVal& v) {
         if (std::holds_alternative<int32_t>(v)) {
             int32_t val = std::get<int32_t>(v);
             if (std::abs(val) <= 1000) return { true, val };
         }
         try {
-            double d = casValToValue(v).asDouble();
+            double d = casValToValue(v).asFloat();
             if (d == std::round(d) && std::abs(d) <= 1000)
                 return { true, static_cast<int>(std::round(d)) };
         }
@@ -212,7 +212,7 @@ namespace jc {
                         if (v->getType() == SymType::POW) {
                             auto p = static_cast<SymPow*>(v);
                             if (p->exp->getType() == SymType::NUM) {
-                                try { totalExp += casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble(); } catch(...) { totalExp += 1.0; }
+                                try { totalExp += casValToValue(static_cast<SymNum*>(p->exp)->value).asFloat(); } catch(...) { totalExp += 1.0; }
                             } else totalExp += 1.0;
                         } else {
                             totalExp += 1.0;
@@ -228,7 +228,7 @@ namespace jc {
                 auto p = static_cast<SymPow*>(core);
                 if (p->exp->getType() == SymType::NUM) {
                     try {
-                        double e = casValToValue(static_cast<SymNum*>(p->exp)->value).asDouble();
+                        double e = casValToValue(static_cast<SymNum*>(p->exp)->value).asFloat();
                         return {p->base, e, e};
                     } catch(...) {}
                 }
@@ -248,8 +248,8 @@ namespace jc {
             // 都是常数，按数值大小排
             if (a->getType() == SymType::NUM && b->getType() == SymType::NUM) {
                 try {
-                    double valA = casValToValue(static_cast<SymNum*>(a)->value).asDouble();
-                    double valB = casValToValue(static_cast<SymNum*>(b)->value).asDouble();
+                    double valA = casValToValue(static_cast<SymNum*>(a)->value).asFloat();
+                    double valB = casValToValue(static_cast<SymNum*>(b)->value).asFloat();
                     if (valA != valB) return valA < valB ? -1 : 1;
                 } catch(...) {}
             }
@@ -374,7 +374,7 @@ namespace jc {
                 if (f.getNum() == BigInt(1) && f.getDen() > BigInt(1)) {
                     int64_t n = 0;
                     try {
-                        n = static_cast<int64_t>(f.getDen().toDouble());
+                        n = static_cast<int64_t>(f.getDen().toFloat());
                     }
                     catch (...) {}
 
@@ -1034,7 +1034,7 @@ namespace jc {
             if (bIsZero) JC2_THROW(MathError, "0^0 is undefined.");
             bool bIsNeg = false;
             if (bOk) {
-                try { bIsNeg = bVal.asDouble() < 0.0; } catch(...) {}
+                try { bIsNeg = bVal.asFloat() < 0.0; } catch(...) {}
             } else if (b.ptr->getType() == SymType::NUM) {
                 bIsNeg = isCasNegative(static_cast<SymNum*>(b.ptr)->value);
             }
@@ -1198,9 +1198,9 @@ namespace jc {
                         Value expVal = casValToValue(expNum->value);
                         Value result = baseVal ^ expVal;
                         
-                        if (result.isDouble() && std::isnan(result.asDoubleRaw())) {
-                            std::complex<double> bc(baseVal.asDouble(), 0.0);
-                            std::complex<double> ec(expVal.asDouble(), 0.0);
+                        if (result.isFloat() && std::isnan(result.asFloatRaw())) {
+                            std::complex<double> bc(baseVal.asFloat(), 0.0);
+                            std::complex<double> ec(expVal.asFloat(), 0.0);
                             std::complex<double> cres = std::pow(bc, ec);
                             if (cres.imag() == 0.0) return SymExpr(cres.real());
                             return SymExpr(Complex(cres.real(), cres.imag()));
@@ -1217,9 +1217,9 @@ namespace jc {
                     Value expVal = casValToValue(expNum->value);
                     Value result = baseVal ^ expVal;
                         
-                    if (result.isDouble() && std::isnan(result.asDoubleRaw())) {
-                        std::complex<double> bc(baseVal.asDouble(), 0.0);
-                        std::complex<double> ec(expVal.asDouble(), 0.0);
+                    if (result.isFloat() && std::isnan(result.asFloatRaw())) {
+                        std::complex<double> bc(baseVal.asFloat(), 0.0);
+                        std::complex<double> ec(expVal.asFloat(), 0.0);
                         std::complex<double> cres = std::pow(bc, ec);
                         if (cres.imag() == 0.0) return SymExpr(cres.real());
                         return SymExpr(Complex(cres.real(), cres.imag()));
@@ -1964,7 +1964,7 @@ namespace jc {
                         if (T <= BigInt(maxPowTerms)) {
                             // ★ 优化 1：使用容器集中暂存节点，彻底避开 operator+ 的 O(N^2) 合并风暴
                             std::vector<SymNode*> finalTerms;
-                            finalTerms.reserve(static_cast<size_t>(T.toDouble()));
+                            finalTerms.reserve(static_cast<size_t>(T.toFloat()));
 
                             // ★ 优化 2：针对二项式的光速直通车 (m = 2)，0 次大数阶乘运算
                             if (m == 2) {
@@ -2170,7 +2170,7 @@ namespace jc {
                     if (!ok) return {false, Value()};
                     sum = sum + v;
                 }
-                if (!sum.isDouble() && !sum.isInt32() &&
+                if (!sum.isFloat() && !sum.isInt32() &&
                     !sum.isObjType(ObjType::BIGINT) &&
                     !sum.isObjType(ObjType::FRACTION) &&
                     !sum.isComplex()) {
@@ -2185,7 +2185,7 @@ namespace jc {
                     if (!ok) return {false, Value()};
                     prod = prod * v;
                 }
-                if (!prod.isDouble() && !prod.isInt32() &&
+                if (!prod.isFloat() && !prod.isInt32() &&
                     !prod.isObjType(ObjType::BIGINT) &&
                     !prod.isObjType(ObjType::FRACTION) &&
                     !prod.isComplex()) {
@@ -2201,14 +2201,14 @@ namespace jc {
                 if (!ok2) return {false, Value()};
                 try {
                     Value res = b ^ e;
-                    if (res.isDouble() && std::isnan(res.asDoubleRaw())) {
+                    if (res.isFloat() && std::isnan(res.asFloatRaw())) {
                         double br = 0.0, bi = 0.0, er = 0.0, ei = 0.0;
                         bool ok_cast = true;
                         try {
                             if (b.isComplex()) { br = b.asComplex().real; bi = b.asComplex().imag; }
-                            else { br = b.asDouble(); }
+                            else { br = b.asFloat(); }
                             if (e.isComplex()) { er = e.asComplex().real; ei = e.asComplex().imag; }
-                            else { er = e.asDouble(); }
+                            else { er = e.asFloat(); }
                         } catch (const EngineInterruptError&) { throw; } catch (...) { ok_cast = false; }
                     
                         if (ok_cast) {
@@ -2220,7 +2220,7 @@ namespace jc {
                         }
                     }
                 
-                    if (!res.isDouble() && !res.isInt32() &&
+                    if (!res.isFloat() && !res.isInt32() &&
                         !res.isObjType(ObjType::BIGINT) &&
                         !res.isObjType(ObjType::FRACTION) &&
                         !res.isComplex()) {
@@ -2364,7 +2364,7 @@ namespace jc {
                 auto cx = cVal.asComplex();
                 numCoeffs.push_back({cx.real, cx.imag});
             } else {
-                numCoeffs.push_back({cVal.asDouble(), 0.0});
+                numCoeffs.push_back({cVal.asFloat(), 0.0});
             }
         }
 
@@ -2410,19 +2410,19 @@ namespace jc {
                     if (c.imag == 0.0) return SymExpr(c.real);
                     return SymExpr(c);
                 } else {
-                    return SymExpr(val.asDouble());
+                    return SymExpr(val.asFloat());
                 }
             } catch (const EngineInterruptError&) {
                 throw;
             } catch (...) {
-                // 如果 asDouble 失败（例如 val 是 Symbolic 符号表达式），则回退到 AST 遍历
+                // 如果 asFloat 失败（例如 val 是 Symbolic 符号表达式），则回退到 AST 遍历
             }
         }
 
         switch (expr.ptr->getType()) {
         case SymType::NUM: {
             auto num = static_cast<SymNum*>(expr.ptr);
-            return SymExpr(casValToValue(num->value).asDouble());
+            return SymExpr(casValToValue(num->value).asFloat());
         }
 
         case SymType::VAR: {
@@ -2471,7 +2471,7 @@ namespace jc {
                         auto [c_ok, c_val] = tryEvalConst(c);
                         if (c_ok) {
                             if (c_val.isComplex()) numCoeffs.push_back({c_val.asComplex().real, c_val.asComplex().imag});
-                            else numCoeffs.push_back({c_val.asDouble(), 0.0});
+                            else numCoeffs.push_back({c_val.asFloat(), 0.0});
                         } else {
                             p_is_const = false;
                             break;
@@ -2610,7 +2610,7 @@ namespace jc {
                         auto [c_ok, c_val] = tryEvalConst(c);
                         if (c_ok) {
                             if (c_val.isComplex()) numCoeffs.push_back({c_val.asComplex().real, c_val.asComplex().imag});
-                            else numCoeffs.push_back({c_val.asDouble(), 0.0});
+                            else numCoeffs.push_back({c_val.asFloat(), 0.0});
                         } else {
                             p_is_const = false;
                             break;
@@ -5326,7 +5326,7 @@ namespace jc {
                 if (eIsZero) return std::nullopt; // 0^0
                 bool eIsNeg = false;
                 if (eOk) {
-                    try { eIsNeg = eVal.asDouble() < 0.0; } catch(...) {}
+                    try { eIsNeg = eVal.asFloat() < 0.0; } catch(...) {}
                 } else if (expSub->ptr->getType() == SymType::NUM) {
                     eIsNeg = isCasNegative(static_cast<SymNum*>(expSub->ptr)->value);
                 }
@@ -5467,7 +5467,7 @@ namespace jc {
             rem.terms.erase(leadDeg);
             
             AsympSeries currentTerm = res;
-            int max_i = std::max(5, static_cast<int>(order.toDouble()));
+            int max_i = std::max(5, static_cast<int>(order.toFloat()));
             for (int i = 1; i <= max_i; ++i) {
                 if (rem.terms.empty()) break;
                 currentTerm = currentTerm * rem * AsympSeries(order);
@@ -5565,7 +5565,7 @@ namespace jc {
                             SymExpr currentCoeff = coeffF;
                             BigInt fact(1);
                             
-                            int max_i = std::max(3, static_cast<int>(order.toDouble()));
+                            int max_i = std::max(3, static_cast<int>(order.toFloat()));
                             for (int i = 1; i <= max_i; ++i) {
                                 if (currentX.terms.empty() || currentX.terms.begin()->first > order) break;
                                 AsympSeries term(order);
@@ -5621,7 +5621,7 @@ namespace jc {
                     currentTerm.addTerm(Fraction(0), SymExpr(BigInt(1)));
                     BigInt fact(1);
                     
-                    int max_i = std::max(5, static_cast<int>(order.toDouble()));
+                    int max_i = std::max(5, static_cast<int>(order.toFloat()));
                     for (int i = 1; i <= max_i; ++i) {
                         if (argS.terms.empty()) break;
                         currentTerm = currentTerm * argS;
@@ -6398,7 +6398,7 @@ namespace jc {
             auto num = static_cast<SymNum*>(node);
             Value v = casValToValue(num->value);
             if (v.isComplex()) return std::complex<double>(v.asComplex().real, v.asComplex().imag);
-            return v.asDouble();
+            return v.asFloat();
         }
         case SymType::VAR: {
             auto varName = static_cast<SymVar*>(node)->name;
@@ -6432,7 +6432,7 @@ namespace jc {
                     return Value(Complex(c.real(), c.imag()));
                 });
                 if (v.isComplex()) return std::complex<double>(v.asComplex().real, v.asComplex().imag);
-                return v.asDouble();
+                return v.asFloat();
             }
             
             // 内置常见数学函数，避免跨界调用开销并支持复数
@@ -6471,7 +6471,7 @@ namespace jc {
             }
             Value res = resolver(f->name, callArgs);
             if (res.isComplex()) return std::complex<double>(res.asComplex().real, res.asComplex().imag);
-            return res.asDouble();
+            return res.asFloat();
         }
         }
         return 0.0;
@@ -6518,14 +6518,14 @@ namespace jc {
             Value e = evalUniversal(p->exp, env, resolver);
             Value res = b ^ e;
             
-            if (res.isDouble() && std::isnan(res.asDoubleRaw())) {
+            if (res.isFloat() && std::isnan(res.asFloatRaw())) {
                 double br = 0.0, bi = 0.0, er = 0.0, ei = 0.0;
                 bool ok_cast = true;
                 try {
                     if (b.isComplex()) { br = b.asComplex().real; bi = b.asComplex().imag; }
-                    else { br = b.asDouble(); }
+                    else { br = b.asFloat(); }
                     if (e.isComplex()) { er = e.asComplex().real; ei = e.asComplex().imag; }
-                    else { er = e.asDouble(); }
+                    else { er = e.asFloat(); }
                 } catch (const EngineInterruptError&) { throw; } catch (...) { ok_cast = false; }
                 
                 if (ok_cast) {
@@ -6552,8 +6552,8 @@ namespace jc {
                 std::complex<double> c(0.0, 0.0);
                 bool is_c = false;
                 if (arg.isComplex()) { c = std::complex<double>(arg.asComplex().real, arg.asComplex().imag); is_c = true; }
-                else if (arg.isDouble() || arg.isInt32() || arg.isObjType(ObjType::BIGINT) || arg.isObjType(ObjType::FRACTION)) {
-                    c = std::complex<double>(arg.asDouble(), 0.0); is_c = true;
+                else if (arg.isFloat() || arg.isInt32() || arg.isObjType(ObjType::BIGINT) || arg.isObjType(ObjType::FRACTION)) {
+                    c = std::complex<double>(arg.asFloat(), 0.0); is_c = true;
                 }
                 
                 if (is_c) {
@@ -6584,8 +6584,8 @@ namespace jc {
                 if (f->name == "root") {
                     Value base = evalUniversal(f->args[0], env, resolver);
                     Value n = evalUniversal(f->args[1], env, resolver);
-                    std::complex<double> cb(base.isComplex() ? base.asComplex().real : base.asDouble(), base.isComplex() ? base.asComplex().imag : 0.0);
-                    std::complex<double> cn(n.isComplex() ? n.asComplex().real : n.asDouble(), n.isComplex() ? n.asComplex().imag : 0.0);
+                    std::complex<double> cb(base.isComplex() ? base.asComplex().real : base.asFloat(), base.isComplex() ? base.asComplex().imag : 0.0);
+                    std::complex<double> cn(n.isComplex() ? n.asComplex().real : n.asFloat(), n.isComplex() ? n.asComplex().imag : 0.0);
                     std::complex<double> res = std::pow(cb, 1.0 / cn);
                     if (res.imag() == 0.0) return Value(res.real());
                     return Value(Complex(res.real(), res.imag()));

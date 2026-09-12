@@ -1241,7 +1241,7 @@ namespace jc {
         bool isZero() const { return data.size() == 1 && data[0] == 0; }
         bool isNegative() const { return negative; }
 
-        double toDouble() const {
+        double toFloat() const {
             double result = 0.0;
             for (int i = static_cast<int>(data.size()) - 1; i >= 0; --i) {
                 result = result * 4294967296.0 + static_cast<double>(data[i]);
@@ -1251,7 +1251,7 @@ namespace jc {
             return negative ? -result : result;
         }
 
-        static double toDoubleRatio(const BigInt& num, const BigInt& den) {
+        static double toFloatRatio(const BigInt& num, const BigInt& den) {
             if (den.isZero()) JC2_THROW(MathError, "Division by zero.");
             if (num.isZero()) return 0.0;
 
@@ -1260,7 +1260,7 @@ namespace jc {
 
             // 如果两者都在 double 安全范围内 (31 * 9.6 = 297 位十进制，绝对不会溢出 1024 bits)，直接计算
             if (n_size <= 31 && d_size <= 31) {
-                return num.toDouble() / den.toDouble();
+                return num.toFloat() / den.toFloat();
             }
 
             // 否则，提取最高 3 个 limb (约 96 bits，足以覆盖 double 的 53 bits 精度)
@@ -1551,44 +1551,44 @@ namespace jc {
         // =================================================================================
         bool operator==(double d) const {
             if (isZero()) return d == 0.0;
-            try { return toDouble() == d; }
+            try { return toFloat() == d; }
             catch (...) { return false; }
         }
         friend bool operator==(double d, const BigInt& b) { return b == d; }
 
         // BigInt <-> double
-        friend double operator+(const BigInt& a, double b) { return a.toDouble() + b; }
-        friend double operator+(double a, const BigInt& b) { return a + b.toDouble(); }
-        friend double operator-(const BigInt& a, double b) { return a.toDouble() - b; }
-        friend double operator-(double a, const BigInt& b) { return a - b.toDouble(); }
-        friend double operator*(const BigInt& a, double b) { return a.toDouble() * b; }
-        friend double operator*(double a, const BigInt& b) { return a * b.toDouble(); }
+        friend double operator+(const BigInt& a, double b) { return a.toFloat() + b; }
+        friend double operator+(double a, const BigInt& b) { return a + b.toFloat(); }
+        friend double operator-(const BigInt& a, double b) { return a.toFloat() - b; }
+        friend double operator-(double a, const BigInt& b) { return a - b.toFloat(); }
+        friend double operator*(const BigInt& a, double b) { return a.toFloat() * b; }
+        friend double operator*(double a, const BigInt& b) { return a * b.toFloat(); }
         friend double operator/(const BigInt& a, double b) {
             if (b == 0.0) JC2_THROW(MathError, "Division by zero.");
-            return a.toDouble() / b;
+            return a.toFloat() / b;
         }
         friend double operator/(double a, const BigInt& b) {
             if (b.isZero()) JC2_THROW(MathError, "Division by zero.");
-            return a / b.toDouble();
+            return a / b.toFloat();
         }
         friend double operator%(const BigInt& a, double b) {
             if (b == 0.0) JC2_THROW(MathError, "Modulo by zero.");
-            return std::fmod(a.toDouble(), b);
+            return std::fmod(a.toFloat(), b);
         }
         friend double operator%(double a, const BigInt& b) {
             if (b.isZero()) JC2_THROW(MathError, "Modulo by zero.");
-            return std::fmod(a, b.toDouble());
+            return std::fmod(a, b.toFloat());
         }
 
         // BigInt <-> Complex
-        friend Complex operator+(const BigInt& a, const Complex& b) { return Complex(a.toDouble()) + b; }
-        friend Complex operator+(const Complex& a, const BigInt& b) { return a + Complex(b.toDouble()); }
-        friend Complex operator-(const BigInt& a, const Complex& b) { return Complex(a.toDouble()) - b; }
-        friend Complex operator-(const Complex& a, const BigInt& b) { return a - Complex(b.toDouble()); }
-        friend Complex operator*(const BigInt& a, const Complex& b) { return Complex(a.toDouble()) * b; }
-        friend Complex operator*(const Complex& a, const BigInt& b) { return a * Complex(b.toDouble()); }
-        friend Complex operator/(const BigInt& a, const Complex& b) { return Complex(a.toDouble()) / b; }
-        friend Complex operator/(const Complex& a, const BigInt& b) { return a / Complex(b.toDouble()); }
+        friend Complex operator+(const BigInt& a, const Complex& b) { return Complex(a.toFloat()) + b; }
+        friend Complex operator+(const Complex& a, const BigInt& b) { return a + Complex(b.toFloat()); }
+        friend Complex operator-(const BigInt& a, const Complex& b) { return Complex(a.toFloat()) - b; }
+        friend Complex operator-(const Complex& a, const BigInt& b) { return a - Complex(b.toFloat()); }
+        friend Complex operator*(const BigInt& a, const Complex& b) { return Complex(a.toFloat()) * b; }
+        friend Complex operator*(const Complex& a, const BigInt& b) { return a * Complex(b.toFloat()); }
+        friend Complex operator/(const BigInt& a, const Complex& b) { return Complex(a.toFloat()) / b; }
+        friend Complex operator/(const Complex& a, const BigInt& b) { return a / Complex(b.toFloat()); }
 
         // =================================================================================
         // 工业级数论算法库 (Number Theory) 

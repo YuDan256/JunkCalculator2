@@ -78,7 +78,7 @@ struct StrictValueHasher {
         int typeTag = 0;
         if (v.isInt32()) typeTag = 1;
         else if (v.isBool()) typeTag = 2;
-        else if (v.isDouble()) typeTag = 3;
+        else if (v.isFloat()) typeTag = 3;
         else if (v.isObj()) typeTag = 4 + static_cast<int>(v.asObj()->type);
         return h ^ (typeTag * 0x9e3779b9);
     }
@@ -89,7 +89,7 @@ struct StrictValueEqual {
         if (lhs.as_bits == rhs.as_bits) return true;
         if (lhs.isInt32() != rhs.isInt32()) return false;
         if (lhs.isBool() != rhs.isBool()) return false;
-        if (lhs.isDouble() != rhs.isDouble()) return false;
+        if (lhs.isFloat() != rhs.isFloat()) return false;
         if (lhs.isObj() != rhs.isObj()) return false;
         if (lhs.isObj()) {
             if (lhs.asObj()->type != rhs.asObj()->type) return false;

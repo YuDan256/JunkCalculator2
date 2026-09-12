@@ -30,17 +30,17 @@ JC2_ValueHandle img_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle img_plot(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     jc::Image* im = getImg(argv);
     Function fn_actual(argv[1]);
-    double xMin = Value(argv[2]).as_double(), xMax = Value(argv[3]).as_double();
-    double yMin = Value(argv[4]).as_double(), yMax = Value(argv[5]).as_double();
+    double xMin = Value(argv[2]).as_float(), xMax = Value(argv[3]).as_float();
+    double yMin = Value(argv[4]).as_float(), yMax = Value(argv[5]).as_float();
     jc::Color c = parseColor(Value(argv[6]));
-    int thick = (argc == 8 && !Value(argv[7]).is_none()) ? static_cast<int>(std::round(Value(argv[7]).as_double())) : 2;
+    int thick = (argc == 8 && !Value(argv[7]).is_none()) ? static_cast<int>(std::round(Value(argv[7]).as_float())) : 2;
     int plotW = im->width() - 50;
     int prevPx = -1, prevPy = -1;
 
     for (int px = 0; px <= plotW; ++px) {
         double x = xMin + (static_cast<double>(px) / plotW) * (xMax - xMin);
         double y = 0;
-        try { y = fn_actual.call({ Value(x) }).as_double(); }
+        try { y = fn_actual.call({ Value(x) }).as_float(); }
         catch (...) { prevPx = -1; prevPy = -1; continue; }
         int screenX = im->mapPlotX(x, xMin, xMax);
         int screenY = im->mapPlotY(y, yMin, yMax);
@@ -62,12 +62,12 @@ JC2_ValueHandle img_clear(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return argv[0];
 }
 JC2_ValueHandle img_line(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_double() : 1.0;
-    getImg(argv)->line(Value(argv[1]).as_double(), Value(argv[2]).as_double(), Value(argv[3]).as_double(), Value(argv[4]).as_double(), parseColor(Value(argv[5])), thickness);
+    double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_float() : 1.0;
+    getImg(argv)->line(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), Value(argv[4]).as_float(), parseColor(Value(argv[5])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_rect(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_double() : 1.0;
+    double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_float() : 1.0;
     getImg(argv)->rect(Value(argv[1]).as_int(), Value(argv[2]).as_int(), Value(argv[3]).as_int(), Value(argv[4]).as_int(), parseColor(Value(argv[5])), thickness);
     return argv[0];
 }
@@ -76,25 +76,25 @@ JC2_ValueHandle img_fillRect(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return argv[0];
 }
 JC2_ValueHandle img_circle(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    double thickness = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_double() : 1.0;
-    getImg(argv)->circle(Value(argv[1]).as_double(), Value(argv[2]).as_double(), Value(argv[3]).as_double(), parseColor(Value(argv[4])), thickness);
+    double thickness = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_float() : 1.0;
+    getImg(argv)->circle(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), parseColor(Value(argv[4])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_fillCircle(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
-    getImg(argv)->fillCircle(Value(argv[1]).as_double(), Value(argv[2]).as_double(), Value(argv[3]).as_double(), parseColor(Value(argv[4])));
+    getImg(argv)->fillCircle(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), parseColor(Value(argv[4])));
     return argv[0];
 }
 JC2_ValueHandle img_text(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string txt = Value(argv[1]).as_string();
     int x = Value(argv[2]).as_int();
     int y = Value(argv[3]).as_int();
-    double scale = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_double() : 1.0;
+    double scale = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_float() : 1.0;
     getImg(argv)->drawText(txt, x, y, parseColor(Value(argv[4])), scale);
     return argv[0];
 }
 JC2_ValueHandle img_axes(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     jc::Color c = (argc == 6 && !Value(argv[5]).is_none()) ? parseColor(Value(argv[5])) : jc::Color{100, 100, 100};
-    getImg(argv)->drawAxes(Value(argv[1]).as_double(), Value(argv[2]).as_double(), Value(argv[3]).as_double(), Value(argv[4]).as_double(), c);
+    getImg(argv)->drawAxes(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), Value(argv[4]).as_float(), c);
     return argv[0];
 }
 JC2_ValueHandle img_save(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {

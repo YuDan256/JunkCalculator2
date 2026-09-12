@@ -468,44 +468,44 @@ void BuiltinRegistry::registerMath() {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSin());
         if (args[0].isComplex()) return Value(sin(args[0].asComplex()));
-        return Value(std::sin(args[0].asDouble()));
+        return Value(std::sin(args[0].asFloat()));
     });
     regMath("cos", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matCos());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matCos());
         if (args[0].isComplex()) return Value(cos(args[0].asComplex()));
-        return Value(std::cos(args[0].asDouble()));
+        return Value(std::cos(args[0].asFloat()));
     });
     regMath("tan", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matTan());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matTan());
         if (args[0].isComplex()) return Value(tan(args[0].asComplex()));
-        return Value(std::tan(args[0].asDouble()));
+        return Value(std::tan(args[0].asFloat()));
     });
     regMath("exp", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matExp());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matExp());
         if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.exp());
         if (args[0].isComplex()) return Value(exp(args[0].asComplex()));
-        return Value(std::exp(args[0].asDouble()));
+        return Value(std::exp(args[0].asFloat()));
     });
     regMath("sinh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matSinh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matSinh());
         if (args[0].isComplex()) return Value(sinh(args[0].asComplex()));
-        return Value(std::sinh(args[0].asDouble()));
+        return Value(std::sinh(args[0].asFloat()));
     });
     regMath("cosh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matCosh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matCosh());
         if (args[0].isComplex()) return Value(cosh(args[0].asComplex()));
-        return Value(std::cosh(args[0].asDouble()));
+        return Value(std::cosh(args[0].asFloat()));
     });
     regMath("tanh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(args[0].asObj())->mat.matTanh());
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat.matTanh());
         if (args[0].isComplex()) return Value(tanh(args[0].asComplex()));
-        return Value(std::tanh(args[0].asDouble()));
+        return Value(std::tanh(args[0].asFloat()));
     });
     regMath("cot", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
@@ -521,7 +521,7 @@ void BuiltinRegistry::registerMath() {
             return Value(ComplexMatrix(m.getRows(), m.getCols(), flat));
         }
         if (args[0].isComplex()) return Value(Complex(1.0, 0.0) / tan(args[0].asComplex()));
-        return Value(1.0 / std::tan(args[0].asDouble()));
+        return Value(1.0 / std::tan(args[0].asFloat()));
     });
     regMath("sec", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
@@ -537,7 +537,7 @@ void BuiltinRegistry::registerMath() {
             return Value(ComplexMatrix(m.getRows(), m.getCols(), flat));
         }
         if (args[0].isComplex()) return Value(Complex(1.0, 0.0) / cos(args[0].asComplex()));
-        return Value(1.0 / std::cos(args[0].asDouble()));
+        return Value(1.0 / std::cos(args[0].asFloat()));
     });
     regMath("csc", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
@@ -553,7 +553,7 @@ void BuiltinRegistry::registerMath() {
             return Value(ComplexMatrix(m.getRows(), m.getCols(), flat));
         }
         if (args[0].isComplex()) return Value(Complex(1.0, 0.0) / sin(args[0].asComplex()));
-        return Value(1.0 / std::sin(args[0].asDouble()));
+        return Value(1.0 / std::sin(args[0].asFloat()));
     });
 
     regMath("log", { 1, 2 }, {"base", "x"}, [](const std::vector<Value>& args) -> Value {
@@ -561,7 +561,7 @@ void BuiltinRegistry::registerMath() {
             if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(matLog(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
             if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(matLog(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat));
             if (args[0].isComplex()) return Value(log(args[0].asComplex()));
-            double x = args[0].asDouble();
+            double x = args[0].asFloat();
             if (x == 0) JC2_THROW(MathError, "Logarithm of zero.");
             if (x < 0) return Value(log(Complex(x, 0.0)));
             return Value(std::log(x));
@@ -574,7 +574,7 @@ void BuiltinRegistry::registerMath() {
         if (args[0].isObjType(ObjType::REAL_MATRIX)) return Value(matLog(static_cast<ObjRealMatrix*>(args[0].asObj())->mat));
         if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) return Value(matLog(static_cast<ObjComplexMatrix*>(args[0].asObj())->mat));
         if (args[0].isComplex()) return Value(log(args[0].asComplex()));
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x == 0) JC2_THROW(MathError, "Logarithm of zero.");
         if (x < 0) return Value(log(Complex(x, 0.0)));
         return Value(std::log(x));
@@ -587,7 +587,7 @@ void BuiltinRegistry::registerMath() {
     regMath("sqrtF", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(0.5);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
-        return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());
+        return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());
     });
 
     regMath("cbrt", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
@@ -597,7 +597,7 @@ void BuiltinRegistry::registerMath() {
     regMath("cbrtF", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(1.0 / 3.0);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
-        return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());
+        return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());
     });
 
     reg("matpow", { 2 }, [](const std::vector<Value>& args) -> Value {
@@ -606,22 +606,22 @@ void BuiltinRegistry::registerMath() {
 
     regMath("asin", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(asin(args[0].asComplex()));
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x < -1.0 || x > 1.0) return Value(asin(Complex(x, 0.0)));
         return Value(std::asin(x));
     });
     regMath("acos", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(acos(args[0].asComplex()));
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x < -1.0 || x > 1.0) return Value(acos(Complex(x, 0.0)));
         return Value(std::acos(x));
     });
     regMath("atan", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) return Value(atan(args[0].asComplex()));
-        return Value(std::atan(args[0].asDouble()));
+        return Value(std::atan(args[0].asFloat()));
     });
     regMath("atan2", { 2 }, {"y", "x"}, [](const std::vector<Value>& args) -> Value {
-        return Value(std::atan2(args[0].asDouble(), args[1].asDouble()));
+        return Value(std::atan2(args[0].asFloat(), args[1].asFloat()));
         });
 
     regMath("asinh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
@@ -629,14 +629,14 @@ void BuiltinRegistry::registerMath() {
             Complex z = args[0].asComplex();
             return Value(log(z + sqrt(z * z + Complex(1.0, 0.0))));
         }
-        return Value(std::asinh(args[0].asDouble()));
+        return Value(std::asinh(args[0].asFloat()));
     });
     regMath("acosh", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         if (args[0].isComplex()) {
             Complex z = args[0].asComplex();
             return Value(log(z + sqrt(z * z - Complex(1.0, 0.0))));
         }
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x < 1.0) {
             Complex z(x, 0.0);
             return Value(log(z + sqrt(z * z - Complex(1.0, 0.0))));
@@ -648,7 +648,7 @@ void BuiltinRegistry::registerMath() {
             Complex z = args[0].asComplex();
             return Value(Complex(0.5, 0.0) * log((Complex(1.0, 0.0) + z) / (Complex(1.0, 0.0) - z)));
         }
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x <= -1.0 || x >= 1.0) {
             Complex z(x, 0.0);
             return Value(Complex(0.5, 0.0) * log((Complex(1.0, 0.0) + z) / (Complex(1.0, 0.0) - z)));
@@ -657,7 +657,7 @@ void BuiltinRegistry::registerMath() {
     });
 
     regMath("erf", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
-        return Value(std::erf(args[0].asDouble()));
+        return Value(std::erf(args[0].asFloat()));
         });
     // 通用高精度数值积分器 (Simpson's 1/3 Rule)
     auto numInteg = [](auto f, double a, double b) -> double {
@@ -672,31 +672,31 @@ void BuiltinRegistry::registerMath() {
     };
 
     regMath("fresnel_s", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         return Value(numInteg([](double t) { return std::sin(1.57079632679489661923 * t * t); }, 0.0, x));
         });
     regMath("fresnel_c", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         return Value(numInteg([](double t) { return std::cos(1.57079632679489661923 * t * t); }, 0.0, x));
         });
     regMath("Si", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         return Value(numInteg([](double t) { return t == 0.0 ? 1.0 : std::sin(t) / t; }, 0.0, x));
         });
     regMath("Ci", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x <= 0.0) JC2_THROW(MathError, "Ci(x) is only real for x > 0.");
         double gamma = 0.577215664901532860606; // Euler-Mascheroni constant
         return Value(gamma + std::log(x) + numInteg([](double t) { return t == 0.0 ? 0.0 : (std::cos(t) - 1.0) / t; }, 0.0, x));
         });
     regMath("Ei", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x == 0.0) JC2_THROW(MathError, "Ei(0) is undefined.");
         double gamma = 0.577215664901532860606; // Euler-Mascheroni constant
         return Value(gamma + std::log(std::abs(x)) + numInteg([](double t) { return t == 0.0 ? 1.0 : (std::exp(t) - 1.0) / t; }, 0.0, x));
         });
     regMath("Li", { 1 }, {"x"}, [numInteg](const std::vector<Value>& args) -> Value {
-        double x = args[0].asDouble();
+        double x = args[0].asFloat();
         if (x <= 0.0 || x == 1.0) JC2_THROW(MathError, "Li(x) is defined for x > 0 and x != 1.");
         double lnx = std::log(x);
         double gamma = 0.577215664901532860606;
@@ -713,7 +713,7 @@ void BuiltinRegistry::registerMath() {
         if (args[0].isObjType(ObjType::BIGINT)) return Value(static_cast<ObjBigInt*>(args[0].asObj())->num.abs());
         if (args[0].isComplex()) return Value(args[0].asComplex().modulus());
         if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.abs());
-        return Value(std::abs(args[0].asDouble()));
+        return Value(std::abs(args[0].asFloat()));
         });
 
     regMath("pow", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
@@ -727,7 +727,7 @@ void BuiltinRegistry::registerMath() {
     regMath("rootF", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ (Value(1.0) / args[1]);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
-        return res.isComplex() ? Value(res.asComplex()) : Value(res.asDouble());
+        return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());
     });
 
     // 通用取整分发器
@@ -737,7 +737,7 @@ void BuiltinRegistry::registerMath() {
                 JC2_THROW(RuntimeError, "" + name + "() expects 1 or 2 arguments.");
             int n = 0;
             bool hasN = (args.size() == 2);
-            if (hasN) n = static_cast<int>(std::round(args[1].asDouble()));
+            if (hasN) n = static_cast<int>(std::round(args[1].asFloat()));
             double factor = std::pow(10.0, n);
             auto fn = [baseFn, factor](double x) -> double { return baseFn(x * factor) / factor; };
             if (args[0].isComplex()) {
@@ -767,7 +767,7 @@ void BuiltinRegistry::registerMath() {
                         flat.push_back(Complex(fn(m(i, j).real), fn(m(i, j).imag)));
                 return Value(ComplexMatrix(m.getRows(), m.getCols(), flat));
             }
-            double result = fn(args[0].asDouble());
+            double result = fn(args[0].asFloat());
             if (!hasN || n <= 0) return Value(BigInt(static_cast<int64_t>(result)));
             return Value(result);
         };
@@ -777,9 +777,9 @@ void BuiltinRegistry::registerMath() {
     regMath("ceil", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "ceil", [](double x) { return std::ceil(x); }); });
     regMath("trunc", { 1, 2 }, {"x", "n"}, [roundDispatch](const std::vector<Value>& args) -> Value { return roundDispatch(args, "trunc", [](double x) { return std::trunc(x); }); });
 
-    regMath("sgn", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { double x = args[0].asDouble(); return Value::fromInt32(x > 0 ? 1 : (x < 0 ? -1 : 0)); });
-    regMath("deg", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / Complex::PI * 180.0); });
-    regMath("rad", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asDouble() / 180.0 * Complex::PI); });
+    regMath("sgn", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { double x = args[0].asFloat(); return Value::fromInt32(x > 0 ? 1 : (x < 0 ? -1 : 0)); });
+    regMath("deg", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asFloat() / Complex::PI * 180.0); });
+    regMath("rad", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value { return Value(args[0].asFloat() / 180.0 * Complex::PI); });
     
     reg("idiv", { 2 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isBigInt() && args[1].isBigInt()) {
@@ -787,7 +787,7 @@ void BuiltinRegistry::registerMath() {
             if (b.isZero()) JC2_THROW(MathError, "Division by zero.");
             return Value(a / b);
         }
-        double a = args[0].asDouble(), b = args[1].asDouble();
+        double a = args[0].asFloat(), b = args[1].asFloat();
         if (b == 0.0) JC2_THROW(MathError, "Division by zero.");
         return Value(BigInt(static_cast<int64_t>(std::trunc(a / b))));
     }, {"a", "b"});
@@ -800,7 +800,7 @@ void BuiltinRegistry::registerMath() {
 void BuiltinRegistry::registerComplex() {
     reg("Re", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().real); return args[0]; }, {"z"});
     reg("Im", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().imag); return Value(0.0); }, {"z"});
-    reg("arg", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().argument()); return Value(args[0].asDouble() >= 0 ? 0.0 : Complex::PI); }, {"z"});
+    reg("arg", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().argument()); return Value(args[0].asFloat() >= 0 ? 0.0 : Complex::PI); }, {"z"});
     reg("conj", { 1 }, [](const std::vector<Value>& args) -> Value { if (args[0].isComplex()) return Value(args[0].asComplex().conjugate()); return args[0]; }, {"z"});
 }
 
@@ -809,8 +809,8 @@ void BuiltinRegistry::registerComplex() {
 // =================================================================
 void BuiltinRegistry::registerFraction() {
     reg("frac", { 2 }, [](const std::vector<Value>& args) -> Value {
-        BigInt n = args[0].isBigInt() ? args[0].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[0].asDouble())));
-        BigInt d = args[1].isBigInt() ? args[1].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[1].asDouble())));
+        BigInt n = args[0].isBigInt() ? args[0].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[0].asFloat())));
+        BigInt d = args[1].isBigInt() ? args[1].asBigInt() : BigInt(static_cast<int64_t>(std::round(args[1].asFloat())));
         return Value(Fraction(n, d));
     }, {"n", "d"});
     reg("toFrac", { 1 }, [](const std::vector<Value>& args) -> Value {
@@ -820,7 +820,7 @@ void BuiltinRegistry::registerFraction() {
         if (v.isObjType(ObjType::FRACTION)) {
             f = static_cast<ObjFraction*>(v.asObj())->frac;
         } else {
-            f = Fraction::fromDouble(v.asDouble());
+            f = Fraction::fromFloat(v.asFloat());
         }
         if (f.getDen() == BigInt(1)) return Value(f.getNum());
         return Value(f);
@@ -834,13 +834,13 @@ void BuiltinRegistry::registerFraction() {
 // =================================================================
 void BuiltinRegistry::registerPolySolver() {
     auto evalFunc = [](const Value& f, double x) -> double {
-        return safeCallValue(f, { Value(x) }).asDouble();
+        return safeCallValue(f, { Value(x) }).asFloat();
     };
 
     regModule(math_ns, "solve", { 2, 3, 4, 5 }, [evalFunc](const std::vector<Value>& args) -> Value {
         if (isCallableValue(args[0])) {
             if (args.size() != 2) JC2_THROW(MathError, "solve(f, x0) expects exactly 2 arguments.");
-            Value f = args[0]; double x = args[1].asDouble(); double h = 1e-5;
+            Value f = args[0]; double x = args[1].asFloat(); double h = 1e-5;
             for (int i = 0; i < 1000; ++i) {
                 jc::checkInterrupt();
                 double y = evalFunc(f, x);
@@ -918,7 +918,7 @@ void BuiltinRegistry::registerMatrixOps() {
         } else {
             std::vector<double> flatReal(r * c);
             for (int i = 0; i < r * c; ++i) {
-                flatReal[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asDouble();
+                flatReal[i] = scalarOp(getElem(a, aMat ? i : 0), getElem(b, bMat ? i : 0)).asFloat();
             }
             return Value(RealMatrix(r, c, flatReal));
         }
@@ -942,7 +942,7 @@ void BuiltinRegistry::registerMatrixOps() {
                 if (bb.isZero()) JC2_THROW(MathError, "Division by zero.");
                 return Value(ba / bb);
             }
-            double da = a.asDouble(), db = b.asDouble();
+            double da = a.asFloat(), db = b.asFloat();
             if (db == 0.0) JC2_THROW(MathError, "Division by zero.");
             return Value(BigInt(static_cast<int64_t>(std::trunc(da / db))));
         }); 
@@ -952,7 +952,7 @@ void BuiltinRegistry::registerMatrixOps() {
         return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "modE", [](const Value& a, const Value& b) { 
             if (a.isComplex() && !b.isComplex()) {
                 Complex ca = a.asComplex();
-                double cb = b.asDouble();
+                double cb = b.asFloat();
                 if (cb == 0.0) JC2_THROW(MathError, "Modulo by zero.");
                 double re = std::fmod(ca.real, cb);
                 double im = std::fmod(ca.imag, cb);
@@ -974,8 +974,8 @@ void BuiltinRegistry::registerMatrixOps() {
     regMethod(VM::activeVM->matrixProto, "andE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "andE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() && b.truthy()) ? 1 : 0); }); });
     regMethod(VM::activeVM->matrixProto, "orE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "orE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() || b.truthy()) ? 1 : 0); }); });
     regMethod(VM::activeVM->matrixProto, "xorE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "xorE", [](const Value& a, const Value& b) { return Value::fromInt32((a.truthy() != b.truthy()) ? 1 : 0); }); });
-    regMethod(VM::activeVM->matrixProto, "atan2E", {"X"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asDouble(), b.asDouble())); }); });
-    regMethod(VM::activeVM->matrixProto, "hypotE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asDouble(), b.asDouble())); }); });
+    regMethod(VM::activeVM->matrixProto, "atan2E", {"X"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "atan2E", [](const Value& a, const Value& b) { return Value(std::atan2(a.asFloat(), b.asFloat())); }); });
+    regMethod(VM::activeVM->matrixProto, "hypotE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "hypotE", [](const Value& a, const Value& b) { return Value(std::hypot(a.asFloat(), b.asFloat())); }); });
     regMethod(VM::activeVM->matrixProto, "whereE", {"A", "B"}, [](const std::vector<Value>& args) -> Value {
         const Value& mask = helpers::nativeSelfStack.back(); const Value& a = args[0]; const Value& b = args[1];
         bool mMat = mask.isObjType(ObjType::REAL_MATRIX) || mask.isObjType(ObjType::COMPLEX_MATRIX) || mask.isObjType(ObjType::SYM_MATRIX);
@@ -1026,7 +1026,7 @@ void BuiltinRegistry::registerMatrixOps() {
             return Value(ComplexMatrix(r, c, flatComp));
         } else {
             std::vector<double> flatReal(r * c);
-            for (int i = 0; i < r * c; ++i) flatReal[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asDouble() : getElem(b, bMat ? i : 0).asDouble();
+            for (int i = 0; i < r * c; ++i) flatReal[i] = getElem(mask, mMat ? i : 0).truthy() ? getElem(a, aMat ? i : 0).asFloat() : getElem(b, bMat ? i : 0).asFloat();
             return Value(RealMatrix(r, c, flatReal));
         }
     });
@@ -1168,7 +1168,7 @@ void BuiltinRegistry::registerMatrixOps() {
     regMethod(VM::activeVM->matrixProto, "ctrans", {}, ctransFn);
 
     auto mpowFn = [matrixDispatch1](const std::vector<Value>& args) -> Value { 
-        int n = static_cast<int>(std::round(args[0].asDouble())); 
+        int n = static_cast<int>(std::round(args[0].asFloat())); 
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.power(n));
         return matrixDispatch1(self, [n](const auto& m) { return m.power(n); }); 
@@ -1199,7 +1199,7 @@ void BuiltinRegistry::registerMatrixOps() {
     // --- 元素/行列访问 ---
     auto getElementFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat(r, c));
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat(r, c));
@@ -1241,7 +1241,7 @@ void BuiltinRegistry::registerMatrixOps() {
                     isSlice = true;
                     return 0;
                 }
-                int idx = static_cast<int>(std::round(v.asDouble()));
+                int idx = static_cast<int>(std::round(v.asFloat()));
                 if (idx < 0) idx += n;
                 if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "getSlice() index " + std::to_string(idx) + " out of bounds (size " + std::to_string(n) + ").");
                 isSlice = false;
@@ -1271,8 +1271,8 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto setElementFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(self.asObj())->mat; res(r, c) = args[2].asDouble(); return Value(res); }
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix res = static_cast<ObjRealMatrix*>(self.asObj())->mat; res(r, c) = args[2].asFloat(); return Value(res); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix res = static_cast<ObjComplexMatrix*>(self.asObj())->mat; res(r, c) = args[2].asComplex(); return Value(res); }
         if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix res = static_cast<ObjSymMatrix*>(self.asObj())->mat; res(r, c) = args[2].asSymbolic(); return Value(res); }
         JC2_THROW(TypeError, "setElement() requires a matrix.");
@@ -1291,7 +1291,7 @@ void BuiltinRegistry::registerMatrixOps() {
                     isSlice = true;
                     return 0;
                 }
-                int idx = static_cast<int>(std::round(v.asDouble()));
+                int idx = static_cast<int>(std::round(v.asFloat()));
                 if (idx < 0) idx += n;
                 if (idx < 0 || idx >= n) JC2_THROW(RuntimeError, "setSlice() index " + std::to_string(idx) + " out of bounds (size " + std::to_string(n) + ").");
                 isSlice = false;
@@ -1334,7 +1334,7 @@ void BuiltinRegistry::registerMatrixOps() {
         };
         if (self.isObjType(ObjType::REAL_MATRIX)) {
             RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
-            doSlice(m, [](const Value& v) { return v.asDouble(); }, [](const Value& v) { return v.asRealMatrix(); });
+            doSlice(m, [](const Value& v) { return v.asFloat(); }, [](const Value& v) { return v.asRealMatrix(); });
             return Value(m);
         }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -1355,7 +1355,7 @@ void BuiltinRegistry::registerMatrixOps() {
     #define ROW_COL_OP_PROTO(NAME, BODY) \
     auto NAME##Fn = [](const std::vector<Value>& args) -> Value { \
         Value self = helpers::nativeSelfStack.back(); \
-        int idx = static_cast<int>(std::round(args[0].asDouble())); \
+        int idx = static_cast<int>(std::round(args[0].asFloat())); \
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.BODY); \
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.BODY); \
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.BODY); \
@@ -1371,7 +1371,7 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto swapRFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r1 = static_cast<int>(std::round(args[0].asDouble())), r2 = static_cast<int>(std::round(args[1].asDouble()));
+        int r1 = static_cast<int>(std::round(args[0].asFloat())), r2 = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
         if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat; m.swapRows(r1, r2); return Value(m); }
@@ -1381,7 +1381,7 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto swapCFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int c1 = static_cast<int>(std::round(args[0].asDouble())), c2 = static_cast<int>(std::round(args[1].asDouble()));
+        int c1 = static_cast<int>(std::round(args[0].asFloat())), c2 = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
         if (self.isObjType(ObjType::SYM_MATRIX)) { SymMatrix m = static_cast<ObjSymMatrix*>(self.asObj())->mat; m.swapCols(c1, c2); return Value(m); }
@@ -1391,8 +1391,8 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto multiRFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.multiplyRow(r, args[1].asDouble()); return Value(m); }
+        int r = static_cast<int>(std::round(args[0].asFloat()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.multiplyRow(r, args[1].asFloat()); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.multiplyRow(r, args[1].asComplex()); return Value(m); }
         JC2_THROW(TypeError, "requires a matrix.");
     };
@@ -1400,8 +1400,8 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto multiCFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int c = static_cast<int>(std::round(args[0].asDouble()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[1].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); }
+        int c = static_cast<int>(std::round(args[0].asFloat()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[1].asFloat(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; Complex s = args[1].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c) = m(r, c) * s; return Value(m); }
         JC2_THROW(TypeError, "requires a matrix.");
     };
@@ -1409,8 +1409,8 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto addRFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r1 = static_cast<int>(std::round(args[0].asDouble())), r2 = static_cast<int>(std::round(args[1].asDouble()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.addRows(r1, r2, args[2].asDouble()); return Value(m); }
+        int r1 = static_cast<int>(std::round(args[0].asFloat())), r2 = static_cast<int>(std::round(args[1].asFloat()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; m.addRows(r1, r2, args[2].asFloat()); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; m.addRows(r1, r2, args[2].asComplex()); return Value(m); }
         JC2_THROW(TypeError, "requires a matrix.");
     };
@@ -1418,8 +1418,8 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto addCFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int c1 = static_cast<int>(std::round(args[0].asDouble())), c2 = static_cast<int>(std::round(args[1].asDouble()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[2].asDouble(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); }
+        int c1 = static_cast<int>(std::round(args[0].asFloat())), c2 = static_cast<int>(std::round(args[1].asFloat()));
+        if (self.isObjType(ObjType::REAL_MATRIX)) { RealMatrix m = static_cast<ObjRealMatrix*>(self.asObj())->mat; double s = args[2].asFloat(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); }
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) { ComplexMatrix m = static_cast<ObjComplexMatrix*>(self.asObj())->mat; Complex s = args[2].asComplex(); for (int r = 0; r < m.getRows(); ++r) m(r, c1) = m(r, c1) + s * m(r, c2); return Value(m); }
         JC2_THROW(TypeError, "requires a matrix.");
     };
@@ -1428,7 +1428,7 @@ void BuiltinRegistry::registerMatrixOps() {
     // --- 结构 ---
     auto reshapeFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.reshape(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.reshape(r, c));
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.reshape(r, c));
@@ -1438,7 +1438,7 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto subFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.subMatrix(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.subMatrix(r, c));
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.subMatrix(r, c));
@@ -1448,7 +1448,7 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto cofFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.cofactor(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.cofactor(r, c));
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.cofactor(r, c));
@@ -1458,7 +1458,7 @@ void BuiltinRegistry::registerMatrixOps() {
 
     auto AcofFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble()));
+        int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
         if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
         if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.algebraicCofactor(r, c));
@@ -1495,9 +1495,9 @@ void BuiltinRegistry::registerMatrixOps() {
     regMethod(VM::activeVM->matrixProto, "blkdiag", {"B"}, integDFn);
 
     // --- 生成器 ---
-    reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asDouble())); if (n < 1) JC2_THROW(RuntimeError, "Size must be positive."); return Value(RealMatrix::identity(n)); }, {"n"});
-    reg("ones", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::ones(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::ones(r, c)); }, {"r", "c"});
-    reg("zeros", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asDouble())); return Value(RealMatrix::zeros(n, n)); } int r = static_cast<int>(std::round(args[0].asDouble())), c = static_cast<int>(std::round(args[1].asDouble())); return Value(RealMatrix::zeros(r, c)); }, {"r", "c"});
+    reg("id", { 1 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[0].asFloat())); if (n < 1) JC2_THROW(RuntimeError, "Size must be positive."); return Value(RealMatrix::identity(n)); }, {"n"});
+    reg("ones", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asFloat())); return Value(RealMatrix::ones(n, n)); } int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat())); return Value(RealMatrix::ones(r, c)); }, {"r", "c"});
+    reg("zeros", { 1, 2 }, [](const std::vector<Value>& args) -> Value { if (args.size() == 1) { int n = static_cast<int>(std::round(args[0].asFloat())); return Value(RealMatrix::zeros(n, n)); } int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat())); return Value(RealMatrix::zeros(r, c)); }, {"r", "c"});
 }
 
 // =================================================================
@@ -1731,13 +1731,13 @@ void BuiltinRegistry::registerNumberTheory() {
     auto toBigInt = [](const Value& v) -> BigInt {
         if (v.isInt32()) return BigInt(v.asInt32());
         if (v.isBigInt()) return static_cast<ObjBigInt*>(v.asObj())->num;
-        return BigInt(static_cast<int64_t>(std::round(v.asDouble())));
+        return BigInt(static_cast<int64_t>(std::round(v.asFloat())));
     };
 
     auto toInt64 = [](const Value& v) -> int64_t {
         if (v.isInt32()) return v.asInt32();
         if (v.isBigInt()) return static_cast<ObjBigInt*>(v.asObj())->num.toInt64();
-        return static_cast<int64_t>(std::round(v.asDouble()));
+        return static_cast<int64_t>(std::round(v.asFloat()));
     };
 
     regModule(math_ns, "factorial", { 1 }, [toInt64](const std::vector<Value>& args) -> Value { return Value(BigInt::factorial(toInt64(args[0]))); }, {"n"});
@@ -1763,7 +1763,7 @@ void BuiltinRegistry::registerNumberTheory() {
     regModule(math_ns, "mod", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if ((args[0].isBigInt() || args[0].isInt32()) && (args[1].isBigInt() || args[1].isInt32())) return Value(BigInt::mathMod(toBigInt(args[0]), toBigInt(args[1])));
         if (args[0].isObjType(ObjType::FRACTION)) { const auto& f = static_cast<ObjFraction*>(args[0].asObj())->frac; if (f.getDen() == BigInt(1)) return Value(BigInt::mathMod(f.getNum(), toBigInt(args[1]))); }
-        double a = args[0].asDouble(), b = args[1].asDouble();
+        double a = args[0].asFloat(), b = args[1].asFloat();
         if (b == 0.0) JC2_THROW(MathError, "Modulo by zero.");
         double r = std::fmod(a, b); if (r < 0) r += std::abs(b); return Value(r);
     }, {"a", "b"});
@@ -1916,7 +1916,7 @@ void BuiltinRegistry::registerStatistics() {
         Value self = helpers::nativeSelfStack.back();
         auto d = extractDS(self, "perc");
         if (d.empty()) JC2_THROW(MathError, "Cannot compute percentile of empty dataset.");
-        double p = args[0].asDouble();
+        double p = args[0].asFloat();
         if (p<0||p>100) JC2_THROW(MathError, "Percentile must be [0,100].");
         std::sort(d.begin(), d.end());
         int n = static_cast<int>(d.size());
@@ -2003,13 +2003,13 @@ void BuiltinRegistry::registerStatistics() {
 // [13] 随机数
 // =================================================================
 void BuiltinRegistry::registerRandom() {
-    regModule(random_ns, "rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asDouble(), hi = args[1].asDouble(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); }, {"min", "max"});
-    regModule(random_ns, "randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asDouble())), static_cast<int>(std::round(args[1].asDouble())))(gen)); }, {"min", "max"});
-    regModule(random_ns, "randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asDouble();hi=args[1].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); }, {"min", "max"});
-    regModule(random_ns, "randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    regModule(random_ns, "randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=static_cast<int>(std::round(args[2].asDouble()));hi=static_cast<int>(std::round(args[3].asDouble()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    regModule(random_ns, "randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));} else {r=static_cast<int>(std::round(args[0].asDouble()));c=static_cast<int>(std::round(args[1].asDouble()));lo=args[2].asDouble();hi=args[3].asDouble();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); }, {"r", "c", "min", "max"});
-    regModule(random_ns, "magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asDouble())))); }, {"n"});
+    regModule(random_ns, "rand", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); if (args.size()==0) return Value(std::uniform_real_distribution<double>(0,1)(gen)); double lo = args[0].asFloat(), hi = args[1].asFloat(); return Value(std::uniform_real_distribution<double>(lo, hi)(gen)); }, {"min", "max"});
+    regModule(random_ns, "randint", { 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); return Value::fromInt32(std::uniform_int_distribution<int>(static_cast<int>(std::round(args[0].asFloat())), static_cast<int>(std::round(args[1].asFloat())))(gen)); }, {"min", "max"});
+    regModule(random_ns, "randc", { 0, 2 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); double lo=0,hi=1; if (args.size()==2){lo=args[0].asFloat();hi=args[1].asFloat();} std::uniform_real_distribution<double> dist(lo,hi); return Value(Complex(dist(gen),dist(gen))); }, {"min", "max"});
+    regModule(random_ns, "randmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));} else {r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));lo=args[2].asFloat();hi=args[3].asFloat();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=dist(gen); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "randimat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c,lo=0,hi=10; if (args.size()==2){r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));} else {r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));lo=static_cast<int>(std::round(args[2].asFloat()));hi=static_cast<int>(std::round(args[3].asFloat()));} std::uniform_int_distribution<int> dist(lo,hi); std::vector<double> d(r*c); for (auto& v:d) v=static_cast<double>(dist(gen)); return Value(RealMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "randcmat", { 2, 4 }, [](const std::vector<Value>& args) -> Value { static std::mt19937 gen(std::random_device{}()); int r,c; double lo=0,hi=1; if (args.size()==2){r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));} else {r=static_cast<int>(std::round(args[0].asFloat()));c=static_cast<int>(std::round(args[1].asFloat()));lo=args[2].asFloat();hi=args[3].asFloat();} std::uniform_real_distribution<double> dist(lo,hi); std::vector<Complex> d(r*c); for (auto& v:d) v=Complex(dist(gen),dist(gen)); return Value(ComplexMatrix(r,c,d)); }, {"r", "c", "min", "max"});
+    regModule(random_ns, "magic", { 1 }, [](const std::vector<Value>& args) -> Value { return Value(RealMatrix::magic(static_cast<int>(std::round(args[0].asFloat())))); }, {"n"});
 }
 
 // =================================================================
@@ -2019,7 +2019,7 @@ void BuiltinRegistry::registerSystemUtils() {
     regModule(sys_ns, "buildIndex", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
     regModule(sys_ns, "loadPrimes", { 0 }, [](const std::vector<Value>&) -> Value { BigInt::buildFileIndex(); return Value::none(); }, {});
     regModule(sys_ns, "mountPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString()) JC2_THROW(RuntimeError, "mountPrimes(\"path\") expects a string."); BigInt::setPrimeFilePath(args[0].asString()); return Value::none(); }, {"path"});
-    regModule(sys_ns, "extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asDouble())); if (count <= 0) JC2_THROW(RuntimeError, "count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); }, {"n"});
+    regModule(sys_ns, "extendPrimes", { 1 }, [](const std::vector<Value>& args) -> Value { int64_t count = static_cast<int64_t>(std::round(args[0].asFloat())); if (count <= 0) JC2_THROW(RuntimeError, "count must be positive."); BigInt::extendPrimeTable(count); return Value::none(); }, {"n"});
     regModule(sys_ns, "convertPrimes", { 2 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isString() || !args[1].isString()) JC2_THROW(TypeError, "convertPrimes() expects two strings (txtPath, binPath)."); BigInt::convertTxtToJCP1(helpers::safeResolvePath(args[0].asString()), helpers::safeResolvePath(args[1].asString())); return Value::none(); }, {"txtPath", "binPath"});
     regModule(sys_ns, "verifyPrimes", { 0 }, [](const std::vector<Value>&) -> Value { return Value(BigInt::verifyPrimeTable()); }, {});
     regModule(sys_ns, "sysinfo", { 0 }, [](const std::vector<Value>&) -> Value { std::cout << "--- Junk Calculator System Info ---\n" << "Prime DB: " << (BigInt::getPrimeFilePath().empty() ? "(Dynamic Computation)" : BigInt::getPrimeFilePath()) << "\n" << "Format:   " << (BigInt::getPrimeFilePath().empty() ? "None" : "JCP1 (Block-Differential)") << "\n" << "Mounted:  " << BigInt::totalPrimesInFile << " primes\n"; if (BigInt::totalPrimesInFile > 0) std::cout << "Max:      " << BigInt::largestPrimeInFile << "\n"; std::cout << "-----------------------------------" << std::endl; return Value::none(); }, {});
@@ -2266,11 +2266,11 @@ void BuiltinRegistry::registerSystemUtils() {
             if (it != d->keyMap.end()) return &d->elements[it->second].second;
             return nullptr;
         };
-        if (auto v = getField("maxExpandTerms")) SymConfig::maxExpandTerms = static_cast<int64_t>(v->asDouble());
-        if (auto v = getField("maxAstNodes")) SymConfig::maxAstNodes = static_cast<int>(v->asDouble());
-        if (auto v = getField("maxIterations")) SymConfig::maxIterations = static_cast<int>(v->asDouble());
-        if (auto v = getField("maxDepth")) SymConfig::maxDepth = static_cast<int>(v->asDouble());
-        if (auto v = getField("maxEigvecDim")) SymConfig::maxEigvecDim = static_cast<int>(v->asDouble());
+        if (auto v = getField("maxExpandTerms")) SymConfig::maxExpandTerms = static_cast<int64_t>(v->asFloat());
+        if (auto v = getField("maxAstNodes")) SymConfig::maxAstNodes = static_cast<int>(v->asFloat());
+        if (auto v = getField("maxIterations")) SymConfig::maxIterations = static_cast<int>(v->asFloat());
+        if (auto v = getField("maxDepth")) SymConfig::maxDepth = static_cast<int>(v->asFloat());
+        if (auto v = getField("maxEigvecDim")) SymConfig::maxEigvecDim = static_cast<int>(v->asFloat());
         if (auto v = getField("debugIntegration")) SymConfig::debugIntegration = v->truthy();
         return Value::none();
         }, {"dict_or_default"});
@@ -2309,7 +2309,7 @@ void BuiltinRegistry::registerSystemUtils() {
             return Value::none();
         }
 
-        double val = args[1].asDouble();
+        double val = args[1].asFloat();
         if (key == "maxExpandTerms") SymConfig::maxExpandTerms = static_cast<int64_t>(val);
         else if (key == "maxAstNodes") SymConfig::maxAstNodes = static_cast<int>(val);
         else if (key == "maxIterations") SymConfig::maxIterations = static_cast<int>(val);
@@ -2377,8 +2377,8 @@ void BuiltinRegistry::registerControlFlow() {
 
     reg("seq", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
         double start, step, end;
-        if (args.size()==2) { start=args[0].asDouble(); end=args[1].asDouble(); step=(start<=end)?1.0:-1.0; }
-        else { start=args[0].asDouble(); step=args[1].asDouble(); end=args[2].asDouble(); }
+        if (args.size()==2) { start=args[0].asFloat(); end=args[1].asFloat(); step=(start<=end)?1.0:-1.0; }
+        else { start=args[0].asFloat(); step=args[1].asFloat(); end=args[2].asFloat(); }
         if (step == 0.0) JC2_THROW(MathError, "Step cannot be zero.");
         std::vector<double> vals;
         if (step>0) { for (double v=start; v<=end+Tol::EPS*100; v+=step) { jc::checkInterrupt(); vals.push_back(v); } }
@@ -2405,7 +2405,7 @@ void BuiltinRegistry::registerControlFlow() {
         return Value(static_cast<double>(ms) / 1e6);
     }, {});
     regModule(sys_ns, "sleep", { 1 }, [](const std::vector<Value>& args) -> Value {
-        int ms = static_cast<int>(std::round(args[0].asDouble() * 1000));
+        int ms = static_cast<int>(std::round(args[0].asFloat() * 1000));
         if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         return Value::none();
     }, {"seconds"});
@@ -2468,7 +2468,7 @@ void BuiltinRegistry::registerControlFlow() {
         }
         else if (args[0].isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(args[0].asObj());
-            int idx = static_cast<int>(std::round(args[1].asDouble()));
+            int idx = static_cast<int>(std::round(args[1].asFloat()));
             if (idx < 0) idx += static_cast<int>(l->vec.size());
             if (idx < 0 || idx >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(l->vec.size()) + ").");
             l->mut().erase(l->mut().begin() + idx);
@@ -2597,10 +2597,10 @@ void BuiltinRegistry::registerStringFunctions() {
         return helpers::evalCallback(args[0].asString());
         }, {"expr"});
 
-    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asDouble())); if (start<0) start=n+start; if (start<0||start>n) JC2_THROW(RuntimeError, "substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asDouble())); if (length<0) JC2_THROW(RuntimeError, "substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
+    auto substrFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "substr() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int start=static_cast<int>(std::round(args[0].asFloat())); if (start<0) start=n+start; if (start<0||start>n) JC2_THROW(RuntimeError, "substr() start index out of range."); if (args[1].isUninit()) return Value(utf8::substring(s, start, n - start, objStr->isAscii)); int length=static_cast<int>(std::round(args[1].asFloat())); if (length<0) JC2_THROW(RuntimeError, "substr() length must be non-negative."); return Value(utf8::substring(s, start, length, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "substr", {"start", "length"}, substrFn, 1);
 
-    auto charAtFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "charAt() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[0].asDouble())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) JC2_THROW(RuntimeError, "charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); };
+    auto charAtFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "charAt() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s = objStr->str; int n=static_cast<int>(objStr->charLength); int idx=static_cast<int>(std::round(args[0].asFloat())); if (idx<0) idx=n+idx; if (idx<0||idx>=n) JC2_THROW(RuntimeError, "charAt() index out of range."); return Value(utf8::substring(s, idx, 1, objStr->isAscii)); };
     regMethod(VM::activeVM->stringProto, "charAt", {"i"}, charAtFn);
 
     auto upperFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "upper() expects a string."); std::string s = self.asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::toupper(c)); }); return Value(s); };
@@ -2612,7 +2612,7 @@ void BuiltinRegistry::registerStringFunctions() {
     auto trimFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "trim() expects a string."); std::string s = self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); };
     regMethod(VM::activeVM->stringProto, "trim", {}, trimFn);
 
-    auto findFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "find() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s=objStr->str; const std::string& sub=args[0].asString(); size_t startChar=0; if (!args[1].isUninit()) startChar=static_cast<size_t>(std::round(args[1].asDouble())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); };
+    auto findFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "find() expects a string."); ObjString* objStr = self.asObjString(); const std::string& s=objStr->str; const std::string& sub=args[0].asString(); size_t startChar=0; if (!args[1].isUninit()) startChar=static_cast<size_t>(std::round(args[1].asFloat())); size_t startByte = utf8::byteOffset(s, startChar, objStr->isAscii); if (startByte == std::string::npos) return Value::fromInt32(-1); size_t pos=s.find(sub, startByte); return pos==std::string::npos ? Value::fromInt32(-1) : Value::fromInt32(static_cast<int32_t>(utf8::charIndex(s, pos, objStr->isAscii))); };
     regMethod(VM::activeVM->stringProto, "find", {"sub", "pos"}, findFn, 1);
 
     auto containsFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "contains() expects a string."); return Value(self.asString().find(args[0].asString())!=std::string::npos); };
@@ -2621,7 +2621,7 @@ void BuiltinRegistry::registerStringFunctions() {
     auto replaceFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()||!args[1].isString()) JC2_THROW(TypeError, "replace() expects two strings."); std::string s=self.asString(); const std::string& from=args[0].asString(); const std::string& to=args[1].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); };
     regMethod(VM::activeVM->stringProto, "replace", {"old", "new"}, replaceFn);
 
-    auto repeatFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "repeat() expects a string."); const std::string& s = self.asString(); int n=static_cast<int>(std::round(args[0].asDouble())); if (n<0) JC2_THROW(RuntimeError, "repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); };
+    auto repeatFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "repeat() expects a string."); const std::string& s = self.asString(); int n=static_cast<int>(std::round(args[0].asFloat())); if (n<0) JC2_THROW(RuntimeError, "repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); };
     regMethod(VM::activeVM->stringProto, "repeat", {"n"}, repeatFn);
 
     reg("concat", {}, [](const std::vector<Value>& args) -> Value {
@@ -2656,7 +2656,7 @@ void BuiltinRegistry::registerStringFunctions() {
     auto ordFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "ord() expects a string."); const std::string& s=self.asString(); if (s.empty()) JC2_THROW(RuntimeError, "ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); };
     regMethod(VM::activeVM->stringProto, "ord", {}, ordFn);
 
-    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asDouble())); if (code<0||code>0x10FFFF) JC2_THROW(RuntimeError, "chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
+    reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asFloat())); if (code<0||code>0x10FFFF) JC2_THROW(RuntimeError, "chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
 
     auto parseNumFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string."); const std::string& s=self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { JC2_THROW(MathError, "Cannot parse '"+trimmed+"' as a number."); } };
     regMethod(VM::activeVM->stringProto, "parseNum", {}, parseNumFn);
@@ -2743,7 +2743,7 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto insertFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             int i = idx < 0 ? static_cast<int>(l->vec.size()) + idx : idx;
@@ -2757,7 +2757,7 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto removeAtFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int idx = static_cast<int>(std::round(args[0].asDouble()));
+        int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             int i = idx < 0 ? static_cast<int>(l->vec.size()) + idx : idx;
@@ -2772,12 +2772,12 @@ void BuiltinRegistry::registerArrayFunctions() {
     auto sliceFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto getBounds = [&](int n, int& start, int& end) {
-            start = static_cast<int>(std::round(args[0].asDouble()));
+            start = static_cast<int>(std::round(args[0].asFloat()));
             if (start < 0) start = n + start;
             start = std::max(0, std::min(start, n));
             end = n;
             if (args.size() == 2) {
-                end = static_cast<int>(std::round(args[1].asDouble()));
+                end = static_cast<int>(std::round(args[1].asFloat()));
                 if (end < 0) end = n + end;
                 end = std::max(0, std::min(end, n));
             }
@@ -2967,7 +2967,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             if (v.empty()) return Value(RealMatrix(m.getRows(), m.getCols(), v));
             for (size_t i = 1; i < v.size(); ++i) {
                 Value res = opBody(Value(v[i - 1]), Value(v[i]));
-                v[i] = res.asDouble();
+                v[i] = res.asFloat();
             }
             return Value(RealMatrix(m.getRows(), m.getCols(), v));
         } else if (val.isObjType(ObjType::COMPLEX_MATRIX)) {
@@ -3024,7 +3024,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         if (self.isObjType(ObjType::REAL_MATRIX)) {
             const auto& m = static_cast<ObjRealMatrix*>(self.asObj())->mat;
             if (!target.isNumber()) return Value::fromInt32(-1);
-            double t = target.asDouble();
+            double t = target.asFloat();
             for (int i=0; i<m.getRows(); ++i)
                 for (int j=0; j<m.getCols(); ++j)
                     if (m(i,j) == t) return Value(RealMatrix(1,2,{static_cast<double>(i),static_cast<double>(j)}));
@@ -3051,8 +3051,8 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->matrixProto, "find", {"val"}, findFn);
 
     // fill, linspace
-    reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asDouble())); if (n < 0) JC2_THROW(RuntimeError, "count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asDouble()))); }, {"val", "n"});
-    reg("linspace", { 3 }, [](const std::vector<Value>& args) -> Value { double a = args[0].asDouble(), b = args[1].asDouble(); int n = static_cast<int>(std::round(args[2].asDouble())); if (n < 1) JC2_THROW(RuntimeError, "requires n >= 1."); std::vector<double> v(n); if (n == 1) v[0] = a; else { for (int i = 0; i < n; ++i) v[i] = a + (b - a) * i / (n - 1); } return Value(RealMatrix(1, n, v)); }, {"a", "b", "n"});
+    reg("fill", { 2 }, [](const std::vector<Value>& args) -> Value { int n = static_cast<int>(std::round(args[1].asFloat())); if (n < 0) JC2_THROW(RuntimeError, "count must be non-negative."); return Value(RealMatrix(1, n, std::vector<double>(n, args[0].asFloat()))); }, {"val", "n"});
+    reg("linspace", { 3 }, [](const std::vector<Value>& args) -> Value { double a = args[0].asFloat(), b = args[1].asFloat(); int n = static_cast<int>(std::round(args[2].asFloat())); if (n < 1) JC2_THROW(RuntimeError, "requires n >= 1."); std::vector<double> v(n); if (n == 1) v[0] = a; else { for (int i = 0; i < n; ++i) v[i] = a + (b - a) * i / (n - 1); } return Value(RealMatrix(1, n, v)); }, {"a", "b", "n"});
 
     auto charPolyFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3398,7 +3398,7 @@ void BuiltinRegistry::registerListConversion() {
         Value arg = args[0];
         std::vector<double> flat;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
-            flat.push_back(nextVal.asDouble());
+            flat.push_back(nextVal.asFloat());
             return true;
         })) {
             return Value(RealMatrix(1, static_cast<int>(flat.size()), flat));
@@ -3406,7 +3406,7 @@ void BuiltinRegistry::registerListConversion() {
         if (!arg.isObjType(ObjType::LIST)) JC2_THROW(TypeError, "expects a List or Iterable.");
         const auto& L = static_cast<ObjList*>(arg.asObj())->vec;
         std::vector<double> listFlat;
-        for (const auto& v : L) listFlat.push_back(v.asDouble());
+        for (const auto& v : L) listFlat.push_back(v.asFloat());
         return Value(RealMatrix(1, static_cast<int>(listFlat.size()), listFlat));
         }, {"v"});
 
@@ -3438,7 +3438,7 @@ void BuiltinRegistry::registerListConversion() {
             grid.push_back(std::move(rowVec));
         }
         if (cols <= 0) return Value(RealMatrix(0, 0));
-        if (allReal) { std::vector<double> flatReal; for (const auto& row : grid) for (const auto& v : row) flatReal.push_back(v.asDouble()); return Value(RealMatrix(rows, cols, flatReal)); }
+        if (allReal) { std::vector<double> flatReal; for (const auto& row : grid) for (const auto& v : row) flatReal.push_back(v.asFloat()); return Value(RealMatrix(rows, cols, flatReal)); }
         if (allNum) { std::vector<Complex> flatComp; for (const auto& row : grid) for (const auto& v : row) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flatComp)); }
         if (allSym) { std::vector<SymExpr> flatSym; for (const auto& row : grid) for (const auto& v : row) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(rows, cols, flatSym)); }
         JC2_THROW(TypeError, "toMatrix() cannot convert mixed types to a matrix.");
@@ -3511,7 +3511,7 @@ void BuiltinRegistry::registerListConversion() {
             return Value(ComplexMatrix(n, 2, flatComp));
         }
         std::vector<double> flatReal(n * 2);
-        for (int i = 0; i < n; ++i) { flatReal[i * 2] = getLenAndFetch(args[0], i, false, false, false).asDouble(); flatReal[i * 2 + 1] = getLenAndFetch(args[1], i, false, false, false).asDouble(); }
+        for (int i = 0; i < n; ++i) { flatReal[i * 2] = getLenAndFetch(args[0], i, false, false, false).asFloat(); flatReal[i * 2 + 1] = getLenAndFetch(args[1], i, false, false, false).asFloat(); }
         return Value(RealMatrix(n, 2, flatReal));
         }, {"a", "b"});
 
@@ -3527,7 +3527,7 @@ void BuiltinRegistry::registerListConversion() {
 
     auto enumerateFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int start = args.size() == 1 ? static_cast<int>(std::round(args[0].asDouble())) : 0;
+        int start = args.size() == 1 ? static_cast<int>(std::round(args[0].asFloat())) : 0;
         ObjList* result = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(result);
         
@@ -3700,7 +3700,7 @@ void BuiltinRegistry::registerListConversion() {
         std::vector<double> flatReal;
         for (const auto& a : items) {
             if (a.isObjType(ObjType::REAL_MATRIX)) { auto d = static_cast<ObjRealMatrix*>(a.asObj())->mat.rawData(); flatReal.insert(flatReal.end(), d.begin(), d.end()); }
-            else { flatReal.push_back(a.asDouble()); }
+            else { flatReal.push_back(a.asFloat()); }
         }
         return Value(RealMatrix(1, static_cast<int>(flatReal.size()), flatReal));
         }, {}, "args");
@@ -3798,7 +3798,7 @@ void BuiltinRegistry::registerFormatType() {
         } else {
             BuiltinType bt = BuiltinType::ANY;
             if (v.isInt32() || v.isBigInt()) bt = BuiltinType::INT;
-            else if (v.isDouble()) bt = BuiltinType::FLOAT;
+            else if (v.isFloat()) bt = BuiltinType::FLOAT;
             else if (v.isString()) bt = BuiltinType::STRING;
             else if (v.isBool()) bt = BuiltinType::BOOL;
             else if (v.isNone()) bt = BuiltinType::NONE_TYPE;
@@ -3910,7 +3910,7 @@ void BuiltinRegistry::registerHigherOrder() {
                     catch (...) { typeConflict = true; fallback->vec.clear(); for (auto r : rc) fallback->vec.push_back(Value(r)); fallback->vec.push_back(y); }
                 }
                 else {
-                    try { rd.push_back(y.asDouble()); }
+                    try { rd.push_back(y.asFloat()); }
                     catch (...) {
                         try { rc.clear(); for (auto d : rd) rc.push_back(Complex(d)); rc.push_back(y.asComplex()); hasComp = true; }
                         catch (...) { typeConflict = true; fallback->vec.clear(); for (auto d : rd) fallback->vec.push_back(Value(d)); fallback->vec.push_back(y); }
@@ -4378,12 +4378,12 @@ void BuiltinRegistry::registerCalculus() {
 
     // 通用 eval 辅助：调用单参数函数 f(x)
     auto evalFunc = [](const Value& f, double x) -> double {
-        return safeCallValue(f, { Value(x) }).asDouble();
+        return safeCallValue(f, { Value(x) }).asFloat();
         };
 
     regModule(math_ns, "diff", { 2 }, [evalFunc](const std::vector<Value>& args) -> Value {
         Value f = args[0];
-        double x = args[1].asDouble();
+        double x = args[1].asFloat();
         double h = 1e-4;
         double d = (-evalFunc(f, x + 2 * h) + 8 * evalFunc(f, x + h)
             - 8 * evalFunc(f, x - h) + evalFunc(f, x - 2 * h)) / (12 * h);
@@ -4392,8 +4392,8 @@ void BuiltinRegistry::registerCalculus() {
 
     regModule(math_ns, "integ", { 3, 4 }, [evalFunc](const std::vector<Value>& args) -> Value {
         Value f = args[0];
-        double a = args[1].asDouble(), b = args[2].asDouble();
-        int n = (args.size() == 4) ? static_cast<int>(std::round(args[3].asDouble())) : 100000;
+        double a = args[1].asFloat(), b = args[2].asFloat();
+        int n = (args.size() == 4) ? static_cast<int>(std::round(args[3].asFloat())) : 100000;
         if (n <= 0 || n % 2 != 0) n = 100000;
         double h = (b - a) / n, s = evalFunc(f, a) + evalFunc(f, b);
         for (int i = 1; i < n; i += 2) { jc::checkInterrupt(); s += 4 * evalFunc(f, a + i * h); }
@@ -4403,7 +4403,7 @@ void BuiltinRegistry::registerCalculus() {
 
     regModule(math_ns, "limit", { 2, 3 }, [evalFunc](const std::vector<Value>& args) -> Value {
         Value f = args[0];
-        double x0 = args[1].asDouble();
+        double x0 = args[1].asFloat();
         double h = 1e-7;
         
         auto safeEval = [&](double x) -> double {
@@ -4416,7 +4416,7 @@ void BuiltinRegistry::registerCalculus() {
         if (args.size() == 3) {
             if (args[2].isString()) dir = args[2].asString();
             else if (args[2].isNumber()) {
-                double d = args[2].asDouble();
+                double d = args[2].asFloat();
                 dir = d > 0 ? "+" : (d < 0 ? "-" : "");
             }
         }
@@ -4454,7 +4454,7 @@ void BuiltinRegistry::registerCalculus() {
                 jc::checkInterrupt();
                 Value y_val = safeCallValue(f, rowArgs);
                 if (!hasComplex) {
-                    try { res_d.push_back(y_val.asDouble()); }
+                    try { res_d.push_back(y_val.asFloat()); }
                     catch (...) { hasComplex = true; for (double d : res_d) res_c.push_back(Complex(d)); res_c.push_back(y_val.asComplex()); }
                 }
                 else { res_c.push_back(y_val.asComplex()); }
@@ -4463,8 +4463,8 @@ void BuiltinRegistry::registerCalculus() {
         if (items.size() == 3 && k == 1 &&
             !items[0].isObjType(ObjType::REAL_MATRIX) &&
             !items[0].isObjType(ObjType::COMPLEX_MATRIX)) {
-            double start = items[0].asDouble(), step = items[1].asDouble();
-            int count = static_cast<int>(std::round(items[2].asDouble()));
+            double start = items[0].asFloat(), step = items[1].asFloat();
+            int count = static_cast<int>(std::round(items[2].asFloat()));
             if (count <= 0) JC2_THROW(MathError, "count must be positive.");
             std::vector<double> rd; std::vector<Complex> rc; bool hc = false;
             for (int i = 0; i < count; ++i) evalRow({ Value(start + i * step) }, rd, rc, hc);
@@ -4920,20 +4920,20 @@ void BuiltinRegistry::registerTypeChecks() {
     // ═══ 特殊谓词 ═══
 
     reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isDouble())
-            return Value(std::isnan(args[0].asDoubleRaw()));
+        if (args[0].isFloat())
+            return Value(std::isnan(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
     reg("isinf", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isDouble())
-            return Value(std::isinf(args[0].asDoubleRaw()));
+        if (args[0].isFloat())
+            return Value(std::isinf(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
     reg("isfinite", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
-        if (v.isDouble()) return Value(std::isfinite(v.asDoubleRaw()));
+        if (v.isFloat()) return Value(std::isfinite(v.asFloatRaw()));
         if (v.isInt32() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) return Value(true);
         return Value(false);
         }, {"x"});
@@ -4942,7 +4942,7 @@ void BuiltinRegistry::registerTypeChecks() {
         const Value& v = args[0];
         if (v.isInt32()) return Value(BigInt(v.asInt32()).isPrime());
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isPrime());
-        if (v.isDouble()) return Value(BigInt(static_cast<int64_t>(std::round(v.asDoubleRaw()))).isPrime());
+        if (v.isFloat()) return Value(BigInt(static_cast<int64_t>(std::round(v.asFloatRaw()))).isPrime());
         return Value(false);
         }, {"x"});
 
@@ -4950,8 +4950,8 @@ void BuiltinRegistry::registerTypeChecks() {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) == 0);
         if (v.isBigInt()) return Value((static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
-        if (v.isDouble()) {
-            double d = v.asDoubleRaw();
+        if (v.isFloat()) {
+            double d = v.asFloatRaw();
             return Value(std::isfinite(d) && d == std::floor(d) && std::fmod(d, 2.0) == 0.0);
         }
         return Value(false);
@@ -4961,8 +4961,8 @@ void BuiltinRegistry::registerTypeChecks() {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) != 0);
         if (v.isBigInt()) return Value(!(static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
-        if (v.isDouble()) {
-            double d = v.asDoubleRaw();
+        if (v.isFloat()) {
+            double d = v.asFloatRaw();
             return Value(std::isfinite(d) && d == std::floor(d) && std::fmod(d, 2.0) != 0.0);
         }
         return Value(false);
@@ -4971,25 +4971,25 @@ void BuiltinRegistry::registerTypeChecks() {
     reg("ispositive", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() > 0);
-        if (v.isDouble()) return Value(v.asDoubleRaw() > 0.0);
+        if (v.isFloat()) return Value(v.asFloatRaw() > 0.0);
         if (v.isBigInt()) return Value(!static_cast<ObjBigInt*>(v.asObj())->num.isZero() && !static_cast<ObjBigInt*>(v.asObj())->num.isNegative());
-        if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toDouble() > 0.0);
+        if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toFloat() > 0.0);
         return Value(false);
         }, {"x"});
 
     reg("isnegative", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() < 0);
-        if (v.isDouble()) return Value(v.asDoubleRaw() < 0.0);
+        if (v.isFloat()) return Value(v.asFloatRaw() < 0.0);
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isNegative());
-        if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toDouble() < 0.0);
+        if (v.isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(v.asObj())->frac.toFloat() < 0.0);
         return Value(false);
         }, {"x"});
 
     reg("iszero", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() == 0);
-        if (v.isDouble()) return Value(v.asDoubleRaw() == 0.0);
+        if (v.isFloat()) return Value(v.asFloatRaw() == 0.0);
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isZero());
         if (v.isComplex()) {
             const auto& c = static_cast<ObjComplex*>(v.asObj())->comp;
@@ -5000,8 +5000,8 @@ void BuiltinRegistry::registerTypeChecks() {
         }, {"x"});
 
     reg("isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
-        double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asDouble() : 1e-9;
-        double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asDouble() : 0.0;
+        double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asFloat() : 1e-9;
+        double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asFloat() : 0.0;
 
         bool isComp = false;
         if (args[0].isComplex() || args[1].isComplex()) isComp = true;
@@ -5016,8 +5016,8 @@ void BuiltinRegistry::registerTypeChecks() {
             double tol = std::max(atol, rtol * std::max(a.modulus(), b.modulus()));
             return Value(diff <= tol);
         } else {
-            double a = args[0].asDouble();
-            double b = args[1].asDouble();
+            double a = args[0].asFloat();
+            double b = args[1].asFloat();
             if (std::isnan(a) || std::isnan(b)) return Value(false);
             if (a == b) return Value(true);
             if (std::isinf(a) || std::isinf(b)) return Value(false);
@@ -5286,7 +5286,7 @@ void BuiltinRegistry::registerCAS() {
     auto* fnsPtr = &builtins;
 
     auto toBigInt = [](const Value& v) -> BigInt {
-        return v.isBigInt() ? v.asBigInt() : BigInt(static_cast<int64_t>(std::round(v.asDouble())));
+        return v.isBigInt() ? v.asBigInt() : BigInt(static_cast<int64_t>(std::round(v.asFloat())));
     };
 
     auto getVarName = [](const Value& v, const std::string& funcName) -> std::string {
@@ -5521,7 +5521,7 @@ void BuiltinRegistry::registerCAS() {
             }
             if (isPureReal) {
                 std::map<std::string, double> env;
-                for (size_t i = 0; i < varNames.size(); ++i) env[varNames[i]] = call_args[i].asDouble();
+                for (size_t i = 0; i < varNames.size(); ++i) env[varNames[i]] = call_args[i].asFloat();
                 return jc::Value(jc::fastEval(ast.ptr, env, resolver));
             }
 
@@ -5638,7 +5638,7 @@ void BuiltinRegistry::registerCAS() {
 
     regModule(cas_ns, "taylor", { 3, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
         int order = 5;
-        if (args.size() == 4) order = static_cast<int>(std::round(args[3].asDouble()));
+        if (args.size() == 4) order = static_cast<int>(std::round(args[3].asFloat()));
         return Value(jc::taylor(args[0].asSymbolic(), getVarName(args[1], "taylor"), args[2].asSymbolic(), order));
     }, {"expr", "var", "a", "order"});
 
@@ -5695,7 +5695,7 @@ void BuiltinRegistry::registerCAS() {
                 Value res = doEvalf(subbed);
                 if (res.isSymbolic()) continue; // 如果 evalf 没能完全化简为数值，则跳过该测试点
                 valid_tests++;
-                double err = res.isComplex() ? res.asComplex().modulus() : std::abs(res.asDouble());
+                double err = res.isComplex() ? res.asComplex().modulus() : std::abs(res.asFloat());
                 if (err < 1e-4) pass_count++;
             } catch (const jc::EngineInterruptError&) {
                 throw;

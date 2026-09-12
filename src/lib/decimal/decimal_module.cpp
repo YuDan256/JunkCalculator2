@@ -32,7 +32,7 @@ static jc2::Value wrapDecimal(const Decimal& d) {
 
 static bool canConvertToDecimal(const jc2::Value& val) {
     if (val.is_instance() && val.get_native_data<std::shared_ptr<Decimal>>()) return true;
-    if (val.is_string() || val.is_int() || val.is_double()) return true;
+    if (val.is_string() || val.is_int() || val.is_float()) return true;
     return false;
 }
 
@@ -43,7 +43,7 @@ static Decimal parseDecimalArg(const jc2::Value& val) {
     if (val.is_string()) {
         return Decimal::from_string(val.as_string());
     }
-    if (val.is_int() || val.is_double()) {
+    if (val.is_int() || val.is_float()) {
         return Decimal::from_string(val.to_string());
     }
     jc2::throw_error(jc2::ErrorType::TypeError, "Cannot convert to Decimal.");
@@ -112,7 +112,7 @@ JC2_ValueHandle global_getcontext(JC2_VMContext, int, JC2_ValueHandle*, void*) {
 
 JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc > 0) {
-        Decimal::g_prec = static_cast<int>(jc2::Value(argv[0]).as_double());
+        Decimal::g_prec = static_cast<int>(jc2::Value(argv[0]).as_float());
     }
     return jc2::Value().get_handle();
 }

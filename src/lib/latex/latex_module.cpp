@@ -16,8 +16,8 @@ static jc2::Class* g_latexErrorClass = nullptr;
 }
 
 std::string valueToLatex(const jc2::Value& val) {
-    if (val.is_double()) {
-        std::ostringstream oss; oss << std::defaultfloat << std::setprecision(6) << val.as_double();
+    if (val.is_float()) {
+        std::ostringstream oss; oss << std::defaultfloat << std::setprecision(6) << val.as_float();
         return oss.str();
     }
     else if (val.is_int()) return std::to_string(val.as_int());

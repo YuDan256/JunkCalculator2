@@ -183,12 +183,12 @@ namespace jc {
     public:
         uint64_t as_bits;
 
-        inline double asDoubleRaw() const {
+        inline double asFloatRaw() const {
             double d;
             std::memcpy(&d, &as_bits, sizeof(double));
             return d;
         }
-        inline static Value fromDouble(double d) {
+        inline static Value fromFloat(double d) {
             Value v;
             if (std::isnan(d)) {
                 // ★ 归一化真正的 NaN (Quiet NaN)，严格保留其作为浮点数 NaN 的语义，绝不与 none 混淆
@@ -216,9 +216,9 @@ namespace jc {
             return v;
         }
 
-        bool isDouble() const { return (as_bits & QNAN) != QNAN; }
+        bool isFloat() const { return (as_bits & QNAN) != QNAN; }
         bool isInt32() const { return (as_bits & 0xFFFFFFFF00000000ULL) == INT32_MASK; }
-        bool isNumber() const { return isDouble() || isInt32() || isBool(); }
+        bool isNumber() const { return isFloat() || isInt32() || isBool(); }
         bool isObj() const { return (as_bits & (QNAN | SIGN_BIT)) == (QNAN | SIGN_BIT); }
         bool isNone() const { return as_bits == (QNAN | TAG_NONE); }
         bool isUninit() const { return as_bits == (QNAN | TAG_UNINIT); }
@@ -229,7 +229,7 @@ namespace jc {
         double asNumber() const { 
             if (isInt32()) return static_cast<double>(asInt32());
             if (isBool()) return asBool() ? 1.0 : 0.0;
-            return asDoubleRaw(); 
+            return asFloatRaw(); 
         }
 
         Obj* asObj() const { return reinterpret_cast<Obj*>(as_bits & ~(SIGN_BIT | QNAN)); }
@@ -289,7 +289,7 @@ namespace jc {
         }
     public:
         Value() : as_bits(QNAN | TAG_NONE) {}
-        Value(double val) : as_bits(QNAN | TAG_NONE) { *this = fromDouble(val); }
+        Value(double val) : as_bits(QNAN | TAG_NONE) { *this = fromFloat(val); }
         Value(int val) : as_bits(INT32_MASK | static_cast<uint32_t>(val)) {}
         Value(bool val) : as_bits(val ? (QNAN | TAG_TRUE) : (QNAN | TAG_FALSE)) {}
         Value(Obj* obj) : as_bits(obj ? (SIGN_BIT | QNAN | reinterpret_cast<uint64_t>(obj)) : (QNAN | TAG_NONE)) { 
@@ -400,18 +400,18 @@ namespace jc {
         static Value none() { return Value(); }
         static Value uninit() { Value v; v.as_bits = QNAN | TAG_UNINIT; return v; }
 
-        double asDouble() const {
+        double asFloat() const {
             if (isNumber()) return asNumber();
-            if (isObjType(ObjType::BIGINT)) return static_cast<ObjBigInt*>(asObj())->num.toDouble();
-            if (isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(asObj())->frac.toDouble();
+            if (isObjType(ObjType::BIGINT)) return static_cast<ObjBigInt*>(asObj())->num.toFloat();
+            if (isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(asObj())->frac.toFloat();
             JC2_THROW(TypeError, "Expected a real number.");
         }
 
         Complex asComplex() const {
             if (isObjType(ObjType::COMPLEX)) return static_cast<ObjComplex*>(asObj())->comp;
             if (isNumber()) return Complex(asNumber());
-            if (isObjType(ObjType::BIGINT)) return Complex(static_cast<ObjBigInt*>(asObj())->num.toDouble());
-            if (isObjType(ObjType::FRACTION)) return Complex(static_cast<ObjFraction*>(asObj())->frac.toDouble());
+            if (isObjType(ObjType::BIGINT)) return Complex(static_cast<ObjBigInt*>(asObj())->num.toFloat());
+            if (isObjType(ObjType::FRACTION)) return Complex(static_cast<ObjFraction*>(asObj())->frac.toFloat());
             JC2_THROW(TypeError, "Expected a number or complex.");
         }
 
@@ -419,8 +419,8 @@ namespace jc {
             if (isInt32()) return BigInt(asInt32());
             if (isBool()) return BigInt(asBool() ? 1 : 0);
             if (isObjType(ObjType::BIGINT)) return static_cast<ObjBigInt*>(asObj())->num;
-            if (isDouble()) {
-                double val = asDoubleRaw();
+            if (isFloat()) {
+                double val = asFloatRaw();
                 if (std::abs(val) > 9.22337e18) {
                     JC2_THROW(MathError, "Value too massively large to be safely converted to an exact layout integer.");
                 }
@@ -818,7 +818,7 @@ namespace jc {
     inline SymExpr Value::asSymbolic() const {
         if (isSymbolic()) return static_cast<ObjSym*>(asObj())->sym;
         if (isInt32()) return SymExpr(BigInt(asInt32()));
-        if (isDouble()) return SymExpr(asDoubleRaw());
+        if (isFloat()) return SymExpr(asFloatRaw());
         if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
         if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
         if (isObjType(ObjType::COMPLEX)) return SymExpr(static_cast<ObjComplex*>(asObj())->comp);
@@ -848,12 +848,12 @@ namespace jc {
             int64_t val64 = 0;
             if (isInt32()) {
                 val64 = asInt32();
-            } else if (isDouble()) {
-                val64 = static_cast<int64_t>(std::round(asDoubleRaw()));
+            } else if (isFloat()) {
+                val64 = static_cast<int64_t>(std::round(asFloatRaw()));
             } else if (isBigInt()) {
                 try { val64 = asBigInt().toInt64(); } catch (...) { errIndexAbsTooLarge(); }
             } else {
-                val64 = static_cast<int64_t>(std::round(asDouble()));
+                val64 = static_cast<int64_t>(std::round(asFloat()));
             }
             
             if (val64 > 2147483647LL || val64 < -2147483647LL) {
@@ -1104,16 +1104,16 @@ namespace jc {
             bool rhsIsScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex();
 
             if (lhsIsMat && rhsIsScalar) {
-                if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat * rhs.asDouble());
+                if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat * rhs.asFloat());
                 return Value(lhs.asComplexMatrix() * rhs.asComplex());
             }
             if (lhsIsScalar && rhsIsMat) {
-                if (rhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) return Value(static_cast<ObjRealMatrix*>(rhs.asObj())->mat * lhs.asDouble());
+                if (rhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) return Value(static_cast<ObjRealMatrix*>(rhs.asObj())->mat * lhs.asFloat());
                 return Value(rhs.asComplexMatrix() * rhs.asComplex());
             }
             
             if (lhs.isObjType(ObjType::STRING) && (rhs.isNumber() || rhs.isObjType(ObjType::BIGINT))) {
-                int n = static_cast<int>(rhs.asDouble());
+                int n = static_cast<int>(rhs.asFloat());
                 if (n < 0) errStrRepeatNeg();
                 std::string result;
                 const std::string& s = static_cast<ObjString*>(lhs.asObj())->str;
@@ -1122,7 +1122,7 @@ namespace jc {
                 return Value(result);
             }
             if ((lhs.isNumber() || lhs.isObjType(ObjType::BIGINT)) && rhs.isObjType(ObjType::STRING)) {
-                int n = static_cast<int>(lhs.asDouble());
+                int n = static_cast<int>(lhs.asFloat());
                 if (n < 0) errStrRepeatNeg();
                 std::string result;
                 const std::string& s = static_cast<ObjString*>(rhs.asObj())->str;
@@ -1162,7 +1162,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac * Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) * static_cast<ObjFraction*>(rhs.asObj())->frac);
             
-            if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() * rhs.asDouble());
+            if (lhs.isFloat() || rhs.isFloat()) return Value(lhs.asFloat() * rhs.asFloat());
         
         JC2_THROW(TypeError, "Cannot multiply '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
@@ -1210,7 +1210,7 @@ namespace jc {
                     if (c == 0.0) JC2_THROW(MathError, "Division by zero complex number.");
                     return Value(lhs.asComplexMatrix() / c);
                 } else {
-                    double d = rhs.asDouble();
+                    double d = rhs.asFloat();
                     if (d == 0.0) errDivByZero();
                     if (lhs.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(lhs.asObj())->mat / d);
                     return Value(lhs.asComplexMatrix() / Complex(d, 0.0));
@@ -1238,10 +1238,10 @@ namespace jc {
                 if (b == 0.0) errDivByZero();
                 return Value(lhs.asComplex() / b);
             }
-            if (lhs.isDouble() || rhs.isDouble()) {
-                double b = rhs.asDouble();
+            if (lhs.isFloat() || rhs.isFloat()) {
+                double b = rhs.asFloat();
                 if (b == 0.0) errDivByZero();
-                return Value(lhs.asDouble() / b);
+                return Value(lhs.asFloat() / b);
             }
         
         JC2_THROW(TypeError, "Cannot divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
@@ -1257,7 +1257,7 @@ namespace jc {
                 if (rhsIsScalar) {
                     int n = 0;
                     if (rhs.isInt32()) n = rhs.asInt32();
-                    else if (rhs.isDouble() && std::floor(rhs.asDouble()) == rhs.asDouble()) n = static_cast<int>(rhs.asDouble());
+                    else if (rhs.isFloat() && std::floor(rhs.asFloat()) == rhs.asFloat()) n = static_cast<int>(rhs.asFloat());
                     else if (rhs.isBigInt()) n = static_cast<int>(rhs.asBigInt().toInt64());
                     else JC2_THROW(SymbolicError, "Matrix power requires an integer exponent.");
                     return Value(lhs.asSymMatrix().power(n));
@@ -1270,7 +1270,7 @@ namespace jc {
                     if (rhs.isComplex()) {
                         return Value((matLog(lhs.asComplexMatrix()) * rhs.asComplex()).matExp());
                     } else {
-                        double b = rhs.asDouble();
+                        double b = rhs.asFloat();
                         if (Tol::isEq(b, std::round(b), 1e5)) return Value(lhs.asComplexMatrix().power(static_cast<int>(std::round(b))));
                         return Value((matLog(lhs.asComplexMatrix()) * Complex(b)).matExp());
                     }
@@ -1294,8 +1294,8 @@ namespace jc {
             } else if (rhs.isBool()) {
                 rhsIsExactInt = true;
                 rhsInt = BigInt(rhs.asBool() ? 1 : 0);
-            } else if (rhs.isDouble()) {
-                double d = rhs.asDoubleRaw();
+            } else if (rhs.isFloat()) {
+                double d = rhs.asFloatRaw();
                 if (std::isfinite(d) && d == std::floor(d) && std::abs(d) < 9e18) {
                     rhsIsExactInt = true;
                     rhsInt = BigInt(static_cast<int64_t>(d));
@@ -1352,7 +1352,7 @@ namespace jc {
                 }
             }
 
-            double a = lhs.asDouble(), b = rhs.asDouble();
+            double a = lhs.asFloat(), b = rhs.asFloat();
             if (a < 0 && std::floor(b) != b) {
                 return Value(Complex(a, 0.0) ^ Complex(b, 0.0));
             }
@@ -1367,12 +1367,12 @@ namespace jc {
         if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac < static_cast<ObjFraction*>(b.asObj())->frac;
         if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
             try {
-                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isFloat() ? Fraction::fromFloat(v.asFloatRaw()) : Fraction(v.asBigInt())); };
                 return getF(a) < getF(b);
-            } catch (...) { return a.asDouble() < b.asDouble(); }
+            } catch (...) { return a.asFloat() < b.asFloat(); }
         }
         if (a.isString() && b.isString()) return a.asString() < b.asString();
-        return a.asDouble() < b.asDouble();
+        return a.asFloat() < b.asFloat();
     }
 
     inline bool operator<=(const Value& a, const Value& b) {
@@ -1380,12 +1380,12 @@ namespace jc {
         if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac <= static_cast<ObjFraction*>(b.asObj())->frac;
         if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
             try {
-                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isFloat() ? Fraction::fromFloat(v.asFloatRaw()) : Fraction(v.asBigInt())); };
                 return getF(a) <= getF(b);
-            } catch (...) { return a.asDouble() <= b.asDouble(); }
+            } catch (...) { return a.asFloat() <= b.asFloat(); }
         }
         if (a.isString() && b.isString()) return a.asString() <= b.asString();
-        return a.asDouble() <= b.asDouble();
+        return a.asFloat() <= b.asFloat();
     }
 
     inline bool operator>(const Value& a, const Value& b) {
@@ -1393,12 +1393,12 @@ namespace jc {
         if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac > static_cast<ObjFraction*>(b.asObj())->frac;
         if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
             try {
-                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isFloat() ? Fraction::fromFloat(v.asFloatRaw()) : Fraction(v.asBigInt())); };
                 return getF(a) > getF(b);
-            } catch (...) { return a.asDouble() > b.asDouble(); }
+            } catch (...) { return a.asFloat() > b.asFloat(); }
         }
         if (a.isString() && b.isString()) return a.asString() > b.asString();
-        return a.asDouble() > b.asDouble();
+        return a.asFloat() > b.asFloat();
     }
 
     inline bool operator>=(const Value& a, const Value& b) {
@@ -1406,12 +1406,12 @@ namespace jc {
         if (a.isObjType(ObjType::FRACTION) && b.isObjType(ObjType::FRACTION)) return static_cast<ObjFraction*>(a.asObj())->frac >= static_cast<ObjFraction*>(b.asObj())->frac;
         if ((a.isObjType(ObjType::FRACTION) && (b.isNumber() || b.isBigInt())) || (b.isObjType(ObjType::FRACTION) && (a.isNumber() || a.isBigInt()))) {
             try {
-                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isDouble() ? Fraction::fromDouble(v.asDoubleRaw()) : Fraction(v.asBigInt())); };
+                auto getF = [](const Value& v) { return v.isObjType(ObjType::FRACTION) ? static_cast<ObjFraction*>(v.asObj())->frac : (v.isFloat() ? Fraction::fromFloat(v.asFloatRaw()) : Fraction(v.asBigInt())); };
                 return getF(a) >= getF(b);
-            } catch (...) { return a.asDouble() >= b.asDouble(); }
+            } catch (...) { return a.asFloat() >= b.asFloat(); }
         }
         if (a.isString() && b.isString()) return a.asString() >= b.asString();
-        return a.asDouble() >= b.asDouble();
+        return a.asFloat() >= b.asFloat();
     }
 
     inline Value operator%(const Value& lhs, const Value& rhs) {
@@ -1432,7 +1432,7 @@ namespace jc {
         
         bool rhsIsRealScalar = rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION);
             if (lhs.isObjType(ObjType::REAL_MATRIX) && rhsIsRealScalar) {
-                double b = rhs.asDouble();
+                double b = rhs.asFloat();
                 if (b == 0.0) errModByZero();
                 const auto& a = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
                 RealMatrix res(a.getRows(), a.getCols());
@@ -1442,7 +1442,7 @@ namespace jc {
                 return Value(res);
             }
             if (lhs.isObjType(ObjType::COMPLEX_MATRIX) && rhsIsRealScalar) {
-                double b = rhs.asDouble();
+                double b = rhs.asFloat();
                 if (b == 0.0) errModByZero();
                 const auto& a = static_cast<ObjComplexMatrix*>(lhs.asObj())->mat;
                 ComplexMatrix res(a.getRows(), a.getCols());
@@ -1509,7 +1509,7 @@ namespace jc {
     }
 
     inline Value operator<<(const Value& lhs, const Value& rhs) {
-        int shift = static_cast<int>(std::round(rhs.asDouble()));
+        int shift = static_cast<int>(std::round(rhs.asFloat()));
         if (shift < 0) errNegShift();
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
@@ -1530,7 +1530,7 @@ namespace jc {
     }
 
     inline Value operator>>(const Value& lhs, const Value& rhs) {
-        int shift = static_cast<int>(std::round(rhs.asDouble()));
+        int shift = static_cast<int>(std::round(rhs.asFloat()));
         if (shift < 0) errNegShift();
         if (lhs.isInt32()) {
             int32_t v = lhs.asInt32();
@@ -1657,10 +1657,10 @@ namespace jc {
             return Value(a / b);
         }
         
-        if (lhs.isDouble() || rhs.isDouble() || lhs.isObjType(ObjType::FRACTION) || rhs.isObjType(ObjType::FRACTION)) {
-            double b = rhs.asDouble();
+        if (lhs.isFloat() || rhs.isFloat() || lhs.isObjType(ObjType::FRACTION) || rhs.isObjType(ObjType::FRACTION)) {
+            double b = rhs.asFloat();
             if (b == 0.0) errDivByZero();
-            return Value(std::trunc(lhs.asDouble() / b));
+            return Value(std::trunc(lhs.asFloat() / b));
         }
         
         JC2_THROW(TypeError, "Cannot integer divide '" + lhs.typeName() + "' by '" + rhs.typeName() + "'.");
@@ -1886,8 +1886,8 @@ namespace jc {
         if (isUninit()) return false;
         if (isBool()) return asBool();
         if (isInt32()) return asInt32() != 0;
-        if (isDouble()) {
-            double d = asDoubleRaw();
+        if (isFloat()) {
+            double d = asFloatRaw();
             return d != 0.0 && !std::isnan(d);
         }
         Obj* obj = asObj();
@@ -1911,7 +1911,7 @@ namespace jc {
                 auto [found, res] = invokeDunder(inst, "__bool__");
                 if (found) {
                     if (res.isBool()) return res.asBool();
-                    if (res.isNumber()) return res.asDouble() != 0.0;
+                    if (res.isNumber()) return res.asFloat() != 0.0;
                     return res.truthy();
                 }
                 return true;
@@ -2122,7 +2122,7 @@ namespace jc {
         auto fractionEqualsDouble = [](const Fraction& f, double d) -> bool {
             if (!std::isfinite(d)) return false;
             try {
-                return Fraction::fromDouble(d) == f;
+                return Fraction::fromFloat(d) == f;
             } catch (...) { return false; }
         };
 
@@ -2157,7 +2157,7 @@ namespace jc {
             if (std::floor(d) != d) return false;
             if (std::abs(d) > 9007199254740992.0) return false;
             if (std::abs(d) < 9e15) return b == BigInt(static_cast<int64_t>(d));
-            try { return b.toDouble() == d; } catch (...) { return false; }
+            try { return b.toFloat() == d; } catch (...) { return false; }
         }
         if (rhs.isObjType(ObjType::BIGINT) && numL) {
             const BigInt& b = static_cast<ObjBigInt*>(rhs.asObj())->num;
@@ -2166,7 +2166,7 @@ namespace jc {
             if (std::floor(d) != d) return false;
             if (std::abs(d) > 9007199254740992.0) return false;
             if (std::abs(d) < 9e15) return b == BigInt(static_cast<int64_t>(d));
-            try { return b.toDouble() == d; } catch (...) { return false; }
+            try { return b.toFloat() == d; } catch (...) { return false; }
         }
 
         return false;
@@ -2177,7 +2177,7 @@ namespace jc {
         if (isUninit()) return "uninit";
         if (isBool()) return "bool";
         if (isInt32()) return "int";
-        if (isDouble()) return "float";
+        if (isFloat()) return "float";
         Obj* obj = asObj();
         switch (obj->type) {
             case ObjType::STRING: return "string";
@@ -2221,7 +2221,7 @@ namespace jc {
             return Value::fromInt32(-v);
         }
         if (isBool()) return Value::fromInt32(asBool() ? -1 : 0);
-        if (isDouble()) return Value(-asDoubleRaw());
+        if (isFloat()) return Value(-asFloatRaw());
         if (isObj()) {
             Obj* obj = asObj();
             switch (obj->type) {
@@ -2300,7 +2300,7 @@ namespace jc {
                 if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
                     if (m.getRows() != m.getCols()) errMatScalarAddSquare();
-                    double c = rhs.asDouble();
+                    double c = rhs.asFloat();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) += c;
                     return Value(m);
                 }
@@ -2314,7 +2314,7 @@ namespace jc {
                 if (rhs.isObjType(ObjType::REAL_MATRIX) && !lhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(rhs.asObj())->mat;
                     if (m.getRows() != m.getCols()) errMatScalarAddSquare();
-                    double c = lhs.asDouble();
+                    double c = lhs.asFloat();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) += c;
                     return Value(m);
                 }
@@ -2338,7 +2338,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac + Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) + static_cast<ObjFraction*>(rhs.asObj())->frac);
             
-            if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() + rhs.asDouble());
+            if (lhs.isFloat() || rhs.isFloat()) return Value(lhs.asFloat() + rhs.asFloat());
         
         JC2_THROW(TypeError, "Cannot add '" + lhs.typeName() + "' and '" + rhs.typeName() + "'.");
     }
@@ -2409,7 +2409,7 @@ namespace jc {
                 if (lhs.isObjType(ObjType::REAL_MATRIX) && !rhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(lhs.asObj())->mat;
                     if (m.getRows() != m.getCols()) errMatScalarSubSquare();
-                    double c = rhs.asDouble();
+                    double c = rhs.asFloat();
                     for (int i = 0; i < m.getRows(); ++i) m(i, i) -= c;
                     return Value(m);
                 }
@@ -2423,7 +2423,7 @@ namespace jc {
                 if (rhs.isObjType(ObjType::REAL_MATRIX) && !lhs.isComplex()) {
                     RealMatrix m = static_cast<ObjRealMatrix*>(rhs.asObj())->mat;
                     if (m.getRows() != m.getCols()) errMatScalarSubSquare();
-                    double c = lhs.asDouble();
+                    double c = lhs.asFloat();
                     RealMatrix res(m.getRows(), m.getCols());
                     for (int i = 0; i < m.getRows(); ++i) {
                         for (int j = 0; j < m.getCols(); ++j) {
@@ -2468,7 +2468,7 @@ namespace jc {
             if (lhs.isObjType(ObjType::FRACTION) && rhsIsExactInt) return Value::fromFraction(static_cast<ObjFraction*>(lhs.asObj())->frac - Fraction(rhs.asBigInt()));
             if (lhsIsExactInt && rhs.isObjType(ObjType::FRACTION)) return Value::fromFraction(Fraction(lhs.asBigInt()) - static_cast<ObjFraction*>(rhs.asObj())->frac);
             
-            if (lhs.isDouble() || rhs.isDouble()) return Value(lhs.asDouble() - rhs.asDouble());
+            if (lhs.isFloat() || rhs.isFloat()) return Value(lhs.asFloat() - rhs.asFloat());
         
         JC2_THROW(TypeError, "Cannot subtract '" + rhs.typeName() + "' from '" + lhs.typeName() + "'.");
     }
@@ -2493,8 +2493,8 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
     if (val.isUninit()) { os << "<uninit>"; return; }
     if (val.isBool()) { os << (val.asBool() ? "true" : "false"); return; }
     if (val.isInt32()) { os << val.asInt32(); return; }
-    if (val.isDouble()) {
-        double v = val.asDoubleRaw();
+    if (val.isFloat()) {
+        double v = val.asFloatRaw();
         std::ostringstream temp;
         temp << v;
         std::string s = temp.str();
@@ -2684,8 +2684,8 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
 inline size_t ValueHasher::operator()(const Value& v) const {
     // 统一将 int32, double, bool 转换为 double 进行哈希，确保 1 == 1.0 == true 时哈希值绝对一致
     if (v.isInt32()) return sipHash24Double(static_cast<double>(v.asInt32()));
-    if (v.isDouble()) {
-        double d = v.asDoubleRaw();
+    if (v.isFloat()) {
+        double d = v.asFloatRaw();
         if (d == 0.0) d = 0.0; // 归一化 -0.0
         return sipHash24Double(d);
     }
@@ -2732,9 +2732,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 return h;
             }
             try {
-                double d = fr.toDouble();
+                double d = fr.toFloat();
                 if (std::isfinite(d)) {
-                    if (Fraction::fromDouble(d == 0.0 ? 0.0 : d) == fr) {
+                    if (Fraction::fromFloat(d == 0.0 ? 0.0 : d) == fr) {
                         if (d == 0.0) d = 0.0;
                         h = sipHash24Double(d);
                         objFrac->cached_hash = h;
@@ -2874,7 +2874,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto inst = static_cast<ObjInstance*>(obj);
             auto [found, res] = invokeDunder(inst, "__hash__");
             if (found) {
-                if (res.isNumber()) return sipHash24Double(res.asDouble());
+                if (res.isNumber()) return sipHash24Double(res.asFloat());
                 if (res.isString()) return sipHash24String(res.asString());
                 if (res.isBigInt()) return sipHash24String(res.asBigInt().toString());
             }
@@ -3085,7 +3085,7 @@ inline std::string applyFormatSpec(const Value& val, const std::string& spec) {
 
     if (isNumber) {
         if (type == 'b' || type == 'o' || type == 'x' || type == 'X' || type == 'd' || type == 'n' || type == 'c') {
-            int64_t iv = static_cast<int64_t>(std::round(val.asDouble()));
+            int64_t iv = static_cast<int64_t>(std::round(val.asFloat()));
             if (iv < 0) { isNeg = true; iv = -iv; }
             if (type == 'b') { if (iv == 0) body = "0"; else { std::string s; for (int64_t t = iv; t > 0; t >>= 1) s += (t & 1) ? '1' : '0'; std::reverse(s.begin(), s.end()); body = s; } }
             else if (type == 'o') { std::ostringstream oss; oss << std::oct << iv; body = oss.str(); }
@@ -3094,7 +3094,7 @@ inline std::string applyFormatSpec(const Value& val, const std::string& spec) {
             else if (type == 'c') body = std::string(1, static_cast<char>(iv));
             else body = std::to_string(iv);
         } else {
-            double dv = val.asDouble();
+            double dv = val.asFloat();
             if (dv < 0) { isNeg = true; dv = -dv; }
             std::ostringstream oss;
             if (type == 'e' || type == 'E') { if (precision >= 0) oss << std::scientific << std::setprecision(precision); else oss << std::scientific; oss << dv; }

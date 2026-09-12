@@ -79,7 +79,7 @@ namespace jcsym {
         c.value = std::to_string(val);
         g_collected.constants.push_back(std::move(c));
     }
-    static void cb_register_double(JC2_VMContext, JC2_ModuleHandle, const char* name, double val) {
+    static void cb_register_float(JC2_VMContext, JC2_ModuleHandle, const char* name, double val) {
         Constant c;
         c.name = name ? name : "";
         c.type = "float";
@@ -104,7 +104,7 @@ namespace jcsym {
         api.make_none = [](JC2_VMContext) -> JC2_ValueHandle { return 0; };
         api.make_bool = [](JC2_VMContext, bool) -> JC2_ValueHandle { return 0; };
         api.make_int = [](JC2_VMContext, int32_t) -> JC2_ValueHandle { return 0; };
-        api.make_double = [](JC2_VMContext, double) -> JC2_ValueHandle { return 0; };
+        api.make_float = [](JC2_VMContext, double) -> JC2_ValueHandle { return 0; };
         api.make_string = [](JC2_VMContext, const char*, size_t) -> JC2_ValueHandle { return 0; };
         api.make_complex = [](JC2_VMContext, double, double) -> JC2_ValueHandle { return 0; };
 
@@ -112,7 +112,7 @@ namespace jcsym {
         api.is_none = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.is_bool = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.is_int = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
-        api.is_double = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
+        api.is_float = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.is_string = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.is_complex = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.is_instance = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
@@ -121,7 +121,7 @@ namespace jcsym {
         // 值提取（桩）
         api.as_bool = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
         api.as_int = [](JC2_VMContext, JC2_ValueHandle) -> int32_t { return 0; };
-        api.as_double = [](JC2_VMContext, JC2_ValueHandle) -> double { return 0.0; };
+        api.as_float = [](JC2_VMContext, JC2_ValueHandle) -> double { return 0.0; };
         api.as_string = [](JC2_VMContext, JC2_ValueHandle, size_t* out) -> const char* { if (out) *out = 0; return ""; };
         api.complex_get_real = [](JC2_VMContext, JC2_ValueHandle) -> double { return 0.0; };
         api.complex_get_imag = [](JC2_VMContext, JC2_ValueHandle) -> double { return 0.0; };
@@ -140,7 +140,7 @@ namespace jcsym {
         api.register_function_help = cb_register_function_help;
         api.register_function = cb_register_function;
         api.register_int = cb_register_int;
-        api.register_double = cb_register_double;
+        api.register_float = cb_register_float;
         api.register_string = cb_register_string;
         api.register_value = cb_register_value;
 

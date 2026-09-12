@@ -1018,7 +1018,7 @@ namespace jc {
                         int n = degree;
 
                         auto getExactCos = [](int m, int n_val) -> SymExpr {
-                            int g = static_cast<int>(BigInt::gcd(BigInt(std::abs(m)), BigInt(n_val)).toDouble());
+                            int g = static_cast<int>(BigInt::gcd(BigInt(std::abs(m)), BigInt(n_val)).toFloat());
                             m /= g;
                             n_val /= g;
                             if (m < 0) m = -m;

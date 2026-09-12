@@ -155,7 +155,7 @@ METHOD(read) {
         std::string content((std::istreambuf_iterator<char>(stream)), std::istreambuf_iterator<char>());
         return jc2::Value(decode_to_utf8(content, ctx->encoding)).get_handle();
     } else {
-        size_t size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_double()));
+        size_t size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_float()));
         std::string buf(size, '\0');
         stream.read(&buf[0], size);
         buf.resize(stream.gcount());
@@ -232,12 +232,12 @@ METHOD(readBuf) {
 
     size_t read_size = bsize;
     if (argc >= 3) {
-        read_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
+        read_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_float()));
         if (read_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Requested read size exceeds buffer capacity.");
     }
     size_t offset = 0;
     if (argc >= 4) {
-        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
+        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_float()));
         if (offset + read_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Read offset + size exceeds buffer capacity.");
     }
 
@@ -254,12 +254,12 @@ METHOD(writeBuf) {
 
     size_t write_size = bsize;
     if (argc >= 3) {
-        write_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_double()));
+        write_size = static_cast<size_t>(std::max(0.0, jc2::Value(argv[2]).as_float()));
         if (write_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Requested write size exceeds buffer capacity.");
     }
     size_t offset = 0;
     if (argc >= 4) {
-        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_double()));
+        offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[3]).as_float()));
         if (offset + write_size > bsize) jc2::throw_error(jc2::ErrorType::IOError, "Write offset + size exceeds buffer capacity.");
     }
 
@@ -271,13 +271,13 @@ METHOD(seek) {
     GET_SELF;
     if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "seek expects an offset.");
     long long offset = 0;
-    if (jc2::Value(argv[1]).is_double() || jc2::Value(argv[1]).is_int()) {
-        offset = static_cast<long long>(std::round(jc2::Value(argv[1]).as_double()));
+    if (jc2::Value(argv[1]).is_float() || jc2::Value(argv[1]).is_int()) {
+        offset = static_cast<long long>(std::round(jc2::Value(argv[1]).as_float()));
     } else {
         offset = std::stoll(jc2::Value(argv[1]).to_string());
     }
     int origin = 0;
-    if (argc >= 3) origin = static_cast<int>(std::round(jc2::Value(argv[2]).as_double()));
+    if (argc >= 3) origin = static_cast<int>(std::round(jc2::Value(argv[2]).as_float()));
     
     stream.clear();
     if (origin == 0) {

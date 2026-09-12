@@ -45,7 +45,7 @@ namespace helpers {
             const auto& vec = static_cast<ObjList*>(v.asObj())->vec;
             std::vector<double> r(vec.size());
             for (size_t i = 0; i < vec.size(); ++i) {
-                r[i] = vec[i].asDouble();
+                r[i] = vec[i].asFloat();
             }
             return r;
         }
@@ -338,7 +338,7 @@ namespace helpers {
         if (lhs.isSymbolic() || rhs.isSymbolic())
             JC2_THROW(TypeError, "Cannot compare symbolic expressions with '<' or '>'.");
 
-        double a = lhs.asDouble(), b = rhs.asDouble();
+        double a = lhs.asFloat(), b = rhs.asFloat();
         return (a < b && !Tol::isEq(a, b));
     }
 

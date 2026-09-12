@@ -1896,7 +1896,7 @@ namespace jc {
                             if (std::holds_alternative<Fraction>(numVal)) {
                                 Fraction frac = std::get<Fraction>(numVal);
                                 if (frac.getDen() > BigInt(1) && containsVar(powNode->base, var)) {
-                                    int n = static_cast<int>(frac.getDen().toDouble());
+                                    int n = static_cast<int>(frac.getDen().toFloat());
                                     if (frac.getNum() == BigInt(1)) posRadicals[n].push_back(SymExpr(powNode->base));
                                     else if (frac.getNum() == BigInt(-1)) negRadicals[n].push_back(SymExpr(powNode->base));
                                 }
@@ -1988,7 +1988,7 @@ namespace jc {
                             Fraction frac = std::get<Fraction>(numVal);
                             if (frac.getDen() > BigInt(1) && containsVar(powNode->base, var)) {
                                 radicalBase = SymExpr(powNode->base);
-                                radicalN = static_cast<int>(frac.getDen().toDouble());
+                                radicalN = static_cast<int>(frac.getDen().toFloat());
                                 foundRadical = true;
                                 
                                 std::function<SymExpr(const SymExpr&)> replaceRad = [&](const SymExpr& e) -> SymExpr {
@@ -2260,7 +2260,7 @@ namespace jc {
                     }
                     
                     if (lcm_den > BigInt(1) && lcm_den <= BigInt(20)) { // 限制 LCM 大小，防止指数爆炸
-                        int L = static_cast<int>(lcm_den.toDouble());
+                        int L = static_cast<int>(lcm_den.toFloat());
                         if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "-> Trying Common Fractional Power Substitution: u = (" << commonBase.toString() << ")^(1/" << L << ")" << std::endl;
                         
                         std::string u_var_frac = "_u_frac";

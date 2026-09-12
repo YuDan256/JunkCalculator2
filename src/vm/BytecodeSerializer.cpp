@@ -71,14 +71,14 @@ std::string BytecodeSerializer::readString(std::istream& is) {
 void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const std::unordered_set<int>& fnIdxConstants, int constIdx, int startIndex) {
     if (fnIdxConstants.count(constIdx)) {
         write8(os, static_cast<uint8_t>(ConstTag::FNIDX));
-        write32(os, static_cast<uint32_t>(val.asDouble() - startIndex));
+        write32(os, static_cast<uint32_t>(val.asFloat() - startIndex));
         return;
     }
     if (val.isNone()) { write8(os, static_cast<uint8_t>(ConstTag::NONE)); return; }
     if (val.isUninit()) { write8(os, static_cast<uint8_t>(ConstTag::UNINIT)); return; }
     if (val.isBool()) { write8(os, static_cast<uint8_t>(val.asBool() ? ConstTag::BOOL_TRUE : ConstTag::BOOL_FALSE)); return; }
     if (val.isInt32()) { write8(os, static_cast<uint8_t>(ConstTag::INT32)); write32(os, val.asInt32()); return; }
-    if (val.isDouble()) { write8(os, static_cast<uint8_t>(ConstTag::DOUBLE)); writeDouble(os, val.asDoubleRaw()); return; }
+    if (val.isFloat()) { write8(os, static_cast<uint8_t>(ConstTag::DOUBLE)); writeDouble(os, val.asFloatRaw()); return; }
     if (val.isString()) {
         write8(os, static_cast<uint8_t>(ConstTag::STRING));
         writeString(os, val.asString());
@@ -531,7 +531,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
         if (val.isUninit()) { write8(os, 1); return; }
         if (val.isBool()) { write8(os, val.asBool() ? 3 : 2); return; }
         if (val.isInt32()) { write8(os, 4); write32(os, val.asInt32()); return; }
-        if (val.isDouble()) { write8(os, 5); writeDouble(os, val.asDoubleRaw()); return; }
+        if (val.isFloat()) { write8(os, 5); writeDouble(os, val.asFloatRaw()); return; }
         
         Obj* obj = val.asObj();
         if (objToId.count(obj)) {

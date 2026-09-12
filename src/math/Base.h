@@ -45,7 +45,7 @@ namespace jc {
                 }
                 while (!n.isZero()) {
                     BigInt rem = n % CHUNK_BI;
-                    chunks.push_back(static_cast<uint32_t>(std::abs(rem.toDouble())));
+                    chunks.push_back(static_cast<uint32_t>(std::abs(rem.toFloat())));
                     n = n / CHUNK_BI;
                 }
                 return chunks;
@@ -200,7 +200,7 @@ namespace jc {
         BaseNum operator*(const BaseNum& b) const { return BaseNum(data * b.data, determineRadix(b)); }
         BaseNum operator/(const BaseNum& b) const { return BaseNum(data / b.data, determineRadix(b)); }
         BaseNum operator%(const BaseNum& b) const { return BaseNum(data % b.data, determineRadix(b)); }
-        BaseNum operator^(const BaseNum& b) const { return BaseNum(data.pow(static_cast<int64_t>(b.data.toDouble())), determineRadix(b)); }
+        BaseNum operator^(const BaseNum& b) const { return BaseNum(data.pow(static_cast<int64_t>(b.data.toFloat())), determineRadix(b)); }
         BaseNum operator-() const { return BaseNum(-data, radix); }
 
         // =================================================================================
@@ -228,7 +228,7 @@ namespace jc {
             }
 
             // 精算：剩余不超过 29 位，用原生 int 逐位
-            int64_t remaining = static_cast<int64_t>(temp.toDouble());
+            int64_t remaining = static_cast<int64_t>(temp.toFloat());
             while (remaining > 0) {
                 remaining >>= 1;
                 bits++;
@@ -292,7 +292,7 @@ namespace jc {
 
             while (!temp.isZero()) {
                 BigInt rem = temp % baseBI;
-                digits.push_back(static_cast<int>(rem.toDouble()));
+                digits.push_back(static_cast<int>(rem.toFloat()));
                 temp = temp / baseBI;
             }
 

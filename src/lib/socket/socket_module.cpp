@@ -86,7 +86,7 @@ METHOD(send) {
 
 METHOD(recv) {
     GET_SELF("recv");
-    int max_bytes = argc > 1 ? static_cast<int>(jc2::Value(argv[1]).as_double()) : 4096;
+    int max_bytes = argc > 1 ? static_cast<int>(jc2::Value(argv[1]).as_float()) : 4096;
     if (max_bytes <= 0) max_bytes = 4096;
 
     std::vector<char> buffer(max_bytes);
@@ -123,7 +123,7 @@ METHOD(accept) {
 FUNC(connect) {
     (void)argc;
     std::string host = jc2::Value(argv[0]).as_string();
-    std::string port = std::to_string(static_cast<int>(std::round(jc2::Value(argv[1]).as_double())));
+    std::string port = std::to_string(static_cast<int>(std::round(jc2::Value(argv[1]).as_float())));
 
     struct addrinfo hints = { 0 }, * res = nullptr;
     hints.ai_family = AF_UNSPEC;
@@ -152,7 +152,7 @@ FUNC(connect) {
 FUNC(server) {
     (void)argc;
     std::string host = jc2::Value(argv[0]).as_string();
-    std::string port = std::to_string(static_cast<int>(std::round(jc2::Value(argv[1]).as_double())));
+    std::string port = std::to_string(static_cast<int>(std::round(jc2::Value(argv[1]).as_float())));
 
     struct addrinfo hints = { 0 }, * res = nullptr;
     hints.ai_family = AF_UNSPEC;

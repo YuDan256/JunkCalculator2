@@ -51,7 +51,7 @@ namespace jc {
         Fraction(const Fraction& other) : num(other.num), den(other.den) {}
 
         // --- 从 double 精确还原分数 ---
-        static Fraction fromDouble(double d) {
+        static Fraction fromFloat(double d) {
             if (!std::isfinite(d)) JC2_THROW(MathError, "Cannot convert non-finite double to Fraction.");
             if (d == 0.0) return Fraction(BigInt(0));
             bool neg = d < 0;
@@ -80,8 +80,8 @@ namespace jc {
         const BigInt& getNumRef() const { return num; }
         const BigInt& getDenRef() const { return den; }
 
-        double toDouble() const {
-            return BigInt::toDoubleRatio(num, den);
+        double toFloat() const {
+            return BigInt::toFloatRatio(num, den);
         }
 
         std::string toString() const {
@@ -174,14 +174,14 @@ namespace jc {
         friend Fraction operator%(const BigInt& b, const Fraction& f) { return Fraction(b) % f; }
 
         // Fraction <-> Complex (转化为 double 后与复数运算)
-        friend Complex operator+(const Fraction& f, const Complex& c) { return Complex(f.toDouble()) + c; }
-        friend Complex operator+(const Complex& c, const Fraction& f) { return c + Complex(f.toDouble()); }
-        friend Complex operator-(const Fraction& f, const Complex& c) { return Complex(f.toDouble()) - c; }
-        friend Complex operator-(const Complex& c, const Fraction& f) { return c - Complex(f.toDouble()); }
-        friend Complex operator*(const Fraction& f, const Complex& c) { return Complex(f.toDouble()) * c; }
-        friend Complex operator*(const Complex& c, const Fraction& f) { return c * Complex(f.toDouble()); }
-        friend Complex operator/(const Fraction& f, const Complex& c) { return Complex(f.toDouble()) / c; }
-        friend Complex operator/(const Complex& c, const Fraction& f) { return c / Complex(f.toDouble()); }
+        friend Complex operator+(const Fraction& f, const Complex& c) { return Complex(f.toFloat()) + c; }
+        friend Complex operator+(const Complex& c, const Fraction& f) { return c + Complex(f.toFloat()); }
+        friend Complex operator-(const Fraction& f, const Complex& c) { return Complex(f.toFloat()) - c; }
+        friend Complex operator-(const Complex& c, const Fraction& f) { return c - Complex(f.toFloat()); }
+        friend Complex operator*(const Fraction& f, const Complex& c) { return Complex(f.toFloat()) * c; }
+        friend Complex operator*(const Complex& c, const Fraction& f) { return c * Complex(f.toFloat()); }
+        friend Complex operator/(const Fraction& f, const Complex& c) { return Complex(f.toFloat()) / c; }
+        friend Complex operator/(const Complex& c, const Fraction& f) { return c / Complex(f.toFloat()); }
 
         // 格式化倒出
         friend std::ostream& operator<<(std::ostream& os, const Fraction& f) {

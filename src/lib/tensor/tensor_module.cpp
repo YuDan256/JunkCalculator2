@@ -31,7 +31,7 @@ static std::vector<int> listToShape(const jc2::Value& val) {
     jc2::List list(val.get_handle());
     std::vector<int> shape;
     for (size_t i = 0; i < list.size(); ++i) {
-        shape.push_back(static_cast<int>(list.get(i).as_double()));
+        shape.push_back(static_cast<int>(list.get(i).as_float()));
     }
     return shape;
 }
@@ -41,7 +41,7 @@ static std::vector<double> listToDoubles(const jc2::Value& val) {
     jc2::List list(val.get_handle());
     std::vector<double> data;
     for (size_t i = 0; i < list.size(); ++i) {
-        data.push_back(list.get(i).as_double());
+        data.push_back(list.get(i).as_float());
     }
     return data;
 }
@@ -68,72 +68,72 @@ METHOD(__str__) { GET_SELF; return jc2::Value(t1->toString()).get_handle(); }
 METHOD(__add__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_add(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_add(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_add(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__radd__) {
     GET_SELF; jc2::Value other(argv[1]);
-    return wrapTensor(jc::tensor_add(jc::tensor_scalar(other.as_double()), *t1)).get_handle();
+    return wrapTensor(jc::tensor_add(jc::tensor_scalar(other.as_float()), *t1)).get_handle();
 }
 METHOD(__sub__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_sub(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_sub(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_sub(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__rsub__) {
     GET_SELF; jc2::Value other(argv[1]);
-    return wrapTensor(jc::tensor_sub(jc::tensor_scalar(other.as_double()), *t1)).get_handle();
+    return wrapTensor(jc::tensor_sub(jc::tensor_scalar(other.as_float()), *t1)).get_handle();
 }
 METHOD(__mul__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_mul(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_mul(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_mul(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__rmul__) {
     GET_SELF; jc2::Value other(argv[1]);
-    return wrapTensor(jc::tensor_mul(jc::tensor_scalar(other.as_double()), *t1)).get_handle();
+    return wrapTensor(jc::tensor_mul(jc::tensor_scalar(other.as_float()), *t1)).get_handle();
 }
 METHOD(__div__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_div(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_div(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_div(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__rdiv__) {
     GET_SELF; jc2::Value other(argv[1]);
-    return wrapTensor(jc::tensor_div(jc::tensor_scalar(other.as_double()), *t1)).get_handle();
+    return wrapTensor(jc::tensor_div(jc::tensor_scalar(other.as_float()), *t1)).get_handle();
 }
 METHOD(__pow__) {
-    GET_SELF; return wrapTensor(jc::tensor_pow_scalar(*t1, jc2::Value(argv[1]).as_double())).get_handle();
+    GET_SELF; return wrapTensor(jc::tensor_pow_scalar(*t1, jc2::Value(argv[1]).as_float())).get_handle();
 }
 METHOD(__neg__) { GET_SELF; return wrapTensor(jc::tensor_neg(*t1)).get_handle(); }
 METHOD(__eq__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_eq(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_eq(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_eq(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__neq__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_neq(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_neq(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_neq(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__lt__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_lt(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_lt(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_lt(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__le__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_le(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_le(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_le(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__gt__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_gt(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_gt(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_gt(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__ge__) {
     GET_SELF; jc2::Value other(argv[1]);
     if (isTensor(other)) return wrapTensor(jc::tensor_ge(*t1, *getTensor(other))).get_handle();
-    return wrapTensor(jc::tensor_ge(*t1, jc::tensor_scalar(other.as_double()))).get_handle();
+    return wrapTensor(jc::tensor_ge(*t1, jc::tensor_scalar(other.as_float()))).get_handle();
 }
 METHOD(__getitem__) {
     GET_SELF;
@@ -162,7 +162,7 @@ METHOD(__getitem__) {
             current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
             current_dim++;
         } else {
-            int idx = static_cast<int>(idx_val.as_double());
+            int idx = static_cast<int>(idx_val.as_float());
             current = current.select(current_dim, idx);
         }
     }
@@ -183,10 +183,10 @@ METHOD(__setitem__) {
         auto idx_t = getTensor(args_list.get(0));
         if (idx_t->dtype() == jc::DType::Bool) {
             if (isTensor(val)) jc::tensor_mask_set(*t1, *idx_t, *getTensor(val));
-            else jc::tensor_mask_set(*t1, *idx_t, val.as_double());
+            else jc::tensor_mask_set(*t1, *idx_t, val.as_float());
         } else if (idx_t->dtype() == jc::DType::Int32 || idx_t->dtype() == jc::DType::Int64) {
             if (isTensor(val)) jc::tensor_index_set(*t1, *idx_t, *getTensor(val));
-            else jc::tensor_index_set(*t1, *idx_t, val.as_double());
+            else jc::tensor_index_set(*t1, *idx_t, val.as_float());
         } else {
             throwTensorError("Advanced indexing requires a Bool or Integer tensor.");
         }
@@ -205,13 +205,13 @@ METHOD(__setitem__) {
             current = current.slice_dim(current_dim, sl.start(), sl.end(), sl.step());
             current_dim++;
         } else {
-            int idx = static_cast<int>(idx_val.as_double());
+            int idx = static_cast<int>(idx_val.as_float());
             current = current.select(current_dim, idx);
         }
     }
 
     if (current.shape.empty()) {
-        current.setByAbsIdx(current.offset, val.as_double());
+        current.setByAbsIdx(current.offset, val.as_float());
     } else {
         if (isTensor(val)) {
             auto val_t = getTensor(val);
@@ -225,7 +225,7 @@ METHOD(__setitem__) {
                 throwTensorError("Shape mismatch in __setitem__.");
             }
         } else {
-            current.fill_(val.as_double());
+            current.fill_(val.as_float());
         }
     }
     return jc2::Value().get_handle();
@@ -248,15 +248,15 @@ METHOD(contiguous) { GET_SELF; return wrapTensor(t1->contiguous()).get_handle();
 METHOD(view) { GET_SELF; return wrapTensor(t1->view(listToShape(jc2::Value(argv[1])))).get_handle(); }
 METHOD(reshape) { GET_SELF; return wrapTensor(t1->contiguous().view(listToShape(jc2::Value(argv[1])))).get_handle(); }
 METHOD(T) { GET_SELF; return wrapTensor(t1->T()).get_handle(); }
-METHOD(transpose) { GET_SELF; return wrapTensor(t1->transpose(static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()))).get_handle(); }
-METHOD(unsqueeze) { GET_SELF; return wrapTensor(t1->unsqueeze(static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
+METHOD(transpose) { GET_SELF; return wrapTensor(t1->transpose(static_cast<int>(jc2::Value(argv[1]).as_float()), static_cast<int>(jc2::Value(argv[2]).as_float()))).get_handle(); }
+METHOD(unsqueeze) { GET_SELF; return wrapTensor(t1->unsqueeze(static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
 METHOD(squeeze) { GET_SELF; return wrapTensor(t1->squeeze()).get_handle(); }
-METHOD(fill_) { GET_SELF; t1->fill_(jc2::Value(argv[1]).as_double()); return argv[0]; }
+METHOD(fill_) { GET_SELF; t1->fill_(jc2::Value(argv[1]).as_float()); return argv[0]; }
 METHOD(sum) {
     GET_SELF;
     int axis = -1;
     bool keepdim = false;
-    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_float());
     if (argc > 2) keepdim = jc2::Value(argv[2]).as_bool();
     return wrapTensor(jc::tensor_sum(*t1, axis, keepdim)).get_handle();
 }
@@ -264,13 +264,13 @@ METHOD(mean) {
     GET_SELF;
     int axis = -1;
     bool keepdim = false;
-    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_double());
+    if (argc > 1) axis = static_cast<int>(jc2::Value(argv[1]).as_float());
     if (argc > 2) keepdim = jc2::Value(argv[2]).as_bool();
     return wrapTensor(jc::tensor_mean(*t1, axis, keepdim)).get_handle();
 }
 METHOD(max) { GET_SELF; return wrapTensor(jc::tensor_max(*t1)).get_handle(); }
 METHOD(min) { GET_SELF; return wrapTensor(jc::tensor_min(*t1)).get_handle(); }
-METHOD(clamp) { GET_SELF; return wrapTensor(jc::tensor_clamp(*t1, jc2::Value(argv[1]).as_double(), jc2::Value(argv[2]).as_double())).get_handle(); }
+METHOD(clamp) { GET_SELF; return wrapTensor(jc::tensor_clamp(*t1, jc2::Value(argv[1]).as_float(), jc2::Value(argv[2]).as_float())).get_handle(); }
 METHOD(argmax) { GET_SELF; return jc2::Value(static_cast<double>(jc::tensor_argmax(*t1))).get_handle(); }
 METHOD(argmin) { GET_SELF; return jc2::Value(static_cast<double>(jc::tensor_argmin(*t1))).get_handle(); }
 METHOD(exp) { GET_SELF; return wrapTensor(jc::tensor_exp(*t1)).get_handle(); }
@@ -295,8 +295,8 @@ METHOD(tolist) {
     for (size_t i = 0; i < t1->numel(); ++i) list.push_back(jc2::Value(t1->getFlat(i)));
     return list.get_handle();
 }
-METHOD(getFlat) { GET_SELF; return jc2::Value(t1->getFlat(static_cast<size_t>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).as_double()), jc2::Value(argv[2]).as_double()); return argv[0]; }
+METHOD(getFlat) { GET_SELF; return jc2::Value(t1->getFlat(static_cast<size_t>(jc2::Value(argv[1]).as_float()))).get_handle(); }
+METHOD(setFlat) { GET_SELF; t1->setFlat(static_cast<size_t>(jc2::Value(argv[1]).as_float()), jc2::Value(argv[2]).as_float()); return argv[0]; }
 
 // Global functions
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, [[maybe_unused]] int argc, JC2_ValueHandle* argv, void*)
@@ -321,7 +321,7 @@ static void parseNestedList(const jc2::Value& val, std::vector<double>& out_data
         if (current_depth < static_cast<int>(out_shape.size())) {
             throwTensorError("Jagged nested list detected.");
         }
-        out_data.push_back(val.as_double());
+        out_data.push_back(val.as_float());
     }
 }
 
@@ -369,7 +369,7 @@ FUNC(tensor) {
 }
 FUNC(scalar) {
     auto [dt, rg] = parseTensorOptions(argc, argv, 1);
-    return wrapTensor(jc::tensor_scalar(jc2::Value(argv[0]).as_double(), dt, rg)).get_handle();
+    return wrapTensor(jc::tensor_scalar(jc2::Value(argv[0]).as_float(), dt, rg)).get_handle();
 }
 FUNC(zeros) {
     auto shape = listToShape(jc2::Value(argv[0]));
@@ -383,29 +383,29 @@ FUNC(ones) {
 }
 FUNC(full) {
     auto shape = listToShape(jc2::Value(argv[0]));
-    double val = jc2::Value(argv[1]).as_double();
+    double val = jc2::Value(argv[1]).as_float();
     auto [dt, rg] = parseTensorOptions(argc, argv, 2);
     return wrapTensor(jc::tensor_full(shape, val, dt, rg)).get_handle();
 }
 FUNC(eye) {
     auto [dt, rg] = parseTensorOptions(argc, argv, 1);
-    return wrapTensor(jc::tensor_eye(static_cast<int>(jc2::Value(argv[0]).as_double()), dt)).get_handle();
+    return wrapTensor(jc::tensor_eye(static_cast<int>(jc2::Value(argv[0]).as_float()), dt)).get_handle();
 }
 FUNC(arange) {
-    double start = jc2::Value(argv[0]).as_double();
-    double end = jc2::Value(argv[1]).as_double();
+    double start = jc2::Value(argv[0]).as_float();
+    double end = jc2::Value(argv[1]).as_float();
     double step = 1.0;
     jc::DType dt = jc::DType::Float64;
     for (int i = 2; i < argc; ++i) {
         jc2::Value arg(argv[i]);
         if (arg.is_string()) dt = jc::stringToDType(arg.as_string());
-        else step = arg.as_double();
+        else step = arg.as_float();
     }
     return wrapTensor(jc::tensor_arange(start, end, step, dt)).get_handle();
 }
 FUNC(linspace) {
     auto [dt, rg] = parseTensorOptions(argc, argv, 3);
-    return wrapTensor(jc::tensor_linspace(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double(), static_cast<int>(jc2::Value(argv[2]).as_double()), dt)).get_handle();
+    return wrapTensor(jc::tensor_linspace(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float(), static_cast<int>(jc2::Value(argv[2]).as_float()), dt)).get_handle();
 }
 FUNC(rand) {
     auto [dt, rg] = parseTensorOptions(argc, argv, 1);
@@ -422,7 +422,7 @@ FUNC(cat) {
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
-    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_double()) : 0;
+    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_float()) : 0;
     return wrapTensor(jc::tensor_cat(tensors, axis)).get_handle();
 }
 FUNC(stack) {
@@ -431,24 +431,24 @@ FUNC(stack) {
     jc2::List list(listVal.get_handle());
     std::vector<jc::Tensor> tensors;
     for (size_t i = 0; i < list.size(); ++i) tensors.push_back(*getTensor(list.get(i)));
-    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_double()) : 0;
+    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_float()) : 0;
     return wrapTensor(jc::tensor_stack(tensors, axis)).get_handle();
 }
 FUNC(mse_loss) { (void)argc; return wrapTensor(jc::tensor_mse_loss(*getTensor(jc2::Value(argv[0])), *getTensor(jc2::Value(argv[1])))).get_handle(); }
 FUNC(softmax) {
-    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_double()) : -1;
+    int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_float()) : -1;
     return wrapTensor(jc::tensor_softmax(*getTensor(jc2::Value(argv[0])), axis)).get_handle();
 }
 FUNC(backward) { (void)argc; getTensor(jc2::Value(argv[0]))->backward(); return jc2::Value().get_handle(); }
 FUNC(zero_grad) { (void)argc; jc::tensor_zero_grad(*getTensor(jc2::Value(argv[0]))); return jc2::Value().get_handle(); }
-FUNC(sgd_step) { (void)argc; jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_double()); return jc2::Value().get_handle(); }
+FUNC(sgd_step) { (void)argc; jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_float()); return jc2::Value().get_handle(); }
 FUNC(isTensor) { (void)argc; return jc2::Value(isTensor(jc2::Value(argv[0]))).get_handle(); }
 FUNC(to) { (void)argc; return wrapTensor(getTensor(jc2::Value(argv[0]))->to(jc::stringToDType(jc2::Value(argv[1]).as_string()))).get_handle(); }
-FUNC(getrow) { (void)argc; return wrapTensor(jc::tensor_getrow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(getcol) { (void)argc; return wrapTensor(jc::tensor_getcol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(deleterow) { (void)argc; return wrapTensor(jc::tensor_deleterow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(deletecol) { (void)argc; return wrapTensor(jc::tensor_deletecol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()))).get_handle(); }
-FUNC(swaprows) { (void)argc; return wrapTensor(jc::tensor_swaprows(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_double()), static_cast<int>(jc2::Value(argv[2]).as_double()))).get_handle(); }
+FUNC(getrow) { (void)argc; return wrapTensor(jc::tensor_getrow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
+FUNC(getcol) { (void)argc; return wrapTensor(jc::tensor_getcol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
+FUNC(deleterow) { (void)argc; return wrapTensor(jc::tensor_deleterow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
+FUNC(deletecol) { (void)argc; return wrapTensor(jc::tensor_deletecol(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
+FUNC(swaprows) { (void)argc; return wrapTensor(jc::tensor_swaprows(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()), static_cast<int>(jc2::Value(argv[2]).as_float()))).get_handle(); }
 FUNC(hstack) {
     (void)argc;
     jc2::Value listVal(argv[0]);

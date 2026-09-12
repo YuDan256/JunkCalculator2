@@ -24,8 +24,8 @@ struct JsonEngine {
         if (val.is_none()) return "null";
         if (val.is_bool()) return val.as_bool() ? "true" : "false";
 
-        if (val.is_double()) {
-            double d = val.as_double();
+        if (val.is_float()) {
+            double d = val.as_float();
             double rounded = std::round(d);
             if (std::abs(d - rounded) < 1e-5 && std::abs(rounded) < 1e15 && rounded == std::trunc(rounded)) {
                 return std::to_string(static_cast<int64_t>(rounded));
@@ -38,7 +38,7 @@ struct JsonEngine {
         if (val.is_bigint()) return jc2::BigInt(val.get_handle()).to_string();
         if (val.is_fraction()) {
             jc2::Fraction f(val.get_handle());
-            double d = f.num().as_double() / f.den().as_double();
+            double d = f.num().as_float() / f.den().as_float();
             std::ostringstream oss;
             oss << d;
             return oss.str();
@@ -298,7 +298,7 @@ JC2_ValueHandle global_encode(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
 }
 
 JC2_ValueHandle global_pretty(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
-    int indent = (argc == 2) ? static_cast<int>(std::round(jc2::Value(argv[1]).as_double())) : 4;
+    int indent = (argc == 2) ? static_cast<int>(std::round(jc2::Value(argv[1]).as_float())) : 4;
     return jc2::Value(JsonEngine::encode(jc2::Value(argv[0]), indent, 0)).get_handle();
 }
 

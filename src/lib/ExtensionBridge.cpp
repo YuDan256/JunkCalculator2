@@ -23,7 +23,7 @@ static inline JC2_ValueHandle protect(const Value& v) {
 static JC2_ValueHandle host_make_none(JC2_VMContext) { return Value::none().as_bits; }
 static JC2_ValueHandle host_make_bool(JC2_VMContext, bool b) { return Value(b).as_bits; }
 static JC2_ValueHandle host_make_int(JC2_VMContext, int32_t i) { return Value(i).as_bits; }
-static JC2_ValueHandle host_make_double(JC2_VMContext, double d) { return Value(d).as_bits; }
+static JC2_ValueHandle host_make_float(JC2_VMContext, double d) { return Value(d).as_bits; }
 static JC2_ValueHandle host_make_string(JC2_VMContext, const char* str, size_t len) {
     return protect(Value(std::string(str, len)));
 }
@@ -34,7 +34,7 @@ static JC2_ValueHandle host_make_complex(JC2_VMContext, double r, double i) {
 static bool host_is_none(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isNone(); }
 static bool host_is_bool(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isBool(); }
 static bool host_is_int(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isInt32(); }
-static bool host_is_double(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isDouble(); }
+static bool host_is_float(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isFloat(); }
 static bool host_is_string(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isString(); }
 static bool host_is_complex(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isObjType(ObjType::COMPLEX); }
 static bool host_is_instance(JC2_VMContext, JC2_ValueHandle v) { return from_handle(v).isInstance(); }
@@ -52,7 +52,7 @@ static JC2_ValueHandle host_get_type(JC2_VMContext, JC2_ValueHandle v) {
     } else {
         BuiltinType vbt = BuiltinType::ANY;
         if (val.isInt32() || val.isBigInt()) vbt = BuiltinType::INT;
-        else if (val.isDouble()) vbt = BuiltinType::FLOAT;
+        else if (val.isFloat()) vbt = BuiltinType::FLOAT;
         else if (val.isString()) vbt = BuiltinType::STRING;
         else if (val.isBool()) vbt = BuiltinType::BOOL;
         else if (val.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -117,14 +117,14 @@ static int32_t host_as_int(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
     if (val.isInt32()) return val.asInt32();
     if (val.isBigInt()) return static_cast<int32_t>(val.asBigInt().toInt64());
-    if (val.isDouble()) return static_cast<int32_t>(val.asDoubleRaw());
+    if (val.isFloat()) return static_cast<int32_t>(val.asFloatRaw());
     if (val.isBool()) return val.asBool() ? 1 : 0;
-    return static_cast<int32_t>(val.asDouble());
+    return static_cast<int32_t>(val.asFloat());
 }
-static double host_as_double(JC2_VMContext, JC2_ValueHandle v) {
+static double host_as_float(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
     if (val.isBigInt()) return std::stod(val.asBigInt().toString());
-    return val.asDouble();
+    return val.asFloat();
 }
 static const char* host_as_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_len) {
     Value val = from_handle(v);
@@ -137,7 +137,7 @@ static const char* host_as_string(JC2_VMContext, JC2_ValueHandle v, size_t* out_
 static double host_complex_get_real(JC2_VMContext, JC2_ValueHandle v) {
     Value val = from_handle(v);
     if (val.isObjType(ObjType::COMPLEX)) return static_cast<ObjComplex*>(val.asObj())->comp.real;
-    if (val.isNumber()) return val.asDouble();
+    if (val.isNumber()) return val.asFloat();
     return 0.0;
 }
 
@@ -314,7 +314,7 @@ static void host_register_int(JC2_VMContext, JC2_ModuleHandle mod, const char* n
     (*mctx->env)[name] = Value(val);
 }
 
-static void host_register_double(JC2_VMContext, JC2_ModuleHandle mod, const char* name, double val) {
+static void host_register_float(JC2_VMContext, JC2_ModuleHandle mod, const char* name, double val) {
     ModuleLoadContext* mctx = static_cast<ModuleLoadContext*>(mod);
     (*mctx->env)[name] = Value(val);
 }
@@ -808,20 +808,20 @@ static const JC2_HostAPI host_api = {
     host_make_none,
     host_make_bool,
     host_make_int,
-    host_make_double,
+    host_make_float,
     host_make_string,
     host_make_complex,
     host_is_none,
     host_is_bool,
     host_is_int,
-    host_is_double,
+    host_is_float,
     host_is_string,
     host_is_complex,
     host_is_instance,
     host_is_type,
     host_as_bool,
     host_as_int,
-    host_as_double,
+    host_as_float,
     host_as_string,
     host_complex_get_real,
     host_complex_get_imag,
@@ -836,7 +836,7 @@ static const JC2_HostAPI host_api = {
     host_register_function_help,
     host_register_function,
     host_register_int,
-    host_register_double,
+    host_register_float,
     host_register_string,
     host_register_value,
     host_throw_error,

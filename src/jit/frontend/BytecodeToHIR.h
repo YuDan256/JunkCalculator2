@@ -380,7 +380,7 @@ public:
                     auto resolveConst = [&](int idx) -> HIRNode* {
                         const Value& kst = chunk_.constants[idx];
                         if (kst.isInt32()) return builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
-                        if (kst.isDouble()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
+                        if (kst.isFloat()) return builder_.createBoxDouble(builder_.createDoubleConstant(kst.asFloatRaw()));
                         if (kst.isBool()) return builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         if (kst.isNone()) return builder_.createNoneConstant();
                         return builder_.createInt64Constant(kst.as_bits);
@@ -444,8 +444,8 @@ public:
                         HIRNode* node = nullptr;
                         if (kst.isInt32()) {
                             node = builder_.createBoxInt32(builder_.createInt32Constant(kst.asInt32()));
-                        } else if (kst.isDouble()) {
-                            node = builder_.createBoxDouble(builder_.createDoubleConstant(kst.asDoubleRaw()));
+                        } else if (kst.isFloat()) {
+                            node = builder_.createBoxDouble(builder_.createDoubleConstant(kst.asFloatRaw()));
                         } else if (kst.isBool()) {
                             node = builder_.createBoxBool(builder_.createBoolConstant(kst.asBool()));
                         } else if (kst.isNone()) {
@@ -1003,7 +1003,7 @@ public:
                     }
                     case OpCode::CLOSURE: {
                         auto fs = captureFrameState(currentIp);
-                        int fnIdx = static_cast<int>(std::round(chunk_.constants[bx].asDouble()));
+                        int fnIdx = static_cast<int>(std::round(chunk_.constants[bx].asFloat()));
                         auto fnIdxNode = builder_.createInt32Constant(fnIdx);
                         auto offsetNode = builder_.createInt32Constant(registerOffset_);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_closure), JITType::TaggedValue, 2, {fnIdxNode, offsetNode}, fs);

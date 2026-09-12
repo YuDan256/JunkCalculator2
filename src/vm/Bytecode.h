@@ -630,7 +630,7 @@ public:
             case OpCode::CLOSURE:
                 std::cout << "R(" << a << ") " << bx;
                 if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; fnIdx=" << constants[bx].asDouble();
+                    std::cout << "  ; fnIdx=" << constants[bx].asFloat();
                 }
                 break;
 

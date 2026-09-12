@@ -273,8 +273,8 @@ void write_memory(uint8_t* ptr, const FFITypeDesc& t, const Value& v) {
         case FFIType::U32: *reinterpret_cast<uint32_t*>(ptr) = static_cast<uint32_t>(std::stoull(v.to_string())); break;
         case FFIType::I64: *reinterpret_cast<int64_t*>(ptr) = static_cast<int64_t>(std::stoull(v.to_string())); break;
         case FFIType::U64: *reinterpret_cast<uint64_t*>(ptr) = static_cast<uint64_t>(std::stoull(v.to_string())); break;
-        case FFIType::F32: *reinterpret_cast<float*>(ptr) = static_cast<float>(v.as_double()); break;
-        case FFIType::F64: *reinterpret_cast<double*>(ptr) = v.as_double(); break;
+        case FFIType::F32: *reinterpret_cast<float*>(ptr) = static_cast<float>(v.as_float()); break;
+        case FFIType::F64: *reinterpret_cast<double*>(ptr) = v.as_float(); break;
         case FFIType::POINTER: *reinterpret_cast<uint64_t*>(ptr) = static_cast<uint64_t>(std::stoull(v.to_string())); break;
         case FFIType::STRING: *reinterpret_cast<const char**>(ptr) = v.as_c_str(); break;
         case FFIType::STRUCT: {
@@ -327,7 +327,7 @@ class Win64ABIHandler : public ABIHandler {
     uint64_t extract_u64(const Value& v) {
         if (v.is_bigint()) return std::stoull(v.to_string());
         if (v.is_int()) return static_cast<uint64_t>(static_cast<int64_t>(v.as_int()));
-        return static_cast<uint64_t>(static_cast<int64_t>(v.as_double()));
+        return static_cast<uint64_t>(static_cast<int64_t>(v.as_float()));
     }
 
 public:
@@ -370,7 +370,7 @@ public:
             } else {
                 // 动态推断可变参数的类型
                 if (args[i].is_bigint() || args[i].is_int()) { current_type = FFIType::I64; current_desc = {FFIType::I64, 8, 8, nullptr}; }
-                else if (args[i].is_double()) { current_type = FFIType::F64; current_desc = {FFIType::F64, 8, 8, nullptr}; }
+                else if (args[i].is_float()) { current_type = FFIType::F64; current_desc = {FFIType::F64, 8, 8, nullptr}; }
                 else if (args[i].is_string()) { current_type = FFIType::STRING; current_desc = {FFIType::STRING, 8, 8, nullptr}; }
                 else if (args[i].is_instance() && args[i].get_native_data<StructInstanceData>()) {
                     StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
@@ -404,12 +404,12 @@ public:
                 break;
             }
             case FFIType::F32: {
-                float f = static_cast<float>(args[i].as_double());
+                float f = static_cast<float>(args[i].as_float());
                 std::memcpy(&val64, &f, sizeof(float));
                 break;
             }
             case FFIType::F64: {
-                double d = args[i].as_double();
+                double d = args[i].as_float();
                 std::memcpy(&val64, &d, sizeof(double));
                 break;
             }
@@ -510,7 +510,7 @@ class SysV64ABIHandler : public ABIHandler {
     uint64_t extract_u64(const Value& v) {
         if (v.is_bigint()) return std::stoull(v.to_string());
         if (v.is_int()) return static_cast<uint64_t>(static_cast<int64_t>(v.as_int()));
-        return static_cast<uint64_t>(static_cast<int64_t>(v.as_double()));
+        return static_cast<uint64_t>(static_cast<int64_t>(v.as_float()));
     }
 
 public:
@@ -547,7 +547,7 @@ public:
                 current_type = current_desc.type;
             } else {
                 if (args[i].is_bigint() || args[i].is_int()) { current_type = FFIType::I64; current_desc = {FFIType::I64, 8, 8, nullptr}; }
-                else if (args[i].is_double()) { current_type = FFIType::F64; current_desc = {FFIType::F64, 8, 8, nullptr}; }
+                else if (args[i].is_float()) { current_type = FFIType::F64; current_desc = {FFIType::F64, 8, 8, nullptr}; }
                 else if (args[i].is_string()) { current_type = FFIType::STRING; current_desc = {FFIType::STRING, 8, 8, nullptr}; }
                 else if (args[i].is_instance() && args[i].get_native_data<StructInstanceData>()) {
                     StructInstanceData* sdata = args[i].get_native_data<StructInstanceData>();
@@ -600,12 +600,12 @@ public:
                 break;
             }
             case FFIType::F32: {
-                float f = static_cast<float>(args[i].as_double());
+                float f = static_cast<float>(args[i].as_float());
                 std::memcpy(&val64, &f, sizeof(float));
                 break;
             }
             case FFIType::F64: {
-                double d = args[i].as_double();
+                double d = args[i].as_float();
                 std::memcpy(&val64, &d, sizeof(double));
                 break;
             }
@@ -807,18 +807,18 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space
                 case FFIType::POINTER:
                     if (result.is_bigint()) val64 = std::stoull(result.to_string());
                     else if (result.is_int()) val64 = static_cast<uint64_t>(static_cast<int64_t>(result.as_int()));
-                    else val64 = static_cast<uint64_t>(static_cast<int64_t>(result.as_double()));
+                    else val64 = static_cast<uint64_t>(static_cast<int64_t>(result.as_float()));
                     *out_int = val64;
                     break;
                 case FFIType::F32: {
-                    float f = static_cast<float>(result.as_double());
+                    float f = static_cast<float>(result.as_float());
                     std::memcpy(&val64, &f, sizeof(float));
                     *out_int = val64;
-                    *out_double = result.as_double();
+                    *out_double = result.as_float();
                     break;
                 }
                 case FFIType::F64: {
-                    double d = result.as_double();
+                    double d = result.as_float();
                     std::memcpy(&val64, &d, sizeof(double));
                     *out_int = val64;
                     *out_double = d;

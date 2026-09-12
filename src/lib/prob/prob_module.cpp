@@ -24,16 +24,16 @@ static jc2::Value makeDist(jc::Distribution d) {
 #define METHOD(name) JC2_ValueHandle dist_##name(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 #define GET_SELF auto d = getDist(jc2::Value(argv[0]))
 
-METHOD(pdf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-METHOD(pmf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-METHOD(cdf) { GET_SELF; return jc2::Value(d->cdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-METHOD(quantile) { GET_SELF; return jc2::Value(d->quantile(jc2::Value(argv[1]).as_double())).get_handle(); }
+METHOD(pdf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+METHOD(pmf) { GET_SELF; return jc2::Value(d->pdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+METHOD(cdf) { GET_SELF; return jc2::Value(d->cdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+METHOD(quantile) { GET_SELF; return jc2::Value(d->quantile(jc2::Value(argv[1]).as_float())).get_handle(); }
 METHOD(mean) { GET_SELF; return jc2::Value(d->distMean()).get_handle(); }
 METHOD(var) { GET_SELF; return jc2::Value(d->distVar()).get_handle(); }
 METHOD(std_dev) { GET_SELF; return jc2::Value(std::sqrt(d->distVar())).get_handle(); }
 METHOD(sample) {
     GET_SELF;
-    int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_double()));
+    int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_float()));
     if (n <= 0) jc2::throw_error(jc2::ErrorType::RuntimeError, "sample() count must be positive.");
     auto data = d->sample(n);
     jc2::RealMatrix mat(1, n);
@@ -45,38 +45,38 @@ METHOD(str) { GET_SELF; return jc2::Value(d->toString()).get_handle(); }
 
 #define FUNC(name) JC2_ValueHandle global_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
-FUNC(gamma) { (void)argc; return jc2::Value(jc::prob::tgamma(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(lgamma) { (void)argc; return jc2::Value(jc::prob::lngamma(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(betaFn) { (void)argc; return jc2::Value(jc::prob::betafn(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(erf) { (void)argc; return jc2::Value(jc::prob::erf_impl(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(erfc) { (void)argc; return jc2::Value(jc::prob::erfc_impl(jc2::Value(argv[0]).as_double())).get_handle(); }
+FUNC(gamma) { (void)argc; return jc2::Value(jc::prob::tgamma(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(lgamma) { (void)argc; return jc2::Value(jc::prob::lngamma(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(betaFn) { (void)argc; return jc2::Value(jc::prob::betafn(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(erf) { (void)argc; return jc2::Value(jc::prob::erf_impl(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(erfc) { (void)argc; return jc2::Value(jc::prob::erfc_impl(jc2::Value(argv[0]).as_float())).get_handle(); }
 
 FUNC(Normal) {
-    double mu = argc >= 1 ? jc2::Value(argv[0]).as_double() : 0;
-    double sigma = argc >= 2 ? jc2::Value(argv[1]).as_double() : 1;
+    double mu = argc >= 1 ? jc2::Value(argv[0]).as_float() : 0;
+    double sigma = argc >= 2 ? jc2::Value(argv[1]).as_float() : 1;
     return makeDist(jc::Distribution::normal(mu, sigma)).get_handle();
 }
-FUNC(TDist) { (void)argc; return makeDist(jc::Distribution::studentT(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(Chi2) { (void)argc; return makeDist(jc::Distribution::chiSquared(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(FDist) { (void)argc; return makeDist(jc::Distribution::fDist(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(ExpDist) { (void)argc; return makeDist(jc::Distribution::exponential(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(GammaDist) { (void)argc; return makeDist(jc::Distribution::gammaDist(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(BetaDist) { (void)argc; return makeDist(jc::Distribution::betaDist(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(Uniform) { (void)argc; return makeDist(jc::Distribution::uniformDist(jc2::Value(argv[0]).as_double(), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(Binom) { (void)argc; return makeDist(jc::Distribution::binomial(static_cast<int>(std::round(jc2::Value(argv[0]).as_double())), jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(Poisson) { (void)argc; return makeDist(jc::Distribution::poisson(jc2::Value(argv[0]).as_double())).get_handle(); }
-FUNC(Geom) { (void)argc; return makeDist(jc::Distribution::geometric(jc2::Value(argv[0]).as_double())).get_handle(); }
+FUNC(TDist) { (void)argc; return makeDist(jc::Distribution::studentT(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(Chi2) { (void)argc; return makeDist(jc::Distribution::chiSquared(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(FDist) { (void)argc; return makeDist(jc::Distribution::fDist(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(ExpDist) { (void)argc; return makeDist(jc::Distribution::exponential(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(GammaDist) { (void)argc; return makeDist(jc::Distribution::gammaDist(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(BetaDist) { (void)argc; return makeDist(jc::Distribution::betaDist(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(Uniform) { (void)argc; return makeDist(jc::Distribution::uniformDist(jc2::Value(argv[0]).as_float(), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(Binom) { (void)argc; return makeDist(jc::Distribution::binomial(static_cast<int>(std::round(jc2::Value(argv[0]).as_float())), jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(Poisson) { (void)argc; return makeDist(jc::Distribution::poisson(jc2::Value(argv[0]).as_float())).get_handle(); }
+FUNC(Geom) { (void)argc; return makeDist(jc::Distribution::geometric(jc2::Value(argv[0]).as_float())).get_handle(); }
 
-FUNC(pdf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(pmf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->pdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(cdf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->cdf(jc2::Value(argv[1]).as_double())).get_handle(); }
-FUNC(quantile) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->quantile(jc2::Value(argv[1]).as_double())).get_handle(); }
+FUNC(pdf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->pdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(pmf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->pdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(cdf) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->cdf(jc2::Value(argv[1]).as_float())).get_handle(); }
+FUNC(quantile) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->quantile(jc2::Value(argv[1]).as_float())).get_handle(); }
 FUNC(dmean) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->distMean()).get_handle(); }
 FUNC(dvar) { (void)argc; return jc2::Value(getDist(jc2::Value(argv[0]))->distVar()).get_handle(); }
 FUNC(dstd) { (void)argc; return jc2::Value(std::sqrt(getDist(jc2::Value(argv[0]))->distVar())).get_handle(); }
 FUNC(sample) {
     (void)argc;
-    int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_double()));
+    int n = static_cast<int>(std::round(jc2::Value(argv[1]).as_float()));
     if (n <= 0) jc2::throw_error(jc2::ErrorType::RuntimeError, "sample() count must be positive.");
     auto data = getDist(jc2::Value(argv[0]))->sample(n);
     jc2::RealMatrix mat(1, n);
@@ -121,7 +121,7 @@ static std::vector<double> extractDS(const jc2::Value& v, const std::string& f) 
 
 FUNC(ttest) {
     auto data = extractDS(jc2::Value(argv[0]), "ttest");
-    double mu0 = argc >= 2 ? jc2::Value(argv[1]).as_double() : 0.0;
+    double mu0 = argc >= 2 ? jc2::Value(argv[1]).as_float() : 0.0;
     auto r = jc::ttest1(data, mu0);
     jc2::RealMatrix mat(1, 3);
     mat.set(0, 0, r.statistic); mat.set(0, 1, r.df); mat.set(0, 2, r.pValue);

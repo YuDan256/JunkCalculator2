@@ -166,7 +166,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                     } else {
                         BuiltinType vbt = BuiltinType::ANY;
                         if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                        else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                        else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                         else if (v.isString()) vbt = BuiltinType::STRING;
                         else if (v.isBool()) vbt = BuiltinType::BOOL;
                         else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -787,7 +787,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 } else {
                     BuiltinType vbt = BuiltinType::ANY;
                     if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                    else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                    else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                     else if (v.isString()) vbt = BuiltinType::STRING;
                     else if (v.isBool()) vbt = BuiltinType::BOOL;
                     else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -1556,7 +1556,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
             switch (bt) {
                 case BuiltinType::ANY: return true;
                 case BuiltinType::INT: if (val.isInt32() || val.isObjType(ObjType::BIGINT)) return true; break;
-                case BuiltinType::FLOAT: if (val.isDouble()) return true; break;
+                case BuiltinType::FLOAT: if (val.isFloat()) return true; break;
                 case BuiltinType::STRING: if (val.isString()) return true; break;
                 case BuiltinType::BOOL: if (val.isBool()) return true; break;
                 case BuiltinType::NONE_TYPE: if (val.isNone()) return true; break;
@@ -3312,8 +3312,8 @@ VM::VM() {
                     JC2_THROW(TypeError, "Cannot convert complex with nonzero imaginary part to int.");
                 return Value(BigInt(static_cast<int64_t>(std::trunc(c.real))));
             }
-            if (val.isDouble()) {
-                double v = val.asDoubleRaw();
+            if (val.isFloat()) {
+                double v = val.asFloatRaw();
                 if (!std::isfinite(v))
                     JC2_THROW(TypeError, "Cannot convert non-finite value to int.");
                 return Value(BigInt(static_cast<int64_t>(std::trunc(v))));
@@ -3370,7 +3370,7 @@ VM::VM() {
                     JC2_THROW(TypeError, "Cannot convert complex with nonzero imaginary part to double.");
                 return Value(c.real);
             }
-            return Value(val.asDouble());
+            return Value(val.asFloat());
         });
 
         bind("complex", {1, 2}, {"real", "imag"}, [this, evalIfSym](const std::vector<Value>& args) -> Value {
@@ -3388,9 +3388,9 @@ VM::VM() {
                 }
                 if (val.isComplex())
                     return val;
-                return Value(Complex(val.asDouble(), 0.0));
+                return Value(Complex(val.asFloat(), 0.0));
             }
-            return Value(Complex(evalIfSym(args[0]).asDouble(), evalIfSym(args[1]).asDouble()));
+            return Value(Complex(evalIfSym(args[0]).asFloat(), evalIfSym(args[1]).asFloat()));
         });
 
         bind("bool", {1}, {"x"}, [this](const std::vector<Value>& args) -> Value {
@@ -3443,8 +3443,8 @@ VM::VM() {
 
         bind("symmatrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
             // ★ 统一调用约定：args = [rows, cols, rest_list]
-            int r = static_cast<int>(std::round(args[0].asDouble()));
-            int c = static_cast<int>(std::round(args[1].asDouble()));
+            int r = static_cast<int>(std::round(args[0].asFloat()));
+            int c = static_cast<int>(std::round(args[1].asFloat()));
             if (r <= 0 || c <= 0)
                 JC2_THROW(RuntimeError, "symmatrix() dimensions must be positive.");
             const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
@@ -3472,8 +3472,8 @@ VM::VM() {
                 int64_t val64 = 0;
                 if (v.isInt32()) {
                     val64 = v.asInt32();
-                } else if (v.isDouble()) {
-                    val64 = static_cast<int64_t>(std::round(v.asDouble()));
+                } else if (v.isFloat()) {
+                    val64 = static_cast<int64_t>(std::round(v.asFloat()));
                 } else {
                     try {
                         val64 = v.asBigInt().toInt64();
@@ -3498,8 +3498,8 @@ VM::VM() {
 
         bind("matrix", {}, {"rows", "cols"}, [](const std::vector<Value>& args) -> Value {
             // ★ 统一调用约定：args = [rows, cols, rest_list]
-            int r = static_cast<int>(std::round(args[0].asDouble()));
-            int c = static_cast<int>(std::round(args[1].asDouble()));
+            int r = static_cast<int>(std::round(args[0].asFloat()));
+            int c = static_cast<int>(std::round(args[1].asFloat()));
             if (r <= 0 || c <= 0)
                 JC2_THROW(RuntimeError, "matrix() dimensions must be positive.");
             const std::vector<Value>& items = static_cast<ObjList*>(args[2].asObj())->vec;
@@ -3533,7 +3533,7 @@ VM::VM() {
             std::vector<double> flat;
             flat.reserve(total);
             for (int i = 0; i < total; ++i)
-                flat.push_back(items[i].asDouble());
+                flat.push_back(items[i].asFloat());
             return Value(RealMatrix(r, c, flat));
         }, "elements");
     }
@@ -3551,7 +3551,7 @@ VM::VM() {
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
         if (!currentDebuggerFrame) JC2_THROW(RuntimeError, "Debugger not active.");
-        int reg = static_cast<int>(args[0].asDouble());
+        int reg = static_cast<int>(args[0].asFloat());
         CallFrame* frame = currentDebuggerFrame;
         int maxRegs = frame->function ? (frame->function->localCount + frame->function->refCount) : 0;
         if (reg >= 0 && reg < maxRegs) {
@@ -3955,8 +3955,8 @@ Value VM::run(int targetFrameDepth) {
                         if (wp.reg >= 0 && wp.reg < maxRegs) {
                             Value v = (wp.reg < locals) ? registers[frame->registerBase + wp.reg] : registers[frame->refParamsBase + (wp.reg - locals)];
                             bool cond = false;
-                            if (v.isDouble() || v.isInt32()) {
-                                double d = v.isDouble() ? v.asDoubleRaw() : v.asInt32();
+                            if (v.isFloat() || v.isInt32()) {
+                                double d = v.isFloat() ? v.asFloatRaw() : v.asInt32();
                                 if (wp.op == "==") cond = (d == wp.val);
                                 else if (wp.op == "!=") cond = (d != wp.val);
                                 else if (wp.op == ">") cond = (d > wp.val);
@@ -4241,7 +4241,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                         
-                int fnIdx = static_cast<int>(std::round(chunk->constants.data()[bx].asDouble()));
+                int fnIdx = static_cast<int>(std::round(chunk->constants.data()[bx].asFloat()));
                 if (fnIdx < 0 || fnIdx >= static_cast<int>(compiledFunctions.size()))
                     JC2_THROW(RuntimeError, "Invalid function index.");
 
@@ -4502,14 +4502,14 @@ Value VM::run(int targetFrameDepth) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) + vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
-                } else if (vb.isDouble() && vc.isDouble()) { 
+                } else if (vb.isFloat() && vc.isFloat()) { 
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() + vc.asDoubleRaw()); break; 
+                    getReg(a) = Value::fromFloat(vb.asFloatRaw() + vc.asFloatRaw()); break; 
                 } else if (vb.isString() && vc.isString()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04; // Monomorphic String
                     getReg(a) = Value(vb.asString() + vc.asString()); break;
                 }
-                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                if ((vb.isInt32() && vc.isFloat()) || (vb.isFloat() && vc.isInt32())) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
                 } else {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
@@ -4527,11 +4527,11 @@ Value VM::run(int targetFrameDepth) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) - vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
-                } else if (vb.isDouble() && vc.isDouble()) { 
+                } else if (vb.isFloat() && vc.isFloat()) { 
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() - vc.asDoubleRaw()); break; 
+                    getReg(a) = Value::fromFloat(vb.asFloatRaw() - vc.asFloatRaw()); break; 
                 }
-                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                if ((vb.isInt32() && vc.isFloat()) || (vb.isFloat() && vc.isInt32())) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
                 } else {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
@@ -4549,11 +4549,11 @@ Value VM::run(int targetFrameDepth) {
                     int64_t res = static_cast<int64_t>(vb.asInt32()) * vc.asInt32();
                     if (res >= INT32_MIN && res <= INT32_MAX) { getReg(a) = Value::fromInt32(static_cast<int32_t>(res)); break; }
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
-                } else if (vb.isDouble() && vc.isDouble()) { 
+                } else if (vb.isFloat() && vc.isFloat()) { 
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() * vc.asDoubleRaw()); break; 
+                    getReg(a) = Value::fromFloat(vb.asFloatRaw() * vc.asFloatRaw()); break; 
                 }
-                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                if ((vb.isInt32() && vc.isFloat()) || (vb.isFloat() && vc.isInt32())) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
                 } else {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
@@ -4583,12 +4583,12 @@ Value VM::run(int targetFrameDepth) {
                         getReg(a) = Value(Fraction(BigInt(num), BigInt(den)));
                     }
                     break;
-                } else if (vb.isDouble() && vc.isDouble()) { 
+                } else if (vb.isFloat() && vc.isFloat()) { 
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) errDivByZero();
-                    getReg(a) = Value::fromDouble(vb.asDoubleRaw() / vc.asDoubleRaw()); break; 
+                    if (vc.asFloatRaw() == 0.0) errDivByZero();
+                    getReg(a) = Value::fromFloat(vb.asFloatRaw() / vc.asFloatRaw()); break; 
                 }
-                if ((vb.isInt32() && vc.isDouble()) || (vb.isDouble() && vc.isInt32())) {
+                if ((vb.isInt32() && vc.isFloat()) || (vb.isFloat() && vc.isInt32())) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x20; // Numeric Mixed (int↔double)
                 } else {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
@@ -4612,10 +4612,10 @@ Value VM::run(int targetFrameDepth) {
                         break; 
                     }
                     getReg(a) = Value::fromInt32(num / den); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) errDivByZero();
-                    getReg(a) = Value::fromDouble(std::trunc(vb.asDoubleRaw() / vc.asDoubleRaw())); break;
+                    if (vc.asFloatRaw() == 0.0) errDivByZero();
+                    getReg(a) = Value::fromFloat(std::trunc(vb.asFloatRaw() / vc.asFloatRaw())); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_IDIV); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
@@ -4633,10 +4633,10 @@ Value VM::run(int targetFrameDepth) {
                     if (den == 0) errModByZero();
                     if (num == -2147483648 && den == -1) { getReg(a) = Value::fromInt32(0); break; }
                     getReg(a) = Value::fromInt32(num % den); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; // Monomorphic Double
-                    if (vc.asDoubleRaw() == 0.0) errModByZero();
-                    getReg(a) = Value::fromDouble(std::fmod(vb.asDoubleRaw(), vc.asDoubleRaw())); break;
+                    if (vc.asFloatRaw() == 0.0) errModByZero();
+                    getReg(a) = Value::fromFloat(std::fmod(vb.asFloatRaw(), vc.asFloatRaw())); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; // Megamorphic / Other
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_MOD); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
@@ -4754,9 +4754,9 @@ Value VM::run(int targetFrameDepth) {
                         getReg(a) = Value::fromInt32(-v);
                     }
                     break;
-                } else if (vb.isDouble()) {
+                } else if (vb.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
-                    getReg(a) = Value(-vb.asDoubleRaw()); break;
+                    getReg(a) = Value(-vb.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEG); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
@@ -4770,7 +4770,7 @@ Value VM::run(int targetFrameDepth) {
                 bool cond;
                 if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
-                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else if (val.isFloat()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asFloatRaw() != 0.0 && !std::isnan(val.asFloatRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 getReg(a) = Value(!cond);
                 break;
@@ -4795,7 +4795,7 @@ Value VM::run(int targetFrameDepth) {
                 bool cond;
                 if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
-                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else if (val.isFloat()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asFloatRaw() != 0.0 && !std::isnan(val.asFloatRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 getReg(a) = Value(cond);
                 break;
@@ -4804,15 +4804,15 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
-                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isFloat() && vc.isFloat()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
                 else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
                 else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 
                 if (vb.as_bits == vc.as_bits) {
-                    getReg(a) = Value(!vb.isDouble() || !std::isnan(vb.asDoubleRaw()));
+                    getReg(a) = Value(!vb.isFloat() || !std::isnan(vb.asFloatRaw()));
                     break;
                 }
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() == vc.asDoubleRaw()); break; }
+                if (vb.isFloat() && vc.isFloat()) { getReg(a) = Value(vb.asFloatRaw() == vc.asFloatRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
@@ -4823,15 +4823,15 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
-                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isFloat() && vc.isFloat()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
                 else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
                 else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
 
                 if (vb.as_bits == vc.as_bits) {
-                    getReg(a) = Value(vb.isDouble() && std::isnan(vb.asDoubleRaw()));
+                    getReg(a) = Value(vb.isFloat() && std::isnan(vb.asFloatRaw()));
                     break;
                 }
-                if (vb.isDouble() && vc.isDouble()) { getReg(a) = Value(vb.asDoubleRaw() != vc.asDoubleRaw()); break; }
+                if (vb.isFloat() && vc.isFloat()) { getReg(a) = Value(vb.asFloatRaw() != vc.asFloatRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
@@ -4846,9 +4846,9 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
                     getReg(a) = Value(vb.asInt32() < vc.asInt32()); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
-                    getReg(a) = Value(vb.asDoubleRaw() < vc.asDoubleRaw()); break;
+                    getReg(a) = Value(vb.asFloatRaw() < vc.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
@@ -4862,9 +4862,9 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
                     getReg(a) = Value(vb.asInt32() <= vc.asInt32()); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
-                    getReg(a) = Value(vb.asDoubleRaw() <= vc.asDoubleRaw()); break;
+                    getReg(a) = Value(vb.asFloatRaw() <= vc.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
@@ -4914,9 +4914,9 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
                     getReg(a) = Value(vb.asInt32() > vc.asInt32()); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
-                    getReg(a) = Value(vb.asDoubleRaw() > vc.asDoubleRaw()); break;
+                    getReg(a) = Value(vb.asFloatRaw() > vc.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
@@ -4966,9 +4966,9 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
                     getReg(a) = Value(vb.asInt32() >= vc.asInt32()); break;
-                } else if (vb.isDouble() && vc.isDouble()) {
+                } else if (vb.isFloat() && vc.isFloat()) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
-                    getReg(a) = Value(vb.asDoubleRaw() >= vc.asDoubleRaw()); break;
+                    getReg(a) = Value(vb.asFloatRaw() >= vc.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { 
@@ -5002,7 +5002,7 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
-                else if (vb.isDouble() && vc.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                else if (vb.isFloat() && vc.isFloat()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
                 else if (vb.isString() && vc.isString()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x04;
                 else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 getReg(a) = Value(vb.as_bits == vc.as_bits);
@@ -5037,7 +5037,7 @@ Value VM::run(int targetFrameDepth) {
                 bool cond;
                 if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
-                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else if (val.isFloat()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asFloatRaw() != 0.0 && !std::isnan(val.asFloatRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (cond) {
                     if (sbx < 0) {
@@ -5069,7 +5069,7 @@ Value VM::run(int targetFrameDepth) {
                 bool cond;
                 if (val.isBool()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x08; cond = val.asBool(); }
                 else if (val.isInt32()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01; cond = val.asInt32() != 0; }
-                else if (val.isDouble()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asDoubleRaw() != 0.0 && !std::isnan(val.asDoubleRaw()); }
+                else if (val.isFloat()) { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02; cond = val.asFloatRaw() != 0.0 && !std::isnan(val.asFloatRaw()); }
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (!cond) {
                     if (sbx < 0) {
@@ -5196,7 +5196,7 @@ Value VM::run(int targetFrameDepth) {
                     if (!canBeMatrixElement(v)) {
                         hasOther = true;
                     } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
-                        try { v.asDouble(); } catch (...) { 
+                        try { v.asFloat(); } catch (...) { 
                             if (!hasSymbolic) hasOther = true; // 如果有符号，大整数/分数可以直接转为符号，不算 Other
                         }
                     }
@@ -5215,7 +5215,7 @@ Value VM::run(int targetFrameDepth) {
                             } else if (hasComplex) {
                                 cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
                             } else {
-                                cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
+                                cell = Value(RealMatrix(1, 1, { cell.asFloat() }));
                             }
                         }
                         if (hasSymbolic) {
@@ -6126,7 +6126,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isObjType(ObjType::REAL_MATRIX)) {
                     const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
                     if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION)) {
-                        double nv = needle.asDouble();
+                        double nv = needle.asFloat();
                         for (int i = 0; i < m.getRows(); ++i) {
                             for (int j = 0; j < m.getCols(); ++j) {
                                 if (m(i, j) == nv) { found = true; break; }
@@ -7398,7 +7398,7 @@ Value VM::run(int targetFrameDepth) {
                     Value isConstVal = getReg(a + 1 + i * 3 + 2);
                     
                     std::string key = keyVal.asString();
-                    int slot = static_cast<int>(slotVal.asDouble());
+                    int slot = static_cast<int>(slotVal.asFloat());
                     bool isConst = isConstVal.truthy();
                     
                     ObjUpVal* upval = captureUpvalue(frame->registerBase + slot);
@@ -7425,7 +7425,7 @@ Value VM::run(int targetFrameDepth) {
                     m = Value(ComplexMatrix(1, 1, { elem.asComplex() }));
                 } else if (elem.isNumber() || elem.isBigInt() || elem.isObjType(ObjType::FRACTION)) {
                     try {
-                        m = Value(RealMatrix(1, 1, { elem.asDouble() }));
+                        m = Value(RealMatrix(1, 1, { elem.asFloat() }));
                     } catch (...) {
                         JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
                     }
@@ -7500,8 +7500,8 @@ Value VM::run(int targetFrameDepth) {
                     int64_t val64 = 0;
                     if (v.isInt32()) {
                         val64 = v.asInt32();
-                    } else if (v.isDouble()) {
-                        val64 = static_cast<int64_t>(std::round(v.asDoubleRaw()));
+                    } else if (v.isFloat()) {
+                        val64 = static_cast<int64_t>(std::round(v.asFloatRaw()));
                     } else if (v.isBigInt()) {
                         try {
                             val64 = v.asBigInt().toInt64();
@@ -7509,7 +7509,7 @@ Value VM::run(int targetFrameDepth) {
                             JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
                         }
                     } else {
-                        val64 = static_cast<int64_t>(std::round(v.asDouble()));
+                        val64 = static_cast<int64_t>(std::round(v.asFloat()));
                     }
                     if (val64 > 2147483647LL || val64 < -2147483647LL) {
                         JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
@@ -7910,7 +7910,7 @@ Value VM::run(int targetFrameDepth) {
                 if (c > 0) {
                     Value& arg1 = getReg(b + 1);
                     if (arg1.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
-                    else if (arg1.isDouble()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
+                    else if (arg1.isFloat()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x02;
                     else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 }
 
@@ -8139,7 +8139,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
         if (!canBeMatrixElement(v)) {
             hasOther = true;
         } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
-            try { v.asDouble(); } catch (...) { 
+            try { v.asFloat(); } catch (...) { 
                 if (!hasSymbolic) hasOther = true; 
             }
         }
@@ -8158,7 +8158,7 @@ uint64_t jc2_jit_build_matrix(uint64_t* values, int total, uint32_t shapeIdx, co
                 } else if (hasComplex) {
                     cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
                 } else {
-                    cell = Value(RealMatrix(1, 1, { cell.asDouble() }));
+                    cell = Value(RealMatrix(1, 1, { cell.asFloat() }));
                 }
             }
             if (hasSymbolic) {
@@ -8219,8 +8219,8 @@ uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t s
         int64_t val64 = 0;
         if (v.isInt32()) {
             val64 = v.asInt32();
-        } else if (v.isDouble()) {
-            val64 = static_cast<int64_t>(std::round(v.asDoubleRaw()));
+        } else if (v.isFloat()) {
+            val64 = static_cast<int64_t>(std::round(v.asFloatRaw()));
         } else if (v.isBigInt()) {
             try {
                 val64 = v.asBigInt().toInt64();
@@ -8228,7 +8228,7 @@ uint64_t jc2_jit_build_slice(uint64_t start_bits, uint64_t stop_bits, uint64_t s
                 JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
             }
         } else {
-            val64 = static_cast<int64_t>(std::round(v.asDouble()));
+            val64 = static_cast<int64_t>(std::round(v.asFloat()));
         }
         if (val64 > 2147483647LL || val64 < -2147483647LL) {
             JC2_THROW(ValueError, "slice absolute value exceeds 2^31-1.");
@@ -8364,7 +8364,7 @@ uint64_t jc2_jit_build_namespace(uint64_t* values, uint32_t count, uint32_t name
         Value isConstVal = Value::fromRawBits(values[i * 3 + 2]);
         
         std::string key = keyVal.asString();
-        int slot = static_cast<int>(slotVal.asDouble());
+        int slot = static_cast<int>(slotVal.asFloat());
         bool isConst = isConstVal.truthy();
         
         ObjUpVal* upval = vm->captureUpvaluePublic(base + slot);
@@ -8441,10 +8441,10 @@ uint64_t jc2_jit_format_string(uint64_t val_bits, uint32_t specIdx, const Chunk*
     if (type == 'f' || type == 'e') {
         if (precision >= 0) oss << std::fixed << std::setprecision(precision);
         if (type == 'e') oss << std::scientific;
-        oss << val.asDouble();
+        oss << val.asFloat();
     }
-    else if (type == 'd') { oss << static_cast<int64_t>(std::round(val.asDouble())); }
-    else if (type == 'x') { oss << std::hex << static_cast<int64_t>(std::round(val.asDouble())); }
+    else if (type == 'd') { oss << static_cast<int64_t>(std::round(val.asFloat())); }
+    else if (type == 'x') { oss << std::hex << static_cast<int64_t>(std::round(val.asFloat())); }
     else { oss << val; }
 
     std::string result = oss.str();
@@ -8820,7 +8820,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         else {
                                             BuiltinType vbt = BuiltinType::ANY;
                                             if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                                             else if (v.isString()) vbt = BuiltinType::STRING;
                                             else if (v.isBool()) vbt = BuiltinType::BOOL;
                                             else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -8952,7 +8952,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                                         else {
                                             BuiltinType vbt = BuiltinType::ANY;
                                             if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                                             else if (v.isString()) vbt = BuiltinType::STRING;
                                             else if (v.isBool()) vbt = BuiltinType::BOOL;
                                             else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -9437,7 +9437,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         else {
                                             BuiltinType vbt = BuiltinType::ANY;
                                             if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                                             else if (v.isString()) vbt = BuiltinType::STRING;
                                             else if (v.isBool()) vbt = BuiltinType::BOOL;
                                             else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -9569,7 +9569,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                                         else {
                                             BuiltinType vbt = BuiltinType::ANY;
                                             if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isDouble()) vbt = BuiltinType::FLOAT;
+                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
                                             else if (v.isString()) vbt = BuiltinType::STRING;
                                             else if (v.isBool()) vbt = BuiltinType::BOOL;
                                             else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
@@ -9980,7 +9980,7 @@ bool VM::opIn(Value needle, Value haystack) {
     } else if (haystack.isObjType(ObjType::REAL_MATRIX)) {
         const auto& m = static_cast<ObjRealMatrix*>(haystack.asObj())->mat;
         if (needle.isNumber() || needle.isObjType(ObjType::BIGINT) || needle.isObjType(ObjType::FRACTION)) {
-            double nv = needle.asDouble();
+            double nv = needle.asFloat();
             for (int i = 0; i < m.getRows(); ++i) {
                 for (int j = 0; j < m.getCols(); ++j) {
                     if (m(i, j) == nv) { found = true; break; }
@@ -11847,7 +11847,7 @@ void jc2_jit_matrix_comp_append(uint64_t acc_bits, uint64_t elem_bits) {
         m = Value(ComplexMatrix(1, 1, { elem.asComplex() }));
     } else if (elem.isNumber() || elem.isBigInt() || elem.isObjType(ObjType::FRACTION)) {
         try {
-            m = Value(RealMatrix(1, 1, { elem.asDouble() }));
+            m = Value(RealMatrix(1, 1, { elem.asFloat() }));
         } catch (...) {
             JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
         }

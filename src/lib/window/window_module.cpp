@@ -373,14 +373,14 @@ JC2_ValueHandle win_show(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
 JC2_ValueHandle win_setImeEnabled(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
-    if (win) win->setImeEnabled(jc2::Value(argv[1]).as_double() != 0.0);
+    if (win) win->setImeEnabled(jc2::Value(argv[1]).as_float() != 0.0);
     return jc2::Value().get_handle();
 }
 
 JC2_ValueHandle win_showCursor(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     jc2::Instance self(argv[0]);
     auto win = self.get_native_data<NativeWindow>();
-    if (win) win->showCursor(jc2::Value(argv[1]).as_double() != 0.0);
+    if (win) win->showCursor(jc2::Value(argv[1]).as_float() != 0.0);
     return jc2::Value().get_handle();
 }
 

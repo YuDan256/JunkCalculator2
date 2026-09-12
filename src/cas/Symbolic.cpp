@@ -2505,6 +2505,39 @@ namespace jc {
         return expand_internal(expr, maxPowTerms, true);
     }
 
+    // ★ 把和规范成"最高次项系数为正"：-x^2 + y^2 记成 -(x^2 - y^2)。
+    //   恒等式 -(a - b) = b - a，只提取整体符号，不改值。排版层按降幂排列，
+    //   最高次项在 args.back()，因此只看末项系数符号即可。
+    //   缺这一步时 expand((x-y)*(x+y)) 给 x^2 - y^2、expand((y-x)*(x+y)) 给
+    //   -x^2 + y^2，两者代数等价却判不出相等。只用于等价判定，不改变 expand 对外输出。
+    static SymNode* normalizeLeadingSignForCompare(SymNode* node) {
+        if (!node || node->getType() != SymType::ADD) return node;
+        auto add = static_cast<SymAdd*>(node);
+        if (add->args.empty()) return node;
+        SymNode* last = add->args.back();
+        bool leadingNeg = false;
+        if (last->getType() == SymType::NUM) {
+            leadingNeg = isCasNegative(static_cast<SymNum*>(last)->value);
+        } else if (last->getType() == SymType::MUL) {
+            auto mul = static_cast<SymMul*>(last);
+            if (!mul->args.empty() && mul->args[0]->getType() == SymType::NUM) {
+                leadingNeg = isCasNegative(static_cast<SymNum*>(mul->args[0])->value);
+            }
+        }
+        if (!leadingNeg) return node;
+        SymExpr neg = SymExpr(node) * SymExpr(BigInt(-1));
+        return neg.ptr;
+    }
+
+    static std::string canonicalCompareText(const SymExpr& e) {
+        SymExpr ex = expand_core(e, 1024);
+        SymNode* norm = normalizeLeadingSignForCompare(ex.ptr);
+        SymExpr sm = simplifyCore(SymExpr(norm));
+        SymExpr smx = expand_core(sm, 1024);
+        SymNode* norm2 = normalizeLeadingSignForCompare(smx.ptr);
+        return SymExpr(norm2).toString();
+    }
+
     // =================================================================
     // 表达式等价判定
     //   1) 先做结构比较（节点自身的 equals，递归比对类型与子节点，按内部化身份比原子）
@@ -2529,23 +2562,12 @@ namespace jc {
             SymExpr eb = expand_core(b, kMaxExpandTerms);
             if (ea.ptr == eb.ptr) return true;
             if (ea.ptr->equals(eb.ptr)) return true;
-            // ★ 展开后仍可能只是 ADD/MUL 的项序不同（x^2 + (-1)y^2 与 (-1)y^2 + x^2）。
-            //   排版层对 ADD/MUL 会做规范排序，因此比较规范文本可以吸收交换律/结合律
-            //   造成的排列差异，而不必给每个节点都实现无序比较。
-            if (ea.ptr->getType() == eb.ptr->getType() &&
-                (ea.ptr->getType() == SymType::ADD || ea.ptr->getType() == SymType::MUL ||
-                 ea.ptr->getType() == SymType::POW || ea.ptr->getType() == SymType::FUNC)) {
-                if (ea.toString() == eb.toString()) return true;
-            }
-            // ★ 再回退一次 simplify：它比 expand 更强（会把 x*(y+1) 归成 x*y+x、
-            //   把 2*(x+y) 归成 2x+2y），覆盖 expand 留着未分配乘积的情形。
-            SymExpr sa = simplifyCore(a);
-            SymExpr sb = simplifyCore(b);
-            if (sa.ptr == sb.ptr) return true;
-            if (sa.ptr->equals(sb.ptr)) return true;
-            sa = expand_core(sa, kMaxExpandTerms);
-            sb = expand_core(sb, kMaxExpandTerms);
-            return sa.toString() == sb.toString();
+            // 展开后项序不同的情形（吸收交换律/结合律）
+            if (ea.toString() == eb.toString()) return true;
+            // ★ 规范文本比较：再叠加"最高次项系数为正"的符号归一
+            //   （-x^2 + y^2 → -(x^2 - y^2)）与 simplify 级别的强归一。
+            if (canonicalCompareText(a) == canonicalCompareText(b)) return true;
+            return false;
         }
         catch (const EngineInterruptError&) {
             throw;

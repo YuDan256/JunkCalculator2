@@ -50,7 +50,8 @@ test_const_in_calculus() = {
     // 常量参与求导/展开/求解时保持符号
     x = sym("x")
     assert(str(cas.diff(sin(cas.pi() * x), x)) == "cos(pi * x) * pi", "diff with pi")
-    assert(str(cas.solve(x ^ 2 - cas.pi(), x)) == "@[sqrt(pi), -sqrt(pi)]", "exact solve with pi")
+    // 根按 (实部, 虚部) 升序排列（solveEq 出口的规范化），所以 -√pi 在前
+    assert(str(cas.solve(x ^ 2 - cas.pi(), x)) == "@[-sqrt(pi), sqrt(pi)]", "exact solve with pi")
     assert(str(cas.subs(cas.pi() * x, x, 2)) == "2 * pi", "subs with pi")
 }
 test_const_in_calculus()

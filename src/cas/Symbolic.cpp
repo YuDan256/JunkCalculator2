@@ -5650,6 +5650,120 @@ namespace jc {
     // 🚀 符号方程求解 (Symbolic Equation Solver)
     // 求解 expr == 0 关于 var 的根
     // =================================================================
+    // 浅层数值因子分配：MUL 里若同时有"纯数值因子"和"ADD 因子"，把数值乘进去。
+    //   二次公式给出的是 (-b ± √Δ)/(2A)，除以 2A 只会得到 1/2 * (2*i - 2) 这种
+    //   没约分的形式，读起来完全不像 -1 + i。
+    //   为什么不用 expand / full_simplify：两者都会递归进项的内部，在 Cardano
+    //   嵌套根式上失控（实测 full_simplify 让 solve(x^3-3x+1) 从 0.9s 涨到 88s）。
+    //   这里只做一层、且项数决定代价，天然有界。
+    static SymExpr distributeNumericFactor(const SymExpr& e) {
+        SymExpr cur = e;
+        for (int round = 0; round < 4; ++round) {
+            if (!cur.ptr || cur.ptr->getType() != SymType::MUL) break;
+            auto mul = static_cast<SymMul*>(cur.ptr);
+            SymNode* numNode = nullptr;
+            SymNode* addNode = nullptr;
+            int numCount = 0, addCount = 0;
+            for (SymNode* a : mul->args) {
+                if (a->getType() == SymType::NUM) { numNode = a; ++numCount; }
+                else if (a->getType() == SymType::ADD) { addNode = a; ++addCount; }
+            }
+            if (numCount != 1 || addCount != 1) break;
+
+            SymExpr rest(BigInt(1));
+            for (SymNode* a : mul->args) {
+                if (a != numNode && a != addNode) rest = rest * SymExpr(a);
+            }
+            SymExpr sum(BigInt(0));
+            for (SymNode* term : static_cast<SymAdd*>(addNode)->args) {
+                sum = sum + (SymExpr(numNode) * SymExpr(term) * rest);
+            }
+            if (sum.ptr == cur.ptr) break;
+            cur = sum;
+        }
+        return cur;
+    }
+
+    // 前置声明：根排序要用它取数值键（定义在文件后段）
+    static std::complex<double> fastEvalComplex(SymNode* node, const std::map<std::string, double>& env, const SymbolicFuncResolver& resolver);
+
+    // ★ 根的规范化与排序（solveEq 出口）
+    //   1) 化简：二次公式给出的是 (-b ± √Δ) / (2A)，只除不约，于是 x^4+4 的根
+    //      会留下 1/2 * (2*i - 2) 这种形式（值对，但读不出是 -1 + i）。
+    //      见 distributeNumericFactor。
+    //   2) 排序：根的顺序原本取决于因式分解的遍历顺序，既任意又可能随实现漂移。
+    //      "多项式的根集合"本身有确定的大小关系：按 (实部, 虚部) 升序，
+    //      实根在前、共轭对相邻，与 Mathematica Root[] 以及 RootOf 自身的编号
+    //      （findRootsNumeric 也是这个序）一致。
+    //      无法数值化的根退化为按打印形式排序，保证结果仍然确定。
+    static void normalizeAndSortRoots(std::vector<SymExpr>& roots) {
+        // ① 化简 + 去重。
+        //   ★ 化简只做"浅层数值因子分配"这一步，不能上 full_simplify / expand：
+        //     它们会递归进项的内部控制不了代价，在 Cardano/Ferrari 的嵌套根式上
+        //     爆炸（实测 full_simplify 让 solve(x^3-3x+1) 从 0.9s 涨到 88s，
+        //     连 expand 都要 1.4s，且让积分慢 1.5 倍）。真正需要收拾的恰恰是
+        //     二次公式留下的未约分形式（1/2 * (2*i - 2)），浅层分配就够。
+        //   ★ 去重只比指针：所有节点都经过内部化池，规范形相同 ⟹ 同一个指针。
+        //     用 SymExpr::operator== 会在"不相等"时回退到代数等价判定（expand +
+        //     simplify + 规范化文本），而调用方已经去过重了，这里再来一遍纯属重复劳动。
+        constexpr int64_t kMaxNodesToDistribute = 32;
+        std::vector<SymExpr> stage;
+        stage.reserve(roots.size());
+        for (auto& r : roots) {
+            SymExpr s = (getAstNodeCount(r) <= kMaxNodesToDistribute) ? distributeNumericFactor(r) : r;
+            bool dup = false;
+            for (auto& u : stage) {
+                if (s.ptr == u.ptr) { dup = true; break; }
+            }
+            if (!dup) stage.push_back(s);
+        }
+
+        // ② 数值键：(实部, 虚部, 打印形式)。
+        //   ★ 必须先量化再比较：共轭根的实部在数学上完全相等，而数值求根
+        //     （findRootsNumeric 的 Durand–Kerner）只会给到 ~1e-16 的一致度，
+        //     直接用 double 比大小就会由这点噪音决定先后 —— RootOf(f,x,1) 与
+        //     RootOf(f,x,2) 正是这样被排反的。量化是纯函数，得到的仍是合法的
+        //     严格弱序（在 (ok, 实部, 虚部, 文本) 上做字典序）。
+        struct Key { bool ok = false; double re = 0.0; double im = 0.0; std::string text; };
+        auto quantize = [](double v) {
+            const double scale = std::max(1.0, std::abs(v));
+            const double eps = scale * 1e-9;
+            return std::round(v / eps) * eps;
+        };
+        std::vector<Key> keys(stage.size());
+        for (size_t i = 0; i < stage.size(); ++i) {
+            keys[i].text = stage[i].toString();
+            try {
+                std::complex<double> c = fastEvalComplex(stage[i].ptr, {}, SymbolicFuncResolver{});
+                if (std::isfinite(c.real()) && std::isfinite(c.imag())) {
+                    keys[i].ok = true;
+                    keys[i].re = quantize(c.real());
+                    keys[i].im = quantize(c.imag());
+                }
+            } catch (const EngineInterruptError&) {
+                throw;
+            } catch (...) {
+                // 数值化失败：ok 保持 false，排到末尾，段内按文本排
+            }
+        }
+
+        std::vector<size_t> order(stage.size());
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+            if (keys[a].ok != keys[b].ok) return keys[a].ok;
+            if (keys[a].ok) {
+                if (keys[a].re != keys[b].re) return keys[a].re < keys[b].re;
+                if (keys[a].im != keys[b].im) return keys[a].im < keys[b].im;
+            }
+            return keys[a].text < keys[b].text;
+        });
+
+        std::vector<SymExpr> sorted;
+        sorted.reserve(stage.size());
+        for (size_t idx : order) sorted.push_back(stage[idx]);
+        roots.swap(sorted);
+    }
+
     std::vector<SymExpr> solveEq(const SymExpr& expr, const std::string& var) {
         SymExpr factored = factor(expr);
         std::vector<SymExpr> roots;
@@ -5826,6 +5940,11 @@ namespace jc {
             }
             if (!found) uniqueRoots.push_back(r);
         }
+
+        // ★ 出口统一规范化 + 定序。
+        //   放在去重之后：浅层分配可能把两个写法不同的根收敛到同一个规范形，
+        //   这一步会再按指针去一次重。
+        normalizeAndSortRoots(uniqueRoots);
 
         return uniqueRoots;
     }

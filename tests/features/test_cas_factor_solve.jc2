@@ -39,6 +39,33 @@ test_solve_all_roots_present() = {
 }
 test_solve_all_roots_present()
 
+test_solve_roots_sorted_and_reduced() = {
+    // solveEq 出口统一做「化简 + 定序」：
+    //   ① 浅层数值因子分配，把二次公式留下的 1/2 * (2*i - 2) 收敛成 -1 + i
+    //      （不能用 expand/full_simplify：它们在 Cardano 嵌套根式上会失控，
+    //        full_simplify 曾让 solve(x^3-3x+1) 从 0.9s 涨到 88s）
+    //   ② 按 (实部, 虚部) 升序排列，实根在前、共轭对相邻，
+    //      与 RootOf 自身的编号次序一致（findRootsNumeric 也是这个序）
+    x = sym("x")
+    assert(str(cas.solve(x ^ 4 - 1, x)) == "@[-1, -i, i, 1]", "x^4-1 sorted")
+    assert(str(cas.solve(x ^ 4 + 4, x)) == "@[-i - 1, -1 + i, -i + 1, 1 + i]", "x^4+4 reduced+sorted")
+    assert(str(cas.solve(x ^ 4 - 5 * x ^ 2 + 4, x)) == "@[-2, -1, 1, 2]", "quartic sorted")
+    assert(str(cas.solve(x ^ 2 - 2, x)) == "@[-sqrt(2), sqrt(2)]", "quadratic sorted")
+    assert(str(cas.solve(x ^ 4 + x ^ 2 + 1, x)) == "@[-1/2 * sqrt(3) * i - 1/2, 1/2 * sqrt(3) * i - 1/2, -1/2 * sqrt(3) * i + 1/2, 1/2 * sqrt(3) * i + 1/2]", "quartic conjugate pairs adjacent")
+
+    // RootOf 只出现在不可约因子上，且编号与排序一致（不能出现 (2) 排在 (1) 前面）
+    r5 = cas.solve(x ^ 5 + 1, x)
+    assert(len(r5) == 5, "x^5+1 has 5 roots")
+    assert(str(r5[0]) == "-1", "real root first")
+    for (local k = 1; k <= 4; k += 1) {
+        assert(str(r5[k]) == "RootOf(x^4 - x^3 + x^2 - x + 1, x, " + str(k) + ")", "RootOf index " + str(k) + " in order")
+    }
+    // RootOf(x^4-1,x,1) 这种能约的必须已经约掉（solve 先因式分解）
+    assert(!("RootOf" in str(cas.solve(x ^ 4 - 1, x))), "no RootOf left for a reducible poly")
+}
+test_solve_roots_sorted_and_reduced()
+test_solve_all_roots_present()
+
 test_structural_equality() = {
     // 相等判定曾只比指针，代数等价一律判不等
     x = sym("x")

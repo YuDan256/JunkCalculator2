@@ -185,6 +185,59 @@ namespace jc {
             }
 
             // =======================================================
+            // 策略 1.5：偶次降维（t = mainVar^2）
+            //   若 mainVar 的奇数次系数全为 0，P 其实是 mainVar^2 的多项式。令
+            //   t = mainVar^2 把次数减半，交给 factor 递归，再换回来：
+            //       x^4 - y^4                t^2 - y^4              → (t-y^2)(t+y^2)
+            //       x^4 + 2x^2y^2 + y^4      t^2 + 2*t*y^2 + y^4    → (t+y^2)^2
+            //       x^6 + 3x^4y^2 + ...      t^3 + 3t^2y^2 + ...    → (t+y^2)^3
+            //   4 次、6 次的原始形式对另外两条策略都够不着（策略 2 只管 N==2，策略 1
+            //   只管 (x+c)^N），降维之后原有的完全幂嗅探与二次降维才有机会命中。
+            //   这就是「降维归约」：不新增特例，而是把问题化成已有策略能处理的形状。
+            //   换回来的结果再走一遍 factor，让 x^4-y^4 → (x^2-y^2)(x^2+y^2) 继续
+            //   分解成 (x-y)(x+y)(x^2+y^2)；不会打转 —— 若换回来正好是原节点，
+            //   下面的 ptr 比较会拦住，factorImpl 接着走 MUL / POW 分支照常推进。
+            //   ★ 只对多元（vars.size() >= 2）启用。一元的偶次式 factorPolynomialCZ
+            //     已经能完整处理（x^n ± 1 走 Zassenhaus、x^4+2x^2+1 走平方自由分解），
+            //     再绕这一圈「构造 Q → 递归 factor → 整树 subs → 再 factor」纯属浪费：
+            //     实测给 x^4-1 / x^6-1 这类式子加这道工序会让混合负载慢 11~14%，
+            //     而收益（完备性探针 done 20 → 25）全部来自多元用例。
+            // =======================================================
+            if (N >= 4 && vars.size() >= 2) {
+                bool oddZero = true;
+                for (int i = 1; i < N; i += 2) {
+                    if (!coeffs[i].isZero()) { oddZero = false; break; }
+                }
+                if (oddZero) {
+                    // ★ 临时变量名必须逐层唯一。这个策略会递归，而内层降维时 mainVar
+                    //   很可能正是外层刚引入的临时变量；两层同名的话，内层会执行
+                    //   subs(F, t, t^2) —— 把临时变量替换进它自己，结果彻底错乱。
+                    //   深度沿递归严格递增，用它做后缀即可保证嵌套链上不重名；
+                    //   同深度的兄弟调用不会互相嵌套，无妨。前缀刻意取得不像用户
+                    //   标识符。
+                    const std::string tName = "jc2evensub" + std::to_string(depth);
+                    SymExpr T = SymExpr::makeVar(tName);
+                    SymExpr Q(BigInt(0));
+                    for (int i = 0; i <= N; i += 2) {
+                        int j = i / 2;
+                        if (j == 0)      Q = Q + coeffs[i];
+                        else if (j == 1) Q = Q + coeffs[i] * T;
+                        else             Q = Q + coeffs[i] * (T ^ SymExpr(BigInt(j)));
+                    }
+                    Q = simplifyCore(Q);
+                    try {
+                        SymExpr F = factor(Q, depth + 1);
+                        if (F.ptr != Q.ptr) {
+                            SymExpr back = simplifyCore(subs(F, tName, X * X));
+                            if (back.ptr != expr.ptr) return factor(back, depth + 1);
+                        }
+                    }
+                    catch (const EngineInterruptError&) { throw; }
+                    catch (const std::runtime_error&) {}
+                }
+            }
+
+            // =======================================================
             // 策略 2：二次方程降维打击 (极简优雅版，不再胡乱加补丁)
             // =======================================================
             if (N == 2) {

@@ -1748,10 +1748,25 @@ namespace jc {
     // =================================================================
     // AST 复杂度计算器 (用于多重宇宙最优解选择)
     // =================================================================
-    static int computeComplexity(SymNode* node, std::unordered_set<const SymNode*>& visited) {
-        if (!node) return 0;
-        if (!visited.insert(node).second) return 0;
-        int score = 10; // 基础分放大，便于微调
+    // ★ 重复子表达式必须按出现次数重复计分。
+    //   原实现用一个 visited 集合，第二次遇到同一个节点直接返回 0 分；而节点是
+    //   内部化的 DAG，于是"把同一个分母写两遍"的形式反而显得更小：
+    //       x*(x-1)^(-1) + (x-1)^(-1)   ← 共享 (x-1)^(-1)，旧算法给 62 分
+    //       (x+1)*(x-1)^(-1)            ← 旧算法给 72 分
+    //   多重宇宙因此选中前者，而前者再化简又会变成后者 —— cas.simplify 不幂等，
+    //   同一个表达式走不同路径收敛到不同的树，下游算法就无法靠树形判等去重。
+    //   改成用 memo 缓存"单个子树的分值"，重复引用时**再加一次**，得到的是把 DAG
+    //   按树展开后的真实规模，时间仍是 O(DAG 节点数)。
+    //   ★ 展开后的分值可能极大（(x+1)^n 展开的 DAG 展开成树是 2^n 量级），用
+    //     int64 并在上限处饱和，避免有符号溢出（饱和只影响"都很大"的候选之间的
+    //     相对次序，而那类表达式本来就不是多重宇宙要挑的对象）。
+    static constexpr int64_t kComplexityCap = 1'000'000'000LL;
+
+    static int64_t computeComplexity(SymNode* node, std::unordered_map<const SymNode*, int64_t>& memo, int depth) {
+        if (!node || depth > 512) return 0;   // 纵深护栏（DAG 无环，这里只防意外）
+        auto it = memo.find(node);
+        if (it != memo.end()) return it->second;
+        int64_t score = 10; // 基础分放大，便于微调
         switch (node->getType()) {
         case SymType::NUM: {
             auto num = static_cast<SymNum*>(node);
@@ -1764,18 +1779,18 @@ namespace jc {
         case SymType::ADD:
             score += 5; 
             for (auto& arg : static_cast<SymAdd*>(node)->args)
-                score += computeComplexity(arg, visited);
+                score += computeComplexity(arg, memo, depth + 1);
             break;
         case SymType::MUL:
             score += 2;
             for (auto& arg : static_cast<SymMul*>(node)->args)
-                score += computeComplexity(arg, visited);
+                score += computeComplexity(arg, memo, depth + 1);
             break;
         case SymType::POW: {
             score += 10; 
             auto powNode = static_cast<SymPow*>(node);
-            score += computeComplexity(powNode->base, visited);
-            score += computeComplexity(powNode->exp, visited);
+            score += computeComplexity(powNode->base, memo, depth + 1);
+            score += computeComplexity(powNode->exp, memo, depth + 1);
             if (powNode->exp->getType() == SymType::NUM) {
                 auto numVal = static_cast<SymNum*>(powNode->exp)->value;
                 if (isCasNegative(numVal)) score += 15; // 负指数（分母）惩罚
@@ -1788,16 +1803,19 @@ namespace jc {
         case SymType::FUNC:
             score += 25; 
             for (auto& arg : static_cast<SymFunc*>(node)->args)
-                score += computeComplexity(arg, visited);
+                score += computeComplexity(arg, memo, depth + 1);
             break;
         default: break;
         }
+        if (score > kComplexityCap) score = kComplexityCap;
+        memo.emplace(node, score);
         return score;
     }
 
     int getAstComplexity(const SymExpr& expr) {
-        std::unordered_set<const SymNode*> visited;
-        return computeComplexity(expr.ptr, visited);
+        std::unordered_map<const SymNode*, int64_t> memo;
+        int64_t v = computeComplexity(expr.ptr, memo, 0);
+        return static_cast<int>(v > kComplexityCap ? kComplexityCap : v);
     }
 
     // =================================================================
@@ -5440,6 +5458,34 @@ namespace jc {
     // =================================================================
 // 深度启发式化简：包含 factor 和 rational 的重型多重宇宙博弈
 // =================================================================
+    // 表达式里是否存在负指数（即分母）。用于决定 full_simplify 要不要跑第二轮：
+    // 需要第二轮的是"有理分式"这一类 —— 重型候选 simplifyRational/factor 会造出
+    // 一批新的子节点，只有再自底向上递归一次才能收敛；纯多项式/超越式第一轮就到不动点。
+    static bool hasNegativePower(SymNode* node, int depth) {
+        if (!node || depth > 64) return false;
+        switch (node->getType()) {
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(node);
+                if (p->exp->getType() == SymType::NUM &&
+                    isCasNegative(static_cast<SymNum*>(p->exp)->value)) return true;
+                return hasNegativePower(p->base, depth + 1) || hasNegativePower(p->exp, depth + 1);
+            }
+            case SymType::ADD:
+                for (SymNode* a : static_cast<SymAdd*>(node)->args)
+                    if (hasNegativePower(a, depth + 1)) return true;
+                return false;
+            case SymType::MUL:
+                for (SymNode* a : static_cast<SymMul*>(node)->args)
+                    if (hasNegativePower(a, depth + 1)) return true;
+                return false;
+            case SymType::FUNC:
+                for (SymNode* a : static_cast<SymFunc*>(node)->args)
+                    if (hasNegativePower(a, depth + 1)) return true;
+                return false;
+            default: return false;
+        }
+    }
+
     SymExpr full_simplify(const SymExpr& expr) {
         checkInterrupt();
         if (!expr.ptr) return expr;
@@ -5461,30 +5507,39 @@ namespace jc {
             ~DepthGuard() { d--; }
         } guard(depth);
 
-        auto compute = [&]() -> SymExpr {
+        // 候选集档位。
+        //   Full     —— 常规一轮：factor / simplifyRational / factor∘expand /
+        //               factor∘simplifyRational 全试。
+        //   Probe    —— 只做「递归子节点 + 轻量化简」，用于廉价判断是否已到不动点。
+        //   FollowUp —— 收敛轮的裁剪候选集：只留 factor / simplifyRational /
+        //               factor∘expand。实测 factor∘simplifyRational 在收敛轮里
+        //               从不改变胜负，却要重跑一次最贵的 factor，去掉后第二轮
+        //               的开销降到噪声水平（-0.3%）。
+        enum class CandMode { Full, Probe, FollowUp };
+        auto compute = [&](const SymExpr& input, CandMode mode) -> SymExpr {
             // 递归地对子节点调用 full_simplify (Bottom-up)
-            SymExpr current = expr;
-            switch (expr.ptr->getType()) {
+            SymExpr current = input;
+            switch (input.ptr->getType()) {
                 case SymType::ADD: {
                     SymExpr res(BigInt(0));
-                    for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
+                    for (auto& arg : static_cast<SymAdd*>(input.ptr)->args)
                         res = res + full_simplify(SymExpr(arg));
                     current = res;
                     break;
                 }
                 case SymType::MUL: {
                     SymExpr res(BigInt(1));
-                    for (auto& arg : static_cast<SymMul*>(expr.ptr)->args) res = res * full_simplify(SymExpr(arg));
+                    for (auto& arg : static_cast<SymMul*>(input.ptr)->args) res = res * full_simplify(SymExpr(arg));
                     current = res;
                     break;
                 }
                 case SymType::POW: {
-                    auto p = static_cast<SymPow*>(expr.ptr);
+                    auto p = static_cast<SymPow*>(input.ptr);
                     current = full_simplify(SymExpr(p->base)) ^ full_simplify(SymExpr(p->exp));
                     break;
                 }
                 case SymType::FUNC: {
-                    auto f = static_cast<SymFunc*>(expr.ptr);
+                    auto f = static_cast<SymFunc*>(input.ptr);
                     std::vector<SymNode*> nArgs;
                     for (auto& arg : f->args) nArgs.push_back(full_simplify(SymExpr(arg)).ptr);
                     current = SymExpr::makeFunc(f->name, std::move(nArgs));
@@ -5502,6 +5557,8 @@ namespace jc {
             SymExpr c_factor_expand = current;
             SymExpr c_rat_factor = current;
 
+            if (mode == CandMode::Probe) return current;   // 只做递归 + 轻量化简
+
             try { c_rational = simplifyRational(current); }
             catch (const EngineInterruptError&) { throw; }
             catch (const std::runtime_error&) {}
@@ -5518,14 +5575,16 @@ namespace jc {
             }
             catch (const EngineInterruptError&) { throw; }
             catch (const std::runtime_error&) {}
-            
-            try {
-                if (c_rational.ptr != current.ptr) {
-                    c_rat_factor = factor(c_rational);
+
+            if (mode == CandMode::Full) {
+                try {
+                    if (c_rational.ptr != current.ptr) {
+                        c_rat_factor = factor(c_rational);
+                    }
                 }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) {}
             }
-            catch (const EngineInterruptError&) { throw; }
-            catch (const std::runtime_error&) {}
 
             // 选出体积最小的宇宙
             SymExpr best = current;
@@ -5547,7 +5606,24 @@ namespace jc {
             return best;
         };
 
-        SymExpr result = compute();
+        // ★ 迭代到不动点。
+        //   compute() 会先自底向上递归化简子节点，再在结果上试
+        //   factor / simplifyRational / expand。只跑一轮时，如果子节点的重写
+        //   把一个"还能继续压缩"的形状交了上来，这一层就漏掉了：
+        //     expand((x^2-y^2)/(x+y)^2) → -y^2*(x+y)^(-2) + x^2*(x+y)^(-2)
+        //       → 第一轮停在 (x/y-1)*(x/y+1)^(-1)（cost 261）
+        //       → 第二轮把子节点重写后才收敛到 (x-y)/(x+y)（cost 159）
+        //   代价是几乎每次都要跑第二轮（第二轮一旦稳定就停），单项开销见提交说明；
+        //   换来的是 simplify 真正幂等、且与路径无关 —— 下游算法可以靠树形判等去重。
+        SymExpr result = compute(expr, CandMode::Full);
+        if (depth == 1 && hasNegativePower(expr.ptr, 0)) {
+            for (int round = 0; round < 3; ++round) {
+                if (compute(result, CandMode::Probe).ptr == result.ptr) break;
+                SymExpr next = compute(result, CandMode::FollowUp);
+                if (next.ptr == result.ptr) break;
+                result = next;
+            }
+        }
         cache[sig] = result;
         return result;
     }

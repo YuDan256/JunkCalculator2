@@ -5368,7 +5368,8 @@ namespace jc {
             switch (expr.ptr->getType()) {
                 case SymType::ADD: {
                     SymExpr res(BigInt(0));
-                    for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) res = res + full_simplify(SymExpr(arg));
+                    for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
+                        res = res + full_simplify(SymExpr(arg));
                     current = res;
                     break;
                 }
@@ -6629,8 +6630,43 @@ namespace jc {
     // =================================================================
     // 🚀 三角化简 (Trigonometric Simplification)
     // =================================================================
+    // 表达式里是否含三角函数节点（trigsimp 只对这类表达式可能有作用）
+    static bool hasTrigFunc(SymNode* node, int depth = 0) {
+        if (!node || depth > 256) return false;
+        switch (node->getType()) {
+        case SymType::FUNC: {
+            auto f = static_cast<SymFunc*>(node);
+            static const std::set<std::string> kTrig = {
+                "sin", "cos", "tan", "cot", "sec", "csc",
+                "asin", "acos", "atan", "sinh", "cosh", "tanh"
+            };
+            if (kTrig.count(f->name)) return true;
+            for (auto& a : f->args) if (hasTrigFunc(a, depth + 1)) return true;
+            return false;
+        }
+        case SymType::ADD:
+            for (auto& a : static_cast<SymAdd*>(node)->args)
+                if (hasTrigFunc(a, depth + 1)) return true;
+            return false;
+        case SymType::MUL:
+            for (auto& a : static_cast<SymMul*>(node)->args)
+                if (hasTrigFunc(a, depth + 1)) return true;
+            return false;
+        case SymType::POW:
+            return hasTrigFunc(static_cast<SymPow*>(node)->base, depth + 1) ||
+                   hasTrigFunc(static_cast<SymPow*>(node)->exp, depth + 1);
+        default:
+            return false;
+        }
+    }
+
     SymExpr trigsimp(const SymExpr& expr) {
         if (!expr.ptr) return expr;
+
+        // ★ 无三角函数时直接返回：trigsimp 的规则库只处理三角恒等式，
+        //   对纯多项式毫无作用，却要在规则×迭代的循环里反复做深拷贝与遍历，
+        //   而且这条路径曾在纯多项式上崩溃（cas.simplify(x^2 + 2*x)）。
+        if (!hasTrigFunc(expr.ptr)) return expr;
 
         // 从规则库获取三角化简规则
         const std::vector<std::pair<SymExpr, SymExpr>>& rules = getTrigRules();
@@ -6646,7 +6682,7 @@ namespace jc {
                 SymExpr next = applyRule(current, rule.first, rule.second);
                 if (next.ptr != current.ptr) {
                     SymExpr simplifiedNext = simplifyCore(next);
-                    if (simplifiedNext != current) {
+                    if (simplifiedNext.ptr != current.ptr) {
                         current = simplifiedNext;
                         changed = true;
                         break;

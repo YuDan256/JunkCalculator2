@@ -5499,6 +5499,10 @@ namespace jc {
             if (it != cache.end()) return it->second;
         } else {
             cache.clear();
+            // ★ factor 记忆化与这个递归缓存同生命周期：只在一次顶层化简内复用，
+            //   不跨调用累积。既吃到同一轮里的巨大重复率（实测 factor 调用数
+            //   24800 → 5000、重负载化简快 9~17%），又不会像内部化池那样无界增长。
+            clearFactorMemo();
         }
 
         struct DepthGuard {

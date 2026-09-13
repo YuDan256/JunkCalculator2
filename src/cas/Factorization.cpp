@@ -1110,14 +1110,49 @@ namespace jc {
         return expr;
     }
 
-    SymExpr factor(const SymExpr& expr, int depth) {      // 增加 depth 签名
-        if (!expr.ptr || depth > SymConfig::maxDepth) return expr;          // 极限保险
-        // ★ 叶节点直接返回：四个多项式策略都以"某个变元下的多项式"为前提，
-        //   数、常量、单个变元本身不可再分，它们只会走完 collectAllVars /
-        //   polySquareFree 再原样返回。full_simplify 是自底向上对每个节点都调
-        //   factor 的，叶节点占节点总数近半，这里的短路省掉的是纯浪费。
-        SymType _t = expr.ptr->getType();
-        if (_t == SymType::NUM || _t == SymType::VAR || _t == SymType::CONST) return expr;
+    // =================================================================
+    // factor 记忆化
+    //   factor 是纯函数（无随机性、无全局可变状态），结果又是内部化的 SymExpr，
+    //   所以按 (节点, depth) 缓存是安全的。实测同一轮化简里 factor 的重复率高得
+    //   离谱：24800 次调用只对应 33 个不同的 (节点, depth)，比值 751×。
+    //   缓存在每次顶层 full_simplify 入口清空（与那里已有的递归缓存同生命周期），
+    //   并设容量上限兜底，避免像内部化池那样无界增长。
+    // =================================================================
+    struct FactorMemoKey {
+        const SymNode* node;
+        int depth;
+        bool operator==(const FactorMemoKey& o) const { return node == o.node && depth == o.depth; }
+    };
+    struct FactorMemoHash {
+        size_t operator()(const FactorMemoKey& k) const {
+            return std::hash<const void*>{}(k.node) * 1099511628211ULL ^ static_cast<size_t>(k.depth);
+        }
+    };
+    static thread_local std::unordered_map<FactorMemoKey, SymExpr, FactorMemoHash> g_factorMemo;
+    static constexpr size_t kFactorMemoCap = 200000;
+
+    void clearFactorMemo() { g_factorMemo.clear(); }
+
+    static SymExpr factorImpl(const SymExpr& expr, int depth);
+
+    SymExpr factor(const SymExpr& expr, int depth) {
+        if (!expr.ptr || depth > SymConfig::maxDepth) return expr;
+        SymType t = expr.ptr->getType();
+        if (t == SymType::NUM || t == SymType::VAR || t == SymType::CONST) return expr;  // 叶节点
+
+        FactorMemoKey key{expr.ptr, depth};
+        auto it = g_factorMemo.find(key);
+        if (it != g_factorMemo.end()) return it->second;
+
+        SymExpr result = factorImpl(expr, depth);
+        if (g_factorMemo.size() >= kFactorMemoCap) g_factorMemo.clear();
+        g_factorMemo.emplace(key, result);
+        return result;
+    }
+
+    // 真正的分解流程。叶节点短路、深度上限与记忆化都由入口 factor() 负责，
+    // 所以这里不再重复那两项检查。
+    static SymExpr factorImpl(const SymExpr& expr, int depth) {
         SymExpr quadResult = multivariatePolynomialFactor(expr, depth);  // 接入 depth
         if (quadResult.ptr != expr.ptr) return quadResult;
         

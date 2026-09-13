@@ -312,3 +312,66 @@ test_factor_is_idempotent() = {
     assert(str(cas.factor(1 / ((x + 1) * (x + 2)))) == str(cas.factor(cas.factor(1 / ((x + 1) * (x + 2))))), "factor idempotent on 1/((x+1)(x+2))")
 }
 test_factor_is_idempotent()
+
+// =====================================================================
+// 多元分解的三条新路径（每一项都对应一个曾经失败或曾经错答的形态）
+// =====================================================================
+
+// 一次项分组：xy + ax + by + c 的四个项没有公共因式，公因式藏在组合里
+// （x*(y+2) + 1*(y+2)）。此前 factor 对这类表达式完全不分解。
+test_factor_by_grouping() = {
+    x = sym("x")
+    y = sym("y")
+    assert(str(cas.factor(x * y + 2 * x + y + 2)) == "(x + 1) * (y + 2)", "factor(xy+2x+y+2)")
+    assert(str(cas.factor(x * y + 2 * x + 3 * y + 6)) == "(x + 3) * (y + 2)", "factor(xy+2x+3y+6)")
+    assert(str(cas.factor(x * y + x + y + 1)) == "(x + 1) * (y + 1)", "factor(xy+x+y+1)")
+    // ★ 不同变元分组的质量差别：按 x 分组会得到 (3*y+6)*(x+2/3)（商是分数），
+    //   按 y 分组才是干净的 (3*x+2)*(y+2)。变元按字母序遍历，必须取最简的那个。
+    assert(str(cas.factor(3 * x * y + 6 * x + 2 * y + 4)) == "(3 * x + 2) * (y + 2)", "factor(3xy+6x+2y+4)")
+    // ★ 数值公因数不能被当作"分组"抽出来：2x+3y 关于 x 一次、首项系数是 2，
+    //   若允许纯数作除数会得到 2*(x + 3/2*y)，形态反而更差。
+    assert(str(cas.factor(2 * x + 3 * y)) == "2 * x + 3 * y", "factor(2x+3y) must stay put")
+    assert_factor_preserves(x * y + 2 * x + y + 2, "xy+2x+y+2")
+    assert_factor_preserves(3 * x * y + 6 * x + 2 * y + 4, "3xy+6x+2y+4")
+    assert_factor_preserves(2 * x + 3 * y, "2x+3y")
+}
+test_factor_by_grouping()
+
+// 偶次降维：奇数次系数全为 0 时令 t = mainVar^2 把次数减半再分解
+test_factor_even_power_reduction() = {
+    x = sym("x")
+    y = sym("y")
+    assert(str(cas.factor(x ^ 4 - y ^ 4)) == "-(-x + y) * (x + y) * (x^2 + y^2)", "factor(x^4-y^4)")
+    assert(str(cas.factor(x ^ 8 - y ^ 8)) == "-(-x + y) * (x + y) * (x^2 + y^2) * (x^4 + y^4)", "factor(x^8-y^8)")
+    assert(str(cas.factor(x ^ 4 + 2 * x ^ 2 * y ^ 2 + y ^ 4)) == "(x^2 + y^2)^2", "factor((x^2+y^2)^2)")
+    assert(str(cas.factor(x ^ 6 + 3 * x ^ 4 * y ^ 2 + 3 * x ^ 2 * y ^ 4 + y ^ 6)) == "(x^2 + y^2)^3", "factor((x^2+y^2)^3)")
+    // 在 ℚ 上不可约的必须原样留下，不能因为"次数是偶数"就动它
+    assert(str(cas.factor(x ^ 4 + y ^ 4)) == "x^4 + y^4", "x^4+y^4 is irreducible over Q")
+    assert(str(cas.factor(x ^ 4 + 1)) == "x^4 + 1", "x^4+1 is irreducible over Q")
+    assert(str(cas.factor(x ^ 4 - x ^ 2 + 1)) == "x^4 - x^2 + 1", "x^4-x^2+1 is irreducible over Q")
+    assert_factor_preserves(x ^ 4 - y ^ 4, "x^4-y^4")
+    assert_factor_preserves(x ^ 8 - y ^ 8, "x^8-y^8")
+    assert_factor_preserves(x ^ 4 + y ^ 4, "x^4+y^4")
+    assert_factor_preserves(x ^ 6 + 3 * x ^ 4 * y ^ 2 + 3 * x ^ 2 * y ^ 4 + y ^ 6, "(x^2+y^2)^3")
+}
+test_factor_even_power_reduction()
+
+// 分圆分解必须用真正的变元。cyclotomicPoly 固定用规范变元 x 构造 Φ_d(x)，
+// 调用方漏了 "x → var" 替换时，v^n ± 1 会返回含幽灵变量 x 的"分解"
+// （factor(y^8-1) 曾给出 (x+1)*(x-1)*...，结果里根本没有 y）。该漏替换已修
+// （cc0863d）。
+// ★ 如实说明：下面这些断言【目前无法复现那个缺陷】—— 这些输入都会先被
+//   factorPolynomialCZ 分解掉，根本走不到分圆那一步；只有当分圆路径拿到内部
+//   合成的变元（例如偶次降维的临时变量）时才会暴露。所以它们记录的是"变量名
+//   不是 x 时也必须给出正确结果"这一要求，而不是"修复前会失败"的回归。
+test_cyclotomic_uses_real_variable() = {
+    y = sym("y")
+    t = sym("t")
+    z = sym("z")
+    assert(str(cas.factor(y ^ 6 - 1)) == "(y + 1) * (y - 1) * (y^2 + y + 1) * (y^2 - y + 1)", "factor(y^6-1)")
+    assert(str(cas.factor(t ^ 4 - 1)) == "(t + 1) * (t - 1) * (t^2 + 1)", "factor(t^4-1)")
+    assert(str(cas.factor(y ^ 8 - 1)) == "(y + 1) * (y - 1) * (y^2 + 1) * (y^4 + 1)", "factor(y^8-1)")
+    assert(str(cas.factor(y ^ 3 + 1)) == "(y + 1) * (y^2 - y + 1)", "factor(y^3+1)")
+    assert(str(cas.factor(z ^ 4 - 1)) == "(z + 1) * (z - 1) * (z^2 + 1)", "factor(z^4-1)")
+}
+test_cyclotomic_uses_real_variable()

@@ -5,6 +5,7 @@
 #include <stdexcept>
 #include <functional>
 #include <map>
+#include <unordered_map>
 
 namespace jc {
 
@@ -1168,7 +1169,51 @@ namespace jc {
     static thread_local std::unordered_map<FactorMemoKey, SymExpr, FactorMemoHash> g_factorMemo;
     static constexpr size_t kFactorMemoCap = 200000;
 
-    void clearFactorMemo() { g_factorMemo.clear(); }
+    // =================================================================
+    // 「子树里是否含 ADD」的 DAG 记忆化查询
+    //   factor 的四类恒等式与公因式提取都以「存在一个加法节点」为前提：
+    //     立方和差       A^3 ± B^3        要那个 ± 对应的加法节点
+    //     Sophie Germain a^4 + 4*b^4      同上
+    //     分圆分解       x^n - 1          同上
+    //     二次分圆       A^2 + A*B + B^2  同上
+    //     公因式提取     对 ADD 各项比较最小指数
+    //   两条多项式策略同样要先 extractCoeffs 出 ≥3 个系数（次数 <2 直接放弃），
+    //   而纯单项式乘积（x^2*y^3、45*x^8、sin(x)*cos(x)、x^(-1)*y^(-1)）无论走
+    //   哪条路都原样返回。
+    //   所以「整棵子树没有任何 ADD」是 factor 恒等的充分条件，可以安全短路。
+    //   节点已内部化，memo 保证每个节点只算一次，总代价 O(DAG 节点数)，不是
+    //   按树展开的 O(n²)；与 factor 记忆化同生命周期，在顶层 full_simplify
+    //   入口一起清空，不跨调用累积。
+    // =================================================================
+    static thread_local std::unordered_map<const SymNode*, bool> g_hasAddMemo;
+
+    static bool nodeContainsAdd(SymNode* node) {          // NOLINT(misc-no-recursion)
+        if (!node) return false;
+        if (node->getType() == SymType::ADD) return true;
+        auto it = g_hasAddMemo.find(node);
+        if (it != g_hasAddMemo.end()) return it->second;
+        bool r = false;
+        switch (node->getType()) {
+            case SymType::MUL:
+                for (SymNode* a : static_cast<SymMul*>(node)->args)
+                    if (nodeContainsAdd(a)) { r = true; break; }
+                break;
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(node);
+                r = nodeContainsAdd(p->base) || nodeContainsAdd(p->exp);
+                break;
+            }
+            case SymType::FUNC:
+                for (SymNode* a : static_cast<SymFunc*>(node)->args)
+                    if (nodeContainsAdd(a)) { r = true; break; }
+                break;
+            default: break;
+        }
+        g_hasAddMemo.emplace(node, r);
+        return r;
+    }
+
+    void clearFactorMemo() { g_factorMemo.clear(); g_hasAddMemo.clear(); }
 
     static SymExpr factorImpl(const SymExpr& expr, int depth);
 
@@ -1176,6 +1221,7 @@ namespace jc {
         if (!expr.ptr || depth > SymConfig::maxDepth) return expr;
         SymType t = expr.ptr->getType();
         if (t == SymType::NUM || t == SymType::VAR || t == SymType::CONST) return expr;  // 叶节点
+        if (!nodeContainsAdd(expr.ptr)) return expr;   // 无加法 ⇒ 没有任何策略能改变它
 
         FactorMemoKey key{expr.ptr, depth};
         auto it = g_factorMemo.find(key);

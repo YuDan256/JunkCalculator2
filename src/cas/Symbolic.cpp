@@ -121,7 +121,12 @@ namespace jc {
         if (v.isObjType(ObjType::BIGINT))    return static_cast<ObjBigInt*>(v.asObj())->num;
         if (v.isObjType(ObjType::FRACTION))  return static_cast<ObjFraction*>(v.asObj())->frac;
         if (v.isFloat())                    return v.asFloatRaw();
-        if (v.isInt32())                     return v.asInt32();
+        // ★ 整数统一规范成 BigInt 存储。Value 侧把 int32 与 float 视为同一个数
+        //   （1 == 1.0），但 CASVal 若同时存在 int32(2) 与 BigInt(2) 两种形态，
+        //   则 SymNum 的哈希/指针都会不同：内部化失效、同类项合并不掉，
+        //   cas.simplify 曾因此在展开式上崩溃或给出错误结果。
+        //   在这里统一形态，下游的哈希、比较、池查找、terms 索引就自动一致。
+        if (v.isInt32())                     return BigInt(v.asInt32());
         JC2_THROW(MathError, "Cannot convert value to CAS type.");
     }
 

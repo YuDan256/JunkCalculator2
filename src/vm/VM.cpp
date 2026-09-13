@@ -128,6 +128,37 @@ static bool traitSignatureMatches(const ObjClosure* a, const ObjClosure* b) {
     return true;
 }
 
+// ★ 覆盖 trait 默认方法时的签名校验（子类路径）。
+//   默认方法在 trait 里的签名和抽象方法一样是对外契约，覆盖必须一致；原先只有抽象
+//   方法走校验，于是 trait 的默认方法被覆盖后"随便写都行"（改参数个数/参数名/返回
+//   类型全部静默通过）。
+//   直接组合（`class C with I { f() = ... }`）由 applyTrait 负责；这里管的是
+//   `class B extends A { f() = ... }` 且 A 的 f 来自 trait —— 编译顺序是
+//   「继承 → 定义自身成员 → with trait」，定义自身成员那一刻类还没有 traits，
+//   但父类已经有了，所以顺着父类链就能找到那份契约。
+//   判据是"被覆盖的方法其 owner_class 是个 trait"：applyTrait 复制 trait 成员时会
+//   把 owner_class 指向该 trait，而普通继承的方法 owner_class 是定义它的类，
+//   因此后者仍然可以自由覆盖。
+static void checkTraitDefaultOverride(ObjClass* cls, const std::string& name, ObjClosure* newFn) {
+    if (!cls || !newFn) return;
+    for (ObjClass* p = cls->parent; p; p = p->parent) {
+        auto pit = p->properties.find(name);
+        if (pit == p->properties.end()) continue;
+        if (!pit->second.val.isFunctionClosure()) return;
+        ObjClosure* inherited = pit->second.val.asFunction();
+        ObjClass* owner = inherited ? inherited->owner_class : nullptr;
+        if (!owner || !owner->isTrait) return;
+        auto tit = owner->properties.find(name);
+        if (tit == owner->properties.end()) return;
+        auto* dfn = tit->second.val.isFunctionClosure() ? tit->second.val.asFunction() : nullptr;
+        if (!traitSignatureMatches(dfn, newFn)) {
+            JC2_THROW(TypeError, "Method '" + name + "' overrides default method of trait '"
+                + owner->name + "' with an incompatible signature.");
+        }
+        return;
+    }
+}
+
 // 递归平铺 trait：祖先在前，自身在后；返回「祖先在前、自身在后」且已去重的顺序表
 static void flattenTrait(ObjClass* tr, std::vector<ObjClass*>& out) {
     if (!tr) return;
@@ -230,6 +261,38 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
     // ★ 还原类自身成员，确保 trait 永远不能覆盖类自身的定义
     for (auto& [name, pd] : ownBackup) {
         cls->properties[name] = pd;
+    }
+
+    // ★ 覆盖默认方法同样要校验签名。
+    //   原先只有抽象方法走签名校验，于是 trait 里的默认方法一旦被覆盖就成了
+    //   "随便写都行"：`trait I { run(x, y) -> int = x + y }` 之下
+    //   `class C with I { run(x) -> int = x }`（少一个参数）、
+    //   `{ run(a, b) -> int = a }`（改参数名）、
+    //   `{ run(x, y) -> string = "" }`（改返回类型）全部静默通过 ——
+    //   而默认方法在 trait 里的签名和抽象方法一样是对外的契约，覆盖必须一致。
+    //   注意要遍历 trait 链本身：类自己定义过的名字在上面合并时被 `ownMembers`
+    //   跳过了，根本不会进 baseOrder。
+    //   放在 ownBackup 还原之后、`isTrait` 提前返回之前：trait 组合 trait 时
+    //   派生 trait 覆盖祖先默认方法也应受同一约束。
+    {
+        std::unordered_set<std::string> seenDecl;
+        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
+            ObjClass* t = *it;
+            for (auto& [name, pd] : t->properties) {
+                if (!cls->ownMembers.count(name)) continue;          // 只有自己定义的才算覆盖
+                if (!seenDecl.insert(name).second) continue;         // 更派生的声明已生效
+                if (pd.is_abstract) continue;                        // 抽象方法走下面的"未实现"校验
+                if (!pd.val.isFunctionClosure()) continue;           // 字段/常量不走方法签名
+                auto pit = cls->properties.find(name);
+                if (pit == cls->properties.end()) continue;
+                auto* dfn = pd.val.asFunction();
+                auto* ofn = pit->second.val.isFunctionClosure() ? pit->second.val.asFunction() : nullptr;
+                if (!traitSignatureMatches(dfn, ofn)) {
+                    JC2_THROW(TypeError, "Method '" + name + "' overrides default method of trait '"
+                        + t->name + "' with an incompatible signature.");
+                }
+            }
+        }
     }
 
     // ★ 目标本身是 trait（trait 组合 trait）：抽象方法无需在此实现，继续向下传递，
@@ -6565,6 +6628,9 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else {
                         if (cls) {
+                            // ★ 子类覆盖从 trait 继承来的默认方法时，签名必须一致
+                            //   （私有方法按词法作用域各归其主，不走这里）
+                            checkTraitDefaultOverride(cls, methodName, fn);
                             cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false, isAbstract};
                             cls->ownMembers.insert(methodName);
                         }
@@ -7559,6 +7625,9 @@ Value VM::run(int targetFrameDepth) {
                     if (it != cls->properties.end()) {
                         JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
                     }
+                    // ★ 静态属性覆盖从 trait 继承来的默认方法时同样校验签名。
+                    //   （实例方法走 OpCode::METHOD，那条路径上有同一份检查。）
+                    if (cls) checkTraitDefaultOverride(cls, keyStr, val.isFunctionClosure() ? val.asFunction() : nullptr);
                     if (cls) {
                         cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
                         cls->ownMembers.insert(keyStr);
@@ -11527,7 +11596,15 @@ done:
     JIT_CALLOUT_CATCH
 }
 
-uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
+// ★ jc2_jit_closure 走「变参 callout」约定：首形参 values 是 CodeEmitter 压栈的值
+//   数组（只在 numValues > 0 时走这条约定，真正的实参改走 rdx/r8）。少了这个形参，
+//   rcx 会被当成 fnIdx —— 任何"捕获了局部变量"的闭包在 JIT 下都会以
+//   InternalError: Invalid function index 崩掉。
+//   values[] 的布局（与 BytecodeToHIR 的 CLOSURE 严格对应）：
+//     [0 .. P-1] 参数类型；[P] 返回类型；[P+1 ..] 捕获的局部 upvalue（保活用）。
+//   参数类型与返回类型必须从这里取，不能按寄存器号回读帧槽 —— 现代 JIT callout
+//   不做全量写回，HIR 局部值不会落到帧槽上。
+uint64_t jc2_jit_closure(uint64_t* values, uint32_t fnIdx, uint32_t registerOffset) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -11536,8 +11613,9 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     
     if (fnIdx >= vm->getCompiledFunctions().size())
         JC2_THROW(InternalError, "Invalid function index.");
-
     auto& fn = vm->getCompiledFunctions()[fnIdx];
+    // values[] 布局：先每个参数的类型（P 个），再返回类型，之后是 isLocal upvalue 的保活值
+    const int paramTypeCount = static_cast<int>(fn->paramTypeRegs.size());
     auto closure = GcHeap::get().allocate<ObjClosure>(
         std::vector<std::string>{}, std::vector<bool>{}, fn->name, nullptr
     );
@@ -11546,6 +11624,15 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     closure->compiledFnIndex = fnIdx;
 
     if (!fn->upvalues.empty()) {
+        // values[] 里各 isLocal upvalue 的值下标（按 fn->upvalues 顺序），
+        // 与 BytecodeToHIR 的 CLOSURE 里那个保活循环严格对应。
+        std::vector<int> localValIdx(fn->upvalues.size(), -1);
+        {
+            int k = paramTypeCount + 1;
+            for (size_t i = 0; i < fn->upvalues.size(); ++i) {
+                if (fn->upvalues[i].isLocal) localValIdx[i] = k++;
+            }
+        }
         closure->upvalueCount = static_cast<int>(fn->upvalues.size());
         closure->upvalues = new ObjUpVal*[closure->upvalueCount];
         for (int i = 0; i < closure->upvalueCount; ++i) closure->upvalues[i] = nullptr;
@@ -11576,7 +11663,9 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
                     if (uv.isRefParam) {
                         dummy->closed = *(static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj())->location);
                     } else {
-                        dummy->closed = regs[base + registerOffset + uv.index];
+                        // ★ 从 values[] 取，不能回读帧槽：现代 JIT callout 不做全量写回，
+                        //   HIR 局部值不会落到帧槽上，回读拿到的是旧值（捕获到 none）。
+                        dummy->closed = Value::fromRawBits(values[localValIdx[i]]);
                     }
                 } else {
                     if (frame->closure && uv.index < frame->closure->upvalueCount) {
@@ -11620,17 +11709,18 @@ uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset) {
     closure->boundSelf = frame->selfContext;
     closure->boundClass = frame->classContext;
     
-    if (!fn->paramTypeRegs.empty()) {
-        closure->paramTypesCount = static_cast<int>(fn->paramTypeRegs.size());
-        closure->paramTypes = new Value[closure->paramTypesCount];
-        for (int i = 0; i < closure->paramTypesCount; ++i) {
-            int reg = fn->paramTypeRegs[i];
-            closure->paramTypes[i] = (reg != -1) ? regs[base + registerOffset + reg] : Value::none();
+    // ★ 参数类型 / 返回类型从 values[] 取，不回读帧槽。
+    //   values[] 布局见 BytecodeToHIR 的 CLOSURE：先每个参数的类型、再返回类型，
+    //   之后才是 upvalue 的保活值。现代 JIT callout 不做全量写回（只按 StackMap
+    //   保活），HIR 局部值根本不会落到帧槽上，按寄存器号回读必然拿到旧值。
+    if (paramTypeCount > 0) {
+        closure->paramTypesCount = paramTypeCount;
+        closure->paramTypes = new Value[paramTypeCount];
+        for (int i = 0; i < paramTypeCount; ++i) {
+            closure->paramTypes[i] = Value::fromRawBits(values[i]);
         }
     }
-    if (fn->returnTypeReg != -1) {
-        closure->returnType = regs[base + registerOffset + fn->returnTypeReg];
-    }
+    closure->returnType = Value::fromRawBits(values[paramTypeCount]);
     
     frame->jitReturnSlot = res;
     return res.as_bits;
@@ -12072,6 +12162,9 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
             }
         } else {
             if (cls) {
+                // ★ 与解释器的 OpCode::METHOD 保持同一套校验：覆盖 trait 默认方法
+                //   必须签名一致。JIT 走的是独立实现，漏了这里就等于给 JIT 开后门。
+                checkTraitDefaultOverride(cls, methodName, fn);
                 cls->properties[methodName] = {closureVal, isConst, false, isAbstract};
                 cls->ownMembers.insert(methodName);
             }

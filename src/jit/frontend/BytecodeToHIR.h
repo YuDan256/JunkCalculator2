@@ -1010,14 +1010,38 @@ public:
                         auto fnIdxNode = builder_.createInt32Constant(fnIdx);
                         auto offsetNode = builder_.createInt32Constant(registerOffset_);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_closure), JITType::TaggedValue, 2, {fnIdxNode, offsetNode}, fs);
-                        
+
+                        // ★ jc2_jit_closure 走「变参 callout」约定：首形参是值数组指针
+                        //   （CodeEmitter 只在 numValues > 0 时才放进 rcx），真正的实参走
+                        //   rdx/r8。顺带把参数类型与返回类型的**值**一并放进数组 ——
+                        //   少了这条约定，fnIdx 会落回 rcx 被当成数组指针。
+                        //
+                        //   values[] 布局（必须与 jc2_jit_closure 严格一致）：
+                        //     [0 .. P-1]  P = paramTypeRegs.size()，每个参数的类型值
+                        //                （该参数无标注时填 none，占位保持下标对齐）
+                        //     [P]        返回类型值（无标注时 none）
+                        //     [P+1 ..]   捕获的局部 upvalue 值（仅用于保活；
+                        //                callout 仍按寄存器号去读它们）
+                        //   P+1 >= 1 恒成立，因此约定恒定。
+                        //
+                        //   ★ 类型值必须走 values[]，不能在 callout 里按寄存器号回读帧：
+                        //     现代 JIT callout 不做全量写回（见 CodeEmitter::emitGcPin 注释），
+                        //     HIR 局部值不会落到帧槽上，回读拿到的是别人留下的旧值 ——
+                        //     表现为 --jit 下所有带类型标注的 trait 实现都误报签名不符。
                         if (VM::activeVM && fnIdx >= 0 && fnIdx < static_cast<int>(VM::activeVM->getCompiledFunctions().size())) {
                             auto& fn = VM::activeVM->getCompiledFunctions()[fnIdx];
+                            for (int reg : fn->paramTypeRegs) {
+                                callout->addInput(reg != -1 ? getBoxedRKNode(reg) : builder_.createNoneConstant());
+                            }
+                            callout->addInput(fn->returnTypeReg != -1 ? getBoxedRKNode(fn->returnTypeReg)
+                                                                      : builder_.createNoneConstant());
                             for (const auto& uv : fn->upvalues) {
                                 if (uv.isLocal) {
                                     callout->addInput(getBoxedRKNode(uv.index));
                                 }
                             }
+                        } else {
+                            callout->addInput(builder_.createNoneConstant());
                         }
                         
                         setLocalSync(a, callout);

@@ -429,7 +429,7 @@ void jc2_jit_dict_append(uint64_t dict_bits, uint64_t key_bits, uint64_t val_bit
 uint64_t jc2_jit_concat_strings(uint64_t* values, uint32_t count);
 uint64_t jc2_jit_format_string(uint64_t val_bits, uint32_t specIdx, const Chunk* chunk);
 uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits);
-uint64_t jc2_jit_closure(uint32_t fnIdx, uint32_t registerOffset);
+uint64_t jc2_jit_closure(uint64_t* values, uint32_t fnIdx, uint32_t registerOffset);
 void jc2_jit_assign_global(uint32_t slot, uint64_t src_bits);
 
 // Megamorphic Math Fallbacks (Step 89)

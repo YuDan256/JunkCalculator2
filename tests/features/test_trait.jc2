@@ -213,6 +213,51 @@ test_trait_composition_signature() = {
 }
 test_trait_composition_signature()
 
+// 15b. 默认方法被覆盖时同样要做严格的签名校验
+//      回归：原先只有**抽象**方法走签名校验，trait 里的默认方法一旦被覆盖就成了
+//      "随便写都行" —— 改参数个数、改参数名、改返回类型、改参数类型全部静默通过。
+//      默认方法在 trait 里的签名和抽象方法一样是对外契约，覆盖必须一致。
+test_trait_default_override_signature() = {
+    trait I { run(x, y) -> int = x + y }
+
+    // ① 类直接组合 trait 后覆盖默认方法
+    assert(throws(() => class with I { run(x) -> int = x }), "default override: param count")
+    assert(throws(() => class with I { run(a, b) -> int = a }), "default override: param name")
+    assert(throws(() => class with I { run(x, y) -> string = "s" }), "default override: return type")
+    assert(throws(() => class with I { run(x: string, y: string) -> int = 0 }), "default override: param type")
+
+    // ② 子类覆盖「继承自 trait 的默认方法」（编译顺序是 继承 → 自身成员 → with，
+    //    所以这条只能在方法定义处拦，不能靠 applyTrait）
+    class Base with I {}
+    assert(throws(() => class extends Base { run(x) -> int = x }), "subclass override: param count")
+    assert(throws(() => class extends Base { run(a, b) -> int = a }), "subclass override: param name")
+    assert(throws(() => class extends Base { run(x, y) -> string = "s" }), "subclass override: return type")
+    class Middle extends Base {}
+    assert(throws(() => class extends Middle { run(x) -> int = x }), "grandchild override: param count")
+
+    // ③ 派生 trait 覆盖祖先 trait 的默认方法同样受约束
+    trait A { g(x) -> int = x }
+    assert(throws(() => trait B with A { g() -> int = 1 }), "derived trait override: param count")
+
+    // ④ 签名一致时必须放行，且覆盖确实生效
+    class Ok with I { run(x, y) -> int = x * y }
+    assert(Ok().run(3, 4) == 12, "matching override should work")
+    class Sub extends Base { run(x, y) -> int = x * y }
+    assert(Sub().run(3, 4) == 12, "matching subclass override should work")
+    class Inherit extends Base {}
+    assert(Inherit().run(2, 3) == 5, "no override -> trait default still used")
+    trait A2 { g2(x) -> int = x }
+    trait B2 with A2 { g2(x) -> int = x * 3 }
+    class E with B2 {}
+    assert(E().g2(5) == 15, "derived trait default should win when signature matches")
+
+    // ⑤ 普通继承（方法不是来自 trait）覆盖不受影响
+    class Plain { f() = "plain" }
+    class Plain2 extends Plain { f() = "over" }
+    assert(Plain2().f() == "over", "plain override must stay unrestricted")
+}
+test_trait_default_override_signature()
+
 // 16. trait 定义的 local（私有）方法可从 trait 默认方法内调用
 test_trait_private_method() = {
     trait I {

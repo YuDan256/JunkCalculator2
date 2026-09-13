@@ -28,3 +28,41 @@ test_partial_application() = {
 
 }
 test_partial_application()
+
+// 闭包捕获局部变量。
+// 回归：JIT 的 CLOSURE callout 走「变参 callout」约定（首个形参是值数组指针），
+// 但 jc2_jit_closure 少声明了这个形参，于是 CodeEmitter 放进 rcx 的数组指针被
+// 当成 fnIdx —— 任何捕获局部变量的闭包在 --jit 下都会以
+// InternalError: Invalid function index 崩掉（解释器侧则完全正常）。
+// 本段在解释器与 --jit 两种模式下都必须给出同样结果（测试套件两种模式都会跑）。
+test_closure_capture() = {
+    make_adder(n) = {
+        add(x) = x + n
+        return add
+    }
+    assert(make_adder(10)(5) == 15, "closure captures a parameter")
+
+    outer(a) = {
+        local base = a * 2
+        inner(b) = base + b
+        return inner
+    }
+    assert(outer(3)(4) == 10, "closure captures a local")
+
+    // 多个闭包共享同一份捕获环境
+    make_pair(n) = {
+        inc() = n + 1
+        dec() = n - 1
+        return @[inc, dec]
+    }
+    p = make_pair(7)
+    assert(p[0]() == 8 && p[1]() == 6, "sibling closures share the capture")
+
+    // 循环里反复建闭包（逼 JIT 编译该函数）
+    total = 0
+    for (local i = 0; i < 300; i += 1) {
+        total += make_adder(i)(1)
+    }
+    assert(total == 300 + 299 * 300 / 2, "repeated closure creation")
+}
+test_closure_capture()

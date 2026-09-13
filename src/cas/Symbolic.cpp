@@ -1867,7 +1867,14 @@ namespace jc {
         if (isWildcard(pat, wcName)) {
             auto it = captures.find(wcName);
             if (it != captures.end()) {
-                return it->second == SymExpr(node);
+                // ★ 必须用结构比较，不能用 SymExpr::operator==。
+                //   后者现在是完整代数等价判定（内部会 simplify + expand），
+                //   而 simplify 又会调用 trigsimp → applyRule → matchASTImpl，
+                //   形成重入：匹配过程中再次进入匹配与化简，破坏捕获表/节点状态，
+                //   表现为 cas.trigsimp(x^2 + 2*x) 访问越界崩溃。
+                //   模式匹配只需要"形状相同"，结构比较语义上也是正确选择。
+                if (it->second.ptr == node) return true;
+                return it->second.ptr->equals(node);
             } else {
                 captures[wcName] = SymExpr(node);
                 addedKeys.push_back(wcName);
@@ -1937,7 +1944,9 @@ namespace jc {
                 for (size_t j = 0; j < pArgs.size(); ++j) {
                     if (!hasWildcard(pArgs[j])) {
                         for (size_t i = 0; i < nArgs.size(); ++i) {
-                            if (!nUsed[i] && nArgs[i] == pArgs[j]) {
+                            if (nUsed[i]) continue;
+                            // 同 1 处：结构比较，避免重入完整等价判定
+                            if (nArgs[i] == pArgs[j] || nArgs[i]->equals(pArgs[j])) {
                                 nUsed[i] = true;
                                 pUsed[j] = true;
                                 matchCount++;
@@ -2123,7 +2132,9 @@ namespace jc {
                 for (size_t j = 0; j < K; ++j) {
                     if (!hasWildcard(pArgs[j])) {
                         for (size_t i = 0; i < N; ++i) {
-                            if (!cUsed[i] && cArgs[i] == pArgs[j]) {
+                            if (cUsed[i]) continue;
+                            // 同 1 处：结构比较，避免重入完整等价判定
+                            if (cArgs[i] == pArgs[j] || cArgs[i]->equals(pArgs[j])) {
                                 cUsed[i] = true;
                                 pUsed[j] = true;
                                 break;

@@ -123,5 +123,8 @@ test_trigsimp_only_touches_trig() = {
     assert(str(cas.trigsimp(sin(x) ^ 2 + cos(x) ^ 2)) == "1", "trigsimp identity")
     assert(str(cas.simplify(tan(x) - sin(x) / cos(x))) == "0", "tan - sin/cos")
     assert(str(cas.expand(sin(2 * x))) == "2 * cos(x) * sin(x)", "sin double angle")
+    // 直接调用 trigsimp（此前这条路在纯多项式上会访问越界崩溃）
+    assert(str(cas.trigsimp(x ^ 2 + 2 * x)) == "x^2 + 2 * x", "trigsimp on polynomial")
+    assert(str(cas.trigsimp(x ^ 2 + 2 * x + 1)) == "x^2 + 2 * x + 1", "trigsimp on polynomial 2")
 }
 test_trigsimp_only_touches_trig()

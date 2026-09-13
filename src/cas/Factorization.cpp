@@ -782,7 +782,17 @@ namespace jc {
                 partResult = partResult * factorExpr;
             }
             
-            if (content > BigInt(1)) partResult = SymExpr(content) * partResult;
+            // ★ 首项系数的符号必须由这里补回。
+            //   重构阶段每个因子的系数都除以了 Hx_content = gcd(系数绝对值)（恒正），
+            //   所以 ∏ h_i 相对 p_int 只差 sign(a_n)^(n-1)：由
+            //     ∏ H_i(a_n·x) = a_n^(n-1) · p_int(x)  且  ∏ c_i = |a_n|^(n-1)
+            //   得 p_int = sign(a_n)^(n-1) · ∏ h_i。
+            //   n 为奇数时 (n-1) 是偶数，符号自动对上；n 为偶数时整体差一个负号。
+            //   原实现只补 content > 1 的正公因子，于是 a_n < 0 且次数为偶的多项式
+            //   会被"分解"成自己的相反数：cas.factor(-(x^2+1)) 曾返回 x^2+1。
+            BigInt leadingFactor = content;
+            if (an.isNegative() && (n % 2 == 0)) leadingFactor = -leadingFactor;
+            if (leadingFactor != BigInt(1)) partResult = SymExpr(leadingFactor) * partResult;
             
             result = result * (partResult ^ SymExpr(BigInt(power)));
         }

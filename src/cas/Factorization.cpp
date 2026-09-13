@@ -983,11 +983,28 @@ namespace jc {
         if (f.b != BigInt(1)) return expr;          // 只做 x^n ± 1
 
         SymExpr x = SymExpr::makeVar(var);
+
+        // ★ cyclotomicPoly(d) 返回的是【规范变元 x】下的 Φ_d(x)（该函数内部固定用
+        //   makeVar("x") 构造，见它的说明）。这里必须把它换成真正的变元 var，否则
+        //   任何变量名不是 x 的 v^n ± 1 都会返回一个含幽灵变量 x 的"分解"：
+        //       factor(y^8 - 1)  →  (x + 1) * (x - 1) * (x^2 + 1) * (x^4 + 1)
+        //   结果里根本没有 y —— 既不是原式，也不是它的任何改写。
+        //   这个漏替换平时被 factorPolynomialCZ（一元整系数 Zassenhaus）挡在前面
+        //   掩盖住了：轮到分圆这条路之前，y^n - 1 已经被 CZ 完整分解。只有当某个
+        //   中间表达式 CZ 处理不了、落到这里时才会暴露。
+        //   下面的 plus 分支本来就用的是 x，所以只有 minus 分支受影响。
+        //   var 就是 "x" 时跳过 subs，省掉一次无谓的整树替换。
+        auto phi = [&](int64_t d) -> SymExpr {
+            SymExpr p = cyclotomicPoly(d);
+            if (var == "x") return p;
+            return simplifyCore(subs(p, "x", x));
+        };
+
         SymExpr result(BigInt(1));
         if (f.minus) {
             // x^n - 1 = ∏_{d|n} Φ_d(x)
             for (int64_t d = 1; d <= f.n; ++d) {
-                if (f.n % d == 0) result = result * cyclotomicPoly(d);
+                if (f.n % d == 0) result = result * phi(d);
             }
         } else {
             // x^n + 1：n 为偶数时自身不可约式（在 ℚ 上）之外可直接给 x^n+1 不变；
@@ -995,7 +1012,7 @@ namespace jc {
             if (f.n % 2 == 0) return expr;
             result = x + SymExpr(BigInt(1));
             for (int64_t d = 3; d <= f.n; d += 2) {
-                if (f.n % d == 0) result = result * cyclotomicPoly(2 * d);
+                if (f.n % d == 0) result = result * phi(2 * d);
             }
         }
         SymExpr simp = simplifyCore(result);

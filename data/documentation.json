@@ -464,6 +464,8 @@
       "                        @{1,2} <: @{1,2,3}     → true  (set subset)",
       "                        S <: R                 → true  (S extends R)",
       "                        Supports __subsets__ dunder for custom types.",
+      "                        Class conformance counts composed traits too:",
+      "                        `class B with A` → B <: A is true (see /help trait).",
       "",
       "    is                Object identity test (returns true or false)",
       "                        Checks if two variables point to the exact same memory location.",
@@ -1441,6 +1443,12 @@
       "      int <: type              → false",
       "      @{1,2} <: @{1,2,3}       → true  (Set subset)",
       "      S <: R                   → true  (S extends R)",
+      "      B <: A                   → true  (B is `class B with A`, i.e. composes trait A)",
+      "",
+      "    Every class-conformance test (`in`, `<:`, `isinstance`, type annotations,",
+      "    match type patterns) uses one rule: an instance belongs to class C if the",
+      "    instance's class chain reaches C directly or through a composed trait.",
+      "    Note `is` is object IDENTITY, not a type test — use `in`/`isinstance`.",
       "",
       "  Type Annotations & Assertions",
       "  ──────────────────────",
@@ -5736,6 +5744,8 @@
         "   in the container, false otherwise.",
         "   Supported: arrays, lists, strings, dicts (checks keys), sets,",
         "   instances (checks __contains__, then fields, methods, and __getattr__),",
+        "   classes (a string needle checks members; an instance needle acts as",
+        "   `isinstance`, so `B() in A` is true when B composes trait A),",
         "   and Types (acts as an `isinstance` / value-in-type check).",
         "See also: /help for, /help control"
       ],
@@ -5880,6 +5890,9 @@
         "• Default methods have an implementation and may be overridden.",
         "• Traits cannot be instantiated and are frozen after definition.",
         "• Classes and traits compose traits via `with`.",
+        "• Composing a trait makes the class conform to it everywhere a type is asked",
+        "  for: `class B with A` gives B <: A, isinstance(B(), A), `B() in A`,",
+        "  `x: A = B()`, and match patterns `case v: A` all true.",
         "See also: /help with, /help class"
       ],
       "examples": [
@@ -5897,6 +5910,9 @@
         "• Later traits override earlier ones on name conflicts.",
         "• The class's own members override all trait members.",
         "• Abstract methods from composed traits must be implemented (signature must match).",
+        "• A composed trait also becomes part of the class's type: `class C with T` makes",
+        "  C <: T, so C instances pass `isinstance(x, T)`, `x in T`, `v: T = C()`,",
+        "  and `case v: T` — and subclasses of C inherit this.",
         "See also: /help trait, /help class"
       ],
       "examples": [

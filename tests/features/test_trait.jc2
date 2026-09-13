@@ -424,3 +424,60 @@ test_field_defaults_inheritance() = {
     assert(c2.getB() == 2, "child init body should run after super.init()")
 }
 test_field_defaults_inheritance()
+
+// 26. trait 组合必须参与全部类型判定，而不只是 isinstance
+//     回归：类型从属判定曾在 8 处各写一遍「沿 parent 链做指针比较」，全都漏掉 traits 表，
+//     于是 `class B with A` 的实例 isinstance(B(), A) 为 true，却
+//     `B <: A` 为 false、`x: A = B()` 抛 TypeError、`B() in A` 为 false——
+//     同一件事实在不同入口给出互相矛盾的答案。现在统一走 ObjClass::conformsTo。
+test_trait_conformance_everywhere() = {
+    trait A { draw(x) }
+    trait D with A { extra() }
+    class B with A { draw(x) = 1 }
+    class B2 with D { draw(x) = 1; extra() = 2 }
+    class R extends B { r() = 3 }
+
+    // ① 子类型运算符 <:
+    assert(B <: A, "B <: A (direct trait)")
+    assert(B2 <: A, "B2 <: A (flattened ancestor trait)")
+    assert(B2 <: D, "B2 <: D (direct trait)")
+    assert(R <: A, "R <: A (trait inherited through the class chain)")
+    assert(A <: A, "trait is a subtype of itself")
+    assert(!(A <: B), "A <: B must stay false (conformance is not symmetric)")
+
+    // ② 变量 / 参数 / 返回值标注
+    x: A = B()
+    assert(x.draw(1) == 1, "B instance usable through an A-typed variable")
+    x2: A = R()
+    assert(x2.draw(1) == 1, "R instance usable through an A-typed variable")
+    take(v: A) = v.draw(1)
+    assert(take(B()) == 1, "trait-typed parameter accepts a composing class")
+    assert(take(R()) == 1, "trait-typed parameter accepts a subclass of a composing class")
+    make() -> A = B()
+    assert(make().draw(1) == 1, "trait-typed return accepts a composing class")
+    assert(throws(() => { bad: A = 5; }), "non-instance must still fail a trait annotation")
+
+    // ③ 联合类型
+    u(v: A | int) = 1
+    assert(u(B()) == 1, "union with trait accepts composing class")
+    assert(u(3) == 1, "union with trait accepts the other member")
+    assert(throws(() => u("s")), "union with trait still rejects unrelated types")
+
+    // ④ 成员测试 in 与 isinstance 必须同口径
+    assert(B() in A, "'B() in A' must agree with isinstance")
+    assert(isinstance(B(), A), "isinstance with trait")
+    assert("draw" in B, "string needle still does member lookup on a class")
+    assert(!("nope" in B), "missing member lookup still false")
+
+    // ⑤ match 类型模式
+    classify(v) = { match (v) { y: A => "A"; _ => "other" } }
+    assert(classify(B()) == "A", "match type pattern with trait")
+    assert(classify(5) == "other", "match type pattern with trait rejects non-instances")
+
+    // ⑥ 异常体系也同样适用
+    trait Loggable { log() = "logged" }
+    class E4 extends Exception with Loggable { }
+    assert(E4 <: Loggable, "exception class composing a trait")
+    assert(E4 <: Exception, "exception class still derives from Exception")
+}
+test_trait_conformance_everywhere()

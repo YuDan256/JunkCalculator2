@@ -558,6 +558,26 @@ namespace jc {
             type = ObjType::CLASS; 
         }
         void clearTotal() override { properties.clear(); }
+
+        // ★ 类型从属判定（全引擎唯一权威）：本类是否就是 target，或经由「祖先类链 /
+        //   trait 组合」达成 target。
+        //   为什么要单独一个函数：trait 的成员会被 applyTrait 复制进消费类的成员表，
+        //   所以**成员查找**只走 parent 链就够了；但「实例是不是某个类型」必须把 trait
+        //   也算进去，否则 `class B with A` 的实例既不 ∈ A，也不能赋给 A 类型的变量/参数，
+        //   而 isinstance() 又会说是——同一件事在多处各写一遍 parent 链必然对不齐。
+        //   traits 表由 applyTrait 经 flattenTrait 写入，已经包含祖先 trait 且去重
+        //   （全工程只有 VM.cpp 的 applyTrait 一处写它），所以这里两层循环就够：
+        //   零分配，与组合顺序无关，也不需要 visited 集合。
+        bool conformsTo(const ObjClass* target) const {
+            if (!target) return false;
+            for (const ObjClass* c = this; c; c = c->parent) {
+                if (c == target) return true;
+                for (const ObjClass* t : c->traits) {
+                    if (t == target) return true;
+                }
+            }
+            return false;
+        }
     };
 
     struct ObjTypeDef : public Obj {

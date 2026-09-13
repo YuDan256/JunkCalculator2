@@ -97,14 +97,7 @@ static bool host_check_type(JC2_VMContext, JC2_ValueHandle v, JC2_ValueHandle t)
     Value typeObj = from_handle(t);
     if (typeObj.isClass()) {
         ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
-        if (val.isInstance()) {
-            ObjClass* c = val.asInstance()->classDef;
-            while (c) {
-                if (c == expectedClass) return true;
-                c = c->parent;
-            }
-        }
-        return false;
+        return val.isInstance() && val.asInstance()->classDef->conformsTo(expectedClass);
     }
     if (typeObj.isType()) {
         return VM::activeVM ? VM::activeVM->checkValueType(val, static_cast<ObjTypeDef*>(typeObj.asObj())) : false;

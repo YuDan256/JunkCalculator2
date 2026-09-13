@@ -3741,24 +3741,13 @@ void BuiltinRegistry::registerIntrospection() {
             // 单参数：检测是否为任意类的实例
             return Value(args[0].isInstance());
         }
-        // 双参数：检测是否为指定类（含继承链）的实例
+        // 双参数：检测是否为指定类（含继承链与 trait 组合）的实例
         if (!args[0].isInstance()) return Value(false);
         if (!args[1].isClass())
             JC2_THROW(TypeError, "isinstance() second argument must be a class.");
         auto inst = args[0].asInstance();
         auto cls = static_cast<ObjClass*>(args[1].asObj());
-        if (cls->isTrait) {
-            // trait：沿 parent 链查每个类的 traits 表（含平铺的祖先 trait）
-            auto c = inst->classDef;
-            while (c) {
-                if (std::find(c->traits.begin(), c->traits.end(), cls) != c->traits.end()) return Value(true);
-                c = c->parent;
-            }
-            return Value(false);
-        }
-        auto c = inst->classDef;
-        while (c) { if (c == cls) return Value(true); c = c->parent; }
-        return Value(false);
+        return Value(inst->classDef->conformsTo(cls));
         }, {"obj", "cls"});    
     reg("isiterable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];

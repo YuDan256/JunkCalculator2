@@ -105,15 +105,12 @@ static std::string manglePrivate(uint64_t classId, const std::string& name) {
 
 namespace jc {
 
-// 判断值是否是 Exception（含子类）的实例：沿 parent 链做指针比较（缓存内置 Exception 类）。
+// 判断值是否是 Exception（含子类）的实例（trait 组合也算）
 static bool isExceptionInstance(const Value& v) {
     if (!v.isInstance()) return false;
     ObjClass* exceptionClass = VM::activeVM ? VM::activeVM->exceptionClass : nullptr;
     if (!exceptionClass) return false;
-    for (ObjClass* c = v.asInstance()->classDef; c; c = c->parent) {
-        if (c == exceptionClass) return true;
-    }
-    return false;
+    return v.asInstance()->classDef->conformsTo(exceptionClass);
 }
 
 // trait 签名校验：抽象方法 vs 实现方法（参数名/rest/kwarg/参数类型/返回类型 全相等）
@@ -1873,13 +1870,7 @@ bool VM::checkValueType(const Value& val, ObjTypeDef* td) {
             }
         } else {
             ObjClass* expectedClass = std::get<ObjClass*>(t);
-            if (val.isInstance()) {
-                ObjClass* c = val.asInstance()->classDef;
-                while (c) {
-                    if (c == expectedClass) return true;
-                    c = c->parent;
-                }
-            }
+            if (val.isInstance() && val.asInstance()->classDef->conformsTo(expectedClass)) return true;
         }
     }
     return false;
@@ -1894,14 +1885,7 @@ void VM::assertTypeMatches(const Value& val, const Value& typeObj, AssertContext
 
     if (typeObj.isClass()) {
         ObjClass* expectedClass = static_cast<ObjClass*>(typeObj.asObj());
-        bool matched = false;
-        if (val.isInstance()) {
-            ObjClass* c = val.asInstance()->classDef;
-            while (c) {
-                if (c == expectedClass) { matched = true; break; }
-                c = c->parent;
-            }
-        }
+        bool matched = val.isInstance() && val.asInstance()->classDef->conformsTo(expectedClass);
         if (!matched) {
             if (isReturn) JC2_THROW(TypeError, "Function '" + name + "' expected to return '" + expectedClass->name + "', but returned '" + getTypeName(val) + "'.");
             JC2_THROW(TypeError, "" + subject + " expected type '" + expectedClass->name + "', got '" + getTypeName(val) + "'.");
@@ -6408,6 +6392,13 @@ Value VM::run(int targetFrameDepth) {
                                 cls = cls->parent;
                             }
                         }
+                    } else if (needle.isInstance()) {
+                        // ★ 类/ trait 作为"类型"用时，实例归属判定与 isinstance 同一套语义
+                        //   （trait 组合、祖先链都要算），否则 `B() in A` 会和
+                        //   `isinstance(B(), A)` 给出互相矛盾的答案。
+                        //   注意本文件里解释器 OpCode::IN 与 VM::opIn（JIT callout）各有一份
+                        //   实现，两处必须同步。
+                        found = needle.asInstance()->classDef->conformsTo(cls);
                     }
                 } else if (haystack.isObjType(ObjType::SET)) {
                     auto s = static_cast<ObjSet*>(haystack.asObj());
@@ -7914,14 +7905,7 @@ Value VM::run(int targetFrameDepth) {
                 Value typeVal = getReg(c);
                 if (typeVal.isClass()) {
                     ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
-                    bool matched = false;
-                    if (val.isInstance()) {
-                        ObjClass* cls = val.asInstance()->classDef;
-                        while (cls) {
-                            if (cls == expectedClass) { matched = true; break; }
-                            cls = cls->parent;
-                        }
-                    }
+                    bool matched = val.isInstance() && val.asInstance()->classDef->conformsTo(expectedClass);
                     getReg(a) = Value(matched);
                 } else {
                     if (!typeVal.isType()) JC2_THROW(TypeError, "Expected a type object.");
@@ -10227,6 +10211,11 @@ bool VM::opIn(Value needle, Value haystack) {
                     cls = cls->parent;
                 }
             }
+        } else if (needle.isInstance()) {
+            // ★ 类/ trait 作为"类型"用时，实例的归属判定和 isinstance 同一套语义
+            //   （trait 组合、祖先链都要算），否则 `B() in A` 与 `isinstance(B(), A)`
+            //   会给出互相矛盾的答案。
+            found = needle.asInstance()->classDef->conformsTo(cls);
         }
     } else if (haystack.isObjType(ObjType::SET)) {
         auto s = static_cast<ObjSet*>(haystack.asObj());
@@ -10321,14 +10310,7 @@ bool VM::opIn(Value needle, Value haystack) {
 Value VM::opMatchType(Value val, Value typeVal) {
     if (typeVal.isClass()) {
         ObjClass* expectedClass = static_cast<ObjClass*>(typeVal.asObj());
-        bool matched = false;
-        if (val.isInstance()) {
-            ObjClass* cls = val.asInstance()->classDef;
-            while (cls) {
-                if (cls == expectedClass) { matched = true; break; }
-                cls = cls->parent;
-            }
-        }
+        bool matched = val.isInstance() && val.asInstance()->classDef->conformsTo(expectedClass);
         return Value(matched);
     } else {
         if (!typeVal.isType()) JC2_THROW(TypeError, "Expected a type object.");
@@ -10363,8 +10345,7 @@ Value VM::opIsSubset(Value a, Value b) {
                 } else if (std::holds_alternative<ObjClass*>(t) && std::holds_alternative<ObjClass*>(u)) {
                     ObjClass* ca = std::get<ObjClass*>(t);
                     ObjClass* cb = std::get<ObjClass*>(u);
-                    while (ca) { if (ca == cb) { covered = true; break; } ca = ca->parent; }
-                    if (covered) break;
+                    if (ca->conformsTo(cb)) { covered = true; break; }
                 }
             }
             if (!covered) return Value(false);

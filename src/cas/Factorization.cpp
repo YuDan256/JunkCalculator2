@@ -978,6 +978,12 @@ namespace jc {
 
     SymExpr factor(const SymExpr& expr, int depth) {      // 增加 depth 签名
         if (!expr.ptr || depth > SymConfig::maxDepth) return expr;          // 极限保险
+        // ★ 叶节点直接返回：四个多项式策略都以"某个变元下的多项式"为前提，
+        //   数、常量、单个变元本身不可再分，它们只会走完 collectAllVars /
+        //   polySquareFree 再原样返回。full_simplify 是自底向上对每个节点都调
+        //   factor 的，叶节点占节点总数近半，这里的短路省掉的是纯浪费。
+        SymType _t = expr.ptr->getType();
+        if (_t == SymType::NUM || _t == SymType::VAR || _t == SymType::CONST) return expr;
         SymExpr quadResult = multivariatePolynomialFactor(expr, depth);  // 接入 depth
         if (quadResult.ptr != expr.ptr) return quadResult;
         

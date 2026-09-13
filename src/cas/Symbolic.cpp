@@ -4692,6 +4692,18 @@ namespace jc {
         SymExpr dP = diff(P, var);
         SymExpr R = polyGCD(P, dP, var);
         if (SymConfig::debugIntegration) std::cout << "   [SQF] P: " << P.toString() << ", dP: " << dP.toString() << ", R(GCD): " << R.toString() << std::endl;
+        // ★ gcd(f, f') 是不含 var 的非零常数 ⟺ f 平方自由。
+        //   此时 Yun 迭代的输出必然是 V = f/R 本身、重数为 1：
+        //   因为 d(f/R) = (f'·R − f·R')/R²，R' 对 var 求导为 0，故 W − V' = R'·V/R = 0，
+        //   于是第一轮 gcd(V, 0) = V 就是它自己的平方自由部分。
+        //   直接给出这一项，省掉每轮必做的 diff + simplifyFrac + polyGCD + 两次 polyDiv。
+        //   cas.simplify 是自底向上对每个节点都调 factor 的，这里省下的是纯重复计算。
+        if (!R.isZero() && getDegree(R, var) == 0) {
+            SymExpr sf = simplifyFrac(polyDiv(P, R, var).first);
+            if (!c.isOne()) sf = simplifyFrac(sf * c);
+            result.push_back({sf, 1});
+            return result;
+        }
         SymExpr V = polyDiv(P, R, var).first;
         SymExpr W = polyDiv(dP, R, var).first;
 

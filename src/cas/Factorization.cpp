@@ -552,6 +552,42 @@ namespace jc {
         return factors;
     }
 
+    // =================================================================
+    // 「系数是否全为整数」的前置判定。
+    //   factorPolynomialCZ 的内部会把多项式首一化（除以首项系数）再做
+    //   Zassenhaus 分解。若首项系数不是整数 —— sqrt(2)、pi、1/2 —— 那个系数
+    //   就被静默吞掉；而且首一化之后剩下的系数反而变成了整数，事后再检查也
+    //   发现不了。实测（数值代入比对 factor(e) 与 e）：
+    //       factor(x * sqrt(2))            → x              丢了 sqrt(2)
+    //       factor((x + 1) * sqrt(2))      → x + 1          丢了 sqrt(2)
+    //       factor((x^2 - 1) * sqrt(2))    → (x + 1)(x - 1) 丢了 sqrt(2)
+    //       factor(pi * x)                 → x              丢了 pi
+    //   43 个带非整数系数的用例里 19 个给出错误答案（代入 x=3 的偏差 1.2~33）。
+    //   所以必须在 polySquareFree 之前判定；非整数系数整体放弃、原样返回。
+    //   这也不损失能力：非整数系数多项式本来就不在 CZ 的适用范围里，交给
+    //   factorImpl 的 MUL / POW 分支逐因子处理即可。
+    //   同一函数下方还有一处针对 part 的 allInt 检查（覆盖符号常量 pi/e/i 等
+    //   情形），那是首一化之后的第二道防线，保留不动。
+    // =================================================================
+    static bool coeffsAllIntegers(const SymExpr& expr, const std::string& var) {
+        auto coeffs = extractCoeffs(expr, var);
+        if (coeffs.empty()) return false;
+        for (const auto& c : coeffs) {
+            if (c.ptr->getType() != SymType::NUM) return false;
+            const CASVal& v = static_cast<SymNum*>(c.ptr)->value;
+            if (std::holds_alternative<BigInt>(v)) continue;
+            if (std::holds_alternative<int32_t>(v)) continue;
+            if (std::holds_alternative<Fraction>(v) &&
+                std::get<Fraction>(v).getDen() == BigInt(1)) continue;
+            if (std::holds_alternative<double>(v)) {
+                double d = std::get<double>(v);
+                if (d == std::round(d)) continue;
+            }
+            return false;
+        }
+        return true;
+    }
+
     static SymExpr factorPolynomialCZ(const SymExpr& expr, int depth) {
         if (depth > SymConfig::maxDepth / 2) return expr;
         std::set<std::string> vars;
@@ -559,6 +595,7 @@ namespace jc {
         if (vars.size() != 1) return expr;
         
         std::string var = *vars.begin();
+        if (!coeffsAllIntegers(expr, var)) return expr;   // 必须先于首一化，否则系数已被吞掉
         auto sqFree = polySquareFree(expr, var);
         if (sqFree.empty()) return expr;
         

@@ -151,3 +151,81 @@ test_integ_trig_product() = {
     assert(str(cas.integ(x ^ 2, x)) == "1/3 * x^3", "integ x^2")
 }
 test_integ_trig_product()
+
+// 因式分解的硬不变量：expand(factor(e)) 必须与 expand(e) 相等。
+// 可以漏分解，但绝不能分解成别的多项式 —— 下面的回归都是从这条线上抓出来的。
+assert_factor_preserves(expr, label) = {
+    d = cas.simplify(cas.expand(cas.factor(expr)) - cas.expand(expr))
+    assert(str(d) == "0", label + ": factor changed the polynomial (diff=" + str(d) + ")")
+}
+
+test_factor_cube_identity() = {
+    x = sym("x")
+    y = sym("y")
+    // ★ 回归：asCube 曾把 MUL 的"非数值因子本身"当成立方根，
+    //   把 8*x^3 读成 (2*x^3)^3 = 8*x^9，于是
+    //   cas.factor(8*x^3 + 27*y^3) 返回的是 8*x^9 + 27*y^9 的分解 —— 静默错答。
+    //   下面每一条都同时要求"分对了"和"没分错"。
+    assert(str(cas.factor(8 * x ^ 3 + 27 * y ^ 3)) == "(-6 * x * y + 4 * x^2 + 9 * y^2) * (2 * x + 3 * y)", "8x^3+27y^3")
+    assert(str(cas.factor(8 * x ^ 3 - 27 * y ^ 3)) == "-(-2 * x + 3 * y) * (6 * x * y + 4 * x^2 + 9 * y^2)", "8x^3-27y^3")
+    assert(str(cas.factor(x ^ 3 * y ^ 3 + 8)) == "(x * y + 2) * (x^2 * y^2 - 2 * x * y + 4)", "x^3y^3+8")
+    assert(str(cas.factor(x ^ 6 - y ^ 6)) == "-(-x * y + x^2 + y^2) * (-x + y) * (x + y) * (x^2 + x * y + y^2)", "x^6-y^6")
+    assert(str(cas.factor(8 * x ^ 3 * y ^ 6 + 27)) == "(2 * y^2 * x + 3) * (4 * y^4 * x^2 - 6 * y^2 * x + 9)", "8x^3y^6+27")
+    assert_factor_preserves(8 * x ^ 3 + 27 * y ^ 3, "8x^3+27y^3")
+    assert_factor_preserves(8 * x ^ 3 - 27 * y ^ 3, "8x^3-27y^3")
+    assert_factor_preserves(x ^ 3 * y ^ 3 + 8, "x^3y^3+8")
+    assert_factor_preserves(x ^ 6 - y ^ 6, "x^6-y^6")
+    assert_factor_preserves(x ^ 9 + y ^ 9, "x^9+y^9")
+}
+test_factor_cube_identity()
+
+test_factor_sophie_germain() = {
+    x = sym("x")
+    y = sym("y")
+    // a^4 + 4*b^4 = (a^2 - 2ab + 2b^2)(a^2 + 2ab + 2b^2)
+    // 一元情形原本靠 Zassenhaus 侥幸命中，多元情形两条路都够不到。
+    assert(str(cas.factor(x ^ 4 + 4 * y ^ 4)) == "(-2 * x * y + x^2 + 2 * y^2) * (2 * x * y + x^2 + 2 * y^2)", "x^4+4y^4")
+    assert(str(cas.factor(4 * x ^ 4 + 1)) == "(2 * x^2 + 2 * x + 1) * (2 * x^2 - 2 * x + 1)", "4x^4+1")
+    // x^4 + 1 在 Q 上不可约，必须原样留下
+    assert(str(cas.factor(x ^ 4 + 1)) == "x^4 + 1", "x^4+1 is irreducible over Q")
+    // x^4 + 4y^2 不是 Sophie Germain 形式，不能乱套
+    assert(str(cas.factor(x ^ 4 + 4 * y ^ 2)) == "x^4 + 4 * y^2", "x^4+4y^2 must stay put")
+    assert_factor_preserves(x ^ 4 + 4 * y ^ 4, "x^4+4y^4")
+    assert_factor_preserves((x + 1) ^ 4 + 4 * y ^ 4, "(x+1)^4+4y^4")
+}
+test_factor_sophie_germain()
+
+test_factor_quadratic_cyclotomic() = {
+    x = sym("x")
+    y = sym("y")
+    // A^2 + A*B + B^2 在 A*B 为完全平方时是平方差
+    assert(str(cas.factor(x ^ 4 + x ^ 2 * y ^ 2 + y ^ 4)) == "(-x * y + x^2 + y^2) * (x^2 + x * y + y^2)", "x^4+x^2y^2+y^4")
+    // A*B 不是完全平方时在 Q 上不可约，必须原样留下
+    assert(str(cas.factor(x ^ 2 + x * y + y ^ 2)) == "x^2 + x * y + y^2", "x^2+xy+y^2 is irreducible")
+    assert(str(cas.factor(4 * x ^ 2 + 6 * x * y + 9 * y ^ 2)) == "6 * x * y + 4 * x^2 + 9 * y^2", "4x^2+6xy+9y^2 is irreducible")
+    assert_factor_preserves(x ^ 4 + x ^ 2 * y ^ 2 + y ^ 4, "x^4+x^2y^2+y^4")
+    assert_factor_preserves(x ^ 2 + x * y + y ^ 2, "x^2+xy+y^2")
+}
+test_factor_quadratic_cyclotomic()
+
+test_factor_keeps_leading_sign() = {
+    x = sym("x")
+    // ★ 回归：Zassenhaus 重构阶段每个因子都除以了系数绝对值的 gcd（恒正），
+    //   而 ∏ h_i 相对原多项式只差 sign(a_n)^(n-1)。次数为偶且首项为负时
+    //   整体差一个负号，factor 会把多项式"分解"成自己的相反数：
+    //   cas.factor(-(x^2 + 1)) 曾返回 x^2 + 1。
+    //   连带 simplify((x^4+x^2+1) - (x^4+x^2+1)) 曾算成 2*x^4 + 2*x^2 + 2
+    //   （full_simplify 的多重宇宙按体积取最小，选中了符号错误的 factor 候选）。
+    assert(str(cas.factor(-(x ^ 2 + 1))) == "-(x^2 + 1)", "factor(-(x^2+1))")
+    assert(str(cas.factor(-2 * (x + 1) ^ 2)) == "-2 * (x + 1)^2", "factor(-2(x+1)^2)")
+    assert(str(cas.factor(-(x ^ 6 - 1))) == "-(-x + 1) * (-x - 1) * (x^2 + x + 1) * (x^2 - x + 1)", "factor(-(x^6-1))")
+    a = x ^ 4 + x ^ 2 + 1
+    assert(str(cas.simplify(a - a)) == "0", "simplify(a - a) must be 0")
+    assert_factor_preserves(-(x ^ 2 + 1), "-(x^2+1)")
+    assert_factor_preserves(-2 * (x + 1) ^ 2, "-2(x+1)^2")
+    assert_factor_preserves(-(x ^ 4 + x ^ 2 + 1), "-(x^4+x^2+1)")
+    assert_factor_preserves(-8 * x ^ 3 - 27, "-8x^3-27")
+    assert_factor_preserves(-x ^ 4 + 4, "-x^4+4")
+    assert_factor_preserves(-6 * x ^ 2 - 5 * x - 1, "-6x^2-5x-1")
+}
+test_factor_keeps_leading_sign()

@@ -7284,7 +7284,9 @@
       "desc": "Factors a polynomial symbolically, or returns a dict of {Prime: Exponent} for an integer (using Pollard's rho and ECM).",
       "examples": [
         "x = sym(\"x\"); import cas; import math; cas.factor(x^2 + 2*x + 1)",
-        "import cas; import math; math.factor(12)"
+        "import cas; import math; math.factor(12)",
+        "y = sym(\"y\"); cas.factor(8*x^3 + 27*y^3)   // (2*x + 3*y) * (4*x^2 - 6*x*y + 9*y^2)",
+        "cas.factor(x^4 + 4*y^4)                  // (x^2 - 2*x*y + 2*y^2) * (x^2 + 2*x*y + 2*y^2)"
       ]
     },
     "factorReal": {

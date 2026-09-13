@@ -909,81 +909,205 @@ namespace jc {
     }
 
     // =================================================================
-    // 立方和/差：x^3 ± y^3 = (x ± y)(x^2 ∓ xy + y^2)
-    //   覆盖二项式分圆分解管不到的多元情形（x^3 + y^3 不是 x 的单变量二项式）。
+    // 精确 k 次方根
+    //   与 trySquareRoot 的分工：那个还负责"部分开方"（√8 → 2√2），
+    //   这里只做**严格**的恒等式识别（A^3 ± B^3、Sophie Germain 的 a^4 + 4b^4）。
+    //   必须严格 —— 认错一次就是把恒等式套到别的多项式上，给出静默错误的因式分解。
     // =================================================================
-    static bool asCube(SymNode* node, SymNode*& baseOut) {
-        if (node->getType() == SymType::POW) {
-            auto p = static_cast<SymPow*>(node);
-            auto [isN, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
-            if (isN && n == 3) { baseOut = p->base; return true; }
-            return false;
+
+    // 小指数整数幂（指数就是 3 或 4 这类常数，直接连乘）
+    static BigInt ipowBig(BigInt b, int64_t k) {
+        BigInt r(1);
+        for (int64_t i = 0; i < k; ++i) r = r * b;
+        return r;
+    }
+
+    // n 是否为完全 k 次幂；是则 out = n^(1/k)。n <= 0 一律不算（符号由调用方处理）。
+    static bool exactIntRoot(const BigInt& n, int64_t k, BigInt& out) {
+        if (n <= BigInt(0) || k < 2) return false;
+        if (n == BigInt(1)) { out = BigInt(1); return true; }
+        // 指数级扩上界，避免 hi = n 时对大整数反复做 k 次乘法
+        BigInt lo(1), hi(2);
+        while (ipowBig(hi, k) <= n) hi = hi * BigInt(2);   // 保证 hi^k > n
+        while (hi - lo > BigInt(1)) {                      // 不变式：lo^k <= n < hi^k
+            BigInt mid = (lo + hi) / BigInt(2);
+            if (ipowBig(mid, k) <= n) lo = mid; else hi = mid;
         }
-        if (node->getType() == SymType::MUL) {
-            auto mul = static_cast<SymMul*>(node);
-            BigInt c(1);
-            SymNode* base = nullptr;
-            for (SymNode* m : mul->args) {
-                if (m->getType() == SymType::NUM) {
-                    auto [isI, v] = extractExactInt(static_cast<SymNum*>(m)->value);
-                    if (!isI) return false;
-                    c = c * BigInt(v);
-                } else {
-                    if (base) return false;
-                    base = m;
-                }
-            }
-            if (c <= BigInt(0)) return false;
-            // 立方根：base^(1/3) = (c^(1/3)) * base
-            BigInt r(1);
-            while ((r + BigInt(1)) * (r + BigInt(1)) * (r + BigInt(1)) <= c) r = r + BigInt(1);
-            if (r * r * r != c) return false;
-            baseOut = (r == BigInt(1)) ? base : (SymExpr(r) * SymExpr(base)).ptr;
-            return true;
-        }
+        // 循环结束时 hi = lo + 1 且 lo^k <= n < hi^k，n 是完全 k 次幂 ⟺ lo^k == n
+        //   ★ 必须查 lo：只查 hi 会让 27、81 这类"上界恰好取到 2 的幂的邻居"被漏掉
+        //     （27 的搜索区间停在 lo=3, hi=4），于是 27*y^3 判不出立方，
+        //     8*x^3 + 27*y^3 这类多元立方和就分解不出来。
+        if (ipowBig(lo, k) == n) { out = lo; return true; }
         return false;
     }
 
+    // 找到 B 使 B^k == expr；找不到返回 false。整数、分数、幂、乘积都逐层下钻。
+    static std::pair<bool, SymExpr> tryExactRoot(const SymExpr& expr, int64_t k) {
+        if (!expr.ptr || k < 2) return { false, expr };
+        switch (expr.ptr->getType()) {
+            case SymType::NUM: {
+                const CASVal& v = static_cast<SymNum*>(expr.ptr)->value;
+                if (std::holds_alternative<Fraction>(v)) {
+                    Fraction f = std::get<Fraction>(v);
+                    BigInt rn, rd;
+                    if (!exactIntRoot(f.getNum(), k, rn)) return { false, expr };
+                    if (!exactIntRoot(f.getDen(), k, rd)) return { false, expr };
+                    return { true, SymExpr(rn) / SymExpr(rd) };
+                }
+                auto [isInt, n] = extractExactInt(v);
+                if (!isInt) return { false, expr };
+                BigInt r;
+                if (!exactIntRoot(BigInt(n), k, r)) return { false, expr };
+                return { true, SymExpr(r) };
+            }
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(expr.ptr);
+                if (p->exp->getType() != SymType::NUM) return { false, expr };
+                auto [isInt, e] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
+                if (!isInt || e <= 0 || e % k != 0) return { false, expr };
+                return { true, SymExpr(p->base) ^ SymExpr(BigInt(e / k)) };
+            }
+            case SymType::MUL: {
+                // 乘积逐因子开根，全部成功才算成功：x^3 * y^3 = (x*y)^3
+                SymExpr result(BigInt(1));
+                for (SymNode* arg : static_cast<SymMul*>(expr.ptr)->args) {
+                    auto [ok, root] = tryExactRoot(SymExpr(arg), k);
+                    if (!ok) return { false, expr };
+                    result = result * root;
+                }
+                return { true, result };
+            }
+            default:
+                // VAR / CONST / ADD / FUNC：不是完全 k 次幂
+                return { false, expr };
+        }
+    }
+
+    // 把加法项拆成「符号 + 绝对值节点」：-8*x^3 → (true, 8*x^3)，8*x^3 → (false, 8*x^3)。
+    // 负号总是落在数值因子上（同 compareForPrint 对乘法的约定）。
+    static void splitSign(SymNode* node, bool& neg, SymNode*& mag) {
+        neg = false;
+        mag = node;
+        if (!node) return;
+        bool negative = false;
+        if (node->getType() == SymType::NUM) {
+            negative = isCasNegative(static_cast<SymNum*>(node)->value);
+        } else if (node->getType() == SymType::MUL) {
+            for (SymNode* m : static_cast<SymMul*>(node)->args) {
+                if (m->getType() == SymType::NUM && isCasNegative(static_cast<SymNum*>(m)->value)) {
+                    negative = true;
+                    break;
+                }
+            }
+        }
+        if (negative) {
+            neg = true;
+            mag = (-SymExpr(node)).ptr;
+        }
+    }
+
+    // =================================================================
+    // 立方和/差：A^3 ± B^3 = (A ± B)(A^2 ∓ A*B + B^2)
+    //   覆盖二项式分圆分解管不到的多元情形（x^3 + y^3 不是 x 的单变量二项式）。
+    //
+    //   ★ 回归：原 asCube 对 MUL 分支把"非数值因子本身"当成了立方根，
+    //     于是 8*x^3 被读成 (2*x^3)^3 = 8*x^9。cas.factor(8*x^3 + 27*y^3)
+    //     因此返回的是 8*x^9 + 27*y^9 的分解 —— 静默错答，而不是漏分解。
+    //     现在统一委托 tryExactRoot(·, 3)，"底数"与"立方根"不再混淆。
+    // =================================================================
     static SymExpr tryCubeIdentity(const SymExpr& expr) {
         if (!expr.ptr || expr.ptr->getType() != SymType::ADD) return expr;
         auto add = static_cast<SymAdd*>(expr.ptr);
         if (add->args.size() != 2) return expr;
 
-        SymNode* a = nullptr;
-        SymNode* b = nullptr;
-        bool secondNeg = false;
-        if (!asCube(add->args[0], a)) return expr;
-        if (asCube(add->args[1], b)) {
-            secondNeg = false;
-        } else if (add->args[1]->getType() == SymType::MUL) {
-            // -(y^3) 记作 (-1)*y^3
-            auto mul = static_cast<SymMul*>(add->args[1]);
-            BigInt c(1);
-            SymNode* inner = nullptr;
-            for (SymNode* m : mul->args) {
-                if (m->getType() == SymType::NUM) {
-                    auto [isI, v] = extractExactInt(static_cast<SymNum*>(m)->value);
-                    if (!isI) return expr;
-                    c = c * BigInt(v);
-                } else {
-                    if (inner) return expr;
-                    inner = m;
-                }
-            }
-            if (!inner || c != BigInt(-1)) return expr;
-            if (!asCube(inner, b)) return expr;
-            secondNeg = true;
-        } else {
-            return expr;
-        }
+        bool negA = false, negB = false;
+        SymNode *magA = nullptr, *magB = nullptr;
+        splitSign(add->args[0], negA, magA);
+        splitSign(add->args[1], negB, magB);
 
-        SymExpr A(a), B(b);
-        if (!secondNeg) {
-            // A^3 + B^3 = (A + B)(A^2 - A*B + B^2)
-            return simplifyCore((A + B) * (A * A - A * B + B * B));
+        auto [okA, A] = tryExactRoot(SymExpr(magA), 3);
+        if (!okA) return expr;
+        auto [okB, B] = tryExactRoot(SymExpr(magB), 3);
+        if (!okB) return expr;
+
+        if (negA == negB) {
+            // 同为 + 或同为 -：A^3 + B^3，两项都带负号时整体提负
+            SymExpr res = (A + B) * (A * A - A * B + B * B);
+            if (negA) res = -res;
+            return simplifyCore(res);
         }
-        // A^3 - B^3 = (A - B)(A^2 + A*B + B^2)
+        // 一正一负 → 差：让 A 是正项，再用 A^3 - B^3 = (A - B)(A^2 + A*B + B^2)
+        if (negA) std::swap(A, B);
         return simplifyCore((A - B) * (A * A + A * B + B * B));
+    }
+
+    // =================================================================
+    // Sophie Germain 恒等式：a^4 + 4b^4 = (a^2 - 2ab + 2b^2)(a^2 + 2ab + 2b^2)
+    //   x^4 + 4y^4 在 Q[x,y] 上可约，但它是二元四次：
+    //   factorPolynomialCZ 只管一元，multivariatePolynomialFactor 只处理二次，
+    //   两条路都够不到，于是 x^4 + 4y^4 一直被原样返回。
+    // =================================================================
+    static SymExpr trySophieGermain(const SymExpr& expr) {
+        if (!expr.ptr || expr.ptr->getType() != SymType::ADD) return expr;
+        auto add = static_cast<SymAdd*>(expr.ptr);
+        if (add->args.size() != 2) return expr;
+
+        // 两项不对称（一项是四次幂、另一项是 4·四次幂），两个方向都试
+        for (int order = 0; order < 2; ++order) {
+            SymNode* fourthTerm = add->args[order];
+            SymNode* quadTerm = add->args[1 - order];
+            auto [okX, X] = tryExactRoot(SymExpr(fourthTerm), 4);
+            if (!okX) continue;
+            // 第二项必须是 4 * Y^4
+            if (!quadTerm) continue;
+            auto [okY, Y] = tryExactRoot(SymExpr(quadTerm) / SymExpr(BigInt(4)), 4);
+            if (!okY) continue;
+
+            SymExpr twoXY = SymExpr(BigInt(2)) * X * Y;
+            SymExpr X2 = X * X, Y2 = SymExpr(BigInt(2)) * Y * Y;
+            return simplifyCore(X2 - twoXY + Y2) * simplifyCore(X2 + twoXY + Y2);
+        }
+        return expr;
+    }
+
+    // =================================================================
+    // A^2 + A*B + B^2 型三项式（当 A*B 恰为完全平方时）
+    //   A^2 + A*B + B^2 = (A+B)^2 - A*B，而 A*B = S^2 时就是平方差：
+    //     = (A + B - S)(A + B + S)
+    //   例：x^4 + x^2*y^2 + y^4 = (x^2 + y^2 - x*y)(x^2 + y^2 + x*y)
+    //   这一式正是 x^6 - y^6 分解的中转产物（立方差先给出
+    //   (x^2 - y^2)(x^4 + x^2*y^2 + y^4)），不补上就只能停在半路。
+    //   A*B 不是完全平方时（x^2 + x*y + y^2、4x^2 + 6x*y + 9y^2）本式在 Q 上
+    //   不可约，必须原样返回 —— 那两个正是 Φ_3 的齐次形式，认错会把不可约式拆坏。
+    // =================================================================
+    static SymExpr tryQuadraticCyclotomic(const SymExpr& expr) {
+        if (!expr.ptr || expr.ptr->getType() != SymType::ADD) return expr;
+        auto add = static_cast<SymAdd*>(expr.ptr);
+        if (add->args.size() != 3) return expr;
+
+        // 挑两项当 A^2 与 B^2（6 种有序取法），剩下那项必须恰好等于 A*B
+        for (int i = 0; i < 3; ++i) {
+            for (int j = 0; j < 3; ++j) {
+                if (i == j) continue;
+                const int k = 3 - i - j;
+                auto [okA, A] = tryExactRoot(SymExpr(add->args[i]), 2);
+                if (!okA) continue;
+                auto [okB, B] = tryExactRoot(SymExpr(add->args[j]), 2);
+                if (!okB) continue;
+
+                SymExpr AB = A * B;
+                SymNode* mid = add->args[k];
+                if (AB.ptr != mid &&
+                    !(AB.ptr->getType() == mid->getType() && AB.ptr->equals(mid))) continue;
+
+                auto [okS, S] = tryExactRoot(AB, 2);
+                if (!okS) continue;
+
+                SymExpr sum = A + B;
+                return simplifyCore(sum - S) * simplifyCore(sum + S);
+            }
+        }
+        return expr;
     }
 
     SymExpr factor(const SymExpr& expr, int depth) {      // 增加 depth 签名
@@ -1011,9 +1135,23 @@ namespace jc {
         }
 
         // ★ 立方和/差（多元）：A^3 ± B^3
+        //   结果里可能还有可分解的因子（x^6 - y^6 → (x^2 - y^2)(x^4 + x^2*y^2 + y^4)），
+        //   所以再递归一轮；恒等式每用一次次数严格下降，不会打转。
         {
             SymExpr cube = tryCubeIdentity(expr);
-            if (cube.ptr != expr.ptr) return cube;
+            if (cube.ptr != expr.ptr) return factor(cube, depth + 1);
+        }
+
+        // ★ Sophie Germain（多元）：a^4 + 4*b^4
+        {
+            SymExpr sg = trySophieGermain(expr);
+            if (sg.ptr != expr.ptr) return factor(sg, depth + 1);
+        }
+
+        // ★ A^2 + A*B + B^2 型三项式（A*B 为完全平方）
+        {
+            SymExpr tri = tryQuadraticCyclotomic(expr);
+            if (tri.ptr != expr.ptr) return factor(tri, depth + 1);
         }
 
         // ══════════════════════════════════════════

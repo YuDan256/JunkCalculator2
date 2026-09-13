@@ -5197,6 +5197,85 @@ namespace jc {
     // =================================================================
     // 有理分式化简 (Rational Fraction Simplification)
     // =================================================================
+    // 加法项里是否含负指数幂。
+    //   注意不能只查"加法节点的直接子节点是不是负幂"：x + 4*x^(-1) - 4 里的
+    //   负幂是加法项 4*x^(-1)（一个 MUL）里的因子，直接子节点是 MUL 而不是 POW，
+    //   只看一层会把这一整类漏掉（x + x^(-1) - 2 恰好是裸 POW，所以只测它会
+    //   误以为判定正确）。这里顺着项本身的乘性因子与函数参数找。
+    static bool termCarriesDenominator(SymNode* node) {
+        if (!node) return false;
+        switch (node->getType()) {
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(node);
+                if (p->exp->getType() == SymType::NUM &&
+                    isCasNegative(static_cast<SymNum*>(p->exp)->value)) return true;
+                return termCarriesDenominator(p->base);
+            }
+            case SymType::MUL:
+                for (SymNode* a : static_cast<SymMul*>(node)->args)
+                    if (termCarriesDenominator(a)) return true;
+                return false;
+            case SymType::FUNC:
+                for (SymNode* a : static_cast<SymFunc*>(node)->args)
+                    if (termCarriesDenominator(a)) return true;
+                return false;
+            default: return false;   // 加法项不会嵌套加法（已展平）
+        }
+    }
+
+    // =================================================================
+    // 「分母被分配进和里」的形态探测。
+    //   有理式的规范形态是单分式 —— 分母作为乘性因子整体待在外面：
+    //       (x+1) * x^(-1)          ← 单分式
+    //       x^(-1) + 1              ← 分母被逐项除进了和
+    //   判据是「某个加法项里出现了负指数幂」。注意不能只看"表达式里有没有负
+    //   指数"：x^2 * (x+1)^(-1) 里的 (x+1)^(-1) 是 MUL 的直接子节点，分母整体
+    //   待在和外面，属于单分式，不能误判。
+    // =================================================================
+    static bool hasDistributedDenominator(SymNode* node, int depth) {
+        if (!node || depth > 128) return false;
+        switch (node->getType()) {
+            case SymType::ADD:
+                for (SymNode* a : static_cast<SymAdd*>(node)->args)
+                    if (termCarriesDenominator(a) ||
+                        hasDistributedDenominator(a, depth + 1)) return true;
+                return false;
+            case SymType::MUL:
+                for (SymNode* a : static_cast<SymMul*>(node)->args)
+                    if (hasDistributedDenominator(a, depth + 1)) return true;
+                return false;
+            case SymType::POW:
+                return hasDistributedDenominator(static_cast<SymPow*>(node)->base, depth + 1);
+            case SymType::FUNC:
+                for (SymNode* a : static_cast<SymFunc*>(node)->args)
+                    if (hasDistributedDenominator(a, depth + 1)) return true;
+                return false;
+            default: return false;
+        }
+    }
+
+    // 候选筛选规则（在两处多重宇宙的 tryCandidate 里使用）：展开 / 约分 / 因式化
+    // 这类候选，不允许把「分母整体待在和外面」的单分式改写成「分母逐项除进和里」
+    // 的形态：
+    //       (x+1) * x^(-1)                    ← 单分式
+    //       x^(-1) + 1                        ← 分母被除进了和
+    //       (x-1)^2 * x^(-1) * (x-2)^(-1)     ← 单分式
+    //       (x + x^(-1) - 2) * (x-2)^(-1)     ← 分子被拆开
+    //   两种写法数学值相同，而后者的节点更少，于是会赢下「按体积取最小」的多重宇宙
+    //   —— simplify((x-1)^2/(x*(x-2))) 就是这么把已经分好的分子拆开的。
+    //   规则只挡「由无到有」：输入本身就是若干倒数之和时（1/x + 1/(x+1)）current
+    //   已经是分配形，直接放行 —— 既不干预多重宇宙原本要处理的情形，也不会把和
+    //   强行并成一个大分式（那会让体积失控）。
+    //   ★ 注意求值顺序：必须先算 after 再算 before。多数候选都不是分配形，
+    //     after 一为假就短路返回，于是 before（即 current，通常是大表达式）的
+    //     整棵遍历根本不会发生。反过来先把 current 的形态算好再逐个候选比对，
+    //     会强制在每个节点都遍历一遍 current —— 实测那会让混合负载慢 12%
+    //     （0.6% → 13.9%），是纯粹的反向优化。
+    static bool introducesDistributedDenominator(const SymExpr& before, const SymExpr& after) {
+        if (!hasDistributedDenominator(after.ptr, 0)) return false;
+        return !hasDistributedDenominator(before.ptr, 0);
+    }
+
     SymExpr simplifyRational(const SymExpr& expr) {
         if (!expr.ptr) return expr;
         
@@ -5433,6 +5512,7 @@ namespace jc {
             int minSize = getAstComplexity(current);
 
             auto tryCandidate = [&](const SymExpr& cand) {
+                if (introducesDistributedDenominator(current, cand)) return;
                 int sz = getAstComplexity(cand);
                 if (sz < minSize) {
                     minSize = sz;
@@ -5608,6 +5688,7 @@ namespace jc {
             int minSize = getAstComplexity(current);
 
             auto tryCandidate = [&](const SymExpr& cand) {
+                if (introducesDistributedDenominator(current, cand)) return;
                 int sz = getAstComplexity(cand);
                 if (sz < minSize) {
                     minSize = sz;

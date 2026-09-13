@@ -98,3 +98,15 @@ test_high_degree_roots_stay_rootof() = {
     assert(cas.evalf(cas.subs(x ^ 5 - 1, x, cas.solve(x ^ 5 - 1, x)[0])) == 0, "RootOf numeric")
 }
 test_high_degree_roots_stay_rootof()
+
+test_like_terms_merge_across_number_forms() = {
+    // 同一个数曾有 int32(2) / BigInt(2) / 2.0 多种存储形态，导致内部化池把
+    // 同一个 x^2 存成两个节点，operator+ 的同类项合并（按指针）失效：
+    // 展开式化简不出正确结果，cas.simplify 曾直接崩溃。
+    // 现已在 valueToCasVal 处把整数统一为 BigInt，这里锁住行为。
+    x = sym("x")
+    assert(str(cas.simplify(cas.expand((x + 1) * (x ^ 2 - x + 1)))) == "x^3 + 1", "expand+simplify combines like terms")
+    assert(str(cas.simplify(cas.expand((x + 1) * (x - 1)))) == "x^2 - 1", "difference of squares simplifies")
+    assert(cas.expand(cas.factor(x ^ 3 + 1)) == cas.expand(x ^ 3 + 1), "factor round-trip")
+}
+test_like_terms_merge_across_number_forms()

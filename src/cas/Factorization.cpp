@@ -264,8 +264,14 @@ namespace jc {
                 SymExpr factTwoA = factor(twoA, depth + 1);
 
                 // 分子分母分别 factor 后相除，底层会自动合并同底数幂，避免 full_simplify 循环引用
-                SymExpr r1 = simplifyCore(num1 / factTwoA);
-                SymExpr r2 = simplifyCore(num2 / factTwoA);
+                // ★ 二次公式是"只除不约"的，simplifyCore 又不会把数值因子分配进和，
+                //   于是会留下 1/2*(2*y+2)、1/2*(-(3*y+1)+y+1) 这种读不出来的形态：
+                //     factor(2*x*y + x^2 + y^2 + 2*x + 2*y + 1)  →  (1/2*(2*y+2) + x)^2
+                //     factor(x^2 + 3*x*y + 2*y^2 + x + y)        →  -(1/2*(...) - x) * (1/2*(4*y+2) + x)
+                //   值都对，但形态不可用。distributeNumericFactor 就是为这件事写的
+                //   （solve 的根规范化也在用它，见那里的说明），只是这条路径当初漏了。
+                SymExpr r1 = simplifyRational(num1 / factTwoA);
+                SymExpr r2 = simplifyRational(num2 / factTwoA);
 
                 if (A.isOne()) return normalizeRationalFactors((X - r1) * (X - r2));
                 return normalizeRationalFactors(A * (X - r1) * (X - r2));
@@ -1597,8 +1603,10 @@ namespace jc {
                             else sqrtDelta = delta ^ SymExpr(Fraction(1, 2));
 
                             SymExpr twoA = SymExpr(BigInt(2)) * A;
-                            SymExpr r1 = simplifyCore((-B + sqrtDelta) / twoA);
-                            SymExpr r2 = simplifyCore((-B - sqrtDelta) / twoA);
+                            // 二次公式只除不约，用 simplifyRational 把系数约掉，
+                            // 否则会留下 1/2 * (2*y + 2) 这种读不出来的根（同策略 2）。
+                            SymExpr r1 = simplifyRational((-B + sqrtDelta) / twoA);
+                            SymExpr r2 = simplifyRational((-B - sqrtDelta) / twoA);
 
                             if (A.isOne()) return (X - r1) * (X - r2);
                             return A * (X - r1) * (X - r2);
@@ -1630,8 +1638,9 @@ namespace jc {
                             else sqrtDelta = delta ^ SymExpr(Fraction(1, 2));
 
                             SymExpr twoA = SymExpr(BigInt(2)) * A;
-                            SymExpr u1 = simplifyCore((-B + sqrtDelta) / twoA);
-                            SymExpr u2 = simplifyCore((-B - sqrtDelta) / twoA);
+                            // 同上：双二次是"关于 X^2 的二次"，同样只除不约。
+                            SymExpr u1 = simplifyRational((-B + sqrtDelta) / twoA);
+                            SymExpr u2 = simplifyRational((-B - sqrtDelta) / twoA);
                             
                             SymExpr f1 = X * X - u1;
                             SymExpr f2 = X * X - u2;

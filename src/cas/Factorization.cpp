@@ -264,12 +264,11 @@ namespace jc {
                 SymExpr factTwoA = factor(twoA, depth + 1);
 
                 // 分子分母分别 factor 后相除，底层会自动合并同底数幂，避免 full_simplify 循环引用
-                // ★ 二次公式是"只除不约"的，simplifyCore 又不会把数值因子分配进和，
-                //   于是会留下 1/2*(2*y+2)、1/2*(-(3*y+1)+y+1) 这种读不出来的形态：
-                //     factor(2*x*y + x^2 + y^2 + 2*x + 2*y + 1)  →  (1/2*(2*y+2) + x)^2
-                //     factor(x^2 + 3*x*y + 2*y^2 + x + y)        →  -(1/2*(...) - x) * (1/2*(4*y+2) + x)
-                //   值都对，但形态不可用。distributeNumericFactor 就是为这件事写的
-                //   （solve 的根规范化也在用它，见那里的说明），只是这条路径当初漏了。
+                // ★ 二次公式是"只除不约"的，simplifyCore 既不会约分、也不会把数值因子
+                //   分配进和，于是会留下 1/2*(-(3*y+1)+y+1) 这种读不出来的根：
+                //     factor(x^2 + 3*x*y + 2*y^2 + x + y)
+                //         →  -(1/2*(...) - x) * (1/2*(4*y+2) + x)     值对但没法用
+                //   改用 simplifyRational —— 约分正是它的职责（getFraction + gcd 相消）。
                 SymExpr r1 = simplifyRational(num1 / factTwoA);
                 SymExpr r2 = simplifyRational(num2 / factTwoA);
 
@@ -277,6 +276,46 @@ namespace jc {
                 return normalizeRationalFactors(A * (X - r1) * (X - r2));
             }
         }
+
+        // =======================================================
+        // 策略 3：线性型降维（把 x 换成 s - y，即 s = x + y）
+        //   若 P 其实只是 (x+y) 的多项式，那么把 x 换成 s - y 再展开，P 里就再也
+        //   不出现任何原变元、只剩 s —— 一元分解做完再把 s 换回 x+y：
+        //       x^2+2xy+y^2+3x+3y+2  →  s^2+3s+2   → (s+1)(s+2) → (x+y+1)(x+y+2)
+        //       x^2+2xy+y^2-1        →  s^2-1      → (s-1)(s+1) → (x+y-1)(x+y+1)
+        //       x^2+2xy+y^2+x+y      →  s^2+s      → s(s+1)     → (x+y)(x+y+1)
+        //   这是纯粹的换元降维：不针对某个具体形状打补丁，而是把二元问题化成一元的，
+        //   把"能分解"这件事交给已经成熟的一元路径。上面两条策略都够不着这类式子
+        //   （二次降维要求判别式是完全平方，而这里的判别式是 1、4、0，恰好看不出
+        //   那个隐藏的 (x+y) 结构）。
+        //   只做二元：三元及以上时"s 之外还剩更多变元"，能命中"只含 s"的情形更少，
+        //   等有实测需求再扩。
+        // =======================================================
+        if (vars.size() == 2) {
+            const std::string v0 = *vars.begin();
+            const std::string v1 = *vars.rbegin();
+            // 临时变量名带深度后缀：本策略会递归，内外层同名会互相替换（同偶次降维）。
+            const std::string sName = "jc2linsub" + std::to_string(depth);
+            SymExpr S = SymExpr::makeVar(sName);
+            SymExpr X0 = SymExpr::makeVar(v0);
+            SymExpr X1 = SymExpr::makeVar(v1);
+            try {
+                SymExpr Q = simplifyCore(expand_core(subs(expr, v0, S - X1), SymConfig::maxExpandTerms));
+                // 只有当 Q 里真的不再有原变元时才是一次成功的降维
+                std::set<std::string> qVars;
+                collectAllVars(Q.ptr, qVars);
+                if (qVars.size() == 1 && *qVars.begin() == sName && Q.ptr != expr.ptr) {
+                    SymExpr F = factor(Q, depth + 1);
+                    if (F.ptr != Q.ptr) {
+                        SymExpr back = simplifyCore(subs(F, sName, X0 + X1));
+                        if (back.ptr != expr.ptr) return factor(back, depth + 1);
+                    }
+                }
+            }
+            catch (const EngineInterruptError&) { throw; }
+            catch (const std::runtime_error&) {}
+        }
+
         if (hasGroupBest) return groupBest;
         return expr;
     }

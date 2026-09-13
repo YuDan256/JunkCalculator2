@@ -1458,18 +1458,21 @@ namespace jc {
                 BigInt e = std::holds_alternative<int32_t>(bv)
                     ? BigInt(std::get<int32_t>(bv)) : std::get<BigInt>(bv);
                 bool negExp = e.isNegative();
-                BigInt ea = negExp ? e.abs() : e;
-                BigInt rem = ea % BigInt(4);
+                BigInt rem = (negExp ? e.abs() : e) % BigInt(4);
                 int64_t r4 = 0;
                 try { r4 = rem.toInt64(); } catch (...) { r4 = -1; }
                 if (r4 >= 0) {
-                    // i^0=1, i^1=i, i^2=-1, i^3=-i
-                    SymExpr pos;
-                    if (r4 == 0) pos = SymExpr(BigInt(1));
-                    else if (r4 == 1) pos = SymExpr::makeConst(SymConstId::I);
-                    else if (r4 == 2) pos = SymExpr(BigInt(-1));
-                    else pos = SymExpr(BigInt(0)) - SymExpr::makeConst(SymConstId::I);
-                    return negExp ? (SymExpr(BigInt(1)) / pos) : pos;
+                    // ★ 负指数不能靠 1 / i^k 去求倒数：1/i 会走 operator/ → i^(-1)
+                    //   回到本分支，而它要算的倒数正是它自己，递归原地打转直到栈溢出
+                    //   （cas.integ(sin(x)*cos(x), x) 就是这样崩的）。
+                    //   i 是高斯整数的单位，倒数直接来自周期：1/i^k = i^(-k)，
+                    //   负指数只需把指数换成模 4 的相反数，无需任何递归。
+                    //   i^0=1, i^1=i, i^2=-1, i^3=-i
+                    int64_t k = negExp ? (4 - r4) % 4 : r4;
+                    if (k == 0) return SymExpr(BigInt(1));
+                    if (k == 1) return SymExpr::makeConst(SymConstId::I);
+                    if (k == 2) return SymExpr(BigInt(-1));
+                    return SymExpr(BigInt(0)) - SymExpr::makeConst(SymConstId::I);
                 }
             }
         }

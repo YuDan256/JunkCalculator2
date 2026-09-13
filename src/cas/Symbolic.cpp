@@ -5563,9 +5563,22 @@ namespace jc {
 
             if (mode == CandMode::Probe) return current;   // 只做递归 + 轻量化简
 
-            try { c_rational = simplifyRational(current); }
-            catch (const EngineInterruptError&) { throw; }
-            catch (const std::runtime_error&) {}
+            // ★ simplifyRational 的前提是"这个表达式有分母"。
+            //   对没有负指数的表达式（纯多项式、超越式）它进去只会被
+            //   rationalizeDenominator / getFraction 展开一圈再原样退回：
+            //   600 次顶层化简的采样里它自身耗时 73.6 ms，而 4310 次 Full 候选比较中
+            //   胜出 0 次 —— 也就是说这部分开销是纯浪费。
+            //   负指数是"存在分母"的充要条件：除法就是乘上负幂，开方给的是分数指数
+            //   （不产生负指数）。所以用 hasNegativePower 当闸门。
+            //   c_rat_factor（candidate 4）本来就以 c_rational != current 为前提，
+            //   闸门一关它自动跳过，不必单独处理。
+            //   验证：1990 例结构化语料（多项式 / 有理分式 / 幂 / 商 / 超越 / 多元）
+            //   的 simplify 输出，闸门开与关逐字节一致。
+            if (hasNegativePower(current.ptr, 0)) {
+                try { c_rational = simplifyRational(current); }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) {}
+            }
 
             try { c_factor = factor(current); }
             catch (const EngineInterruptError&) { throw; }

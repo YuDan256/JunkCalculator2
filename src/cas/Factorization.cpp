@@ -93,11 +93,67 @@ namespace jc {
         collectAllVars(expr.ptr, vars);
         if (vars.empty()) return expr;
 
+        // 一次项分组的结果收集器：同一个表达式按不同变元分组会得到不同的（等价的）
+        // 分解，质量可能差很远 —— 3*x*y + 6*x + 2*y + 4 按 x 分组得
+        // (3*y + 6) * (x + 2/3)（商是分数），按 y 分组得 (3*x + 2) * (y + 2)。
+        // 变元集合是按字母序遍历的，先撞上哪个就返回哪个会随机决定输出质量，
+        // 所以在所有变元里取最简的一个。
+        SymExpr groupBest;
+        bool hasGroupBest = false;
+        int groupBestSz = 0;
+
         for (const std::string& mainVar : vars) {
             auto coeffs = extractCoeffs(expr, mainVar);
             if (coeffs.empty()) continue;
 
             int N = static_cast<int>(coeffs.size()) - 1;
+
+            // =======================================================
+            // 策略 0：一次项分组（factor by grouping）
+            //   P 在 mainVar 上是一次：P = c1*mainVar + c0，c1 / c0 是其余变元的多项式。
+            //   若 c1 整除 c0，则 P = c1 * (mainVar + c0/c1)。
+            //   这是「提公因式」在多元下的形态：
+            //       x*y + 2*x + y + 2
+            //   四个项没有公共因式（逐项比较最小指数的实现看不到），但按 y 看是
+            //       x*(y+2) + 1*(y+2)
+            //   公因式 (y+2) 藏在两项各自的组合里。下面那套「N 次完全平方式嗅探」
+            //   本来也能覆盖 N==1（取 R = c0/(N*c1)、再验证 P == c1*(x+R)^1），
+            //   但它把 c0/c1 交给 simplifyCore 去算 —— 那是个启发式化简、不做多项式
+            //   除法，会留下 (2x+2)*(x+1)^(-1) 这种没约掉的形式，验证于是不通过。
+            //   这里改用 polyDiv 精确判定整除，顺带让 N<2 不再被整类跳过。
+            // =======================================================
+            if (N == 1) {
+                SymExpr c1 = coeffs[1];
+                SymExpr c0 = coeffs[0];
+                // c1 必须是真正含其余变元的多项式。c1 是纯数时（2x+3y 里的 2）
+                // 所谓"整除"只是抽数值公因数，会把它改写成 2*(x + 3/2*y) ——
+                // 数学值不变但形态更差，而数值内容本来由加法公因式那条路负责。
+                if (!c0.isZero() && !c1.isOne() && c1.ptr->getType() != SymType::NUM) {
+                    SymExpr Xv = SymExpr::makeVar(mainVar);
+                    for (const std::string& w : vars) {
+                        if (w == mainVar) continue;
+                        try {
+                            auto [q, r] = polyDiv(c0, c1, w);
+                            if (r.isZero() && !q.isZero()) {
+                                SymExpr cand = simplifyCore(c1 * (Xv + q));
+                                if (cand.ptr != expr.ptr) {
+                                    int sz = getAstNodeCount(cand);
+                                    if (!hasGroupBest || sz < groupBestSz) {
+                                        groupBest = cand;
+                                        groupBestSz = sz;
+                                        hasGroupBest = true;
+                                    }
+                                    break;   // 这个 mainVar 上已经找到分组，换下一个变元
+                                }
+                            }
+                        }
+                        catch (const EngineInterruptError&) { throw; }
+                        catch (const std::runtime_error&) {}
+                    }
+                }
+                continue;   // 在 mainVar 上一次的表达式不可能再按 mainVar 分解
+            }
+
             if (N < 2) continue;
 
             SymExpr lead = coeffs[N];
@@ -162,6 +218,7 @@ namespace jc {
                 return normalizeRationalFactors(A * (X - r1) * (X - r2));
             }
         }
+        if (hasGroupBest) return groupBest;
         return expr;
     }
 

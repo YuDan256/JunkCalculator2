@@ -87,27 +87,106 @@ namespace jc {
     void* SymNode::operator new(size_t size) { return g_symArena.allocate(size); }
     void SymNode::operator delete(void* ptr, size_t size) { g_symArena.deallocate_last(ptr, size); }
 
-    static thread_local std::unordered_map<uint64_t, std::vector<SymNode*>> g_symPool;
+    // ==========================================
+    // 符号节点内部化池（扁平开放寻址哈希表）
+    // ==========================================
+    // 【动机】原实现是 std::unordered_map<uint64_t, std::vector<SymNode*>>。
+    //   实测（2000 次 cas.simplify 后取样）buckets == entries，即每个桶只装
+    //   一个节点，vector 那一层是纯浪费；而每个条目要摊上 map 结点(~48B) +
+    //   vector 对象(24B) + 单元素堆缓冲(~32B) ≈ 110B 额外开销，比被池化的
+    //   SymNode 本体(48~64B) 还大，等于让 CAS 常驻内存翻两倍以上。
+    // 【原理】开放寻址 + 线性探测：每个条目只占 16B，查找是连续内存扫描而
+    //   非指针追逐。池中节点只增不删（删除只发生在 intern 的临时节点上，
+    //   那种节点从未入池），因此不需要墓碑标记。
+    class SymPool {
+        struct Slot {
+            uint64_t hash = 0;
+            SymNode* node = nullptr;
+        };
+        std::vector<Slot> slots;
+        size_t mask = 0;
+        size_t count = 0;
+
+        // 用高位做雪崩混合后再取模。hashCombine 的低位在结构相关的表达式之间
+        // 相关性较强（它把 h1<<6，低 6 位几乎不参与），直接拿低位取模会让
+        // 同一族的节点挤进同一条探测链，线性探测退化成链表扫描。
+        size_t indexOf(uint64_t h) const {
+            h ^= h >> 33;
+            h *= 0xff51afd7ed558ccdULL;
+            h ^= h >> 33;
+            return static_cast<size_t>(h) & mask;
+        }
+
+        void insertRaw(uint64_t h, SymNode* node) {
+            size_t i = indexOf(h);
+            while (slots[i].node) i = (i + 1) & mask;
+            slots[i].hash = h;
+            slots[i].node = node;
+            ++count;
+        }
+
+        void grow() {
+            std::vector<Slot> old;
+            old.swap(slots);
+            size_t newCap = old.empty() ? 1024 : old.size() * 2;
+            slots.assign(newCap, Slot{});
+            mask = newCap - 1;
+            count = 0;
+            for (const Slot& s : old) {
+                if (s.node) insertRaw(s.hash, s.node);
+            }
+        }
+
+    public:
+        static constexpr size_t MAX_LOAD_NUM = 3;   // 负载因子上限 3/4
+        static constexpr size_t MAX_LOAD_DEN = 4;
+
+        // 按哈希探测第一个满足 pred 的节点；未命中返回 nullptr。不修改表。
+        template <class Pred>
+        SymNode* find(uint64_t h, Pred&& pred) const {
+            if (slots.empty()) return nullptr;
+            size_t i = indexOf(h);
+            while (slots[i].node) {
+                if (slots[i].hash == h && pred(slots[i].node)) return slots[i].node;
+                i = (i + 1) & mask;
+            }
+            return nullptr;
+        }
+
+        void insert(uint64_t h, SymNode* node) {
+            if ((count + 1) * MAX_LOAD_DEN > slots.size() * MAX_LOAD_NUM) grow();
+            insertRaw(h, node);
+        }
+
+        // 先按结构等价去重；重复则回收刚分配的临时节点并返回池中那一个。
+        SymNode* intern(uint64_t h, SymNode* node) {
+            if ((count + 1) * MAX_LOAD_DEN > slots.size() * MAX_LOAD_NUM) grow();
+            size_t i = indexOf(h);
+            while (slots[i].node) {
+                if (slots[i].hash == h && slots[i].node->getType() == node->getType()
+                    && slots[i].node->equals(node)) {
+                    if (slots[i].node != node) delete node; // 触发 deallocate_last，回收内存
+                    return slots[i].node;
+                }
+                i = (i + 1) & mask;
+            }
+            slots[i].hash = h;
+            slots[i].node = node;
+            ++count;
+            return node;
+        }
+    };
+
+    static thread_local SymPool g_symPool;
 
     void SymExpr::cleanupPool() {
-        // Arena 模式下节点生命周期与线程绑定，无需逐个清理
+        // 池中节点只增不删（它们是所有 SymExpr 共享的规范表示），
+        // 逐条回收需要与 Value/GC 协同，此处不做动作。
     }
 
     SymNode* SymExpr::intern(SymNode* node) {
         if (!node) return nullptr;
-        
-        uint64_t h = node->hashValue;
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == node->getType() && existing->equals(node)) {
-                if (existing != node) {
-                    delete node; // 触发 deallocate_last，完美回收内存
-                }
-                return existing;
-            }
-        }
-        bucket.push_back(node);
-        return node;
+        return g_symPool.intern(node->hashValue, node);
     }
 
     // ==========================================
@@ -843,27 +922,25 @@ namespace jc {
 
     SymExpr SymExpr::makeNum(CASVal v) {
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::NUM), hashCASVal(v));
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::NUM && static_cast<SymNum*>(existing)->value == v) {
-                return SymExpr::fromInterned(existing);
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                return n->getType() == SymType::NUM && static_cast<SymNum*>(n)->value == v;
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymNum(std::move(v));
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
 
     SymExpr SymExpr::makeConst(SymConstId id) {
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::CONST), static_cast<uint64_t>(id));
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::CONST && static_cast<SymConst*>(existing)->id == id) {
-                return SymExpr::fromInterned(existing);
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                return n->getType() == SymType::CONST && static_cast<SymConst*>(n)->id == id;
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymConst(id);
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
 
@@ -874,70 +951,61 @@ namespace jc {
         std::string actual = name;
         if (isSymbolicConstantName(name)) actual = escapeConstVarName(name);
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(actual));
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::VAR && static_cast<SymVar*>(existing)->name == actual) {
-                return SymExpr::fromInterned(existing);
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                return n->getType() == SymType::VAR && static_cast<SymVar*>(n)->name == actual;
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymVar(actual);
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
+    }
+
+    // 比较两个同类型节点的参数列表是否逐指针相等
+    static bool sameArgs(const std::vector<SymNode*>& a, const std::vector<SymNode*>& b) {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (a[i] != b[i]) return false;
+        }
+        return true;
     }
 
     SymExpr SymExpr::makeAdd(std::vector<SymNode*> args) {
         uint64_t h = static_cast<uint64_t>(SymType::ADD);
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::ADD) {
-                auto* o = static_cast<SymAdd*>(existing);
-                if (o->args.size() == args.size()) {
-                    bool eq = true;
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        if (o->args[i] != args[i]) { eq = false; break; }
-                    }
-                    if (eq) return SymExpr::fromInterned(existing);
-                }
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                return n->getType() == SymType::ADD && sameArgs(static_cast<SymAdd*>(n)->args, args);
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymAdd(std::move(args));
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
 
     SymExpr SymExpr::makeMul(std::vector<SymNode*> args) {
         uint64_t h = static_cast<uint64_t>(SymType::MUL);
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::MUL) {
-                auto* o = static_cast<SymMul*>(existing);
-                if (o->args.size() == args.size()) {
-                    bool eq = true;
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        if (o->args[i] != args[i]) { eq = false; break; }
-                    }
-                    if (eq) return SymExpr::fromInterned(existing);
-                }
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                return n->getType() == SymType::MUL && sameArgs(static_cast<SymMul*>(n)->args, args);
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymMul(std::move(args));
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
 
     SymExpr SymExpr::makePow(SymNode* base, SymNode* exp) {
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::POW), hashCombine(base->hashValue, exp->hashValue));
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::POW) {
-                auto* o = static_cast<SymPow*>(existing);
-                if (o->base == base && o->exp == exp) return SymExpr::fromInterned(existing);
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
+                auto* o = static_cast<SymPow*>(n);
+                return n->getType() == SymType::POW && o->base == base && o->exp == exp;
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymPow(base, exp);
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
 
@@ -945,21 +1013,14 @@ namespace jc {
         std::string n = (name == "ln") ? "log" : std::move(name);
         uint64_t h = hashCombine(static_cast<uint64_t>(SymType::FUNC), hashString(n));
         for (const auto& arg : args) h = hashCombine(h, arg->hashValue);
-        auto& bucket = g_symPool[h];
-        for (SymNode* existing : bucket) {
-            if (existing->getType() == SymType::FUNC) {
-                auto* o = static_cast<SymFunc*>(existing);
-                if (o->name == n && o->args.size() == args.size()) {
-                    bool eq = true;
-                    for (size_t i = 0; i < args.size(); ++i) {
-                        if (o->args[i] != args[i]) { eq = false; break; }
-                    }
-                    if (eq) return SymExpr::fromInterned(existing);
-                }
-            }
+        if (SymNode* hit = g_symPool.find(h, [&](SymNode* e) {
+                auto* o = static_cast<SymFunc*>(e);
+                return e->getType() == SymType::FUNC && o->name == n && sameArgs(o->args, args);
+            })) {
+            return SymExpr::fromInterned(hit);
         }
         SymNode* newNode = new SymFunc(n, std::move(args));
-        bucket.push_back(newNode);
+        g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }
     std::string SymExpr::toString() const { return ptr ? ptr->toString() : "null"; }

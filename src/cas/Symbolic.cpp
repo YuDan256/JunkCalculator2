@@ -645,6 +645,12 @@ namespace jc {
         hashValue = hashCombine(static_cast<uint64_t>(SymType::NUM), hashCASVal(value));
     }
     bool SymNum::equals(const SymNode* other) const {
+        // ★ 类型守卫：equals 只允许同类型比较。
+        //   节点内部字段按各自布局解释，静态转换到错误类型会读到别的成员——
+        //   例如把 SymVar("x") 当成 SymPow 读 base/exp，0x10/0x18 落在 std::string name
+        //   上，读出的"指针"其实是 'x' 的字节（0x78），随后解引用即访问越界。
+        //   case cas.trigsimp(x^2 + 2*x) 曾因此崩溃。
+        if (other->getType() != SymType::NUM) return false;
         return value == static_cast<const SymNum*>(other)->value;
     }
 
@@ -652,6 +658,7 @@ namespace jc {
         hashValue = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(name));
     }
     bool SymVar::equals(const SymNode* other) const {
+        if (other->getType() != SymType::VAR) return false;
         return name == static_cast<const SymVar*>(other)->name;
     }
     std::string SymVar::computeString() const {
@@ -699,6 +706,7 @@ namespace jc {
         hashValue = hashCombine(static_cast<uint64_t>(SymType::CONST), static_cast<uint64_t>(id));
     }
     bool SymConst::equals(const SymNode* other) const {
+        if (other->getType() != SymType::CONST) return false;
         return id == static_cast<const SymConst*>(other)->id;
     }
     std::string SymConst::computeString() const {
@@ -711,6 +719,7 @@ namespace jc {
         hashValue = h;
     }
     bool SymAdd::equals(const SymNode* other) const {
+        if (other->getType() != SymType::ADD) return false;
         const auto* o = static_cast<const SymAdd*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -728,6 +737,7 @@ namespace jc {
         hashValue = h;
     }
     bool SymMul::equals(const SymNode* other) const {
+        if (other->getType() != SymType::MUL) return false;
         const auto* o = static_cast<const SymMul*>(other);
         if (args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -741,6 +751,7 @@ namespace jc {
         hashValue = hashCombine(static_cast<uint64_t>(SymType::POW), hashCombine(base->hashValue, exp->hashValue));
     }
     bool SymPow::equals(const SymNode* other) const {
+        if (other->getType() != SymType::POW) return false;
         const auto* o = static_cast<const SymPow*>(other);
         if (base == o->base && exp == o->exp) return true;
         return base->equals(o->base) && exp->equals(o->exp);
@@ -752,6 +763,7 @@ namespace jc {
         hashValue = h;
     }
     bool SymFunc::equals(const SymNode* other) const {
+        if (other->getType() != SymType::FUNC) return false;
         const auto* o = static_cast<const SymFunc*>(other);
         if (name != o->name || args.size() != o->args.size()) return false;
         for (size_t i = 0; i < args.size(); ++i) {
@@ -6675,8 +6687,8 @@ namespace jc {
         if (!expr.ptr) return expr;
 
         // ★ 无三角函数时直接返回：trigsimp 的规则库只处理三角恒等式，
-        //   对纯多项式毫无作用，却要在规则×迭代的循环里反复做深拷贝与遍历，
-        //   而且这条路径曾在纯多项式上崩溃（cas.simplify(x^2 + 2*x)）。
+        //   对纯多项式毫无作用，却仍要在"规则 × 迭代"的双层循环里反复
+        //   做深拷贝、遍历与化简（实测纯多项式上快约 9%）。
         if (!hasTrigFunc(expr.ptr)) return expr;
 
         // 从规则库获取三角化简规则

@@ -256,3 +256,59 @@ test_factor_keeps_leading_sign() = {
     assert_factor_preserves(-6 * x ^ 2 - 5 * x - 1, "-6x^2-5x-1")
 }
 test_factor_keeps_leading_sign()
+
+// =====================================================================
+// 非整数系数的保真 + factor 的幂等性
+//   factorPolynomialCZ 内部会先把多项式首一化（除以首项系数）再做 Zassenhaus。
+//   若在 polySquareFree 之后才检查系数是否为整数，首项系数（sqrt(2)、pi、1/2）
+//   已经被吞掉了；更麻烦的是首一化之后剩下的系数又变回整数，事后检查再也发现
+//   不了。上面那种用 expand 比较的断言对此无效（expand 在根式上的分配形态不
+//   一致，会假阳性），所以这里改用数值代入判定。
+//   同一个缺陷还让 factor 在有理式上不幂等 —— 两个方向互为反转，factor∘factor
+//   是 2-循环：
+//       factor((x+1)^(-1) * (x+2)^(-1))  →  (x^2 + 3*x + 2)^(-1)      分母被乘开
+//       factor((x^2 + 3*x + 2)^(-1))     →  (x+1)^(-1) * (x+2)^(-1)   又乘回去
+// =====================================================================
+assert_factor_value_preserved(expr, v, label) = {
+    d = cas.evalf(cas.subs(cas.factor(expr) - expr, v, 3))
+    assert(d < 0.0000001, label + ": factor changed the value (diff=" + str(d) + ")")
+    assert(d > -0.0000001, label + ": factor changed the value (diff=" + str(d) + ")")
+}
+
+test_factor_keeps_noninteger_coefficients() = {
+    x = sym("x")
+    // 根式系数
+    assert(str(cas.factor(sqrt(2) * x)) == "x * sqrt(2)", "factor(sqrt(2)*x)")
+    assert(str(cas.factor((x + 1) * sqrt(2))) == "(x + 1) * sqrt(2)", "factor((x+1)*sqrt(2))")
+    assert(str(cas.factor((x ^ 2 - 1) * sqrt(2))) == "(x + 1) * (x - 1) * sqrt(2)", "factor((x^2-1)*sqrt(2))")
+    assert(str(cas.factor(3 * x ^ 2 * sqrt(2) - 3 * sqrt(2))) == "3 * (x + 1) * (x - 1) * sqrt(2)", "factor(3x^2*sqrt(2)-3sqrt(2))")
+    assert(str(cas.factor(x ^ 4 * sqrt(2) - sqrt(2))) == "(x + 1) * (x - 1) * (x^2 + 1) * sqrt(2)", "factor(x^4*sqrt(2)-sqrt(2))")
+    assert(str(cas.factor(sqrt(8) * x)) == "2 * x * sqrt(2)", "factor(sqrt(8)*x)")
+    // 符号常量系数（pi/e/i 走的是同一段 CZ 路径）
+    assert(str(cas.factor(cas.pi() * x)) == "pi * x", "factor(pi*x)")
+    assert(str(cas.factor(cas.pi() * (x ^ 2 - 1))) == "pi * (x + 1) * (x - 1)", "factor(pi*(x^2-1))")
+    assert(str(cas.factor(cas.e() * x ^ 2 - cas.e())) == "e * (x + 1) * (x - 1)", "factor(e*x^2-e)")
+    // 数值保真（这才是真正要守的不变量）
+    assert_factor_value_preserved(sqrt(2) * x, x, "sqrt(2)*x")
+    assert_factor_value_preserved((x + 1) * sqrt(2), x, "(x+1)*sqrt(2)")
+    assert_factor_value_preserved((x ^ 2 - 1) * sqrt(2), x, "(x^2-1)*sqrt(2)")
+    assert_factor_value_preserved(x ^ 4 * sqrt(2) - sqrt(2), x, "x^4*sqrt(2)-sqrt(2)")
+    assert_factor_value_preserved(sqrt(2) * x ^ 2 + 2 * sqrt(2) * x + sqrt(2), x, "sqrt(2)*(x+1)^2")
+    assert_factor_value_preserved(cas.pi() * x, x, "pi*x")
+    assert_factor_value_preserved(cas.e() * x ^ 2 - cas.e(), x, "e*x^2-e")
+}
+test_factor_keeps_noninteger_coefficients()
+
+test_factor_is_idempotent() = {
+    x = sym("x")
+    // 有理式：f(f(e)) 必须等于 f(e)，两个方向收敛到同一个答案
+    assert(str(cas.factor(1 / ((x + 1) * (x + 2)))) == "(x + 1)^(-1) * (x + 2)^(-1)", "factor(1/((x+1)(x+2)))")
+    assert(str(cas.factor(1 / (x ^ 2 + 3 * x + 2))) == "(x + 1)^(-1) * (x + 2)^(-1)", "factor(1/(x^2+3x+2))")
+    assert(str(cas.factor(x ^ 2 / ((x + 1) * (x + 2)))) == "x^2 * (x + 1)^(-1) * (x + 2)^(-1)", "factor(x^2/((x+1)(x+2)))")
+    assert(str(cas.factor(x ^ 4 - 1)) == str(cas.factor(cas.factor(x ^ 4 - 1))), "factor idempotent on x^4-1")
+    assert(str(cas.factor(x ^ 6 - 1)) == str(cas.factor(cas.factor(x ^ 6 - 1))), "factor idempotent on x^6-1")
+    assert(str(cas.factor(sqrt(2) * x)) == str(cas.factor(cas.factor(sqrt(2) * x))), "factor idempotent on sqrt(2)*x")
+    assert(str(cas.factor((x ^ 2 - 1) * sqrt(2))) == str(cas.factor(cas.factor((x ^ 2 - 1) * sqrt(2)))), "factor idempotent on (x^2-1)*sqrt(2)")
+    assert(str(cas.factor(1 / ((x + 1) * (x + 2)))) == str(cas.factor(cas.factor(1 / ((x + 1) * (x + 2))))), "factor idempotent on 1/((x+1)(x+2))")
+}
+test_factor_is_idempotent()

@@ -6070,7 +6070,14 @@ Value VM::run(int targetFrameDepth) {
                             auto c_cls = cls;
                             while (c_cls) {
                                 auto it = c_cls->properties.find(key);
+                                if (it != c_cls->properties.end() && it->second.is_field_decl) {
+                                    // 字段声明不是类成员：类上的赋值照旧新建一个 static（§2.6）
+                                    c_cls = c_cls->parent;
+                                    continue;
+                                }
                                 if (it != c_cls->properties.end()) {
+                                    // ★ 类定义完成后模板冻结（§2.8）：类上的赋值碰不到实例方法模板
+                                    if (!it->second.is_static) JC2_THROW(RuntimeError, "Cannot modify frozen method template '" + key + "'.");
                                     if (it->second.is_local) {
                                         if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + key + "'.");
                                         break;
@@ -7214,6 +7221,8 @@ Value VM::run(int targetFrameDepth) {
                             continue;
                         }
                         if (it != c_cls->properties.end()) {
+                            // ★ 类定义完成后模板冻结（§2.8）：类上的赋值碰不到实例方法模板
+                            if (!it->second.is_static) JC2_THROW(RuntimeError, "Cannot modify frozen method template '" + keyStr + "'.");
                             if (it->second.is_local) {
                                 if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + keyStr + "'.");
                                 break;
@@ -9543,7 +9552,14 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
                 auto c_cls = cls;
                 while (c_cls) {
                     auto it = c_cls->properties.find(key);
+                    if (it != c_cls->properties.end() && it->second.is_field_decl) {
+                        // 字段声明不是类成员：类上的赋值照旧新建一个 static（§2.6）
+                        c_cls = c_cls->parent;
+                        continue;
+                    }
                     if (it != c_cls->properties.end()) {
+                        // ★ 类定义完成后模板冻结（§2.8）
+                        if (!it->second.is_static) JC2_THROW(RuntimeError, "Cannot modify frozen method template '" + key + "'.");
                         if (it->second.is_local) {
                             if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + key + "'.");
                             break;
@@ -9799,7 +9815,14 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         auto c_cls = cls;
         while (c_cls) {
             auto it = c_cls->properties.find(keyStr);
+            if (it != c_cls->properties.end() && it->second.is_field_decl) {
+                // 字段声明不是类成员：类上的赋值照旧新建一个 static（§2.6）
+                c_cls = c_cls->parent;
+                continue;
+            }
             if (it != c_cls->properties.end()) {
+                // ★ 类定义完成后模板冻结（§2.8）
+                if (!it->second.is_static) JC2_THROW(RuntimeError, "Cannot modify frozen method template '" + keyStr + "'.");
                 if (it->second.is_local) {
                     if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + keyStr + "'.");
                     break;

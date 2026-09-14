@@ -585,6 +585,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             Value res(instance);
             GcValueGuard guard(res);
             instance->classDef = cls;
+            instance->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶，省掉插入过程中的多次 rehash
             
             ObjClosure* initMethod = nullptr;
             auto c = cls;
@@ -1413,6 +1414,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto instance = GcHeap::get().allocate<ObjInstance>();
         registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
+        instance->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶，省掉插入过程中的多次 rehash
 
         // ★ 字段默认值初始化：用独立调用执行（callVMFunction 走标准帧基址，不会踩到本次构造
         // 参数所在的 calleeReg+1 起那段寄存器）。先于用户 init 执行，保证 init 内能读到字段
@@ -3126,6 +3128,7 @@ Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = cls;
+    inst->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶
     
     if (val.isString()) {
         std::string msgStr = val.asString();

@@ -745,6 +745,7 @@ namespace jc {
         PropMap::const_iterator ownEnd() const                      { return properties.end(); }
         PropertyDescriptor&     ownRef(const std::string& k)        { return properties[k]; }
         size_t                  ownCount(const std::string& k) const { return properties.count(k); }
+        void                    ownReserve(size_t n)                { if (n) properties.reserve(n); }
         PropMap&                ownItems()                          { return properties; }
         const PropMap&          ownItems() const                    { return properties; }
         void clear() override { clearProperties(); }

@@ -1369,7 +1369,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     JC2_THROW(RuntimeError, "Function '" + closure->rawBody + 
                         "' expects " + expected + " arguments, got " + std::to_string(actualArgc) + ".");
                 }
-            } else if (static_cast<int>(closure->maxArgs()) > 0 && closure->restName.empty()) {
+            } else if (closure->restName.empty()) {
                 int expectedMin = closure->minArgs();
                 int expectedMax = closure->maxArgs();
                 if (totalArgc < expectedMin || totalArgc > expectedMax) {
@@ -1527,7 +1527,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 }
 
                 int totalArgc = static_cast<int>(args.size());
-                if (static_cast<int>(initMethod->maxArgs()) > 0 && initMethod->restName.empty()) {
+                if (initMethod->restName.empty()) {
                     if (totalArgc < static_cast<int>(initMethod->minArgs()) || totalArgc > static_cast<int>(initMethod->maxArgs())) {
                         JC2_THROW(RuntimeError, "Method 'init' expects " + std::to_string(initMethod->minArgs()) + " to " + 
                             std::to_string(initMethod->maxArgs()) + " arguments, got " + 
@@ -2400,7 +2400,7 @@ invoke_method:
         }
 
         int totalArgc = static_cast<int>(args.size());
-        if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
+        if (method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
                 JC2_THROW(RuntimeError, "Method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 
@@ -2565,7 +2565,7 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         }
 
         int totalArgc = static_cast<int>(args.size());
-        if (static_cast<int>(method->maxArgs()) > 0 && method->restName.empty()) {
+        if (method->restName.empty()) {
             if (totalArgc < static_cast<int>(method->minArgs()) || totalArgc > static_cast<int>(method->maxArgs())) {
                 JC2_THROW(RuntimeError, "Super method '" + methodName + 
                     "' expects " + std::to_string(method->minArgs()) + " to " + 

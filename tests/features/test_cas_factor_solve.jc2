@@ -513,3 +513,47 @@ test_expand_merges_like_terms() = {
     assert(str(cas.simplify(cas.expand((x + y + z) ^ 3) - (x + y + z) ^ 3)) == "0", "expand preserves value (3)")
 }
 test_expand_merges_like_terms()
+
+// =====================================================================
+// 多项式的完全幂（底面是高次多项式的 P = Q^N）
+//   此前只能识别底面为 (mainVar + c) 的完全幂，(x^2+x*y+y^2)^2 这种够不着。
+//   实现用"逐项剥皮"开方，最后一定验证 Q^N == P 才返回，所以既要钉住"该认的认出来"，
+//   也要钉住"不可约的不能被硬开方"（开方的验证一旦写松就会静默错答）。
+// =====================================================================
+test_factor_polynomial_perfect_power() = {
+    x = sym("x")
+    y = sym("y")
+
+    // 底面为高次多项式的完全幂
+    assert(str(cas.factor(2 * x ^ 3 * y + 2 * y ^ 3 * x + 3 * x ^ 2 * y ^ 2 + x ^ 4 + y ^ 4)) == "(x^2 + x * y + y^2)^2",
+           "factor((x^2+xy+y^2)^2) by expanding")
+    assert(str(cas.simplify(2 * x ^ 3 * y + 2 * y ^ 3 * x + 3 * x ^ 2 * y ^ 2 + x ^ 4 + y ^ 4)) == "(x^2 + x * y + y^2)^2",
+           "simplify((x^2+xy+y^2)^2) by expanding")
+    assert(str(cas.factor(x ^ 4 + 2 * x ^ 2 * y ^ 2 + y ^ 4)) == "(x^2 + y^2)^2", "factor((x^2+y^2)^2)")
+    assert(str(cas.factor((x ^ 2 + x * y + y ^ 2) ^ 2)) == "(x^2 + x * y + y^2)^2", "factor of the factored form")
+
+    // ★ 底面必须继续分解：不能返回"底数尚可再分解"的完全幂。
+    //   (x-1)^2*(x-2)^2 若被写成 (x^2-3*x+2)^2，就把两个线性因子的根藏进了一个
+    //   二次式，而且节点数一样多、尺寸守卫拦不住。
+    assert(str(cas.factor((x - 1) ^ 2 * (x - 2) ^ 2)) == "(x - 1)^2 * (x - 2)^2", "base must be factored (1)")
+    assert(str(cas.factor((x + 1) ^ 3 * (x - 2) ^ 3)) == "(x + 1)^3 * (x - 2)^3", "base must be factored (2)")
+
+    // 不可约的必须原样留下 —— 开方的验证不能写松
+    assert(str(cas.factor(x ^ 2 + x * y + y ^ 2)) == "x^2 + x * y + y^2", "x^2+xy+y^2 is irreducible")
+    assert(str(cas.factor(x ^ 4 + y ^ 4)) == "x^4 + y^4", "x^4+y^4 is irreducible")
+    assert(str(cas.factor(x ^ 4 + x * y + y ^ 4)) == "x^4 + y^4 + x * y", "x^4+xy+y^4 is irreducible")
+    assert(str(cas.factor(x ^ 2 + 2 * x * y + y ^ 2 + 1)) == "2 * x * y + x^2 + y^2 + 1", "x^2+2xy+y^2+1 is irreducible")
+    assert(str(cas.factor(x ^ 4 + y ^ 4 + 1)) == "x^4 + y^4 + 1", "x^4+y^4+1 is irreducible")
+    assert(str(cas.factor(x ^ 4 + 2 * x ^ 2 * y + y ^ 2 + 1)) == "x^4 + 2 * x^2 * y + y^2 + 1", "not a perfect square")
+
+    // 既有能力不能被改坏
+    assert(str(cas.factor(8 * x ^ 3 + 27 * y ^ 3)) == "(-6 * x * y + 4 * x^2 + 9 * y^2) * (2 * x + 3 * y)", "cube identity unchanged")
+    assert(str(cas.factor(x ^ 4 - y ^ 4)) == "-(-x + y) * (x + y) * (x^2 + y^2)", "difference of squares unchanged")
+    assert(str(cas.factor((x + y) * (x + y))) == "(x + y)^2", "perfect square of a linear form unchanged")
+    assert(str(cas.factor(x ^ 6 + 3 * x ^ 4 * y ^ 2 + 3 * x ^ 2 * y ^ 4 + y ^ 6)) == "(x^2 + y^2)^3", "perfect cube")
+
+    // 值保真
+    assert_factor_preserves(2 * x ^ 3 * y + 2 * y ^ 3 * x + 3 * x ^ 2 * y ^ 2 + x ^ 4 + y ^ 4, "(x^2+xy+y^2)^2")
+    assert_factor_preserves(x ^ 4 + x * y + y ^ 4, "x^4+xy+y^4")
+}
+test_factor_polynomial_perfect_power()

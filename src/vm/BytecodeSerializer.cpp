@@ -693,6 +693,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     self(p.val, self);
                     write8(os, p.is_const ? 1 : 0);
                     write8(os, p.is_local ? 1 : 0);
+                    write8(os, p.is_static ? 1 : 0);
                 }
                 break;
             }
@@ -706,6 +707,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     self(p.val, self);
                     write8(os, p.is_const ? 1 : 0);
                     write8(os, p.is_local ? 1 : 0);
+                    write8(os, p.is_static ? 1 : 0);
                 }
                 break;
             }
@@ -1059,7 +1061,8 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         Value v = self(self);
                         bool isConst = read8(is) != 0;
                         bool isLocal = read8(is) != 0;
-                        cls->properties[k] = {v, isConst, isLocal};
+                        bool isStatic = read8(is) != 0;
+                        cls->properties[k] = {v, isConst, isLocal, false, isStatic};
                     }
                     break;
                 }
@@ -1076,7 +1079,8 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         Value v = self(self);
                         bool isConst = read8(is) != 0;
                         bool isLocal = read8(is) != 0;
-                        inst->properties[k] = {v, isConst, isLocal};
+                        bool isStatic = read8(is) != 0;
+                        inst->properties[k] = {v, isConst, isLocal, false, isStatic};
                     }
                     break;
                 }

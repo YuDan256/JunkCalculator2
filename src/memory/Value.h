@@ -734,6 +734,19 @@ namespace jc {
         mutable size_t cached_hash = 0;
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Instance."); }
+
+        // ★ 实例袋子的统一访问器（docs/OOP_MODEL_DESIGN.md §六 第 8 步的准备）：
+        //   所有对实例成员的读写都经这里。今天一律转发到 properties，语义完全等价；
+        //   把存储换成"扁平槽位 + 溢出表"时只需要改这一处。
+        using PropMap = std::unordered_map<std::string, PropertyDescriptor>;
+        PropMap::iterator       ownFind(const std::string& k)       { return properties.find(k); }
+        PropMap::const_iterator ownFind(const std::string& k) const { return properties.find(k); }
+        PropMap::iterator       ownEnd()                            { return properties.end(); }
+        PropMap::const_iterator ownEnd() const                      { return properties.end(); }
+        PropertyDescriptor&     ownRef(const std::string& k)        { return properties[k]; }
+        size_t                  ownCount(const std::string& k) const { return properties.count(k); }
+        PropMap&                ownItems()                          { return properties; }
+        const PropMap&          ownItems() const                    { return properties; }
         void clear() override { clearProperties(); }
         void clearTotal() override;
 

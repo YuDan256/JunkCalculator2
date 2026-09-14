@@ -2097,9 +2097,9 @@ void BuiltinRegistry::registerSystemUtils() {
         GcObjGuard instGuard(inst);
         inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
         
-        inst->properties["type"] = {Value("Variable"), false, false};
-        inst->properties["line"] = {Value::fromInt32(0), false, false};
-        inst->properties["name"] = {Value(uniqueName), false, false};
+        inst->ownRef("type") = {Value("Variable"), false, false};
+        inst->ownRef("line") = {Value::fromInt32(0), false, false};
+        inst->ownRef("name") = {Value(uniqueName), false, false};
         
         return Value(inst);
     }, {"prefix"});
@@ -2237,8 +2237,8 @@ void BuiltinRegistry::registerSystemUtils() {
                 newInst->nativeData = inst->nativeData;
                 Value newVal(newInst);
                 visited[inst] = newVal;
-                for (const auto& [k, prop] : inst->properties) {
-                    newInst->properties[k] = {deepCopyExact(prop.val), prop.is_const, prop.is_local};
+                for (const auto& [k, prop] : inst->ownItems()) {
+                    newInst->ownRef(k) = {deepCopyExact(prop.val), prop.is_const, prop.is_local};
                 }
                 setFrozen(newInst->is_frozen, inst->is_frozen);
                 return newVal;
@@ -2608,7 +2608,7 @@ void BuiltinRegistry::registerStringFunctions() {
             auto inst = v.asInstance();
             auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
             if (found) return result;
-            return Value::fromInt32(static_cast<int32_t>(inst->properties.size()));
+            return Value::fromInt32(static_cast<int32_t>(inst->ownItems().size()));
         }
         if (v.isString()) return Value::fromInt32(static_cast<int32_t>(v.asObjString()->charLength));
         if (v.isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
@@ -3163,7 +3163,7 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->properties) {
+            for (const auto& [k, v] : inst->ownItems()) {
                 if (!v.is_local) L->vec.push_back(Value(k));
             }
             return Value(L);
@@ -3190,7 +3190,7 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->properties) {
+            for (const auto& [k, v] : inst->ownItems()) {
                 if (!v.is_local) L->vec.push_back(v.val);
             }
             return Value(L);
@@ -3213,8 +3213,8 @@ void BuiltinRegistry::registerDictFunctions() {
         if (self.isInstance()) {
             auto inst = self.asInstance();
             if (!args[0].isString()) return Value(false);
-            auto it = inst->properties.find(args[0].asString());
-            return Value(it != inst->properties.end() && !it->second.is_local);
+            auto it = inst->ownFind(args[0].asString());
+            return Value(it != inst->ownEnd() && !it->second.is_local);
         }
         ObjDict* d = helpers::getDictMap(self, "hasKey");
         return Value(d->keyMap.find(args[0]) != d->keyMap.end());
@@ -3252,7 +3252,7 @@ void BuiltinRegistry::registerDictFunctions() {
         if (self.isInstance()) {
             auto inst = self.asInstance();
             int32_t count = 0;
-            for (const auto& [k, v] : inst->properties) {
+            for (const auto& [k, v] : inst->ownItems()) {
                 if (!v.is_local) count++;
             }
             return Value::fromInt32(count);
@@ -3273,7 +3273,7 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             if (v.isInstance()) {
                 std::vector<std::pair<Value, Value>> res;
-                for (const auto& [k, prop] : v.asInstance()->properties) {
+                for (const auto& [k, prop] : v.asInstance()->ownItems()) {
                     if (!prop.is_local) res.push_back({Value(k), prop.val});
                 }
                 return res;
@@ -3330,7 +3330,7 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, prop] : inst->properties) {
+            for (const auto& [k, prop] : inst->ownItems()) {
                 if (prop.is_local) continue;
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(Value(k));

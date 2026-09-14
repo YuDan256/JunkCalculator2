@@ -1,4 +1,5 @@
 #include "Factorization.h"
+#include "SymEval.h"
 #include <vector>
 #include <set>
 #include <algorithm>
@@ -8,6 +9,73 @@
 #include <unordered_map>
 
 namespace jc {
+
+    // =================================================================
+    // 「表达式里是否含非多项式幂」——负指数、分数指数或符号指数。
+    //   多个"只对多项式成立"的策略在动手前都要先问这一句：有理式（x*(x+y)^(-1)）
+    //   与根式（sqrt(x)）不是多项式，按多项式处理会给出错误的"分解"。
+    // =================================================================
+    static bool hasNonPolynomialPower(SymNode* node, int depth) {
+        if (!node || depth > 128) return false;
+        switch (node->getType()) {
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(node);
+                if (p->exp->getType() == SymType::NUM) {
+                    const CASVal& ev = static_cast<SymNum*>(p->exp)->value;
+                    if (std::holds_alternative<int32_t>(ev)) {
+                        if (std::get<int32_t>(ev) < 0) return true;
+                    } else if (std::holds_alternative<BigInt>(ev)) {
+                        if (std::get<BigInt>(ev).isNegative()) return true;
+                    } else if (std::holds_alternative<Fraction>(ev)) {
+                        const Fraction& fr = std::get<Fraction>(ev);
+                        if (fr.getDen() != BigInt(1)) return true;
+                        if (fr.getNum().isNegative()) return true;
+                    } else if (std::holds_alternative<double>(ev)) {
+                        double d = std::get<double>(ev);
+                        if (d < 0 || d != std::floor(d)) return true;
+                    }
+                } else {
+                    return true;                                     // 符号指数不是多项式
+                }
+                return hasNonPolynomialPower(p->base, depth + 1);
+            }
+            case SymType::ADD:
+                for (SymNode* a : static_cast<SymAdd*>(node)->args)
+                    if (hasNonPolynomialPower(a, depth + 1)) return true;
+                return false;
+            case SymType::MUL:
+                for (SymNode* a : static_cast<SymMul*>(node)->args)
+                    if (hasNonPolynomialPower(a, depth + 1)) return true;
+                return false;
+            case SymType::FUNC:
+                for (SymNode* a : static_cast<SymFunc*>(node)->args)
+                    if (hasNonPolynomialPower(a, depth + 1)) return true;
+                return false;
+            default: return false;
+        }
+    }
+
+    // =================================================================
+    // 线性因子搜索的数值预筛。
+    //   候选线性型 L 若真是 P 的因子，则在整个"L = 0"的集合上 P 恒为 0，于是任何
+    //   让 L 取 0 的赋值都必须给出 P = 0。所以这个预筛【没有假阴性】：真因子永远
+    //   不会被它挡掉 —— 前提是赋值确实落在 L = 0 上，见下面 vanishesOnLinearRoot
+    //   调用方对赋值的构造（第一版在这里把 pivot 的符号写反了，赋值点根本不在
+    //   L = 0 上，于是真因子全被挡掉、完备性从 34 掉到 29）。
+    //   反过来，非因子在个别赋值上偶然取 0 是可能的，那只会多做一次精确除法；
+    //   正确性始终由 polyDiv 的零余数判定，不受影响。
+    //   之所以需要它：polyDiv 每次都要 extractCoeffs 遍历整棵子树，逐候选调用会
+    //   让这条策略慢好几倍（实测多元往返语料 35 秒 → 88 秒）。
+    // =================================================================
+    static bool vanishesOnLinearRoot(const SymExpr& expr,
+                                     const std::vector<std::pair<std::string, double>>& env) {
+        std::map<std::string, double> m(env.begin(), env.end());
+        double v = 0.0;
+        try { v = fastEval(expr.ptr, m); }
+        catch (...) { return true; }                 // 求值不了就放行，交给精确判定
+        if (std::isnan(v) || std::isinf(v)) return true;
+        return std::fabs(v) < 1e-6;
+    }
 
     // =================================================================
     // 有理根因子规范化：把 (x + p/q) 这种带分母的线性因子吸收成整系数因子。
@@ -314,6 +382,102 @@ namespace jc {
             }
             catch (const EngineInterruptError&) { throw; }
             catch (const std::runtime_error&) {}
+        }
+
+        // =======================================================
+        // 策略 4：线性因子搜索（多元版的"有理根测试"）
+        //   前面几条策略都是拿整个表达式的结构做文章；这一条换个方向，直接猜一个
+        //   线性因子、用 polyDiv 的零余数精确判定：
+        //       x^3+x^2y+y^3+y^2x   ÷ (x+y)  =  x^2+y^2   → (x+y)(x^2+y^2)
+        //       x^4+x^3y+y^4+y^3x   ÷ (x+y)  =  x^3+y^3   → (x+y)(x^3+y^3)
+        //       x^3+x^2y-xy^2-y^3   ÷ (x+y)  =  x^2-y^2   → (x+y)^2(x-y)
+        //       xy^2+2xy+x+y+1      ÷ (y+1)  =  xy+x+1    → (y+1)(xy+x+1)
+        //       (x+y+z)(x^2+y^2+z^2) ÷ (x+y+z) = x^2+y^2+z^2
+        //   这类"某几项凑成一个因子、另几项凑成同一个因子"整体看不出来，而线性因子
+        //   的候选集很小，逐个试反而最省。候选取自一元有理根定理的多元类比：
+        //   v ± 1、两变元的 v ± w、三变元的 ±x ± y ± z。
+        //
+        //   ★ 三道闸门缺一不可，都是实测撞出来的：
+        //     1) 只对 ADD（和式）启用。polyDiv 内部先 extractCoeffs 展开，对 MUL
+        //        输入等于"展开乘积再重新分解"，与 factorImpl 的 MUL 分支重复且昂贵。
+        //     2) 只对真多项式启用。用到有理式上会出事：expand((x^2-y^2)/(x+y)^2)
+        //        得到 x^2*(x+y)^(-2) - y^2*(x+y)^(-2)，对它做线性因子搜索会返回一个
+        //        再也约不回去的劣形，simplify(e) 与 simplify(expand(e)) 于是分道扬镳
+        //        —— 实测直接打破汇流性。
+        //     3) 数值预筛：不筛的话多元往返语料 35 秒 → 88 秒。
+        //   另有一道结果闸门：分解结果不得比原表达式更大 —— x^8-y^8 的展开式能被
+        //   (x+y) 整除，但那样拆出来的东西比输入 (x+y)(x-y)(x^2+y^2)(x^4+y^4) 更大。
+        // =======================================================
+        if (vars.size() >= 2 && vars.size() <= 3 &&
+            expr.ptr->getType() == SymType::ADD &&
+            !hasNonPolynomialPower(expr.ptr, 0)) {
+            std::vector<std::string> vlist(vars.begin(), vars.end());
+            struct LinCand {
+                std::map<std::string, int> coef;   // 变量 -> 非零系数
+                int k;                             // 常数项
+                std::string pivot;                 // 拿哪个变元做 polyDiv
+            };
+            std::vector<LinCand> cands;
+
+            for (const std::string& v : vlist) {
+                cands.push_back({ {{v, 1}},  1, v });          // v + 1
+                cands.push_back({ {{v, 1}}, -1, v });          // v - 1
+            }
+            for (size_t i = 0; i < vlist.size(); ++i) {
+                for (size_t j = i + 1; j < vlist.size(); ++j) {
+                    cands.push_back({ {{vlist[i], 1}, {vlist[j], 1}}, 0, vlist[i] });   // v + w
+                    cands.push_back({ {{vlist[i], 1}, {vlist[j], -1}}, 0, vlist[i] });  // v - w
+                }
+            }
+            if (vlist.size() == 3) {
+                // ±x ± y ± z：固定 x 的符号为 +（整体乘 -1 是同一个因子）
+                for (int s2 = -1; s2 <= 1; s2 += 2) {
+                    for (int s3 = -1; s3 <= 1; s3 += 2) {
+                        cands.push_back({ {{vlist[0], 1}, {vlist[1], s2}, {vlist[2], s3}}, 0, vlist[0] });
+                    }
+                }
+            }
+
+            static const double kPrimes[] = { 2.0, 3.0, 5.0, 7.0, 11.0, 13.0 };
+            for (const auto& c : cands) {
+                try {
+                    // 构造一组确实让 L = 0 的数值赋值：非 pivot 变元取互不相同的素数，
+                    // pivot 解 Σ_v c_v * v = -k 得到 ——
+                    //     c_pivot * pivot + Σ_{v≠pivot} c_v * v = -k
+                    //  ⇒  pivot = ( -k - Σ_{v≠pivot} c_v * v ) / c_pivot
+                    // 这里的符号第一版写反了（除的是 -c_pivot），赋值点根本不在 L = 0
+                    // 上，于是真因子全被预筛挡掉 —— 表现就是完备性 34 → 29。
+                    std::vector<std::pair<std::string, double>> env;
+                    double cp = 0.0;
+                    double assigned = 0.0;                 // Σ_{v≠pivot} c_v * v
+                    int pi = 0;
+                    for (const auto& kv : c.coef) {
+                        if (kv.first == c.pivot) { cp = static_cast<double>(kv.second); continue; }
+                        double pv = kPrimes[pi < 6 ? pi : 5];
+                        ++pi;
+                        env.push_back({ kv.first, pv });
+                        assigned += static_cast<double>(kv.second) * pv;
+                    }
+                    env.push_back({ c.pivot, (-static_cast<double>(c.k) - assigned) / cp });
+
+                    if (!vanishesOnLinearRoot(expr, env)) continue;   // 便宜的一步：排除绝大多数
+
+                    SymExpr L(BigInt(c.k));
+                    for (const auto& kv : c.coef) {
+                        L = L + SymExpr(BigInt(kv.second)) * SymExpr::makeVar(kv.first);
+                    }
+                    auto [q, r] = polyDiv(expr, L, c.pivot);
+                    if (r.isZero() && q.ptr != expr.ptr && !q.isOne()) {
+                        SymExpr res = factor(L, depth + 1) * factor(q, depth + 1);
+                        if (res.ptr != expr.ptr &&
+                            getAstNodeCount(res) <= getAstNodeCount(expr)) {
+                            return res;
+                        }
+                    }
+                }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) {}
+            }
         }
 
         if (hasGroupBest) return groupBest;

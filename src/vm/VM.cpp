@@ -3922,7 +3922,10 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
     newFrame.selfContext = boundSelf;
-    newFrame.classContext = boundClass;
+    // ★ classContext 走词法来源：优先闭包的定义类，其次调用方给的类上下文
+    //   （闭包在方法体内创建时，boundClass 已经是创建点的词法类）。
+    newFrame.classContext = (boundClass.isNone() && closure && closure->owner_class)
+        ? Value(closure->owner_class) : boundClass;
     
     std::vector<Value> actualArgs = args;
     

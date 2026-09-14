@@ -375,3 +375,44 @@ test_cyclotomic_uses_real_variable() = {
     assert(str(cas.factor(z ^ 4 - 1)) == "(z + 1) * (z - 1) * (z^2 + 1)", "factor(z^4-1)")
 }
 test_cyclotomic_uses_real_variable()
+
+// =====================================================================
+// 多元线性因子（多元版有理根测试）
+//   这一类"某几项凑成一个因子、另几项凑成同一个因子"整体看不出来，此前完全不分解。
+//   每一条都要同时守两件事：该分出来的分出来，不该分的原样留着。
+// =====================================================================
+test_factor_linear_factors() = {
+    x = sym("x")
+    y = sym("y")
+    z = sym("z")
+    // x^3+x^2y+y^3+y^2x = x^2(x+y) + y^2(x+y)
+    assert(str(cas.factor(x ^ 3 + x ^ 2 * y + y ^ 3 + y ^ 2 * x)) == "(x + y) * (x^2 + y^2)", "factor(x^3+x^2y+y^3+y^2x)")
+    // x^4+x^3y+y^4+y^3x = x^3(x+y) + y^3(x+y) = (x+y)^2 (x^2-xy+y^2)
+    assert(str(cas.factor(x ^ 4 + x ^ 3 * y + y ^ 4 + y ^ 3 * x)) == "(x + y)^2 * (-x * y + x^2 + y^2)", "factor(x^4+x^3y+y^4+y^3x)")
+    // x^3+x^2y-xy^2-y^3 = (x+y)^2 (x-y)
+    assert(str(cas.factor(x ^ 3 + x ^ 2 * y - x * y ^ 2 - y ^ 3)) == "-(x + y)^2 * (-x + y)", "factor(x^3+x^2y-xy^2-y^3)")
+    // 常数为整数的线性因子 (y+1)
+    assert(str(cas.factor(x * y ^ 2 + 2 * x * y + x + y + 1)) == "(x * y + x + 1) * (y + 1)", "factor(xy^2+2xy+x+y+1)")
+    // 三变元线性型 (x+y+z)
+    assert(str(cas.factor((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2))) == "(x + y + z) * (x^2 + y^2 + z^2)", "factor((x+y+z)(x^2+y^2+z^2))")
+    // 不可约的必须原样留下 —— 线性因子搜索不能"硬分"
+    assert(str(cas.factor(x ^ 2 + 2 * x * y + y ^ 2 + 1)) == "2 * x * y + x^2 + y^2 + 1", "x^2+2xy+y^2+1 is irreducible over Q")
+    assert(str(cas.factor(x ^ 2 + x * y + y ^ 2)) == "x^2 + x * y + y^2", "x^2+xy+y^2 is irreducible")
+    assert(str(cas.factor(x ^ 4 + y ^ 4 + 1)) == "x^4 + y^4 + 1", "x^4+y^4+1 is irreducible")
+    assert(str(cas.factor(x * y + 1)) == "x * y + 1", "xy+1 is irreducible")
+    assert(str(cas.factor(x ^ 3 + y ^ 3 + 1)) == "x^3 + y^3 + 1", "x^3+y^3+1 is irreducible")
+    // 既有能力不能被这条策略改坏（顺序/形态都要一致）
+    assert(str(cas.factor(x ^ 2 - y ^ 2)) == "-(-x + y) * (x + y)", "factor(x^2-y^2) unchanged")
+    assert(str(cas.factor(x ^ 4 - y ^ 4)) == "-(-x + y) * (x + y) * (x^2 + y^2)", "factor(x^4-y^4) unchanged")
+    assert(str(cas.factor(x ^ 3 + y ^ 3)) == "(-x * y + x^2 + y^2) * (x + y)", "factor(x^3+y^3) unchanged")
+    assert(str(cas.factor(x * y + 2 * x + y + 2)) == "(x + 1) * (y + 2)", "grouping unchanged")
+    assert(str(cas.factor(x ^ 2 + 2 * x * y + y ^ 2 + 3 * x + 3 * y + 2)) == "(x + y + 1) * (x + y + 2)", "linear form unchanged")
+    // 值与幂等
+    assert_factor_preserves(x ^ 3 + x ^ 2 * y + y ^ 3 + y ^ 2 * x, "x^3+x^2y+y^3+y^2x")
+    assert_factor_preserves(x ^ 4 + x ^ 3 * y + y ^ 4 + y ^ 3 * x, "x^4+x^3y+y^4+y^3x")
+    assert_factor_preserves(x * y ^ 2 + 2 * x * y + x + y + 1, "xy^2+2xy+x+y+1")
+    assert_factor_preserves((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2), "(x+y+z)(x^2+y^2+z^2)")
+    assert(str(cas.factor(x ^ 3 + x ^ 2 * y + y ^ 3 + y ^ 2 * x)) == str(cas.factor(cas.factor(x ^ 3 + x ^ 2 * y + y ^ 3 + y ^ 2 * x))), "idempotent")
+    assert(str(cas.factor((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2))) == str(cas.factor(cas.factor((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2)))), "idempotent 3-var")
+}
+test_factor_linear_factors()

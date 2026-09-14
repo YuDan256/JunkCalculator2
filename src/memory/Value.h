@@ -1716,7 +1716,6 @@ namespace jc {
         std::string kwargsName;               // ★ kwargs 参数名（空 = 无）
         std::vector<bool> kwargHasDefault;    // ★ 每个仅关键字是否有默认值
         std::vector<std::string> kwargDefaultValueTexts; // ★ 仅关键字默认值文本（与 kwargHasDefault 的 true 对齐）
-        bool isUFCS = false; // ★ 新增：标记是否为 UFCS 绑定的全局函数
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法
 
@@ -1726,13 +1725,11 @@ namespace jc {
 
         int minArgs() const {
             int count = static_cast<int>(paramNames.size());
-            if (isUFCS && count > 0) count--;
             count -= static_cast<int>(defaultValues.size());
             return count < 0 ? 0 : count;
         }
         int maxArgs() const { 
             int count = static_cast<int>(paramNames.size());
-            if (isUFCS && count > 0) count--;
             return count;
         }
         bool acceptsArgCount(int n) const { return n >= minArgs() && (!restName.empty() || n <= maxArgs()); }
@@ -1775,9 +1772,8 @@ namespace jc {
 
         std::string toString() const {
             std::string params;
-            size_t startIdx = isUFCS ? 1 : 0;
-            for (size_t i = startIdx; i < paramNames.size(); ++i) {
-                if (i > startIdx) params += ", ";
+            for (size_t i = 0; i < paramNames.size(); ++i) {
+                if (i > 0) params += ", ";
                 if (i < isConst.size() && isConst[i]) params += "const ";
                 if (i < isRef.size() && isRef[i]) params += "ref ";
                 params += paramNames[i];

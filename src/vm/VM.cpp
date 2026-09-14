@@ -554,7 +554,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                 if (hasRest) {
                     aligned = VM::activeVM->alignArguments(static_cast<int>(argc), 0, args.data(),
                         cl->paramNames, cl->restName, cl->kwargNames, cl->kwargsName,
-                        cl->isUFCS ? cl->boundSelf : Value::none(), cl->kwargHasDefault);
+                        Value::none(), cl->kwargHasDefault);
                     argPtr = &aligned;
                 }
                 helpers::nativeSelfStack.push_back(cl->boundSelf);
@@ -1068,7 +1068,7 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
     return td->converter(args);
 }
 
-void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall) {
+void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall, Value explicitSelf) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     Value callee = registers[currentFrame->registerBase + calleeReg];
     
@@ -1166,25 +1166,22 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             
             int posArgc = argc - 2 * kwArgc;
             
-            if (closure->isUFCS) {
-                for (auto& pr : pendingCallRefs) pr.argIndex += 1;
-            }
 
             int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
             int effectivePosArgc = posArgc;
-            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault, &effectivePosArgc);
+            std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, Value::none(), closure->kwargHasDefault, &effectivePosArgc);
             for (int i = 0; i < fnDef->arity; ++i) {
                 if (alignedArgs[i].isUninit()) {
-                    int expected = closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
+                    int expected = fnDef->arity;
                     if (expected < 0) expected = 0;
                     JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
                 }
             }
             if (fnDef->restName.empty() && static_cast<size_t>(effectivePosArgc) > static_cast<size_t>(fnDef->maxArity)) {
-                int expected = closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
+                int expected = fnDef->maxArity;
                 if (expected < 0) expected = 0;
                 JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects at most " + std::to_string(expected) + " arguments.");
             }
@@ -1212,7 +1209,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 newFrame.returnRegister = dstReg;
                 newFrame.deferBase = static_cast<int>(deferStack.size());
                 newFrame.closure = closure;
-                newFrame.selfContext = closure->boundSelf;
+                newFrame.selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
                 newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
                 populateRefParams(newFrame, fnDef.get());
                 
@@ -1298,7 +1295,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 currentFrame->chunk = &fnDef->chunk;
                 currentFrame->ip = 0;
                 currentFrame->closure = closure;
-                currentFrame->selfContext = closure->boundSelf;
+                currentFrame->selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
                 currentFrame->classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
                 
                 populateRefParams(*currentFrame, fnDef.get());
@@ -1318,7 +1315,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             newFrame.returnRegister = dstReg;
             newFrame.deferBase = static_cast<int>(deferStack.size());
             newFrame.closure = closure;
-            newFrame.selfContext = closure->boundSelf;
+            newFrame.selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
             newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
             
             populateRefParams(newFrame, fnDef.get());
@@ -1338,17 +1335,15 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 if (closure->paramNames.empty() && closure->restName.empty() && closure->kwargNames.empty() && closure->kwargsName.empty()) {
                     JC2_THROW(TypeError, "Native function '" + closure->rawBody + "' does not support keyword arguments.");
                 }
-                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, closure->isUFCS ? closure->boundSelf : Value::none(), closure->kwargHasDefault);
+                args = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], closure->paramNames, closure->restName, closure->kwargNames, closure->kwargsName, Value::none(), closure->kwargHasDefault);
                 
-                int expected = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
+                int expected = closure->minArgs();
                 for (int i = 0; i < expected; ++i) {
                     if (args[i].isUninit()) {
                         JC2_THROW(RuntimeError, "Function '" + closure->rawBody + "' requires at least " + std::to_string(closure->minArgs()) + " arguments.");
                     }
                 }
             } else {
-                args.reserve(argc + (closure->isUFCS ? 1 : 0));
-                if (closure->isUFCS) args.push_back(closure->boundSelf);
                 for (int i = 0; i < argc; ++i) {
                     args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
                 }
@@ -1369,19 +1364,19 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                         if (aIt != ait->second.begin()) expected += " or ";
-                        expected += std::to_string(closure->isUFCS ? *aIt - 1 : *aIt);
+                        expected += std::to_string(*aIt);
                     }
                     JC2_THROW(RuntimeError, "Function '" + closure->rawBody + 
-                        "' expects " + expected + " arguments, got " + std::to_string(closure->isUFCS ? actualArgc - 1 : actualArgc) + ".");
+                        "' expects " + expected + " arguments, got " + std::to_string(actualArgc) + ".");
                 }
             } else if (static_cast<int>(closure->maxArgs()) > 0 && closure->restName.empty()) {
-                int expectedMin = closure->isUFCS ? closure->minArgs() + 1 : closure->minArgs();
-                int expectedMax = closure->isUFCS ? closure->maxArgs() + 1 : closure->maxArgs();
+                int expectedMin = closure->minArgs();
+                int expectedMax = closure->maxArgs();
                 if (totalArgc < expectedMin || totalArgc > expectedMax) {
                     JC2_THROW(RuntimeError, "Function '" + closure->rawBody + 
                         "' expects " + std::to_string(closure->minArgs()) + " to " + 
                         std::to_string(closure->maxArgs()) + " arguments, got " + 
-                        std::to_string(closure->isUFCS ? totalArgc - 1 : totalArgc) + ".");
+                        std::to_string(totalArgc) + ".");
                 }
             }
 
@@ -2207,16 +2202,11 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
 invoke_method:
     if (!method) {
         if (fbType == 1) {
-            Value fallbackVal = registers[currentFrame->registerBase + a + 1 + argc];
-            for (int i = argc - 1; i >= 0; --i) {
-                registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
-            }
-            registers[currentFrame->registerBase + a + 1] = obj;
-            registers[currentFrame->registerBase + a] = fallbackVal;
-            for (auto& pr : pendingCallRefs) {
-                pr.argIndex += 1;
-            }
-            execCall(a, argc + 1, kwArgc, a, isTailCall);
+            // ★ 接收者只进隐藏通道 self，不占实参位。
+            //   注意 obj 是 registers[a] 的引用，写回被调者之前必须先把它复制出来。
+            Value recv = obj;
+            registers[currentFrame->registerBase + a] = registers[currentFrame->registerBase + a + 1 + argc];
+            execCall(a, argc, kwArgc, a, isTailCall, recv);
             return;
         }
         
@@ -2225,8 +2215,7 @@ invoke_method:
             if (kwArgc > 0) {
                 ic.cachedGlobalSlot = -1;
             } else {
-                argsVec.reserve(argc + 1);
-                argsVec.push_back(obj);
+                argsVec.reserve(argc);
                 for (int i = 0; i < argc; ++i) {
                     argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
                 }
@@ -2239,30 +2228,18 @@ invoke_method:
         
         if (ic.cachedGlobalSlot >= 0) {
             if (globals[ic.cachedGlobalSlot].isFunctionClosure() || globals[ic.cachedGlobalSlot].isType() || globals[ic.cachedGlobalSlot].isClass()) {
-                for (int i = argc - 1; i >= 0; --i) {
-                    registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
-                }
-                registers[currentFrame->registerBase + a + 1] = obj;
+                Value recv = obj;
                 registers[currentFrame->registerBase + a] = globals[ic.cachedGlobalSlot];
-                for (auto& pr : pendingCallRefs) {
-                    pr.argIndex += 1;
-                }
-                execCall(a, argc + 1, kwArgc, a, isTailCall);
+                execCall(a, argc, kwArgc, a, isTailCall, recv);
                 return;
             }
         } else {
             auto gIt = globalNames.find(methodName);
             if (gIt != globalNames.end() && (globals[gIt->second].isFunctionClosure() || globals[gIt->second].isType() || globals[gIt->second].isClass())) {
                 ic.cachedGlobalSlot = gIt->second;
-                for (int i = argc - 1; i >= 0; --i) {
-                    registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
-                }
-                registers[currentFrame->registerBase + a + 1] = obj;
+                Value recv = obj;
                 registers[currentFrame->registerBase + a] = globals[gIt->second];
-                for (auto& pr : pendingCallRefs) {
-                    pr.argIndex += 1;
-                }
-                execCall(a, argc + 1, kwArgc, a, isTailCall);
+                execCall(a, argc, kwArgc, a, isTailCall, recv);
                 return;
             }
         }
@@ -2271,26 +2248,20 @@ invoke_method:
         if (nIt != nativeBuiltins.end()) {
             if (kwArgc > 0) {
                 Value closureVal = getBuiltinClosure(methodName);
-                for (int i = argc - 1; i >= 0; --i) {
-                    registers[currentFrame->registerBase + a + 2 + i] = registers[currentFrame->registerBase + a + 1 + i];
-                }
-                registers[currentFrame->registerBase + a + 1] = obj;
+                Value recv = obj;
                 registers[currentFrame->registerBase + a] = closureVal;
-                for (auto& pr : pendingCallRefs) {
-                    pr.argIndex += 1;
-                }
-                execCall(a, argc + 1, kwArgc, a, isTailCall);
+                execCall(a, argc, kwArgc, a, isTailCall, recv);
                 return;
             } else {
                 auto ait = builtinArity.find(methodName);
-                int totalArgs = argc + 1;
+                int totalArgs = argc;
                 if (ait != builtinArity.end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                         if (aIt != ait->second.begin()) expected += " or ";
-                        expected += std::to_string(*aIt - 1);
+                        expected += std::to_string(*aIt);
                     }
-                    JC2_THROW(RuntimeError, "Method '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
+                    JC2_THROW(RuntimeError, "Function '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                 }
 
                 std::vector<Value> argsVec;
@@ -3953,21 +3924,14 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     newFrame.selfContext = boundSelf;
     newFrame.classContext = boundClass;
     
-    std::vector<Value> actualArgs;
-    if (closure && closure->isUFCS) {
-        actualArgs.reserve(args.size() + 1);
-        actualArgs.push_back(closure->boundSelf);
-        actualArgs.insert(actualArgs.end(), args.begin(), args.end());
-    } else {
-        actualArgs = args;
-    }
+    std::vector<Value> actualArgs = args;
     
     int totalArgc = static_cast<int>(actualArgs.size());
 
     if (!fnDef->restName.empty()) {
         int fixedMax = fnDef->maxArity;
         if (totalArgc < fnDef->arity) {
-            int expected = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
+            int expected = closure && fnDef->arity;
             if (expected < 0) expected = 0;
             JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(expected) + " arguments.");
         }
@@ -3989,11 +3953,11 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         registers[newBase + fixedMax] = Value(restList);
     } else {
         if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-            int expMin = closure && closure->isUFCS ? fnDef->arity - 1 : fnDef->arity;
-            int expMax = closure && closure->isUFCS ? fnDef->maxArity - 1 : fnDef->maxArity;
+            int expMin = closure && fnDef->arity;
+            int expMax = closure && fnDef->maxArity;
             if (expMin < 0) expMin = 0;
             if (expMax < 0) expMax = 0;
-            int gotArgs = closure && closure->isUFCS ? totalArgc - 1 : totalArgc;
+            int gotArgs = closure && totalArgc;
             if (gotArgs < 0) gotArgs = 0;
             JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(expMin) + " to " + std::to_string(expMax) + " arguments, got " + std::to_string(gotArgs) + ".");
         }

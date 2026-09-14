@@ -177,7 +177,9 @@ public:
 private:
     std::string formatException(const Value& errVal);
 
-    void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false);
+    // explicitSelf：调用点提供的接收者（隐藏通道 self）。为空时退回闭包自己的 boundSelf。
+    void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false,
+                  Value explicitSelf = Value::none());
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
     Value execImport(const std::string& name);

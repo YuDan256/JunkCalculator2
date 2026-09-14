@@ -44,10 +44,16 @@ test_exception_ref() = {
 test_exception_ref()
 
 test_ufcs_ref() = {
+    // ★ UFCS 的"接收者当第 0 个实参"已废止（docs/OOP_MODEL_DESIGN.md §2.1）：
+    //   接收者只走隐藏通道 self，实参就是实参，所以这里显式写两个实参。
     ufcs_modify(obj, ref x) = { x += obj }
     val3 = 10
-    5.ufcs_modify(val3)
-    assert(val3 == 15, "UFCS ref failed")
+    ufcs_modify(5, val3)
+    assert(val3 == 15, "Explicit receiver ref failed")
+
+    // 点号调用把接收者交给 self，不占实参位：0 参自由函数也能读到接收者。
+    read_self() = self
+    assert(5.read_self() == 5, "Dot call should pass the receiver through self")
 }
 test_ufcs_ref()
 

@@ -15,7 +15,8 @@ test_curry() = {
 test_curry()
 
 test_ufcs() = {
-    // Uniform Function Call Syntax
+    // 点号调用：接收者进隐藏通道 self，实参就是实参（不再隐式当第 0 个实参）。
+    // 这里两个用例都是原生原型上的成员，所以形如 .sum() / .upper() 的链式调用照旧。
     res = [1, 2, 3].sum()
     assert(res == 6, "UFCS basic failed")
     

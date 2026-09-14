@@ -677,7 +677,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                 }
                 self(cl->boundSelf, self);
                 self(cl->boundClass, self);
-                write8(os, cl->isUFCS ? 1 : 0);
+                write8(os, 0); // 保留位（原 UFCS 标记，已废止）
                 write8(os, cl->isTokenMacro ? 1 : 0);
                 write8(os, cl->is_local ? 1 : 0);
                 self(cl->owner_class ? Value(cl->owner_class) : Value::none(), self);
@@ -1018,7 +1018,7 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                     }
                     cl->boundSelf = self(self);
                     cl->boundClass = self(self);
-                    cl->isUFCS = read8(is) != 0;
+                    (void)read8(is); // 保留位（原 UFCS 标记，已废止）
                     cl->isTokenMacro = read8(is) != 0;
                     cl->is_local = read8(is) != 0;
                     Value owner = self(self);

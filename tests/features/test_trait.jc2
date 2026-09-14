@@ -140,7 +140,9 @@ test_trait_modifiers() = {
     c = C()
     assert(C.MAX == 100, "static const should be copied")
     assert(C.get_max() == 100, "static method should be copied")
-    assert(c.get_max() == 100, "static method accessible via instance")
+    // ★ static 只住类袋子，实例查找不经过它（docs/OOP_MODEL_DESIGN.md §2.7）。
+    assert(throws(() => c.get_max()), "static method should not be reachable from an instance")
+    assert(throws(() => c.MAX), "static const should not be reachable from an instance")
     assert(throws(() => c.hidden()), "local method should stay private")
 }
 test_trait_modifiers()

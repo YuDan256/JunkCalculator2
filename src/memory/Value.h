@@ -539,6 +539,7 @@ namespace jc {
         bool is_const = false;
         bool is_local = false;
         bool is_abstract = false;   // ★ 抽象方法标记（trait 契约）
+        bool is_static = false;     // ★ 静态成员：只住类袋子，实例沿类链查找时跳过
     };
 
     struct ObjClass : public Obj {

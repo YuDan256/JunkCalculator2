@@ -618,7 +618,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             auto c = inst->classDef;
             while (c) {
                 auto it = c->properties.find("__call__");
-                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+                if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
                     method = it->second.val.asFunction();
                     owningClass = c;
                     break;
@@ -1568,7 +1568,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto c = inst->classDef;
         while (c) {
             auto it = c->properties.find("__call__");
-            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+            if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
                 method = it->second.val.asFunction();
                 owningClass = c;
                 break;
@@ -1756,7 +1756,7 @@ std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::st
     auto c = inst->classDef;
     while (c) {
         auto it = c->properties.find(name);
-        if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
+        if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
             return {it->second.val.asFunction(), c};
         }
         c = c->parent;
@@ -2167,7 +2167,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             auto c = inst->classDef;
             while (c) {
                 auto cit = c->properties.find(methodName);
-                if (cit != c->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
+                if (cit != c->properties.end() && !cit->second.is_local && !cit->second.is_static && cit->second.val.isFunctionClosure()) {
                     method = cit->second.val.asFunction();
                     owningClass = c;
                     break;
@@ -6070,7 +6070,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         if (!found) {
                             invalidateJITOnContainerReplace(Value::none(), val);
-                            if (cls) cls->properties[key] = { val, false, false };
+                            if (cls) cls->properties[key] = { val, false, false, false, true };
                         }
                     } else {
                         JC2_THROW(RuntimeError, "Unsupported 1D index set.");
@@ -6438,7 +6438,7 @@ Value VM::run(int targetFrameDepth) {
                                 auto cls = inst->classDef;
                                 while (cls) {
                                     auto cit = cls->properties.find(key);
-                                    if (cit != cls->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
+                                    if (cit != cls->properties.end() && !cit->second.is_local && !cit->second.is_static && cit->second.val.isFunctionClosure()) {
                                         found = true;
                                         break;
                                     }
@@ -6697,7 +6697,7 @@ Value VM::run(int targetFrameDepth) {
                         auto cls = inst->classDef;
                         while (cls) {
                             auto it = cls->properties.find(field);
-                            if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                            if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
@@ -6876,7 +6876,7 @@ Value VM::run(int targetFrameDepth) {
                         auto cls = inst->classDef;
                         while (cls) {
                             auto it = cls->properties.find(field);
-                            if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                            if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
@@ -7043,7 +7043,7 @@ Value VM::run(int targetFrameDepth) {
                         auto it = cls->properties.find(mangledName);
                         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
                         if (cls) {
-                            cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true };
+                            cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true, false, true };
                             cls->ownMembers.insert(mangledName);
                         }
                     }
@@ -7100,7 +7100,7 @@ Value VM::run(int targetFrameDepth) {
                     if (cls) checkTraitDefaultOverride(cls, keyStr, val.isFunctionClosure() ? val.asFunction() : nullptr);
                     if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
                     if (cls) {
-                        cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
+                        cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false, false, true };
                         cls->ownMembers.insert(keyStr);
                     }
                 } else {
@@ -7196,7 +7196,7 @@ Value VM::run(int targetFrameDepth) {
                     if (!found) {
                         invalidateJITOnContainerReplace(Value::none(), val);
                         if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
-                        if (cls) cls->properties[keyStr] = { val, false, false };
+                        if (cls) cls->properties[keyStr] = { val, false, false, false, true };
                     }
                 } else {
                     JC2_THROW(RuntimeError, "Cannot set property on this type.");
@@ -8363,7 +8363,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
             auto cls = inst->classDef;
             while (cls) {
                 auto it = cls->properties.find(field);
-                if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
@@ -8561,7 +8561,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
             auto cls = inst->classDef;
             while (cls) {
                 auto it = cls->properties.find(field);
-                if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
@@ -9042,7 +9042,7 @@ bool VM::opIn(Value needle, Value haystack) {
                     auto cls = inst->classDef;
                     while (cls) {
                         auto cit = cls->properties.find(key);
-                        if (cit != cls->properties.end() && !cit->second.is_local && cit->second.val.isFunctionClosure()) {
+                        if (cit != cls->properties.end() && !cit->second.is_local && !cit->second.is_static && cit->second.val.isFunctionClosure()) {
                             found = true;
                             break;
                         }
@@ -9526,7 +9526,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             }
             if (!found) {
                 vm->invalidateJITOnContainerReplace(Value::none(), val);
-                if (cls) cls->properties[key] = { val, false, false };
+                if (cls) cls->properties[key] = { val, false, false, false, true };
             }
         } else {
             JC2_THROW(RuntimeError, "Unsupported 1D index set.");
@@ -9782,7 +9782,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         if (!found) {
             vm->invalidateJITOnContainerReplace(Value::none(), val);
             if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
-            if (cls) cls->properties[keyStr] = { val, false, false };
+            if (cls) cls->properties[keyStr] = { val, false, false, false, true };
         }
     } else {
         JC2_THROW(RuntimeError, "Cannot set property on this type.");
@@ -10634,7 +10634,7 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
         auto it = cls->properties.find(mangledName);
         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
-        cls->properties[mangledName] = {val, false, true};
+        cls->properties[mangledName] = {val, false, true, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
@@ -10664,7 +10664,7 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
         auto it = cls->properties.find(mangledName);
         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
-        cls->properties[mangledName] = {val, true, true};
+        cls->properties[mangledName] = {val, true, true, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
@@ -10693,7 +10693,7 @@ void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         std::string keyStr = keyVal.asString();
         auto it = cls->properties.find(keyStr);
         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
-        cls->properties[keyStr] = {val, false, false};
+        cls->properties[keyStr] = {val, false, false, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot define property on this type.");
     }
@@ -10722,7 +10722,7 @@ void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t ic
         std::string keyStr = keyVal.asString();
         auto it = cls->properties.find(keyStr);
         if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
-        cls->properties[keyStr] = {val, true, false};
+        cls->properties[keyStr] = {val, true, false, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot define property on this type.");
     }

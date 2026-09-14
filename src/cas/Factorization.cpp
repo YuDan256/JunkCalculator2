@@ -273,6 +273,106 @@ namespace jc {
             }
 
             // =======================================================
+            // 策略 1.2：多项式的完全幂 P = Q^N（Q 是同变元下的多项式）
+            //   上面策略 1 的嗅探只认底面形如 (mainVar + c) 的一次底面，
+            //   (x^2+x*y+y^2)^2 这种高次底面的完全幂它够不着 —— 那正是多元完备性
+            //   探针里最后一例缺口。
+            //   这里用标准的"逐项剥皮"：反复取当前余式在 mainVar 下的最高次项，
+            //   除以 (N·Q_partial^(N-1)) 的最高次项，得到 Q 的下一个系数，
+            //   每步都用"把 Q_partial^N 整体展开后与 P 相减"重算余式，所以不累积误差。
+            //   起步项由 P 的最高次系数的 N 次根给出。
+            //   最后**一定验证 Q^N == P** 才返回：任何不精确的除法只会导致放弃，
+            //   不会给出错误结果（这是这条策略敢用 simplifyRational 做除法的依据）。
+            //   只试 N = 2、3：更高次的完全幂少见，而次数越大剥皮步数越多。
+            //   ★ 只对 ADD（和式）启用。本策略是把"展开后的多项式"当成整体去开方，
+            //     对一个已经是乘积的节点也会命中，而那样得到的底面通常**更不因式化**：
+            //     (x-1)^2*(x-2)^2 会被写成 (x^2-3*x+2)^2 —— 后者把两个线性因子的
+            //     根藏进了一个二次式，节点数还一样多（守卫拦不住）。乘积交给
+            //     factorImpl 的 MUL 分支逐因子递归才是对的。
+            //   ★ 只对多元（vars.size() >= 2）启用。一元的情况 factorPolynomialCZ
+            //     已经覆盖（Zassenhaus + 平方自由分解），而这里的剥皮循环每步都要
+            //     展开一次 Q^N，在高次一元多项式上很贵 —— 实测
+            //     simplify((x^2+x+1)^6)（12 次）会因此慢 28.7%，而收益（探针里那一例
+            //     (x^2+x*y+y^2)^2）本来就是多元的。与策略 1.5 用的是同一条理由。
+            // =======================================================
+            for (int PN : { 2, 3 }) {
+                if (expr.ptr->getType() != SymType::ADD || vars.size() < 2) break;
+                int de0 = static_cast<int>(coeffs.size()) - 1;
+                if (de0 < PN * 2 || de0 % PN != 0) continue;
+
+                SymExpr exExp;
+                try { exExp = simplifyCore(expand_core(expr, SymConfig::maxExpandTerms)); }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) { continue; }
+
+                auto [rootOk, rootLead] = tryExactRoot(coeffs[de0], PN);
+                if (!rootOk || rootLead.isZero()) continue;
+
+                SymExpr Q = simplifyCore(rootLead * (X ^ SymExpr(BigInt(de0 / PN))));
+                bool failed = false;
+                for (int step = 0; step <= de0 / PN + 2; ++step) {
+                    SymExpr powQ, diff, rem;
+                    try {
+                        powQ = expand_core(Q ^ SymExpr(BigInt(PN)), SymConfig::maxExpandTerms);
+                        // ★ 必须 expand 之后再化简。exExp - powQ 会生成
+                        //   exExp + (-1)*powQ，而 powQ 是多顶和式时 simplifyCore
+                        //   并不会把 -1 分配进那个和式 —— 同类项因此没机会相消，
+                        //   余式永远不归零（实测：两侧明明是同一个多项式，打印出来
+                        //   还是一个没求值的差）。expand_core 负责这步分配。
+                        diff = simplifyCore(expand_core(exExp - powQ, SymConfig::maxExpandTerms));
+                        rem = diff;
+                    }
+                    catch (const EngineInterruptError&) { throw; }
+                    catch (const std::runtime_error&) { failed = true; break; }
+                    if (rem.isZero()) break;
+
+                    auto rc = extractCoeffs(rem, mainVar);
+                    if (rc.empty()) { failed = true; break; }
+                    int dr = static_cast<int>(rc.size()) - 1;
+                    if (rc[dr].isZero()) { failed = true; break; }
+
+                    SymExpr D;
+                    try {
+                        D = simplifyCore(expand_core(
+                            SymExpr(BigInt(PN)) * (Q ^ SymExpr(BigInt(PN - 1))), SymConfig::maxExpandTerms));
+                    }
+                    catch (const EngineInterruptError&) { throw; }
+                    catch (const std::runtime_error&) { failed = true; break; }
+                    auto dc = extractCoeffs(D, mainVar);
+                    if (dc.empty()) { failed = true; break; }
+                    int dd = static_cast<int>(dc.size()) - 1;
+                    if (dd > dr) { failed = true; break; }
+
+                    SymExpr term = simplifyCore(simplifyRational(rc[dr] / dc[dd]) *
+                                                (X ^ SymExpr(BigInt(dr - dd))));
+                    SymExpr next = simplifyCore(Q + term);
+                    if (next.ptr == Q.ptr) { failed = true; break; }
+                    Q = next;
+                }
+                if (failed || Q.isZero() || Q.isOne()) continue;
+
+                // 验证 Q^N == P。用展开后的差判零，而不是比节点指针：两边都经过
+                // expand_core，但 ADD 的参数顺序未必完全一致，比差值更可靠。
+                SymExpr check;
+                try {
+                    check = simplifyCore(expand_core(
+                        (Q ^ SymExpr(BigInt(PN))) - exExp, SymConfig::maxExpandTerms));
+                }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) { continue; }
+                if (!check.isZero()) continue;                 // 没验证过的一律不返回
+
+                // ★ 求出的底面 Q 本身还要继续分解，返回 factor(Q)^N。
+                //   否则会返回"底数尚可再分解"的完全幂，反而比逐因子形式更不因式化：
+                //   (x-1)^2*(x-2)^2 会被写成 (x^2-3*x+2)^2，把两个线性因子的根藏进
+                //   一个二次式里（两者节点数还一样多，尺寸守卫拦不住）。分解过底面之后
+                //   得到的是 (x-1)^2*(x-2)^2，与 MUL 分支逐因子递归的结果一致。
+                SymExpr fq = factor(Q, depth + 1);
+                SymExpr res = fq ^ SymExpr(BigInt(PN));
+                if (res.ptr != expr.ptr && getAstNodeCount(res) <= getAstNodeCount(expr)) return res;
+            }
+
+            // =======================================================
             // 策略 1.5：偶次降维（t = mainVar^2）
             //   若 mainVar 的奇数次系数全为 0，P 其实是 mainVar^2 的多项式。令
             //   t = mainVar^2 把次数减半，交给 factor 递归，再换回来：

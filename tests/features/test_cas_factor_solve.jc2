@@ -463,3 +463,53 @@ test_downstream_returns_canonical_form() = {
     can("diff (x^2-1)/(x+1)", cas.diff((x ^ 2 - 1) / (x + 1), x))
 }
 test_downstream_returns_canonical_form()
+
+// =====================================================================
+// expand 必须合并同类项
+//   多项式定理天然会产出同类的项（(A+C) 与 B² 都可能给出 x^2*y^2），而幂次展开的
+//   出口曾为了省开销直接 makeAdd、绕过 operator+ 的合并，于是重复的单项式一直挂在
+//   树里 —— 这正是「expand 出来的树压不下去」。下面每条都钉住合并后的精确形态。
+//   顺带钉住完全幂嗅探的读法：它的 R = nextCoeff/(N*lead) 曾用 simplifyCore 而留下
+//   1/3*(3*y+3*z) 这种形态（值对，但读不出来）。
+// =====================================================================
+test_expand_merges_like_terms() = {
+    x = sym("x")
+    y = sym("y")
+    z = sym("z")
+
+    // 同类项合并：旧输出里 2*x^2*y^2 与 4*x^2*y^2 并存
+    assert(str(cas.expand(((x + y) ^ 2 + z) ^ 2)) ==
+           "4 * x^3 * y + 4 * y^3 * x + 6 * x^2 * y^2 + x^4 + y^4 + 2 * x^2 * z + 2 * y^2 * z + 4 * x * y * z + z^2",
+           "expand(((x+y)^2+z)^2) must merge x^2*y^2 terms")
+    // 旧输出里 2*x*y 出现两次
+    assert(str(cas.expand((x * y + x + y + 1) ^ 2)) ==
+           "x^2 * y^2 + 2 * x^2 * y + 2 * y^2 * x + 4 * x * y + x^2 + y^2 + 2 * x + 2 * y + 1",
+           "expand((xy+x+y+1)^2) must merge x*y terms")
+    // 旧输出里 x^2*y^2 出现两次
+    assert(str(cas.expand((x ^ 2 + x * y + y ^ 2) ^ 2)) ==
+           "2 * x^3 * y + 2 * y^3 * x + 3 * x^2 * y^2 + x^4 + y^4",
+           "expand((x^2+xy+y^2)^2) must merge x^2*y^2 terms")
+    // 其余既有形态不能被合并改动
+    assert(str(cas.expand((x + y) ^ 2 * (x - y) ^ 2)) == "-2 * x^2 * y^2 + x^4 + y^4", "expand((x+y)^2(x-y)^2)")
+    assert(str(cas.expand((x + y) * (x + z) * (y + z))) ==
+           "2 * x * y * z + x^2 * y + x^2 * z + y^2 * x + y^2 * z + z^2 * x + z^2 * y", "expand((x+y)(x+z)(y+z))")
+    assert(str(cas.expand((x + y) ^ 3)) == "3 * x^2 * y + 3 * y^2 * x + x^3 + y^3", "expand((x+y)^3)")
+    assert(str(cas.expand((x + y + z) ^ 3)) ==
+           "3 * x^2 * y + 3 * x^2 * z + 3 * y^2 * x + 3 * y^2 * z + 3 * z^2 * x + 3 * z^2 * y + 6 * x * y * z + x^3 + y^3 + z^3",
+           "expand((x+y+z)^3)")
+    // 超越函数与根式同样要合并
+    assert(str(cas.expand((exp(x) + x) ^ 2)) == "2 * exp(x) * x + exp(x)^2 + x^2", "expand((exp(x)+x)^2)")
+    assert(str(cas.expand((sqrt(x) + 1) ^ 2)) == "x + 2 * sqrt(x) + 1", "expand((sqrt(x)+1)^2)")
+
+    // 完全幂嗅探的读法：R 必须约分干净、首项系数的 N 次根要分配进底数
+    assert(str(cas.simplify(cas.expand((x + y + z) ^ 3))) == "(x + y + z)^3", "perfect cube of a 3-term sum")
+    assert(str(cas.simplify(cas.expand(((x + y) ^ 2 + z) ^ 2))) == "(2 * x * y + x^2 + y^2 + z)^2", "perfect square with a multi-term base")
+    assert(str(cas.simplify(cas.expand((2 * x + 3 * y) ^ 3))) == "(2 * x + 3 * y)^3", "perfect cube with a leading coefficient")
+    assert(str(cas.simplify(cas.expand((x + y) ^ 4))) == "(x + y)^4", "perfect 4th power")
+
+    // 展开必须保值：expand(e) 与 e 的差化简后为零
+    assert(str(cas.simplify(cas.expand(((x + y) ^ 2 + z) ^ 2) - ((x + y) ^ 2 + z) ^ 2)) == "0", "expand preserves value (1)")
+    assert(str(cas.simplify(cas.expand((x * y + x + y + 1) ^ 2) - (x * y + x + y + 1) ^ 2)) == "0", "expand preserves value (2)")
+    assert(str(cas.simplify(cas.expand((x + y + z) ^ 3) - (x + y + z) ^ 3)) == "0", "expand preserves value (3)")
+}
+test_expand_merges_like_terms()

@@ -2064,9 +2064,34 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             }
         }
     } else if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
-        method = ic.cachedMethod;
-        owningClass = ic.cachedClass;
-        goto invoke_method;
+        // ★ 读与调用必须是同一条名字解析顺序（docs/OOP_MODEL_DESIGN.md §2.1）：
+        //   字典的键就是它"自己的袋子"，优先于原型成员，因此键命中时不能走原型缓存。
+        bool shadowed = false;
+        if (objBt == BuiltinType::DICT) {
+            auto d = static_cast<ObjDict*>(obj.asObj());
+            shadowed = d->keyMap.find(keyVal) != d->keyMap.end();
+        }
+        if (!shadowed) {
+            method = ic.cachedMethod;
+            owningClass = ic.cachedClass;
+            goto invoke_method;
+        }
+    }
+
+    // ★ 自己的袋子优先：字典的键先于原生原型
+    if (obj.isObjType(ObjType::DICT)) {
+        auto d = static_cast<ObjDict*>(obj.asObj());
+        auto it = d->keyMap.find(keyVal);
+        if (it != d->keyMap.end()) {
+            Value fv = d->elements[it->second].second;
+            if (fv.isFunctionClosure()) {
+                method = fv.asFunction();
+            } else {
+                registers[currentFrame->registerBase + a] = fv;
+                execCall(a, b, kwArgc, a, isTailCall, obj);
+                return;
+            }
+        }
     }
 
     if (objBt == BuiltinType::LIST) nativeProto = listProto;
@@ -2075,7 +2100,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
     else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
 
-    if (nativeProto) {
+    if (!method && nativeProto) {
         auto it = nativeProto->properties.find(methodName);
         if (it != nativeProto->properties.end() && !it->second.is_local) {
             Value fv = it->second.val;
@@ -2093,20 +2118,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         }
     }
 
-    if (!method && obj.isObjType(ObjType::DICT)) {
-        auto d = static_cast<ObjDict*>(obj.asObj());
-        auto it = d->keyMap.find(keyVal);
-        if (it != d->keyMap.end()) {
-            Value fv = d->elements[it->second].second;
-            if (fv.isFunctionClosure()) {
-                method = fv.asFunction();
-            } else {
-                registers[currentFrame->registerBase + a] = fv;
-                execCall(a, b, kwArgc, a, isTailCall);
-                return;
-            }
-        }
-    } else if (!method && obj.isObjType(ObjType::NAMESPACE)) {
+    if (!method && obj.isObjType(ObjType::NAMESPACE)) {
         auto ns = static_cast<ObjNamespace*>(obj.asObj());
         auto it = ns->fields.find(keyVal.asString());
         if (it != ns->fields.end()) {

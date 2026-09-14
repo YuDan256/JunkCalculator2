@@ -30,6 +30,7 @@ void registerPredefinedClasses() {
     ObjClass* rangeClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard rcGuard(rangeClass);
     rangeClass->name = "Range";
+    rangeClass->is_native = true;
 
     // __init__(*args)
     auto rangeInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "<init>", nullptr, "args");
@@ -168,6 +169,7 @@ void registerPredefinedClasses() {
     ObjClass* astNodeClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard astGuard(astNodeClass);
     astNodeClass->name = "ASTNode";
+    astNodeClass->is_native = true;
 
     auto astInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "line", "props"}, std::vector<bool>{false, false, false}, "<init>", nullptr);
     astInit->defaultValues.push_back(Value("Unknown"));
@@ -197,6 +199,7 @@ void registerPredefinedClasses() {
     ObjClass* tokenClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard tokenGuard(tokenClass);
     tokenClass->name = "Token";
+    tokenClass->is_native = true;
 
     auto tokenInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "lexeme", "line", "position"}, std::vector<bool>{false, false, false, false}, "<init>", nullptr);
     tokenInit->defaultValues.push_back(Value::fromInt32(0)); // line
@@ -260,6 +263,7 @@ void registerPredefinedClasses() {
     ObjClass* tokenStreamClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard tsGuard(tokenStreamClass);
     tokenStreamClass->name = "TokenStream";
+    tokenStreamClass->is_native = true;
 
     auto tsInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"tokens"}, std::vector<bool>{false}, "<init>", nullptr);
     GcObjGuard tsInitGuard(tsInit);
@@ -594,6 +598,7 @@ void registerPredefinedClasses() {
     ObjClass* exceptionClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard excGuard(exceptionClass);
     exceptionClass->name = "Exception";
+    exceptionClass->is_native = true;
 
     auto excInit = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{"type", "message"}, std::vector<bool>{false, false}, "<init>", nullptr);
     excInit->defaultValues.push_back(Value::none());
@@ -720,6 +725,7 @@ void registerPredefinedClasses() {
     ObjClass* baseNumClass = GcHeap::get().allocate<ObjClass>();
     GcObjGuard bnClassGuard(baseNumClass);
     baseNumClass->name = "BaseNum";
+    baseNumClass->is_native = true;
 
     auto newBaseInstance = [baseNumClass](const BaseNum& b) -> Value {
         auto inst = GcHeap::get().allocate<ObjInstance>();

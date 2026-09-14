@@ -701,14 +701,15 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                 auto inst = static_cast<ObjInstance*>(obj);
                 self(inst->classDef ? Value(inst->classDef) : Value::none(), self);
                 write8(os, inst->is_frozen ? 1 : 0);
-                write32(os, static_cast<uint32_t>(inst->properties.size()));
-                for (const auto& [k, p] : inst->properties) {
+                // ★ 槽位 + 溢出表统一迭代（docs/OOP_MODEL_DESIGN.md §六 第 8 步）
+                write32(os, static_cast<uint32_t>(inst->ownSize()));
+                inst->ownForEach([&](const std::string& k, const PropertyDescriptor& p) {
                     writeString(os, k);
                     self(p.val, self);
                     write8(os, p.is_const ? 1 : 0);
                     write8(os, p.is_local ? 1 : 0);
                     write8(os, p.is_static ? 1 : 0);
-                }
+                });
                 break;
             }
             case ObjType::NAMESPACE: {
@@ -1080,7 +1081,9 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         bool isConst = read8(is) != 0;
                         bool isLocal = read8(is) != 0;
                         bool isStatic = read8(is) != 0;
-                        inst->properties[k] = {v, isConst, isLocal, false, isStatic};
+                        (void)isStatic;
+                        // ★ 反序列化走统一的写入入口：有槽位就进槽位，否则进溢出表
+                        inst->ownPut(k, v, isConst, isLocal);
                     }
                     break;
                 }

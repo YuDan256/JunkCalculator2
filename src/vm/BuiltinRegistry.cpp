@@ -2237,9 +2237,9 @@ void BuiltinRegistry::registerSystemUtils() {
                 newInst->nativeData = inst->nativeData;
                 Value newVal(newInst);
                 visited[inst] = newVal;
-                for (const auto& [k, prop] : inst->ownItems()) {
-                    newInst->ownPut(k, deepCopyExact(prop.val), prop.is_const, prop.is_local);
-                }
+                inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
+                newInst->ownPut(k, deepCopyExact(prop.val), prop.is_const, prop.is_local);
+            });
                 setFrozen(newInst->is_frozen, inst->is_frozen);
                 return newVal;
             }
@@ -2608,7 +2608,7 @@ void BuiltinRegistry::registerStringFunctions() {
             auto inst = v.asInstance();
             auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
             if (found) return result;
-            return Value::fromInt32(static_cast<int32_t>(inst->ownItems().size()));
+            return Value::fromInt32(static_cast<int32_t>(inst->ownSize()));
         }
         if (v.isString()) return Value::fromInt32(static_cast<int32_t>(v.asObjString()->charLength));
         if (v.isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
@@ -3163,9 +3163,9 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->ownItems()) {
-                if (!v.is_local) L->vec.push_back(Value(k));
-            }
+            inst->ownForEach([&](const std::string& k, const PropertyDescriptor& v) {
+            if (!v.is_local) L->vec.push_back(Value(k));
+        });
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(self, "keys");
@@ -3190,9 +3190,9 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, v] : inst->ownItems()) {
-                if (!v.is_local) L->vec.push_back(v.val);
-            }
+            inst->ownForEach([&](const std::string&, const PropertyDescriptor& v) {
+            if (!v.is_local) L->vec.push_back(v.val);
+        });
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(self, "values");
@@ -3252,9 +3252,9 @@ void BuiltinRegistry::registerDictFunctions() {
         if (self.isInstance()) {
             auto inst = self.asInstance();
             int32_t count = 0;
-            for (const auto& [k, v] : inst->ownItems()) {
-                if (!v.is_local) count++;
-            }
+            inst->ownForEach([&](const std::string&, const PropertyDescriptor& v) {
+            if (!v.is_local) count++;
+        });
             return Value::fromInt32(count);
         }
         ObjDict* d = helpers::getDictMap(self, "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
@@ -3273,9 +3273,9 @@ void BuiltinRegistry::registerDictFunctions() {
             }
             if (v.isInstance()) {
                 std::vector<std::pair<Value, Value>> res;
-                for (const auto& [k, prop] : v.asInstance()->ownItems()) {
-                    if (!prop.is_local) res.push_back({Value(k), prop.val});
-                }
+                v.asInstance()->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
+                if (!prop.is_local) res.push_back({Value(k), prop.val});
+            });
                 return res;
             }
             ObjDict* d = helpers::getDictMap(v, "dictMerge");
@@ -3330,14 +3330,14 @@ void BuiltinRegistry::registerDictFunctions() {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            for (const auto& [k, prop] : inst->ownItems()) {
-                if (prop.is_local) continue;
-                ObjList* pair = GcHeap::get().allocate<ObjList>();
-                pair->vec.push_back(Value(k));
-                pair->vec.push_back(prop.val);
-                pair->is_frozen = true;
-                L->vec.push_back(Value(pair));
-            }
+            inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
+            if (prop.is_local) return;
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            pair->vec.push_back(Value(k));
+            pair->vec.push_back(prop.val);
+            pair->is_frozen = true;
+            L->vec.push_back(Value(pair));
+        });
             return Value(L);
         }
         ObjDict* d = helpers::getDictMap(self, "dictPairs");

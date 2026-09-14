@@ -17,6 +17,7 @@
 #include <memory>
 #include <sstream>
 #include <iomanip>
+#include <bit>
 #include <numeric> 
 #include <map>
 #include <unordered_map>
@@ -719,7 +720,6 @@ namespace jc {
 
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
-        std::unordered_map<std::string, PropertyDescriptor> properties;
         
         std::any nativeData;
         void* c_nativeData = nullptr;
@@ -735,56 +735,149 @@ namespace jc {
         ObjInstance() { type = ObjType::INSTANCE; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Instance."); }
 
-        // ★ 实例袋子的统一访问器（docs/OOP_MODEL_DESIGN.md §六 第 8 步的准备）：
-        //   所有对实例成员的读写都经这里。今天一律转发到 properties，语义完全等价；
-        //   把存储换成"扁平槽位 + 溢出表"时只需要改这一处。
+        // ★ 实例袋子的统一访问器（docs/OOP_MODEL_DESIGN.md §六 第 8 步）：
+        //   成员先按类上的编号表进**扁平槽位**（O(1) 下标，无字符串哈希、无 map 节点），
+        //   编号表里没有的（运行期新挂的字段、私有名）落**溢出表**。
+        //   槽位里只存 Value：成员的 is_const / is_local 是**类**的性质，读的时候现取类里那份，
+        //   所以槽位化不会把标志弄丢。
         using PropMap = std::unordered_map<std::string, PropertyDescriptor>;
-        PropMap::iterator       ownFind(const std::string& k)       { return properties.find(k); }
-        PropMap::const_iterator ownFind(const std::string& k) const { return properties.find(k); }
-        PropMap::iterator       ownEnd()                            { return properties.end(); }
-        PropMap::const_iterator ownEnd() const                      { return properties.end(); }
-        PropertyDescriptor&     ownRef(const std::string& k)        { return properties[k]; }
-        size_t                  ownCount(const std::string& k) const { return properties.count(k); }
-        void                    ownReserve(size_t n)                { if (n) properties.reserve(n); }
+        PropMap properties;                 // 溢出表 / 原生实例的存放地
+        mutable Value* slots = nullptr;             // 脚本类实例的扁平槽位
+        mutable uint64_t slotsOwned = 0;            // 前 64 个槽位哪些已被赋值
+        mutable uint64_t* slotsOwnedBig = nullptr;  // 超过 64 个槽位时的位图（惰性）
+        mutable bool initDone = false;
+        static constexpr int SLOT_INLINE = 64;
 
-        // ---- v2 访问（槽位友好）--------------------------------------------------
-        // 槽位里只存 Value，成员的标志（is_const / is_local）留在类上的编号表里，
-        // 所以调用方必须能分别拿到"值"和"标志"。今天两者都从 properties 转发，
-        // 换成"扁平槽位 + 溢出表"时只改这一处，调用点不动。
-        bool ownHas(const std::string& k) const { return properties.find(k) != properties.end(); }
+        bool slotMode() const { return classDef && !classDef->is_native && !classDef->slotNames.empty(); }
+        // 在构造实例、设好 classDef 之后调用一次：把扁平槽位按编号表开出来。
+        // const 下也会惰性补齐（访问器是 const 的，槽位是缓存而非可见状态）。
+        void initSlots() const {
+            if (initDone) return;
+            initDone = true;
+            if (!slotMode()) return;
+            const size_t n = classDef->slotNames.size();
+            slots = new Value[n];
+            if (n > SLOT_INLINE) slotsOwnedBig = new uint64_t[(n + 63) / 64]();
+        }
+        // 按名字登记："槽位下标 + 用哪个位图"
+        bool slotLookup(const std::string& k, int& idx, uint64_t*& word, uint64_t& bit) const {
+            if (!slotMode()) return false;
+            initSlots();
+            int i = classDef->slotOf(k);
+            if (i < 0) return false;
+            idx = i;
+            if (i < SLOT_INLINE) {
+                word = &slotsOwned;
+            } else {
+                word = slotsOwnedBig;
+                if (!word) return false;
+            }
+            bit = 1ull << (i % 64);
+            return true;
+        }
+        bool slotLookupMut(const std::string& k, int& idx, uint64_t*& word, uint64_t& bit) {
+            if (!slotMode()) return false;
+            initSlots();
+            int i = classDef->slotOf(k);
+            if (i < 0) return false;
+            idx = i;
+            if (i < SLOT_INLINE) {
+                word = &slotsOwned;
+            } else {
+                if (!slotsOwnedBig) {
+                    size_t nwords = static_cast<size_t>(classDef->slotNames.size() + 63) / 64;
+                    slotsOwnedBig = new uint64_t[nwords]();
+                }
+                word = slotsOwnedBig;
+            }
+            bit = 1ull << (i % 64);
+            return true;
+        }
+        // 槽位命中时，标志取类上那份（含继承链）
+        const PropertyDescriptor* classMember(const std::string& k) const {
+            for (const ObjClass* c = classDef; c; c = c->parent) {
+                auto it = c->properties.find(k);
+                if (it != c->properties.end()) return &it->second;
+            }
+            return nullptr;
+        }
+
+        // ---- 读 ------------------------------------------------------------------
+        bool ownHas(const std::string& k) const {
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookup(k, idx, word, bit)) return (*word & bit) != 0;
+            return properties.find(k) != properties.end();
+        }
         const PropertyDescriptor* ownFlags(const std::string& k) const {
             auto it = properties.find(k);
-            return it == properties.end() ? nullptr : &it->second;
+            if (it != properties.end()) return &it->second;
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookup(k, idx, word, bit) && (*word & bit)) {
+                if (const PropertyDescriptor* cm = classMember(k)) {
+                    flagsScratch = *cm;
+                    flagsScratch.val = slots[idx];
+                    return &flagsScratch;
+                }
+            }
+            return nullptr;
         }
         const Value* ownGet(const std::string& k) const {
             auto it = properties.find(k);
-            return it == properties.end() ? nullptr : &it->second.val;
+            if (it != properties.end()) return &it->second.val;
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookup(k, idx, word, bit) && (*word & bit)) return &slots[idx];
+            return nullptr;
         }
         Value* ownGetMut(const std::string& k) {
             auto it = properties.find(k);
-            return it == properties.end() ? nullptr : &it->second.val;
+            if (it != properties.end()) return &it->second.val;
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookupMut(k, idx, word, bit) && (*word & bit)) return &slots[idx];
+            return nullptr;
         }
-        // 写入：槽位名之下 isConst / isLocal 由类侧决定，这里只在溢出表里记录它们
+        // 写入：槽位命中就地存值（标志仍归类），否则进溢出表
         void ownPut(const std::string& k, const Value& v, bool isConst, bool isLocal) {
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookupMut(k, idx, word, bit)) {
+                slots[idx] = v;
+                *word |= bit;
+                // 只有显式带 const / private 标志的才额外留在溢出表里（标志不在槽位上）
+                if (isConst || isLocal) properties[k] = { v, isConst, isLocal };
+                return;
+            }
             properties[k] = { v, isConst, isLocal };
         }
         // 就地改一个已存在成员的标志（只有 DEFINE_PROP_CONST 会用到）
         void ownFlagSet(const std::string& k, bool isConst, bool isLocal) {
-            auto it = properties.find(k);
-            if (it != properties.end()) {
-                it->second.is_const = isConst;
-                it->second.is_local = isLocal;
-            }
+            const Value* v = ownGet(k);
+            if (v) properties[k] = { *v, isConst, isLocal };
         }
         // 迭代：槽位与溢出表统一成回调，调用方不再直接碰容器
-        size_t ownSize() const { return properties.size(); }
-        template <typename Fn>
-        void ownForEach(Fn&& fn) const {
-            for (const auto& kv : properties) fn(kv.first, kv.second);
+        size_t ownSize() const {
+            size_t n = properties.size();
+            if (slotMode()) {
+                if (slotsOwnedBig) {
+                    size_t words = static_cast<size_t>(classDef->slotNames.size() + 63) / 64;
+                    for (size_t w = 0; w < words; ++w) n += std::popcount(slotsOwnedBig[w]);
+                }
+                n += std::popcount(slotsOwned);
+            }
+            return n;
         }
         template <typename Fn>
-        void ownForEachMut(Fn&& fn) {
-            for (auto& kv : properties) fn(kv.first, kv.second);
+        void ownForEach(Fn&& fn) const {
+            if (slotMode()) {
+                const int total = static_cast<int>(classDef->slotNames.size());
+                for (int i = 0; i < total; ++i) {
+                    const uint64_t* word = (i < SLOT_INLINE) ? &slotsOwned : slotsOwnedBig;
+                    if (!word) break;
+                    if (!(*word & (1ull << (i % 64)))) continue;
+                    const std::string& k = classDef->slotNames[static_cast<size_t>(i)];
+                    if (properties.find(k) != properties.end()) continue; // 溢出表里那份单独走
+                    fn(k, PropertyDescriptor{ slots[i], false, false });
+                }
+            }
+            for (const auto& kv : properties) fn(kv.first, kv.second);
         }
         PropMap&                ownItems()                          { return properties; }
         const PropMap&          ownItems() const                    { return properties; }
@@ -793,25 +886,34 @@ namespace jc {
 
         void removeProperty(const std::string& key) {
             checkModify();
-            auto it = properties.find(key);
-            if (it == properties.end() || it->second.is_local) errKeyNotFound(key);
-            if (it->second.is_const) errDeleteConstProp(key);
-            properties.erase(it);
+            const PropertyDescriptor* pdesc = ownFlags(key);
+            if (!pdesc || pdesc->is_local) errKeyNotFound(key);
+            if (pdesc->is_const) errDeleteConstProp(key);
+            eraseMember(key);
         }
 
         void discardProperty(const std::string& key) {
             checkModify();
-            auto it = properties.find(key);
-            if (it != properties.end() && !it->second.is_local) {
-                if (it->second.is_const) errDeleteConstProp(key);
-                properties.erase(it);
+            const PropertyDescriptor* pdesc = ownFlags(key);
+            if (pdesc && !pdesc->is_local) {
+                if (pdesc->is_const) errDeleteConstProp(key);
+                eraseMember(key);
             }
         }
 
         void clearProperties() {
             checkModify();
-            for (const auto& [k, prop] : properties) {
-                if (!prop.is_local && prop.is_const) errDeleteConstProp(k);
+            ownForEach([&](const std::string& k, const PropertyDescriptor& p) {
+                if (!p.is_local && p.is_const) errDeleteConstProp(k);
+            });
+            // 槽位整体清空（只留 private / local 那份，它们住在溢出表）
+            if (slots) {
+                const int total = static_cast<int>(classDef->slotNames.size());
+                for (int i = 0; i < total; ++i) {
+                    const std::string& k = classDef->slotNames[static_cast<size_t>(i)];
+                    auto it = properties.find(k);
+                    if (it == properties.end() || !it->second.is_local) clearSlot(i);
+                }
             }
             for (auto it = properties.begin(); it != properties.end(); ) {
                 if (!it->second.is_local) {
@@ -824,11 +926,11 @@ namespace jc {
 
         void setProperty(const std::string& key, const Value& val) {
             checkModify();
-            auto it = properties.find(key);
-            if (it != properties.end()) {
-                if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'.");
-                if (it->second.is_const) errModifyConstProp(key);
-                it->second.val = val;
+            const PropertyDescriptor* existing = ownFlags(key);
+            if (existing) {
+                if (existing->is_local) JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'.");
+                if (existing->is_const) errModifyConstProp(key);
+                *ownGetMut(key) = val;
             } else {
                 // ★ 类链上的 const 成员不许被实例影子覆盖（见 docs/OOP_MODEL_DESIGN.md §2.6）
                 for (auto* cc = classDef; cc; cc = cc->parent) {
@@ -837,8 +939,26 @@ namespace jc {
                     if (cit != cc->properties.end() && !cit->second.is_local && !cit->second.is_field_decl && cit->second.is_const)
                         errModifyConstProp(key);
                 }
-                properties[key] = {val, false, false};
+                ownPut(key, val, false, false);
             }
+        }
+
+    private:
+        mutable PropertyDescriptor flagsScratch;   // ownFlags 的槽位返回值落点（一次一个）
+        void clearSlot(int i) {
+            if (i < SLOT_INLINE) {
+                slotsOwned &= ~(1ull << i);
+            } else if (slotsOwnedBig) {
+                slotsOwnedBig[i / 64] &= ~(1ull << (i % 64));
+            }
+        }
+        void eraseMember(const std::string& key) {
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookupMut(key, idx, word, bit)) {
+                *word &= ~bit;
+                return;
+            }
+            properties.erase(key);
         }
     };
     struct ObjSuper : public Obj {
@@ -1017,6 +1137,11 @@ namespace jc {
         c_bufferData = nullptr;
         c_bufferSize = 0;
         properties.clear();
+        delete[] slots;
+        slots = nullptr;
+        delete[] slotsOwnedBig;
+        slotsOwnedBig = nullptr;
+        slotsOwned = 0;
     }
 
     struct ObjUpVal : public Obj {
@@ -1982,9 +2107,12 @@ namespace jc {
                     c = c->parent;
                 }
                 if (inst->is_frozen) {
-                    for (const auto& [k, prop] : inst->properties) {
-                        try { if (!prop.val.isHashable()) return false; } catch (...) { return false; }
-                    }
+                    bool ok = true;
+                    inst->ownForEach([&](const std::string&, const PropertyDescriptor& prop) {
+                        if (!ok) return;
+                        try { if (!prop.val.isHashable()) ok = false; } catch (...) { ok = false; }
+                    });
+                    if (!ok) return false;
                     inst->is_hashable_cached = true;
                     return true;
                 }
@@ -2147,19 +2275,21 @@ namespace jc {
                     if (found) return res.truthy();
                     auto inst2 = static_cast<ObjInstance*>(robj);
                     if (inst1->is_frozen && inst2->is_frozen && inst1->classDef == inst2->classDef) {
-                        if (inst1->properties.size() != inst2->properties.size()) return false;
+                        if (inst1->ownSize() != inst2->ownSize()) return false;
                         
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
                         CompGuard guard(comparingPairs, pair);
                         
-                        for (const auto& [k, prop1] : inst1->properties) {
-                            auto it = inst2->properties.find(k);
-                            if (it == inst2->properties.end()) return false;
-                            try { if (!equals(prop1.val, it->second.val)) return false; }
-                            catch (...) { return false; }
-                        }
-                        return true;
+                        bool same = true;
+                        inst1->ownForEach([&](const std::string& k, const PropertyDescriptor& prop1) {
+                            if (!same) return;
+                            const Value* other = inst2->ownGet(k);
+                            if (!other) { same = false; return; }
+                            try { if (!equals(prop1.val, *other)) same = false; }
+                            catch (...) { same = false; }
+                        });
+                        return same;
                     }
                     return false;
                 }
@@ -2757,11 +2887,14 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
 
             os << "<" << prefix << " {";
                 bool first = true;
-                std::map<std::string, PropertyDescriptor> sorted_props(inst->properties.begin(), inst->properties.end());
-                for (const auto& [k, prop] : sorted_props) {
-                    if (prop.is_local) continue;
-                    if (isReservedInternalName(k)) continue;
-
+                std::vector<std::pair<std::string, PropertyDescriptor>> shownProps;
+                inst->ownForEach([&](const std::string& k, const PropertyDescriptor& p) {
+                    if (p.is_local || isReservedInternalName(k)) return;
+                    shownProps.emplace_back(k, p);
+                });
+                std::sort(shownProps.begin(), shownProps.end(),
+                          [](const auto& a, const auto& b) { return a.first < b.first; });
+                for (const auto& [k, prop] : shownProps) {
                     if (!first) os << ", ";
                     if (prop.is_const) os << "const ";
                     
@@ -2995,9 +3128,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 if (inst->has_cached_hash) return inst->cached_hash;
                 std::string cname = inst->classDef ? inst->classDef->name : "";
                 size_t seed = sipHash24String(cname);
-                size_t sz = inst->properties.size();
+                size_t sz = inst->ownSize();
                 size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xE7B2A4D8F1C56039ULL;
-                for (const auto& [k, prop] : inst->properties) {
+                inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
                     size_t k_hash = sipHash24String(k);
                     size_t v_hash = ValueHasher{}(prop.val);
                     size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
@@ -3005,7 +3138,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                     kv_hash ^= kv_hash >> 31;
                     kv_hash *= 0x94D049BB133111EBULL;
                     fields_hash += kv_hash;
-                }
+                });
                 seed ^= fields_hash + 0x9e3779b9 + (seed << 6) + (seed >> 2);
                 inst->cached_hash = seed;
                 inst->has_cached_hash = true;
@@ -3067,6 +3200,14 @@ inline void GcHeap::markObj(Obj* obj) {
             auto inst = static_cast<ObjInstance*>(obj);
             markObj(inst->classDef);
             for (auto& [k, prop] : inst->properties) markValue(prop.val);
+            if (inst->slots && inst->slotMode()) {
+                const int total = static_cast<int>(inst->classDef->slotNames.size());
+                for (int i = 0; i < total; ++i) {
+                    const uint64_t* word = (i < ObjInstance::SLOT_INLINE) ? &inst->slotsOwned : inst->slotsOwnedBig;
+                    if (!word || !(*word & (1ull << (i % 64)))) continue;
+                    markValue(inst->slots[i]);
+                }
+            }
             break;
         }
         case ObjType::SUPER_PROXY: {

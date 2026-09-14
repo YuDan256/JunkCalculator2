@@ -590,7 +590,6 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             Value res(instance);
             GcValueGuard guard(res);
             instance->classDef = cls;
-            instance->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶，省掉插入过程中的多次 rehash
             
             ObjClosure* initMethod = nullptr;
             auto c = cls;
@@ -1416,7 +1415,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto instance = GcHeap::get().allocate<ObjInstance>();
         registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
-        instance->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶，省掉插入过程中的多次 rehash
 
         // ★ 字段默认值初始化：用独立调用执行（callVMFunction 走标准帧基址，不会踩到本次构造
         // 参数所在的 calleeReg+1 起那段寄存器）。先于用户 init 执行，保证 init 内能读到字段
@@ -3127,7 +3125,6 @@ Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = cls;
-    inst->ownReserve(cls ? cls->slotNames.size() : 0);   // ★ 预留桶
     
     if (val.isString()) {
         std::string msgStr = val.asString();
@@ -6214,21 +6211,21 @@ Value VM::run(int targetFrameDepth) {
                 } else if (iterable.isInstance()) {
                     auto inst = iterable.asInstance();
                     if (destructFlag) {
-                        for (const auto& [key, prop] : inst->ownItems()) {
-                            if (prop.is_local) continue;
-                            if (isReservedInternalName(key)) continue;
-                            ObjList* pair = GcHeap::get().allocate<ObjList>();
-                            pair->vec.push_back(Value(key));
-                            pair->vec.push_back(prop.val);
-                            pair->is_frozen = true;
-                            elements->vec.push_back(Value(pair));
-                        }
+                        inst->ownForEach([&](const std::string& key, const PropertyDescriptor& prop) {
+                        if (prop.is_local) return;
+                        if (isReservedInternalName(key)) return;
+                        ObjList* pair = GcHeap::get().allocate<ObjList>();
+                        pair->vec.push_back(Value(key));
+                        pair->vec.push_back(prop.val);
+                        pair->is_frozen = true;
+                        elements->vec.push_back(Value(pair));
+                    });
                     } else {
-                        for (const auto& [key, prop] : inst->ownItems()) {
-                            if (prop.is_local) continue;
-                            if (isReservedInternalName(key)) continue;
-                            elements->vec.push_back(Value(key));
-                        }
+                        inst->ownForEach([&](const std::string& key, const PropertyDescriptor& prop) {
+                        if (prop.is_local) return;
+                        if (isReservedInternalName(key)) return;
+                        elements->vec.push_back(Value(key));
+                    });
                     }
                 } else {
                     JC2_THROW(RuntimeError, "Cannot iterate over this type.");
@@ -7274,12 +7271,12 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    for (const auto& [k, prop] : inst->ownItems()) {
-                        if (prop.is_local) continue;
-                        if (isReservedInternalName(k)) continue;
-                        if (excludeKeys.count(k)) continue;
-                        restDict->set(Value(k), prop.val);
-                    }
+                    inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
+                    if (prop.is_local) return;
+                    if (isReservedInternalName(k)) return;
+                    if (excludeKeys.count(k)) return;
+                    restDict->set(Value(k), prop.val);
+                });
                 } else if (obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     for (const auto& [k, field] : ns->fields) {
@@ -8845,21 +8842,21 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
     } else if (iterable.isInstance()) {
         auto inst = iterable.asInstance();
         if (destructFlag) {
-            for (const auto& [key, prop] : inst->ownItems()) {
-                if (prop.is_local) continue;
-                if (isReservedInternalName(key)) continue;
-                ObjList* pair = GcHeap::get().allocate<ObjList>();
-                pair->vec.push_back(Value(key));
-                pair->vec.push_back(prop.val);
-                pair->is_frozen = true;
-                elements->vec.push_back(Value(pair));
-            }
+            inst->ownForEach([&](const std::string& key, const PropertyDescriptor& prop) {
+            if (prop.is_local) return;
+            if (isReservedInternalName(key)) return;
+            ObjList* pair = GcHeap::get().allocate<ObjList>();
+            pair->vec.push_back(Value(key));
+            pair->vec.push_back(prop.val);
+            pair->is_frozen = true;
+            elements->vec.push_back(Value(pair));
+        });
         } else {
-            for (const auto& [key, prop] : inst->ownItems()) {
-                if (prop.is_local) continue;
-                if (isReservedInternalName(key)) continue;
-                elements->vec.push_back(Value(key));
-            }
+            inst->ownForEach([&](const std::string& key, const PropertyDescriptor& prop) {
+            if (prop.is_local) return;
+            if (isReservedInternalName(key)) return;
+            elements->vec.push_back(Value(key));
+        });
         }
     } else {
         JC2_THROW(RuntimeError, "Cannot iterate over this type.");
@@ -9869,12 +9866,12 @@ uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits) {
         }
     } else if (obj.isInstance()) {
         auto inst = obj.asInstance();
-        for (const auto& [k, prop] : inst->ownItems()) {
-            if (prop.is_local) continue;
-            if (isReservedInternalName(k)) continue;
-            if (excludeKeys.count(k)) continue;
-            restDict->set(Value(k), prop.val);
-        }
+        inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
+        if (prop.is_local) return;
+        if (isReservedInternalName(k)) return;
+        if (excludeKeys.count(k)) return;
+        restDict->set(Value(k), prop.val);
+    });
     } else if (obj.isObjType(ObjType::NAMESPACE)) {
         auto ns = static_cast<ObjNamespace*>(obj.asObj());
         for (const auto& [k, field] : ns->fields) {

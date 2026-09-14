@@ -554,6 +554,34 @@ namespace jc {
         bool is_frozen = false;              // ★ trait 定义后冻结
         std::vector<ObjClass*> traits;       // ★ 组合的 trait（含继承，已平铺）
         std::unordered_set<std::string> ownMembers;  // ★ 自身定义的成员名（区别于 trait 复制的）
+
+        // ★ 实例成员编号表（docs/OOP_MODEL_DESIGN.md §六 第 8 步）：类定义时按声明顺序给
+        //   实例成员（方法 + 字段声明）编号，供"实例扁平槽位"使用。父类与 trait 的编号在
+        //   INHERIT / WITH_TRAIT 处平铺进来，祖先在前、自身在后。
+        std::vector<std::string> slotNames;
+        std::unordered_map<std::string, int> slotIndex;
+        void inheritSlotsFrom(const ObjClass* src) {
+            if (!src) return;
+            for (size_t i = 0; i < src->slotNames.size(); ++i) {
+                const std::string& n = src->slotNames[i];
+                if (slotIndex.find(n) == slotIndex.end()) {
+                    slotIndex.emplace(n, static_cast<int>(slotNames.size()));
+                    slotNames.push_back(n);
+                }
+            }
+        }
+        int internSlot(const std::string& memberName) {
+            auto it = slotIndex.find(memberName);
+            if (it != slotIndex.end()) return it->second;
+            int idx = static_cast<int>(slotNames.size());
+            slotNames.push_back(memberName);
+            slotIndex.emplace(memberName, idx);
+            return idx;
+        }
+        int slotOf(const std::string& memberName) const {
+            auto it = slotIndex.find(memberName);
+            return it == slotIndex.end() ? -1 : it->second;
+        }
         std::function<Value(const std::vector<Value>&)> native_allocator;
         ObjClass() { 
             static uint64_t nextId = 1;

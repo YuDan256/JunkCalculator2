@@ -6556,6 +6556,7 @@ Value VM::run(int targetFrameDepth) {
                         fn->is_local = true;
                         fn->owner_class = cls;
                         std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
+                        if (methodName.empty() || methodName[0] != '<') cls->internSlot(mangledName);
                         if (cls) {
                             cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
                             cls->ownMembers.insert(mangledName);
@@ -6565,6 +6566,7 @@ Value VM::run(int targetFrameDepth) {
                             // ★ 子类覆盖从 trait 继承来的默认方法时，签名必须一致
                             //   （私有方法按词法作用域各归其主，不走这里）
                             checkTraitDefaultOverride(cls, methodName, fn);
+                            if (methodName.empty() || methodName[0] != '<') cls->internSlot(methodName);
                             cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false, isAbstract};
                             cls->ownMembers.insert(methodName);
                         }
@@ -6585,7 +6587,10 @@ Value VM::run(int targetFrameDepth) {
                 auto sub = static_cast<ObjClass*>(subClass.asObj());
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
                 
-                if (sub) sub->parent = sup;
+                if (sub) {
+                    sub->parent = sup;
+                    sub->inheritSlotsFrom(sup);   // ★ 父类编号在前
+                }
                 break;
             }
             case OpCode::WITH_TRAIT: {
@@ -6599,6 +6604,7 @@ Value VM::run(int targetFrameDepth) {
                 auto tr = static_cast<ObjClass*>(traitVal.asObj());
                 if (!tr->isTrait) JC2_THROW(TypeError, "'" + tr->name + "' is not a trait.");
                 applyTrait(cls, tr, cls->ownMembers);
+                cls->inheritSlotsFrom(tr);        // ★ trait 编号随后（自身成员仍然最后）
                 break;
             }
             case OpCode::FREEZE_CLASS: {
@@ -7065,7 +7071,10 @@ Value VM::run(int targetFrameDepth) {
                         std::string mangledName = manglePrivate(cls->classId, keyStr);
                         if (val.isNone()) {
                             // ★ local 字段声明登记（同 DEFINE_PROP 的声明分支）
-                            if (cls) cls->properties[mangledName] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
+                            if (cls) {
+                                cls->properties[mangledName] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
+                                cls->internSlot(mangledName);
+                            }
                             break;
                         }
                         auto it = cls->properties.find(mangledName);
@@ -7123,7 +7132,10 @@ Value VM::run(int targetFrameDepth) {
                     if (val.isNone()) {
                         // ★ 字段声明登记（值为 none）：只带标志，不带值；对类/实例都不可见，
                         //   也不参与 const 检查，因此 K.cf = 21 仍会新建一个 static。
-                        if (cls) cls->properties[keyStr] = { Value::none(), op == OpCode::DEFINE_PROP_CONST, false, false, false, true };
+                        if (cls) {
+                            cls->properties[keyStr] = { Value::none(), op == OpCode::DEFINE_PROP_CONST, false, false, false, true };
+                            cls->internSlot(keyStr);
+                        }
                         break;
                     }
                     auto it = cls->properties.find(keyStr);

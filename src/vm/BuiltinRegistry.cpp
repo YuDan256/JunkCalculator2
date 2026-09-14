@@ -2138,6 +2138,11 @@ void BuiltinRegistry::registerSystemUtils() {
             args[0].asInstance()->is_frozen = true;
         } else if (args[0].isObjType(ObjType::NAMESPACE)) {
             static_cast<ObjNamespace*>(args[0].asObj())->is_frozen = true;
+        } else if (args[0].isClass()) {
+            // ★ 类也能冻结：is_frozen 是"可哈希"的前提，必须覆盖整个类
+            //   （含 static 域），否则冻结之后仍能加改 static，用它做字典键就不成立。
+            //   docs/OOP_MODEL_DESIGN.md §2.8。
+            static_cast<ObjClass*>(args[0].asObj())->is_frozen = true;
         }
         return args[0];
         }, {"obj"});
@@ -2153,6 +2158,9 @@ void BuiltinRegistry::registerSystemUtils() {
             return Value(args[0].asInstance()->is_frozen);
         } else if (args[0].isObjType(ObjType::NAMESPACE)) {
             return Value(static_cast<ObjNamespace*>(args[0].asObj())->is_frozen);
+        } else if (args[0].isClass()) {
+            // ★ 类/trait 如实返回（trait 定义完成即 is_frozen，此前这里缺失分支而恒为 false）
+            return Value(static_cast<ObjClass*>(args[0].asObj())->is_frozen);
         }
         return Value(false);
         }, {"obj"});

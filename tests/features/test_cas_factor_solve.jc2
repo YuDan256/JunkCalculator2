@@ -416,3 +416,50 @@ test_factor_linear_factors() = {
     assert(str(cas.factor((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2))) == str(cas.factor(cas.factor((x + y + z) * (x ^ 2 + y ^ 2 + z ^ 2)))), "idempotent 3-var")
 }
 test_factor_linear_factors()
+
+// =====================================================================
+// 下游算法必须返回 cas.simplify 的规范形
+//   即 simplify(f(e)) == f(e)（f = integ / diff）。
+//   此前 integ / diff 的出口用的是轻量 simplify、limit / taylor 出口什么都不做，
+//   于是这个不变量被打破，下游之间按结构做的去重/缓存建立在不一致的表示上。
+//   实测 21 个下游用例里 2 个不一致：
+//       integ(x*log(x)) = 1/2*x^2*log(x) - 1/4*x^2     （规范形提出公共 x^2）
+//       diff(exp(x)/x)  = exp(x)*x^(-1) - exp(x)*x^(-2)（规范形合并成 exp(x)*(x-1)/x^2）
+//   规范形还明显更紧凑，下面若干条同时钉住"是规范形"和"确实压缩了"。
+// =====================================================================
+test_downstream_returns_canonical_form() = {
+    x = sym("x")
+
+    // 精确形态：既规范、又比展开形紧凑
+    assert(str(cas.diff((x + 1) ^ 6, x)) == "6 * (x + 1)^5", "diff((x+1)^6)")
+    assert(str(cas.diff((x - 2) ^ 4, x)) == "4 * (x - 2)^3", "diff((x-2)^4)")
+    assert(str(cas.diff(x ^ 2 * exp(x), x)) == "exp(x) * x * (x + 2)", "diff(x^2*exp(x))")
+    assert(str(cas.diff(exp(x) / x, x)) == "exp(x) * (x - 1) * x^(-2)", "diff(exp(x)/x)")
+    assert(str(cas.integ(x * log(x), x)) == "x^2 * (1/2 * log(x) - 1/4)", "integ(x*log(x))")
+    assert(str(cas.integ(x * exp(x), x)) == "exp(x) * (x - 1)", "integ(x*exp(x))")
+    assert(str(cas.integ(cos(x) * sin(x), x)) == "-1/2 * cos(x)^2", "integ(cos(x)*sin(x))")
+    assert(str(cas.integ(1 / (x ^ 2 - 1), x)) == "-1/2 * log(x + 1) + 1/2 * log(x - 1)", "integ(1/(x^2-1))")
+
+    // 不变量本体：simplify(f(e)) 必须等于 f(e)
+    can(name, r) = {
+        assert(str(cas.simplify(r)) == str(r),
+               name + ": downstream result is not in canonical form; simplify gave " + str(cas.simplify(r)));
+    }
+    can("integ x^2", cas.integ(x ^ 2, x))
+    can("integ 1/x", cas.integ(1 / x, x))
+    can("integ sin(x)", cas.integ(sin(x), x))
+    can("integ cos(x)*sin(x)", cas.integ(cos(x) * sin(x), x))
+    can("integ x*exp(x)", cas.integ(x * exp(x), x))
+    can("integ x*log(x)", cas.integ(x * log(x), x))
+    can("integ 1/(x^2+1)", cas.integ(1 / (x ^ 2 + 1), x))
+    can("integ 1/(x^2-1)", cas.integ(1 / (x ^ 2 - 1), x))
+    can("integ (x^5-1)/(x-1)", cas.integ((x ^ 5 - 1) / (x - 1), x))
+    can("integ exp(x)*sin(x)", cas.integ(exp(x) * sin(x), x))
+    can("integ (x+1)/(x^2+2x+1)", cas.integ((x + 1) / (x ^ 2 + 2 * x + 1), x))
+    can("diff x^2", cas.diff(x ^ 2, x))
+    can("diff (x+1)^6", cas.diff((x + 1) ^ 6, x))
+    can("diff exp(x)/x", cas.diff(exp(x) / x, x))
+    can("diff sin(x)*cos(x)", cas.diff(sin(x) * cos(x), x))
+    can("diff (x^2-1)/(x+1)", cas.diff((x ^ 2 - 1) / (x + 1), x))
+}
+test_downstream_returns_canonical_form()

@@ -746,6 +746,28 @@ namespace jc {
         PropertyDescriptor&     ownRef(const std::string& k)        { return properties[k]; }
         size_t                  ownCount(const std::string& k) const { return properties.count(k); }
         void                    ownReserve(size_t n)                { if (n) properties.reserve(n); }
+
+        // ---- v2 访问（槽位友好）--------------------------------------------------
+        // 槽位里只存 Value，成员的标志（is_const / is_local）留在类上的编号表里，
+        // 所以调用方必须能分别拿到"值"和"标志"。今天两者都从 properties 转发，
+        // 换成"扁平槽位 + 溢出表"时只改这一处，调用点不动。
+        bool ownHas(const std::string& k) const { return properties.find(k) != properties.end(); }
+        const PropertyDescriptor* ownFlags(const std::string& k) const {
+            auto it = properties.find(k);
+            return it == properties.end() ? nullptr : &it->second;
+        }
+        const Value* ownGet(const std::string& k) const {
+            auto it = properties.find(k);
+            return it == properties.end() ? nullptr : &it->second.val;
+        }
+        Value* ownGetMut(const std::string& k) {
+            auto it = properties.find(k);
+            return it == properties.end() ? nullptr : &it->second.val;
+        }
+        // 写入：槽位名之下 isConst / isLocal 由类侧决定，这里只在溢出表里记录它们
+        void ownPut(const std::string& k, const Value& v, bool isConst, bool isLocal) {
+            properties[k] = { v, isConst, isLocal };
+        }
         PropMap&                ownItems()                          { return properties; }
         const PropMap&          ownItems() const                    { return properties; }
         void clear() override { clearProperties(); }

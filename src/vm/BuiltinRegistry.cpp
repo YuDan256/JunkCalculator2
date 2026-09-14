@@ -2097,9 +2097,9 @@ void BuiltinRegistry::registerSystemUtils() {
         GcObjGuard instGuard(inst);
         inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
         
-        inst->ownRef("type") = {Value("Variable"), false, false};
-        inst->ownRef("line") = {Value::fromInt32(0), false, false};
-        inst->ownRef("name") = {Value(uniqueName), false, false};
+        inst->ownPut("type", Value("Variable"), false, false);
+        inst->ownPut("line", Value::fromInt32(0), false, false);
+        inst->ownPut("name", Value(uniqueName), false, false);
         
         return Value(inst);
     }, {"prefix"});
@@ -2238,7 +2238,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 Value newVal(newInst);
                 visited[inst] = newVal;
                 for (const auto& [k, prop] : inst->ownItems()) {
-                    newInst->ownRef(k) = {deepCopyExact(prop.val), prop.is_const, prop.is_local};
+                    newInst->ownPut(k, deepCopyExact(prop.val), prop.is_const, prop.is_local);
                 }
                 setFrozen(newInst->is_frozen, inst->is_frozen);
                 return newVal;

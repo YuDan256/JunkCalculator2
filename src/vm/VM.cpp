@@ -667,10 +667,10 @@ Value VM::makeTokenInstance(const Token& t) {
         typeStr = typeStr.substr(0, paren);
     }
     
-    inst->ownRef("type") = {Value(typeStr), false, false};
-    inst->ownRef("lexeme") = {Value(t.lexeme), false, false};
-    inst->ownRef("line") = {Value::fromInt32(t.line), false, false};
-    inst->ownRef("position") = {Value::fromInt32(t.position), false, false};
+    inst->ownPut("type", Value(typeStr), false, false);
+    inst->ownPut("lexeme", Value(t.lexeme), false, false);
+    inst->ownPut("line", Value::fromInt32(t.line), false, false);
+    inst->ownPut("position", Value::fromInt32(t.position), false, false);
     
     return Value(inst);
 }
@@ -3143,10 +3143,10 @@ Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     
     // type 字段：运行时错误用类名，兜底（编译期/内部错误）用 typeName
     const char* tn = errorClass ? errorClass->name.c_str() : (typeName ? typeName : "Exception");
-    inst->ownRef("type") = {Value(std::string(tn)), false, false};
-    inst->ownRef("message") = {val, false, false};
-    inst->ownRef("traceback") = {Value(buildStackTrace()), false, false};
-    inst->ownRef("suppressed") = {Value(GcHeap::get().allocate<ObjList>()), false, false};
+    inst->ownPut("type", Value(std::string(tn)), false, false);
+    inst->ownPut("message", val, false, false);
+    inst->ownPut("traceback", Value(buildStackTrace()), false, false);
+    inst->ownPut("suppressed", Value(GcHeap::get().allocate<ObjList>()), false, false);
     
     return Value(inst);
 }
@@ -7051,8 +7051,8 @@ Value VM::run(int targetFrameDepth) {
                         // 直接就地改写命中的描述符（实例属性 / 类表 / trait 表均适用）
                         const_cast<PropertyDescriptor*>(pd)->val = val;
                     } else {
-                        if (inst->ownCount(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
-                        inst->ownRef(mangledName) = {val, op == OpCode::DEFINE_PRIVATE_CONST, true};
+                        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+                        inst->ownPut(mangledName, val, op == OpCode::DEFINE_PRIVATE_CONST, true);
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -7127,7 +7127,7 @@ Value VM::run(int targetFrameDepth) {
                         if (cit != cc->properties.end() && !cit->second.is_local && !cit->second.is_field_decl && cit->second.is_const)
                             JC2_THROW(RuntimeError, "Cannot modify const property '" + keyStr + "'.");
                     }
-                    inst->ownRef(keyStr) = {val, op == OpCode::DEFINE_PROP_CONST, false};
+                    inst->ownPut(keyStr, val, op == OpCode::DEFINE_PROP_CONST, false);
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen trait '" + cls->name + "'.");
@@ -10699,7 +10699,7 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->ownFind(mangledName);
         if (it != inst->ownEnd()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
-        inst->ownRef(mangledName) = {val, false, true};
+        inst->ownPut(mangledName, val, false, true);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
@@ -10729,7 +10729,7 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         auto it = inst->ownFind(mangledName);
         if (it != inst->ownEnd()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
-        inst->ownRef(mangledName) = {val, true, true};
+        inst->ownPut(mangledName, val, true, true);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
@@ -10758,7 +10758,7 @@ void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
             if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
             JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
         }
-        inst->ownRef(keyStr) = {val, false, false};
+        inst->ownPut(keyStr, val, false, false);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string keyStr = keyVal.asString();
@@ -10787,7 +10787,7 @@ void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t ic
             if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
             JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
         }
-        inst->ownRef(keyStr) = {val, true, false};
+        inst->ownPut(keyStr, val, true, false);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         std::string keyStr = keyVal.asString();

@@ -181,12 +181,12 @@ namespace helpers {
     // 静态回调：由 VM 或 Evaluator 在初始化时设置，用于绑定 self
     inline std::function<void(const std::string&, const Value&)> setGlobalCallback = nullptr;
     inline std::function<Value(const std::string&)> getGlobalCallback = nullptr;
-    // 检查 Instance 是否有指定 dunder 方法（沿继承链查找）
+    // 检查 Instance 是否有指定 dunder 方法（沿继承链查找模板表与 static 域）
     inline bool hasDunder(const Value& val, const std::string& name) {
         if (!val.isInstance()) return false;
         auto c = val.asInstance()->classDef;
         while (c) {
-            if (c->properties.count(name)) return true;
+            if (c->members.count(name) || c->properties.count(name)) return true;
             c = c->parent;
         }
         return false;

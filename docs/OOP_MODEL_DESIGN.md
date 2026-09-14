@@ -350,10 +350,10 @@ T.m  = ...   ->  RuntimeError: Cannot modify frozen trait 'T'.
 | 6 `classContext` 词法化 | 完成 | `fc96e60` |
 | 7 JIT + 序列化同步 | 完成 | `51ac1f9` |
 | 8 成员编号 | 完成 | `1c72d00` |
-| 8 实例扁平槽位 | **待做（本阶段主线）** | — |
-| 9 构造时把成员放进槽位 | **待做（本阶段主线）** | — |
+| 8 实例扁平槽位 | 完成 | `44a0e0a` `94dbd2b` `d030baa` |
+| 9 构造时把成员放进槽位 | 完成 | `2ec8c4d` |
 | 10 字段声明进类袋子 | 完成（编号的前置） | `4cece60` |
-| 11 模板冻结 | **待撤销**（见下） | `96c76d0` |
+| 11 模板冻结 | 已撤销（统一写规则） | `96c76d0` → 撤销见下 |
 
 **第 11 步为什么必须撤销**：它让 `C.名字 = 值` 的行为取决于这个名字当前装的是什么——
 命中实例方法模板就报错、命中 static 就覆盖、命中字段声明名或缺席名就新建 static。
@@ -366,9 +366,12 @@ T.m  = ...   ->  RuntimeError: Cannot modify frozen trait 'T'.
 1. **第 8 步后半**：实例成员改扁平槽位（构造时抄成员才便宜）。
 2. **第 9 步**：构造时把类模板抄进实例（无捕获抄指针、有捕获每实例一份），
    使得 `A.who = f` 只影响新对象。
-3. **统一写规则 + 撤销模板冻结**：删掉 `Cannot modify frozen method template` 这条分支，
-   `C.名字 = 值` 一律"命中就覆盖、`const` 就拒、没命中就新建 static"。
-   同时 `tests/features/test_member_model.jc2` 里 `test_templates_are_frozen` 的断言按新语义改写。
+3. **统一写规则 + 撤销模板冻结**：类袋子里 static 域与实例成员模板**分属两张表**
+   （`ObjClass::properties` / `ObjClass::members`），`C.名字 = 值` 只写 static 域：
+   命中就覆盖、`const` 就拒、没命中就新建一个 static —— 不看这个名字装的是方法模板、
+   字段声明还是 static。`tests/features/test_member_model.jc2` 里
+   `test_templates_are_frozen` 已按新语义改写为
+   `test_class_writes_only_touch_the_static_domain`。
 
 **已经拿到的附带收益（保留，不属偏离）**：实例袋子在构造时按 `classDef->slotNames.size()`
 预留桶（`53c971b`），实测构造 C10 `2.76 → 2.36 µs/个`、C20 `4.37 → 3.99`，

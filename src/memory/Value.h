@@ -549,7 +549,14 @@ namespace jc {
         uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
+        // ★ 类袋子分两张表（docs/OOP_MODEL_DESIGN.md §2.6 / §六 统一写规则）：
+        //   properties —— static 域（可写）+ 字段声明登记（只带标志）；
+        //   members    —— 实例成员模板（方法、抽象方法），类定义完成后只读。
+        //   `C.名字 = 值` 只写 static 域：命中就覆盖、const 就拒、没命中就新建；
+        //   写不到 members，所以 `K.cm = 22` 是在 static 域里新建一个 cm，而不是
+        //   把同名的方法模板顶掉。
         std::unordered_map<std::string, PropertyDescriptor> properties;
+        std::unordered_map<std::string, PropertyDescriptor> members;
         bool is_native = false;
         bool isTrait = false;                // ★ trait 标记
         bool is_frozen = false;              // ★ trait 定义后冻结
@@ -589,7 +596,57 @@ namespace jc {
             classId = nextId++;
             type = ObjType::CLASS; 
         }
-        void clearTotal() override { properties.clear(); }
+        void clearTotal() override { properties.clear(); members.clear(); }
+
+        // ---- 类袋子的成员查找 ----------------------------------------------------
+        // 沿 parent 链找 static 域（trait 成员在组合时就已复制进宿主的这两张表，
+        // 所以只走 parent 链就够，见 conformsTo 的注释）。
+        const PropertyDescriptor* findStatic(const std::string& memberName) const {
+            for (const ObjClass* c = this; c; c = c->parent) {
+                auto it = c->properties.find(memberName);
+                if (it != c->properties.end()) return &it->second;
+            }
+            return nullptr;
+        }
+        PropertyDescriptor* findStaticMut(const std::string& memberName) {
+            for (ObjClass* c = this; c; c = c->parent) {
+                auto it = c->properties.find(memberName);
+                if (it != c->properties.end()) return &it->second;
+            }
+            return nullptr;
+        }
+        // 只查本类（不爬 parent 链）：需要"这一级有没有这个名字"的地方用它。
+        const PropertyDescriptor* ownMember(const std::string& memberName) const {
+            auto mit = members.find(memberName);
+            if (mit != members.end()) return &mit->second;
+            auto pit = properties.find(memberName);
+            return pit == properties.end() ? nullptr : &pit->second;
+        }
+        PropertyDescriptor* ownMemberMut(const std::string& memberName) {
+            auto mit = members.find(memberName);
+            if (mit != members.end()) return &mit->second;
+            auto pit = properties.find(memberName);
+            return pit == properties.end() ? nullptr : &pit->second;
+        }
+        // 两张表都找（内部成员解析、super、序列化等需要看到实例成员模板的地方）
+        const PropertyDescriptor* findMember(const std::string& memberName) const {
+            for (const ObjClass* c = this; c; c = c->parent) {
+                auto mit = c->members.find(memberName);
+                if (mit != c->members.end()) return &mit->second;
+                auto pit = c->properties.find(memberName);
+                if (pit != c->properties.end()) return &pit->second;
+            }
+            return nullptr;
+        }
+        PropertyDescriptor* findMemberMut(const std::string& memberName) {
+            for (ObjClass* c = this; c; c = c->parent) {
+                auto mit = c->members.find(memberName);
+                if (mit != c->members.end()) return &mit->second;
+                auto pit = c->properties.find(memberName);
+                if (pit != c->properties.end()) return &pit->second;
+            }
+            return nullptr;
+        }
 
         // ★ 类型从属判定（全引擎唯一权威）：本类是否就是 target，或经由「祖先类链 /
         //   trait 组合」达成 target。
@@ -793,9 +850,11 @@ namespace jc {
             bit = 1ull << (i % 64);
             return true;
         }
-        // 槽位命中时，标志取类上那份（含继承链）
+        // 槽位命中时，标志取类上那份（先看模板表，再看 static 域，含继承链）
         const PropertyDescriptor* classMember(const std::string& k) const {
             for (const ObjClass* c = classDef; c; c = c->parent) {
+                auto mit = c->members.find(k);
+                if (mit != c->members.end()) return &mit->second;
                 auto it = c->properties.find(k);
                 if (it != c->properties.end()) return &it->second;
             }
@@ -808,7 +867,7 @@ namespace jc {
             if (slotLookup(k, idx, word, bit)) return (*word & bit) != 0;
             return properties.find(k) != properties.end();
         }
-        const PropertyDescriptor* ownFlags(const std::string& k) const {
+                const PropertyDescriptor* ownFlags(const std::string& k) const {
             auto it = properties.find(k);
             if (it != properties.end()) return &it->second;
             int idx; uint64_t* word; uint64_t bit;
@@ -841,8 +900,17 @@ namespace jc {
             if (slotLookupMut(k, idx, word, bit)) {
                 slots[idx] = v;
                 *word |= bit;
-                // 只有显式带 const / private 标志的才额外留在溢出表里（标志不在槽位上）
-                if (isConst || isLocal) properties[k] = { v, isConst, isLocal };
+                if (isConst || isLocal) {
+                    // 带标志的成员在溢出表里留一份（标志不在槽位上）
+                    properties[k] = { v, isConst, isLocal };
+                } else {
+                    // 字段声明登记（值为 none、只带标志）到这里就完成使命：
+                    // 留着它会让 ownGet 读到 none，把真正的槽位值挡在后面。
+                    auto pit = properties.find(k);
+                    if (pit != properties.end() && !pit->second.is_const && !pit->second.is_local) {
+                        properties.erase(pit);
+                    }
+                }
                 return;
             }
             properties[k] = { v, isConst, isLocal };
@@ -859,6 +927,14 @@ namespace jc {
                     slotsOwnedBig = new uint64_t[(classDef->slotNames.size() + 63) / 64]();
                 }
                 slotsOwnedBig[idx / 64] |= (1ull << (idx % 64));
+            }
+        }
+        // 把类上的一个实例成员补进本实例的槽位（快照之后类上新增的成员走这条路）
+        void putToClassSlot(const std::string& k, const Value& v) {
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookupMut(k, idx, word, bit)) {
+                slots[idx] = v;
+                *word |= bit;
             }
         }
         // 就地改一个已存在成员的标志（只有 DEFINE_PROP_CONST 会用到）
@@ -891,7 +967,7 @@ namespace jc {
                     fn(k, PropertyDescriptor{ slots[i], false, false });
                 }
             }
-            for (const auto& kv : properties) fn(kv.first, kv.second);
+                        for (const auto& kv : properties) fn(kv.first, kv.second);
         }
         PropMap&                ownItems()                          { return properties; }
         const PropMap&          ownItems() const                    { return properties; }

@@ -72,9 +72,9 @@ namespace jc {
         ObjClass* c = inst->classDef;
         std::string sname(methodName);
         while (c) {
-            auto it = c->properties.find(sname);
-            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                method = it->second.val.asFunction();
+            const PropertyDescriptor* pdesc = c->ownMember(sname);
+            if (pdesc && pdesc->val.isFunctionClosure()) {
+                method = pdesc->val.asFunction();
                 ownerClass = c;
                 break;
             }

@@ -687,6 +687,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                 auto cls = static_cast<ObjClass*>(obj);
                 writeString(os, cls->name);
                 self(cls->parent ? Value(cls->parent) : Value::none(), self);
+                // ★ 两张表都写：static 域 + 实例成员模板（§2.6）
                 write32(os, static_cast<uint32_t>(cls->properties.size()));
                 for (const auto& [k, p] : cls->properties) {
                     writeString(os, k);
@@ -694,6 +695,14 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     write8(os, p.is_const ? 1 : 0);
                     write8(os, p.is_local ? 1 : 0);
                     write8(os, p.is_static ? 1 : 0);
+                }
+                write32(os, static_cast<uint32_t>(cls->members.size()));
+                for (const auto& [k, p] : cls->members) {
+                    writeString(os, k);
+                    self(p.val, self);
+                    write8(os, p.is_const ? 1 : 0);
+                    write8(os, p.is_local ? 1 : 0);
+                    write8(os, 0);
                 }
                 break;
             }
@@ -1064,6 +1073,15 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         bool isLocal = read8(is) != 0;
                         bool isStatic = read8(is) != 0;
                         cls->properties[k] = {v, isConst, isLocal, false, isStatic};
+                    }
+                    uint32_t memberCount = read32(is);
+                    for (uint32_t i = 0; i < memberCount; ++i) {
+                        std::string k = readString(is);
+                        Value v = self(self);
+                        bool isConst = read8(is) != 0;
+                        bool isLocal = read8(is) != 0;
+                        (void)read8(is);
+                        cls->members[k] = {v, isConst, isLocal, false, false};
                     }
                     break;
                 }

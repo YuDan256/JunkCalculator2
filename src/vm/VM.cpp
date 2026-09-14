@@ -142,15 +142,15 @@ static bool traitSignatureMatches(const ObjClosure* a, const ObjClosure* b) {
 static void checkTraitDefaultOverride(ObjClass* cls, const std::string& name, ObjClosure* newFn) {
     if (!cls || !newFn) return;
     for (ObjClass* p = cls->parent; p; p = p->parent) {
-        auto pit = p->properties.find(name);
-        if (pit == p->properties.end()) continue;
-        if (!pit->second.val.isFunctionClosure()) return;
-        ObjClosure* inherited = pit->second.val.asFunction();
+        const PropertyDescriptor* pit = p->findMember(name);
+        if (!pit) continue;
+        if (!pit->val.isFunctionClosure()) return;
+        ObjClosure* inherited = pit->val.asFunction();
         ObjClass* owner = inherited ? inherited->owner_class : nullptr;
         if (!owner || !owner->isTrait) return;
-        auto tit = owner->properties.find(name);
-        if (tit == owner->properties.end()) return;
-        auto* dfn = tit->second.val.isFunctionClosure() ? tit->second.val.asFunction() : nullptr;
+        const PropertyDescriptor* tit = owner->findMember(name);
+        if (!tit) return;
+        auto* dfn = tit->val.isFunctionClosure() ? tit->val.asFunction() : nullptr;
         if (!traitSignatureMatches(dfn, newFn)) {
             JC2_THROW(TypeError, "Method '" + name + "' overrides default method of trait '"
                 + owner->name + "' with an incompatible signature.");
@@ -176,6 +176,9 @@ static void collectAbstractMethods(ObjClass* tr, std::vector<std::pair<std::stri
     flattenTrait(tr, chain);
     std::unordered_set<std::string> satisfied;
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
+        for (auto& [name, pd] : (*it)->members) {
+            if (!pd.is_abstract) satisfied.insert(name);
+        }
         for (auto& [name, pd] : (*it)->properties) {
             if (!pd.is_abstract) satisfied.insert(name);
         }
@@ -183,6 +186,10 @@ static void collectAbstractMethods(ObjClass* tr, std::vector<std::pair<std::stri
     std::unordered_set<std::string> seen;
     for (auto* t : chain) {
         if (!t) continue;
+        for (auto& [name, pd] : t->members) {
+            if (!pd.is_abstract || satisfied.count(name)) continue;
+            if (seen.insert(name).second) out.emplace_back(name, pd);
+        }
         for (auto& [name, pd] : t->properties) {
             if (!pd.is_abstract || satisfied.count(name)) continue;
             if (seen.insert(name).second) out.emplace_back(name, pd);
@@ -194,6 +201,10 @@ static void collectAbstractMethods(ObjClass* tr, std::vector<std::pair<std::stri
 static void computeShadowed(const std::vector<ObjClass*>& chain, std::unordered_map<std::string, ObjClass*>& firstBy) {
     firstBy.clear();
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
+        for (auto& [name, pd] : (*it)->members) {
+            (void)pd;
+            firstBy.emplace(name, *it);   // 先写入者即最派生来源
+        }
         for (auto& [name, pd] : (*it)->properties) {
             (void)pd;
             firstBy.emplace(name, *it);   // 先写入者即最派生来源
@@ -216,6 +227,8 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
     // ★ 先备份类自身成员：trait 只能填补类未提供的名字，绝不能覆盖类自身定义
     std::vector<std::pair<std::string, PropertyDescriptor>> ownBackup;
     for (auto& name : ownMembers) {
+        auto mit = cls->members.find(name);
+        if (mit != cls->members.end()) { ownBackup.emplace_back(name, mit->second); continue; }
         auto it = cls->properties.find(name);
         if (it != cls->properties.end()) ownBackup.emplace_back(name, it->second);
     }
@@ -234,6 +247,14 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
     for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 祖先 → 派生
         ObjClass* t = *it;
         computeShadowed(chain, firstBy);
+        for (auto& [name, pd] : t->members) {
+            if (ownMembers.count(name)) continue;               // 类自身成员优先
+            auto f = firstBy.find(name);
+            if (f != firstBy.end() && f->second != t) continue; // 已被更派生的 trait 覆盖
+            auto ins = base.emplace(name, pd);
+            if (ins.second) baseOrder.push_back(name);
+            else ins.first->second = pd;                        // 更派生者后写入 → 生效
+        }
         for (auto& [name, pd] : t->properties) {
             if (ownMembers.count(name)) continue;               // 类自身成员优先
             auto f = firstBy.find(name);
@@ -243,15 +264,20 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
             else ins.first->second = pd;                        // 更派生者后写入 → 生效
         }
     }
-    for (auto& name : baseOrder) cls->properties[name] = base[name];
+    // trait 成员按域复制进宿主：static 与字段声明进 static 域，其余是实例成员模板（§2.6）
+    for (auto& name : baseOrder) {
+        const PropertyDescriptor& pd = base[name];
+        if (pd.is_static || pd.is_field_decl) cls->properties[name] = pd;
+        else cls->members[name] = pd;
+    }
 
     // ★ 记录 trait 方法的词法归属：非 local 方法的闭包在 METHOD 定义时不会写 owner_class，
     // 而经 trait 复制进类的方法需要知道「自己来自哪个 trait」，否则 trait 的 local 成员
     // 无法按词法作用域解析（owner_class 只在定义时设置一次，故只补 nullptr 的情形）。
     for (auto& name : baseOrder) {
-        auto pit = cls->properties.find(name);
-        if (pit == cls->properties.end()) continue;
-        Value& v = pit->second.val;
+        const PropertyDescriptor* pd = cls->ownMember(name);
+        if (!pd) continue;
+        Value& v = const_cast<Value&>(pd->val);
         if (v.isFunctionClosure()) {
             ObjClosure* fn = v.asFunction();
             if (fn && !fn->owner_class) fn->owner_class = tr;
@@ -260,7 +286,8 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
 
     // ★ 还原类自身成员，确保 trait 永远不能覆盖类自身的定义
     for (auto& [name, pd] : ownBackup) {
-        cls->properties[name] = pd;
+        if (cls->members.count(name)) cls->members[name] = pd;
+        else cls->properties[name] = pd;
     }
 
     // ★ 覆盖默认方法同样要校验签名。
@@ -278,15 +305,15 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
         std::unordered_set<std::string> seenDecl;
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) {   // 派生 → 祖先
             ObjClass* t = *it;
-            for (auto& [name, pd] : t->properties) {
+            for (auto& [name, pd] : t->members) {
                 if (!cls->ownMembers.count(name)) continue;          // 只有自己定义的才算覆盖
                 if (!seenDecl.insert(name).second) continue;         // 更派生的声明已生效
                 if (pd.is_abstract) continue;                        // 抽象方法走下面的"未实现"校验
                 if (!pd.val.isFunctionClosure()) continue;           // 字段/常量不走方法签名
-                auto pit = cls->properties.find(name);
-                if (pit == cls->properties.end()) continue;
+                const PropertyDescriptor* pit = cls->ownMember(name);
+                if (!pit) continue;
                 auto* dfn = pd.val.asFunction();
-                auto* ofn = pit->second.val.isFunctionClosure() ? pit->second.val.asFunction() : nullptr;
+                auto* ofn = pit->val.isFunctionClosure() ? pit->val.asFunction() : nullptr;
                 if (!traitSignatureMatches(dfn, ofn)) {
                     JC2_THROW(TypeError, "Method '" + name + "' overrides default method of trait '"
                         + t->name + "' with an incompatible signature.");
@@ -304,14 +331,14 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
     collectAbstractMethods(tr, abstracts);
     for (auto& [name, pd] : abstracts) {
         const PropertyDescriptor* impl = nullptr;
-        auto it = cls->properties.find(name);
-        if (it != cls->properties.end() && !it->second.is_abstract) {
-            impl = &it->second;
+        const PropertyDescriptor* own = cls->ownMember(name);
+        if (own && !own->is_abstract) {
+            impl = own;
         } else {
             // 父类链：父类已实现的抽象方法，子类可继承
             for (ObjClass* p = cls->parent; p && !impl; p = p->parent) {
-                auto pit = p->properties.find(name);
-                if (pit != p->properties.end() && !pit->second.is_abstract) impl = &pit->second;
+                const PropertyDescriptor* pit = p->ownMember(name);
+                if (pit && !pit->is_abstract) impl = pit;
             }
         }
         if (!impl) {
@@ -386,13 +413,20 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
         }
     }
 
-    // ② 候选 owner 类自己的成员表（顺序见 collectPrivateCandidates 注释）
+    // ② 候选 owner 类自己的成员表（static 域 + 实例成员模板，顺序见 collectPrivateCandidates 注释）
     std::vector<ObjClass*> candidates;
     collectPrivateCandidates(lexical, cls, inst ? inst->classDef : nullptr, candidates);
     for (ObjClass* c : candidates) {
-        auto it = c->properties.find(manglePrivate(c->classId, name));
-        if (it != c->properties.end()) {
-            found = &it->second;
+        std::string mangled = manglePrivate(c->classId, name);
+        const PropertyDescriptor* pd = nullptr;
+        auto mit = c->members.find(mangled);
+        if (mit != c->members.end()) pd = &mit->second;
+        else {
+            auto pit = c->properties.find(mangled);
+            if (pit != c->properties.end()) pd = &pit->second;
+        }
+        if (pd) {
+            found = pd;
             if (foundIn) *foundIn = c;
             return true;
         }
@@ -419,12 +453,8 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
 
 // ★ 用户构造函数查找（沿 parent 链）
 ObjClosure* VM::findInitMethod(ObjClass* cls) {
-    for (ObjClass* c = cls; c; c = c->parent) {
-        auto it = c->properties.find(JC2_USER_INIT_NAME);
-        if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-            return it->second.val.asFunction();
-        }
-    }
+    const PropertyDescriptor* pit = cls->findMember(JC2_USER_INIT_NAME);
+    if (pit && pit->val.isFunctionClosure()) return pit->val.asFunction();
     return nullptr;
 }
 
@@ -472,8 +502,8 @@ void VM::snapshotMembers(ObjClass* cls, const Value& self) {
         const std::string& name = cls->slotNames[i];
         const PropertyDescriptor* pd = nullptr;
         for (ObjClass* c = cls; c; c = c->parent) {
-            auto it = c->properties.find(name);
-            if (it != c->properties.end()) { pd = &it->second; break; }
+            const PropertyDescriptor* pit = c->ownMember(name);
+            if (pit) { pd = pit; break; }
         }
         if (!pd) continue;
         if (pd->is_static) continue;                        // static 只住类袋子（§2.7）
@@ -500,9 +530,9 @@ void VM::snapshotMembers(ObjClass* cls, const Value& self) {
 void VM::runFieldInitializers(ObjClass* cls, const Value& self) {
     if (!cls) return;
     auto runOne = [&](ObjClass* declClass, ObjClass* ownerChain) {
-        auto it = declClass->properties.find(JC2_FIELD_INIT_NAME);
-        if (it == declClass->properties.end() || !it->second.val.isFunctionClosure()) return;
-        ObjClosure* fn = it->second.val.asFunction();
+        const PropertyDescriptor* pit = declClass->ownMember(JC2_FIELD_INIT_NAME);
+        if (!pit || !pit->val.isFunctionClosure()) return;
+        ObjClosure* fn = pit->val.asFunction();
         if (!fn->isBytecode()) return;
         callVMFunction(fn->compiledFnIndex, {}, fn, self, Value(ownerChain ? ownerChain : declClass));
     };
@@ -689,9 +719,9 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             ObjClass* owningClass = nullptr;
             auto c = inst->classDef;
             while (c) {
-                auto it = c->properties.find("__call__");
-                if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                    method = it->second.val.asFunction();
+                const PropertyDescriptor* pit = c->findMember("__call__");
+                if (pit && !pit->is_static && pit->val.isFunctionClosure()) {
+                    method = pit->val.asFunction();
                     owningClass = c;
                     break;
                 }
@@ -1490,16 +1520,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         // 字段默认值丢失（详见 IRBuilder 中 JC2_FIELD_INIT_NAME 的合成处）。
         runFieldInitializers(cls, Value(instance));
         
-        ObjClosure* initMethod = nullptr;
-        auto c = cls;
-        while (c) {
-            auto it = c->properties.find("<init>");
-            if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                initMethod = it->second.val.asFunction();
-                break;
-            }
-            c = c->parent;
-        }
+        ObjClosure* initMethod = findInitMethod(cls);
         
         if (initMethod) {
             if (initMethod->isBytecode()) {
@@ -1637,9 +1658,9 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         ObjClass* owningClass = nullptr;
         auto c = inst->classDef;
         while (c) {
-            auto it = c->properties.find("__call__");
-            if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                method = it->second.val.asFunction();
+            const PropertyDescriptor* pit = c->findMember("__call__");
+            if (pit && !pit->is_static && pit->val.isFunctionClosure()) {
+                method = pit->val.asFunction();
                 owningClass = c;
                 break;
             }
@@ -1825,9 +1846,9 @@ std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::st
     auto inst = val.asInstance();
     auto c = inst->classDef;
     while (c) {
-        auto it = c->properties.find(name);
-        if (it != c->properties.end() && !it->second.is_static && it->second.val.isFunctionClosure()) {
-            return {it->second.val.asFunction(), c};
+        const PropertyDescriptor* pit = c->findMember(name);
+        if (pit && !pit->is_static && pit->val.isFunctionClosure()) {
+            return {pit->val.asFunction(), c};
         }
         c = c->parent;
     }
@@ -2204,10 +2225,10 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         while (cls) {
-            auto it = cls->properties.find(methodName);
+            const PropertyDescriptor* pit = cls->findStatic(methodName);
             // ★ 类上只有 static 域：实例成员模板不从类上取（docs/OOP_MODEL_DESIGN.md §2.6）
-            if (it != cls->properties.end() && !it->second.is_local && it->second.is_static) {
-                Value fv = it->second.val;
+            if (pit && !pit->is_local && pit->is_static) {
+                Value fv = pit->val;
                 if (fv.isFunctionClosure()) {
                     method = fv.asFunction();
                     owningClass = cls;
@@ -2248,10 +2269,12 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         if (!foundInField) {
             auto c = inst->classDef;
             while (c) {
-                auto cit = c->properties.find(methodName);
-                if (cit != c->properties.end() && !cit->second.is_local && !cit->second.is_static && cit->second.val.isFunctionClosure()) {
-                    method = cit->second.val.asFunction();
+                const PropertyDescriptor* cit = c->ownMember(methodName);
+                if (cit && !cit->is_local && !cit->is_static && cit->val.isFunctionClosure()) {
+                    method = cit->val.asFunction();
                     owningClass = c;
+                    // 快照之后类上新增的成员还没落到这个实例的槽位里，查到就补一份
+                    if (c == inst->classDef) inst->putToClassSlot(methodName, cit->val);
                     break;
                 }
                 c = c->parent;
@@ -2514,9 +2537,9 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
     ObjClass* owningClass = nullptr;
     auto c = parentClass;
     while (c) {
-        auto it = c->properties.find(methodName);
-        if (it != c->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
-            method = it->second.val.asFunction();
+        const PropertyDescriptor* pit = c->ownMember(methodName);
+        if (pit && !pit->is_local && pit->val.isFunctionClosure()) {
+            method = pit->val.asFunction();
             owningClass = c;
             break;
         }
@@ -6450,8 +6473,8 @@ Value VM::run(int targetFrameDepth) {
                         }
                         if (!found) {
                             while (cls) {
-                                auto it = cls->properties.find(key);
-                                if (it != cls->properties.end() && !it->second.is_local) {
+                                const PropertyDescriptor* pit = cls->ownMember(key);
+                                if (pit && !pit->is_local) {
                                     found = true;
                                     break;
                                 }
@@ -6619,13 +6642,16 @@ Value VM::run(int targetFrameDepth) {
                 if (closureVal.isFunctionClosure()) {
                     ObjClosure* fn = closureVal.asFunction();
                     bool isAbstract = (op == OpCode::METHOD_ABSTRACT || op == OpCode::METHOD_ABSTRACT_PRIVATE);
+                    // ★ 实例方法进 members（模板表），不进 properties（static 域）：
+                    //   `C.名字 = 值` 只写 static 域，写不到模板（§2.6 统一写规则）。
+                    auto& bag = cls->members;
                     if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST || op == OpCode::METHOD_ABSTRACT_PRIVATE) {
                         fn->is_local = true;
                         fn->owner_class = cls;
                         std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
                         if (methodName.empty() || methodName[0] != '<') cls->internSlot(mangledName);
                         if (cls) {
-                            cls->properties[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
+                            bag[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
                             cls->ownMembers.insert(mangledName);
                         }
                     } else {
@@ -6634,7 +6660,7 @@ Value VM::run(int targetFrameDepth) {
                             //   （私有方法按词法作用域各归其主，不走这里）
                             checkTraitDefaultOverride(cls, methodName, fn);
                             if (methodName.empty() || methodName[0] != '<') cls->internSlot(methodName);
-                            cls->properties[methodName] = {closureVal, op == OpCode::METHOD_CONST, false, isAbstract};
+                            bag[methodName] = {closureVal, op == OpCode::METHOD_CONST, false, isAbstract};
                             cls->ownMembers.insert(methodName);
                         }
                     }
@@ -6791,9 +6817,9 @@ Value VM::run(int targetFrameDepth) {
                     if (!found) {
                         auto cls = inst->classDef;
                         while (cls) {
-                            auto it = cls->properties.find(field);
-                            if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                                auto rawMethod = it->second.val.asFunction();
+                            const PropertyDescriptor* it = cls->ownMember(field);
+                            if (it && !it->is_local && !it->is_static && it->val.isFunctionClosure()) {
+                                auto rawMethod = it->val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;
@@ -6969,9 +6995,9 @@ Value VM::run(int targetFrameDepth) {
                     if (!found) {
                         auto cls = inst->classDef;
                         while (cls) {
-                            auto it = cls->properties.find(field);
-                            if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                                auto rawMethod = it->second.val.asFunction();
+                            const PropertyDescriptor* it = cls->ownMember(field);
+                            if (it && !it->is_local && !it->is_static && it->val.isFunctionClosure()) {
+                                auto rawMethod = it->val.asFunction();
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;

@@ -88,7 +88,10 @@ test_const_and_static_boundaries() = {
     // §八 13：const 只管它所在的那个域
     assert(throws(() => { k.cf = 11 }), "instance write to a const field is rejected")
     assert(throws(() => { k.cm = 12 }), "instance write to a const method is rejected")
-    assert(throws(() => { K.cm = 22 }), "class write to a const method template is rejected")
+    // §2.6：const 只管它所在的那个域——实例域的 const 不管类上的写入
+    K.cm = 22
+    assert(K.cm == 22, "class write to a const method template creates a static")
+    assert(k.cm() == 2, "the instance still uses its own method template")
     assert(throws(() => { K.scf = 23 }), "class write to a static const is rejected")
     assert(throws(() => k.scf), "static const is not reachable from an instance")
     // §八 14：字段声明名在类上写 => 新建一个 static
@@ -102,21 +105,28 @@ test_const_and_static_boundaries() = {
 }
 test_const_and_static_boundaries()
 
-test_templates_are_frozen() = {
+test_class_writes_only_touch_the_static_domain() = {
+    // §2.6 统一写规则：C.名字 = 值 命中 static 就覆盖、没命中就新建一个 static；
+    // 它写不到实例成员模板，所以模板永远不改，新对象仍用老方法
     class T {
         m() = 1
     }
-    // §2.8 / §六 第 11 步：类定义完成后模板冻结（类上的赋值碰不到实例方法模板）
-    assert(throws(() => { T.m = () => 2 }), "method template is frozen after definition")
-    assert(throws(() => { T["m"] = () => 2 }), "index write to a template is rejected too")
-    // static 域不受影响
+    t0 = T()
+    T.m = () => 2
+    assert(T.m() == 2, "the assignment created a static m")
+    assert(t0.m() == 1, "an existing instance keeps its own template")
+    t1 = T()
+    assert(t1.m() == 1, "a new instance still uses the method template")
+    T["m"] = () => 3
+    assert(T.m() == 3, "index write follows the same rule")
+    // static 域与模板互不干扰
     T.s = 5
     assert(T.s == 5, "statics stay writable")
     t = T()
-    assert(t.m() == 1, "the method itself is unchanged")
-    assert(throws(() => t.s), "statics are not reachable from instances")
+    assert(throws(() => t.s), "statics are not reachable from an instance")
+    assert(t.m() == 1, "the method template is untouched")
 }
-test_templates_are_frozen()
+test_class_writes_only_touch_the_static_domain()
 
 test_snapshot_intent() = {
     // §八 19 的意图：改类（重新定义 = 换一个新类对象）不影响已经造出来的对象

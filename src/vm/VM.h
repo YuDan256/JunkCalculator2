@@ -174,6 +174,13 @@ public:
     static ObjClosure* findInitMethod(ObjClass* cls);
     void runFieldInitializers(ObjClass* cls, const Value& self);
     void runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std::vector<Value>& initArgs);
+
+    // ★ 构造快照（docs/OOP_MODEL_DESIGN.md §2.4）：类体里的每个成员定义 = 构造时对这个实例
+    //   求值一次。把类上的实例成员模板抄进刚造好的实例：没有捕获的闭包抄指针（可观察等价，
+    //   函数对象身份不保证每实例不同）；有捕获的每实例新建一份，共享同一批 upvalue。
+    //   必须在 runFieldInitializers 之前调用，让字段初始化器里的赋值走"覆盖"分支。
+    static ObjClosure* copyClosureTemplate(const ObjClosure* src);
+    void snapshotMembers(ObjClass* cls, const Value& self);
 private:
     std::string formatException(const Value& errVal);
 

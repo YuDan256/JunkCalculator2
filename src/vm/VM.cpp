@@ -428,6 +428,72 @@ ObjClosure* VM::findInitMethod(ObjClass* cls) {
     return nullptr;
 }
 
+// ★ 拷贝一份闭包模板：共享字节码/函数对象/upvalue，只把"这一个实例"的身份独立出来。
+//   有捕获的方法每实例一份（§2.4），所以不能直接共享 ObjClosure 本体。
+ObjClosure* VM::copyClosureTemplate(const ObjClosure* src) {
+    if (!src) return nullptr;
+    ObjClosure* c = GcHeap::get().allocate<ObjClosure>(src->paramNames, src->isRef, src->rawBody, src->body, src->restName);
+    c->isConst = src->isConst;
+    c->upvalueCount = src->upvalueCount;
+    if (src->upvalueCount > 0 && src->upvalues) {
+        c->upvalues = new ObjUpVal*[src->upvalueCount];
+        for (int i = 0; i < src->upvalueCount; ++i) c->upvalues[i] = src->upvalues[i];
+    }
+    c->paramTypesCount = src->paramTypesCount;
+    if (src->paramTypes && src->paramTypesCount > 0) {
+        c->paramTypes = new Value[src->paramTypesCount];
+        for (int i = 0; i < src->paramTypesCount; ++i) c->paramTypes[i] = src->paramTypes[i];
+    }
+    c->returnType = src->returnType;
+    c->nativeFn = src->nativeFn;
+    c->compiledFnIndex = src->compiledFnIndex;
+    c->defaultValues = src->defaultValues;
+    c->kwargNames = src->kwargNames;
+    c->kwargIsRef = src->kwargIsRef;
+    c->kwargIsConst = src->kwargIsConst;
+    c->kwargsName = src->kwargsName;
+    c->kwargHasDefault = src->kwargHasDefault;
+    c->kwargDefaultValueTexts = src->kwargDefaultValueTexts;
+    c->isTokenMacro = src->isTokenMacro;
+    c->is_local = src->is_local;
+    c->boundSelf = src->boundSelf;
+    c->boundClass = src->boundClass;
+    c->owner_class = src->owner_class;
+    return c;
+}
+
+// ★ 构造快照（docs/OOP_MODEL_DESIGN.md §2.4 / §六 第 9 步）
+void VM::snapshotMembers(ObjClass* cls, const Value& self) {
+    if (!cls || !self.isInstance()) return;
+    ObjInstance* inst = self.asInstance();
+    if (cls->is_native || cls->slotNames.empty()) return;
+    const size_t n = cls->slotNames.size();
+    for (size_t i = 0; i < n; ++i) {
+        const std::string& name = cls->slotNames[i];
+        const PropertyDescriptor* pd = nullptr;
+        for (ObjClass* c = cls; c; c = c->parent) {
+            auto it = c->properties.find(name);
+            if (it != c->properties.end()) { pd = &it->second; break; }
+        }
+        if (!pd) continue;
+        if (pd->is_static) continue;                        // static 只住类袋子（§2.7）
+        // 字段（含私有字段）的值由字段初始化器写，快照不碰：它的模板只带标志、
+        // 没有值，抄进去会变成一个"已存在"的成员，字段初始化器的 DEFINE_PROP 就会报重定义。
+        if (pd->is_field_decl || pd->val.isUninit()) continue;
+        Value val = pd->val;
+        if (val.isFunctionClosure()) {
+            ObjClosure* fn = val.asFunction();
+            if (fn->hasCaptures()) {
+                ObjClosure* copy = copyClosureTemplate(fn);
+                GcObjGuard copyGuard(copy);
+                inst->insertSlot(static_cast<int>(i), Value(copy));
+                continue;
+            }
+        }
+        inst->insertSlot(static_cast<int>(i), val);
+    }
+}
+
 // ★ 字段默认值初始化：祖先类 → 本类；每一级先跑其 trait 表里的初始化器（trait 声明顺序，
 //   后者覆盖先者），再跑该级自身的成员初始化器。每个初始化器以「声明它的类」同时作为
 //   self 的类上下文与词法类，从而让私有字段按各自的 classId 落键、互不覆盖。
@@ -590,6 +656,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             Value res(instance);
             GcValueGuard guard(res);
             instance->classDef = cls;
+            VM::activeVM->snapshotMembers(cls, res);   // ★ 构造快照：类模板 → 实例成员（docs/OOP_MODEL_DESIGN.md §2.4）
             
             ObjClosure* initMethod = nullptr;
             auto c = cls;
@@ -1415,6 +1482,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         auto instance = GcHeap::get().allocate<ObjInstance>();
         registers[currentFrame->registerBase + dstReg] = Value(instance); // ★ 立即 Root 防止 GC 误杀
         instance->classDef = cls;
+        snapshotMembers(cls, Value(instance));   // ★ 构造快照（§2.4）
 
         // ★ 字段默认值初始化：用独立调用执行（callVMFunction 走标准帧基址，不会踩到本次构造
         // 参数所在的 calleeReg+1 起那段寄存器）。先于用户 init 执行，保证 init 内能读到字段
@@ -3125,6 +3193,11 @@ Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     
     ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
     inst->classDef = cls;
+    {
+        Value instVal(inst);
+        GcValueGuard guard(instVal);
+        snapshotMembers(cls, instVal);   // ★ 构造快照（§2.4）
+    }
     
     if (val.isString()) {
         std::string msgStr = val.asString();

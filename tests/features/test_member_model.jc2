@@ -182,3 +182,37 @@ test_freeze_covers_the_whole_class() = {
     assert(isFrozen(FT), "a trait is frozen at definition")
 }
 test_freeze_covers_the_whole_class()
+
+test_members_are_snapshotted_per_instance() = {
+    // §2.4 / §六 第 9 步：类体里的每个成员定义 = 构造时对这个实例求值一次
+    class S {
+        v = 1
+        who() = "old"
+    }
+    a = S()
+    b = S()
+    // 实例能改自己那份，别的实例不受影响
+    a.who = () => "shadow"
+    assert(a.who() == "shadow", "an instance can shadow its own member")
+    assert(b.who() == "old", "other instances keep their own copy")
+    a.v = 5
+    assert(b.v == 1, "fields stay per instance")
+    // 无捕获的方法共享同一个函数对象（可观察等价）
+    class T {
+        f() = 42
+    }
+    assert(T().f == T().f, "capture-free methods share one function object")
+    assert(T().f() == 42, "and still call correctly")
+    // 私有字段的状态不跨实例
+    class C {
+        local n = 0
+        local bump() = { self.n = self.n + 1; return self.n }
+        inc() = self.bump()
+    }
+    c1 = C()
+    c2 = C()
+    assert(c1.inc() == 1 && c1.inc() == 2, "first instance counts on its own")
+    assert(c2.inc() == 1, "second instance starts from its own default")
+    assert(c1.inc() == 3, "and the first instance keeps counting")
+}
+test_members_are_snapshotted_per_instance()

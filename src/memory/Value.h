@@ -847,6 +847,20 @@ namespace jc {
             }
             properties[k] = { v, isConst, isLocal };
         }
+        // 按槽位下标直接写入（构造快照用；调用方保证下表有效）
+        void insertSlot(int idx, const Value& v) {
+            initSlots();
+            if (!slots || idx < 0 || idx >= static_cast<int>(classDef->slotNames.size())) return;
+            slots[idx] = v;
+            if (idx < SLOT_INLINE) {
+                slotsOwned |= (1ull << idx);
+            } else {
+                if (!slotsOwnedBig) {
+                    slotsOwnedBig = new uint64_t[(classDef->slotNames.size() + 63) / 64]();
+                }
+                slotsOwnedBig[idx / 64] |= (1ull << (idx % 64));
+            }
+        }
         // 就地改一个已存在成员的标志（只有 DEFINE_PROP_CONST 会用到）
         void ownFlagSet(const std::string& k, bool isConst, bool isLocal) {
             const Value* v = ownGet(k);

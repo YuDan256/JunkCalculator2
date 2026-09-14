@@ -1844,6 +1844,12 @@ static const std::string DUNDER_MAPPING = "__mapping__";
 std::pair<ObjClosure*, ObjClass*> VM::findDunder(const Value& val, const std::string& name) {
     if (!val.isInstance()) return {nullptr, nullptr};
     auto inst = val.asInstance();
+    // ★ 先看实例自己的袋子（快照 + 影子），再沿类链找模板：与 §2.1 的查找顺序一致，
+    //   也让 `d.__len__ = f` 这样的实例影子对 len() 立即生效。
+    const PropertyDescriptor* own = inst->ownFlags(name);
+    if (own && !own->is_static && !own->is_local && own->val.isFunctionClosure()) {
+        return {own->val.asFunction(), inst->classDef};
+    }
     auto c = inst->classDef;
     while (c) {
         const PropertyDescriptor* pit = c->findMember(name);

@@ -226,3 +226,25 @@ test_members_are_snapshotted_per_instance() = {
     assert(c1.inc() == 3, "and the first instance keeps counting")
 }
 test_members_are_snapshotted_per_instance()
+
+test_dunders_follow_the_instance_bag() = {
+    // dunder 与普通成员同一条查找顺序：先看实例自己的袋子（快照 + 影子），再看类模板
+    class D {
+        v = 1
+        __str__() = "D(" + str(self.v) + ")"
+        __len__() = 7
+    }
+    d = D()
+    assert(str(d) == "D(1)", "dunder from the construction snapshot")
+    assert(len(d) == 7, "len() goes through __len__")
+    d.__len__ = () => 99
+    assert(len(d) == 99, "an instance can shadow its own dunder")
+    assert(len(D()) == 7, "other instances keep the template copy")
+    // 类上写同名只新建 static，模板与快照都不动
+    c0 = D()
+    D.__len__ = () => 5
+    assert(D.__len__() == 5, "the class write created a static")
+    assert(len(c0) == 7, "an existing instance keeps its snapshot")
+    assert(len(D()) == 7, "and a new instance still uses the template")
+}
+test_dunders_follow_the_instance_bag()

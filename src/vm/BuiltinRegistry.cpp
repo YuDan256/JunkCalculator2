@@ -71,9 +71,15 @@ namespace jc {
         ObjClass* ownerClass = nullptr;
         ObjClass* c = inst->classDef;
         std::string sname(methodName);
-        while (c) {
+        // ★ 先看实例自己的袋子（快照 + 影子），再沿类链找模板（§2.1）
+        const PropertyDescriptor* own = inst->ownFlags(sname);
+        if (own && !own->is_static && !own->is_local && own->val.isFunctionClosure()) {
+            method = own->val.asFunction();
+            ownerClass = inst->classDef;
+        }
+        while (!method && c) {
             const PropertyDescriptor* pdesc = c->ownMember(sname);
-            if (pdesc && pdesc->val.isFunctionClosure()) {
+            if (pdesc && !pdesc->is_static && pdesc->val.isFunctionClosure()) {
                 method = pdesc->val.asFunction();
                 ownerClass = c;
                 break;

@@ -745,6 +745,12 @@ namespace jc {
                 if (it->second.is_const) errModifyConstProp(key);
                 it->second.val = val;
             } else {
+                // ★ 类链上的 const 成员不许被实例影子覆盖（见 docs/OOP_MODEL_DESIGN.md §2.6）
+                for (auto* cc = classDef; cc; cc = cc->parent) {
+                    auto cit = cc->properties.find(key);
+                    if (cit != cc->properties.end() && !cit->second.is_local && cit->second.is_const)
+                        errModifyConstProp(key);
+                }
                 properties[key] = {val, false, false};
             }
         }

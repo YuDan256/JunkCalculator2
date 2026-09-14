@@ -7079,6 +7079,13 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                     
+                    // ★ 类链上的 const 成员不许被实例影子覆盖（docs/OOP_MODEL_DESIGN.md §2.6）：
+                    //   const 只管它所在的那个域——类域那份在类上写会被拒，实例域这份在这里被拒。
+                    for (auto* cc = inst->classDef; cc; cc = cc->parent) {
+                        auto cit = cc->properties.find(keyStr);
+                        if (cit != cc->properties.end() && !cit->second.is_local && cit->second.is_const)
+                            JC2_THROW(RuntimeError, "Cannot modify const property '" + keyStr + "'.");
+                    }
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());

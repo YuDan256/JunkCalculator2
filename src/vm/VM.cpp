@@ -1213,7 +1213,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 newFrame.deferBase = static_cast<int>(deferStack.size());
                 newFrame.closure = closure;
                 newFrame.selfContext = closure->boundSelf;
-                newFrame.classContext = closure->boundClass;
+                newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
                 populateRefParams(newFrame, fnDef.get());
                 
                 if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
@@ -1299,7 +1299,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 currentFrame->ip = 0;
                 currentFrame->closure = closure;
                 currentFrame->selfContext = closure->boundSelf;
-                currentFrame->classContext = closure->boundClass;
+                currentFrame->classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
                 
                 populateRefParams(*currentFrame, fnDef.get());
                 profileFrameStart(currentFrame);
@@ -1319,7 +1319,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             newFrame.deferBase = static_cast<int>(deferStack.size());
             newFrame.closure = closure;
             newFrame.selfContext = closure->boundSelf;
-            newFrame.classContext = closure->boundClass;
+            newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
             
             populateRefParams(newFrame, fnDef.get());
             
@@ -5893,34 +5893,7 @@ Value VM::run(int targetFrameDepth) {
                                     if (it != ctxOwner->properties.end()) {
                                         if (it->second.val.isFunctionClosure()) {
                                             auto rawMethod = it->second.val.asFunction();
-                                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                                std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
-                                            );
-                                            bound->paramNames = rawMethod->paramNames;
-                                            bound->isRef = rawMethod->isRef;
-                                            bound->defaultValues = rawMethod->defaultValues;
-                                            bound->restName = rawMethod->restName;
-                                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                            if (rawMethod->upvalueCount > 0) {
-                                                bound->upvalueCount = rawMethod->upvalueCount;
-                                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                                for (int i = 0; i < bound->upvalueCount; ++i) {
-                                                    bound->upvalues[i] = rawMethod->upvalues[i];
-                                                }
-                                            }
-                                            if (rawMethod->paramTypesCount > 0) {
-                                                bound->paramTypesCount = rawMethod->paramTypesCount;
-                                                bound->paramTypes = new Value[bound->paramTypesCount];
-                                                for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                                }
-                                            }
-                                            bound->returnType = rawMethod->returnType;
-                                            bound->nativeFn = rawMethod->nativeFn;
-                                            bound->boundSelf = Value::none();
-                                            bound->boundClass = Value(ctxOwner);
-                                            bound->is_local = true;
-                                            result = Value(bound);
+                                            result = Value(rawMethod);
                                         } else {
                                             result = it->second.val;
                                         }
@@ -5934,33 +5907,7 @@ Value VM::run(int targetFrameDepth) {
                                         if (it != c_cls->properties.end() && !it->second.is_local) {
                                             if (it->second.val.isFunctionClosure()) {
                                                 auto rawMethod = it->second.val.asFunction();
-                                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                                    std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
-                                                );
-                                                bound->paramNames = rawMethod->paramNames;
-                                                bound->isRef = rawMethod->isRef;
-                                                bound->defaultValues = rawMethod->defaultValues;
-                                                bound->restName = rawMethod->restName;
-                                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                                if (rawMethod->upvalueCount > 0) {
-                                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                                    }
-                                                }
-                                                if (rawMethod->paramTypesCount > 0) {
-                                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                                    }
-                                                }
-                                                bound->returnType = rawMethod->returnType;
-                                                bound->nativeFn = rawMethod->nativeFn;
-                                                bound->boundSelf = Value::none();
-                                                bound->boundClass = Value(c_cls);
-                                                result = Value(bound);
+                                                result = Value(rawMethod);
                                             } else {
                                                 result = it->second.val;
                                             }
@@ -6696,34 +6643,7 @@ Value VM::run(int targetFrameDepth) {
                     if (VM::findPrivateMember(owner, inst, keyVal.asString(), pd, lexical, &foundIn)) {
                         if (pd->val.isFunctionClosure()) {
                             auto rawMethod = pd->val.asFunction();
-                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
-                            );
-                            bound->paramNames = rawMethod->paramNames;
-                            bound->isRef = rawMethod->isRef;
-                            bound->defaultValues = rawMethod->defaultValues;
-                            bound->restName = rawMethod->restName;
-                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                            if (rawMethod->upvalueCount > 0) {
-                                bound->upvalueCount = rawMethod->upvalueCount;
-                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                for (int i = 0; i < bound->upvalueCount; ++i) {
-                                    bound->upvalues[i] = rawMethod->upvalues[i];
-                                }
-                            }
-                            if (rawMethod->paramTypesCount > 0) {
-                                bound->paramTypesCount = rawMethod->paramTypesCount;
-                                bound->paramTypes = new Value[bound->paramTypesCount];
-                                for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                }
-                            }
-                            bound->returnType = rawMethod->returnType;
-                            bound->nativeFn = rawMethod->nativeFn;
-                            bound->boundSelf = Value(inst);
-                            bound->boundClass = Value(foundIn ? foundIn : owner);
-                            bound->is_local = true;
-                            getReg(a) = Value(bound);
+                            getReg(a) = Value(rawMethod);
                         } else {
                             getReg(a) = pd->val;
                         }
@@ -6742,34 +6662,7 @@ Value VM::run(int targetFrameDepth) {
                     if (VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pd, lexical, &foundIn)) {
                         if (pd->val.isFunctionClosure()) {
                             auto rawMethod = pd->val.asFunction();
-                            auto bound = GcHeap::get().allocate<ObjClosure>(
-                                std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
-                            );
-                            bound->paramNames = rawMethod->paramNames;
-                            bound->isRef = rawMethod->isRef;
-                            bound->defaultValues = rawMethod->defaultValues;
-                            bound->restName = rawMethod->restName;
-                            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                            if (rawMethod->upvalueCount > 0) {
-                                bound->upvalueCount = rawMethod->upvalueCount;
-                                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                for (int i = 0; i < bound->upvalueCount; ++i) {
-                                    bound->upvalues[i] = rawMethod->upvalues[i];
-                                }
-                            }
-                            if (rawMethod->paramTypesCount > 0) {
-                                bound->paramTypesCount = rawMethod->paramTypesCount;
-                                bound->paramTypes = new Value[bound->paramTypesCount];
-                                for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                    bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                }
-                            }
-                            bound->returnType = rawMethod->returnType;
-                            bound->nativeFn = rawMethod->nativeFn;
-                            bound->boundSelf = Value::none();
-                            bound->boundClass = Value(foundIn ? foundIn : owner);
-                            bound->is_local = true;
-                            getReg(a) = Value(bound);
+                            getReg(a) = Value(rawMethod);
                         } else {
                             getReg(a) = pd->val;
                         }
@@ -6827,65 +6720,13 @@ Value VM::run(int targetFrameDepth) {
 
                 if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
                     auto rawMethod = ic.cachedMethod;
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = obj;
-                    bound->boundClass = Value(ic.cachedClass);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                     found = true;
                 } else if (obj.isInstance()) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                         auto rawMethod = ic.cachedMethod;
-                        auto bound = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                        );
-                        bound->paramNames = rawMethod->paramNames;
-                        bound->isRef = rawMethod->isRef;
-                        bound->defaultValues = rawMethod->defaultValues;
-                        bound->restName = rawMethod->restName;
-                        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                        if (rawMethod->upvalueCount > 0) {
-                            bound->upvalueCount = rawMethod->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = rawMethod->upvalues[i];
-                            }
-                        }
-                        if (rawMethod->paramTypesCount > 0) {
-                            bound->paramTypesCount = rawMethod->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = rawMethod->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = rawMethod->returnType;
-                        bound->nativeFn = rawMethod->nativeFn;
-                        bound->boundSelf = Value(inst);
-                        bound->boundClass = Value(ic.cachedClass);
-                        result = Value(bound);
+                        result = Value(rawMethod);
                         found = true;
                     }
                     if (!found) {
@@ -6897,33 +6738,7 @@ Value VM::run(int targetFrameDepth) {
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = Value(inst);
-                                bound->boundClass = Value(cls);
-                                result = Value(bound);
+                                result = Value(rawMethod);
                                 found = true;
                                 break;
                             }
@@ -6957,33 +6772,7 @@ Value VM::run(int targetFrameDepth) {
                                 ic.cachedBuiltinType = objBt;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = nativeProto;
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = obj;
-                                bound->boundClass = Value(nativeProto);
-                                result = Value(bound);
+                                result = Value(rawMethod);
                             } else {
                                 result = it->second.val;
                             }
@@ -7012,33 +6801,7 @@ Value VM::run(int targetFrameDepth) {
                         if (it != cls->properties.end() && !it->second.is_local) {
                             if (it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = Value::none();
-                                bound->boundClass = Value(cls);
-                                result = Value(bound);
+                                result = Value(rawMethod);
                             } else {
                                 result = it->second.val;
                             }
@@ -7051,99 +6814,25 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (!found) {
                     if (ic.cachedGlobalSlot == -4) {
-                        auto bound = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                        );
-                        bound->boundSelf = obj;
                         
-                        Value builtinClosureVal = getBuiltinClosure(field);
-                        ObjClosure* targetFn = builtinClosureVal.asFunction();
-                        bound->paramNames = targetFn->paramNames;
-                        bound->isRef = targetFn->isRef;
-                        bound->defaultValues = targetFn->defaultValues;
-                        bound->restName = targetFn->restName;
-                        bound->isUFCS = true;
 
-                        bound->nativeFn = ic.cachedNativeFn;
-                        result = Value(bound);
+                        result = getBuiltinClosure(field);
                         found = true;
                     } else {
                         if (ic.cachedGlobalSlot >= 0) {
                             if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
-                                ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
                             
-                                bound->restName = targetFn->restName;
-                                bound->paramNames = targetFn->paramNames;
-                                bound->isRef = targetFn->isRef;
-                                bound->defaultValues = targetFn->defaultValues;
-                                bound->isUFCS = true;
 
-                                if (targetFn->isBytecode()) {
-                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                    if (targetFn->upvalueCount > 0) {
-                                        bound->upvalueCount = targetFn->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = targetFn->upvalues[i];
-                                        }
-                                    }
-                                    if (targetFn->paramTypesCount > 0) {
-                                        bound->paramTypesCount = targetFn->paramTypesCount;
-                                        bound->paramTypes = new Value[bound->paramTypesCount];
-                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                            bound->paramTypes[i] = targetFn->paramTypes[i];
-                                        }
-                                    }
-                                    bound->returnType = targetFn->returnType;
-                                } else {
-                                    bound->boundClass = targetFn->boundClass;
-                                }
-                                bound->nativeFn = targetFn->nativeFn;
-                                result = Value(bound);
+                                result = Value(globals[ic.cachedGlobalSlot].asFunction());
                                 found = true;
                             }
                         } else {
                             auto gIt = globalNames.find(field);
                             if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
                                 ic.cachedGlobalSlot = gIt->second;
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
-                                ObjClosure* targetFn = globals[gIt->second].asFunction();
                             
-                                bound->restName = targetFn->restName;
-                                bound->paramNames = targetFn->paramNames;
-                                bound->isRef = targetFn->isRef;
-                                bound->defaultValues = targetFn->defaultValues;
-                                bound->isUFCS = true;
 
-                                if (targetFn->isBytecode()) {
-                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                    if (targetFn->upvalueCount > 0) {
-                                        bound->upvalueCount = targetFn->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = targetFn->upvalues[i];
-                                        }
-                                    }
-                                    if (targetFn->paramTypesCount > 0) {
-                                        bound->paramTypesCount = targetFn->paramTypesCount;
-                                        bound->paramTypes = new Value[bound->paramTypesCount];
-                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                            bound->paramTypes[i] = targetFn->paramTypes[i];
-                                        }
-                                    }
-                                    bound->returnType = targetFn->returnType;
-                                } else {
-                                    bound->boundClass = targetFn->boundClass;
-                                }
-                                bound->nativeFn = targetFn->nativeFn;
-                                result = Value(bound);
+                                result = Value(globals[gIt->second].asFunction());
                                 found = true;
                             }
                         }
@@ -7151,18 +6840,7 @@ Value VM::run(int targetFrameDepth) {
                         if (!found) {
                             auto nIt = nativeBuiltins.find(field);
                             if (nIt != nativeBuiltins.end()) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
                                 
-                                Value builtinClosureVal = getBuiltinClosure(field);
-                                ObjClosure* targetFn = builtinClosureVal.asFunction();
-                                bound->paramNames = targetFn->paramNames;
-                                bound->isRef = targetFn->isRef;
-                                bound->defaultValues = targetFn->defaultValues;
-                                bound->restName = targetFn->restName;
-                                bound->isUFCS = true;
 
                                 NativeCallable nativeFn = nIt->second;
                                 
@@ -7172,9 +6850,8 @@ Value VM::run(int targetFrameDepth) {
 
                                 ic.cachedGlobalSlot = -4;
                                 ic.cachedNativeFn = std::make_any<NativeCallable>(nativeFn);
-                                bound->nativeFn = ic.cachedNativeFn;
                                 
-                                result = Value(bound);
+                                result = getBuiltinClosure(field);
                                 found = true;
                             }
                         }
@@ -7228,33 +6905,7 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
                         auto rawMethod = ic.cachedMethod;
-                        auto bound = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                        );
-                        bound->paramNames = rawMethod->paramNames;
-                        bound->isRef = rawMethod->isRef;
-                        bound->defaultValues = rawMethod->defaultValues;
-                        bound->restName = rawMethod->restName;
-                        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                        if (rawMethod->upvalueCount > 0) {
-                            bound->upvalueCount = rawMethod->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = rawMethod->upvalues[i];
-                            }
-                        }
-                        if (rawMethod->paramTypesCount > 0) {
-                            bound->paramTypesCount = rawMethod->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = rawMethod->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = rawMethod->returnType;
-                        bound->nativeFn = rawMethod->nativeFn;
-                        bound->boundSelf = Value(inst);
-                        bound->boundClass = Value(ic.cachedClass);
-                        result = Value(bound);
+                        result = Value(rawMethod);
                         found = true;
                     }
                     if (!found) {
@@ -7266,33 +6917,7 @@ Value VM::run(int targetFrameDepth) {
                                 ic.cachedClassId = inst->classDef->classId;
                                 ic.cachedMethod = rawMethod;
                                 ic.cachedClass = cls;
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = Value(inst);
-                                bound->boundClass = Value(cls);
-                                result = Value(bound);
+                                result = Value(rawMethod);
                                 found = true;
                                 break;
                             }
@@ -7323,33 +6948,7 @@ Value VM::run(int targetFrameDepth) {
                         if (it != nativeProto->properties.end() && !it->second.is_local) {
                             if (it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = obj;
-                                bound->boundClass = Value(nativeProto);
-                                result = Value(bound);
+                                result = Value(rawMethod);
                             } else {
                                 result = it->second.val;
                             }
@@ -7382,94 +6981,21 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (!found) {
                     if (ic.cachedGlobalSlot == -4) {
-                        auto bound = GcHeap::get().allocate<ObjClosure>(
-                            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                        );
-                        bound->boundSelf = obj;
-                        bound->nativeFn = ic.cachedNativeFn;
-                        result = Value(bound);
+                        result = getBuiltinClosure(field);
                         found = true;
                     } else {
                         if (ic.cachedGlobalSlot >= 0) {
                             if (globals[ic.cachedGlobalSlot].isFunctionClosure()) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
-                                ObjClosure* targetFn = globals[ic.cachedGlobalSlot].asFunction();
                             
-                                if (targetFn->isBytecode()) {
-                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                    if (targetFn->upvalueCount > 0) {
-                                        bound->upvalueCount = targetFn->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = targetFn->upvalues[i];
-                                        }
-                                    }
-                                    bound->restName = targetFn->restName;
-                                    bound->paramNames = targetFn->paramNames;
-                                    bound->isRef = targetFn->isRef;
-                                    bound->defaultValues = targetFn->defaultValues;
-                                    bound->isUFCS = true;
-                                    bound->nativeFn = targetFn->nativeFn;
-                                } else {
-                                    bound->nativeFn = std::make_any<NativeCallable>(
-                                        [](const std::vector<Value>& args) -> Value {
-                                            Value capturedObj = helpers::nativeSelfStack.back();
-                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                            std::vector<Value> fullArgs;
-                                            fullArgs.reserve(args.size() + 1);
-                                            fullArgs.push_back(capturedObj);
-                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                            return helpers::safeCallFunction(fn, fullArgs);
-                                        }
-                                    );
-                                    bound->boundClass = Value(targetFn);
-                                }
-                                result = Value(bound);
+                                result = Value(globals[ic.cachedGlobalSlot].asFunction());
                                 found = true;
                             }
                         } else {
                             auto gIt = globalNames.find(field);
                             if (gIt != globalNames.end() && globals[gIt->second].isFunctionClosure()) {
                                 ic.cachedGlobalSlot = gIt->second;
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
-                                ObjClosure* targetFn = globals[gIt->second].asFunction();
                             
-                                if (targetFn->isBytecode()) {
-                                    bound->compiledFnIndex = targetFn->compiledFnIndex;
-                                    if (targetFn->upvalueCount > 0) {
-                                        bound->upvalueCount = targetFn->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = targetFn->upvalues[i];
-                                        }
-                                    }
-                                    bound->restName = targetFn->restName;
-                                    bound->paramNames = targetFn->paramNames;
-                                    bound->isRef = targetFn->isRef;
-                                    bound->defaultValues = targetFn->defaultValues;
-                                    bound->isUFCS = true;
-                                    bound->nativeFn = targetFn->nativeFn;
-                                } else {
-                                    bound->nativeFn = std::make_any<NativeCallable>(
-                                        [](const std::vector<Value>& args) -> Value {
-                                            Value capturedObj = helpers::nativeSelfStack.back();
-                                            ObjClosure* fn = helpers::nativeClassStack.back().asFunction();
-                                            std::vector<Value> fullArgs;
-                                            fullArgs.reserve(args.size() + 1);
-                                            fullArgs.push_back(capturedObj);
-                                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                            return helpers::safeCallFunction(fn, fullArgs);
-                                        }
-                                    );
-                                    bound->boundClass = Value(targetFn);
-                                }
-                                result = Value(bound);
+                                result = Value(globals[gIt->second].asFunction());
                                 found = true;
                             }
                         }
@@ -7477,40 +7003,13 @@ Value VM::run(int targetFrameDepth) {
                         if (!found) {
                             auto nIt = nativeBuiltins.find(field);
                             if (nIt != nativeBuiltins.end()) {
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                                );
-                                bound->boundSelf = obj;
-                                NativeCallable nativeFn = nIt->second;
                                 
-                                auto ait = builtinArity.find(field);
-                                std::set<int> allowedArities;
-                                if (ait != builtinArity.end()) allowedArities = ait->second;
 
-                                bound->nativeFn = std::make_any<NativeCallable>(
-                                    [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                                        Value capturedObj = helpers::nativeSelfStack.back();
-                                        int totalArgs = static_cast<int>(args.size()) + 1;
-                                        if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                            std::string expected;
-                                            for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                                if (aIt != allowedArities.begin()) expected += " or ";
-                                                expected += std::to_string(*aIt - 1);
-                                            }
-                                            JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                                        }
-                                        std::vector<Value> fullArgs;
-                                        fullArgs.reserve(totalArgs);
-                                        fullArgs.push_back(capturedObj);
-                                        fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                                        return nativeFn(fullArgs);
-                                    }
-                                );
                                 
                                 ic.cachedGlobalSlot = -4;
-                                ic.cachedNativeFn = bound->nativeFn;
+                                ic.cachedNativeFn = std::make_any<NativeCallable>(nIt->second);
                                 
-                                result = Value(bound);
+                                result = getBuiltinClosure(field);
                                 found = true;
                             }
                         }
@@ -7628,6 +7127,7 @@ Value VM::run(int targetFrameDepth) {
                     // ★ 静态属性覆盖从 trait 继承来的默认方法时同样校验签名。
                     //   （实例方法走 OpCode::METHOD，那条路径上有同一份检查。）
                     if (cls) checkTraitDefaultOverride(cls, keyStr, val.isFunctionClosure() ? val.asFunction() : nullptr);
+                    if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
                     if (cls) {
                         cls->properties[keyStr] = { val, op == OpCode::DEFINE_PROP_CONST, false };
                         cls->ownMembers.insert(keyStr);
@@ -7724,6 +7224,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     if (!found) {
                         invalidateJITOnContainerReplace(Value::none(), val);
+                        if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
                         if (cls) cls->properties[keyStr] = { val, false, false };
                     }
                 } else {
@@ -8182,7 +7683,6 @@ Value VM::run(int targetFrameDepth) {
                 const std::string& field = chunk->constants.data()[c].asString();
                 Value selfVal = getReg(b);
                 if (!selfVal.isInstance()) errSuperInstanceContext();
-                auto inst = selfVal.asInstance();
                 
                 Value classVal = frame->classContext;
                 if (!classVal.isClass()) errSuperClassContext();
@@ -8204,34 +7704,8 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (!rawMethod) JC2_THROW(RuntimeError, "Parent class has no method '" + field + "'.");
                 
-                auto bound = GcHeap::get().allocate<ObjClosure>(
-                    std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                );
-                bound->paramNames = rawMethod->paramNames;
-                bound->isRef = rawMethod->isRef;
-                bound->defaultValues = rawMethod->defaultValues;
-                bound->restName = rawMethod->restName;
-                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                if (rawMethod->upvalueCount > 0) {
-                    bound->upvalueCount = rawMethod->upvalueCount;
-                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                        bound->upvalues[i] = rawMethod->upvalues[i];
-                    }
-                }
-                if (rawMethod->paramTypesCount > 0) {
-                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                    bound->paramTypes = new Value[bound->paramTypesCount];
-                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                    }
-                }
-                bound->returnType = rawMethod->returnType;
-                bound->nativeFn = rawMethod->nativeFn;
-                bound->boundSelf = Value(inst);
-                bound->boundClass = Value(ownerClass);
                 
-                getReg(a) = Value(bound);
+                getReg(a) = Value(rawMethod);
                 break;
             }
             case OpCode::SUPER_INVOKE:
@@ -8905,65 +8379,13 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
-        auto bound = GcHeap::get().allocate<ObjClosure>(
-            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-        );
-        bound->paramNames = rawMethod->paramNames;
-        bound->isRef = rawMethod->isRef;
-        bound->defaultValues = rawMethod->defaultValues;
-        bound->restName = rawMethod->restName;
-        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-        if (rawMethod->upvalueCount > 0) {
-            bound->upvalueCount = rawMethod->upvalueCount;
-            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-            for (int i = 0; i < bound->upvalueCount; ++i) {
-                bound->upvalues[i] = rawMethod->upvalues[i];
-            }
-        }
-        if (rawMethod->paramTypesCount > 0) {
-            bound->paramTypesCount = rawMethod->paramTypesCount;
-            bound->paramTypes = new Value[bound->paramTypesCount];
-            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                bound->paramTypes[i] = rawMethod->paramTypes[i];
-            }
-        }
-        bound->returnType = rawMethod->returnType;
-        bound->nativeFn = rawMethod->nativeFn;
-        bound->boundSelf = obj;
-        bound->boundClass = Value(ic.cachedClass);
-        result = Value(bound);
+        result = Value(rawMethod);
         found = true;
     } else if (obj.isInstance()) {
         auto inst = obj.asInstance();
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
             auto rawMethod = ic.cachedMethod;
-            auto bound = GcHeap::get().allocate<ObjClosure>(
-                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-            );
-            bound->paramNames = rawMethod->paramNames;
-            bound->isRef = rawMethod->isRef;
-            bound->defaultValues = rawMethod->defaultValues;
-            bound->restName = rawMethod->restName;
-            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-            if (rawMethod->upvalueCount > 0) {
-                bound->upvalueCount = rawMethod->upvalueCount;
-                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                for (int i = 0; i < bound->upvalueCount; ++i) {
-                    bound->upvalues[i] = rawMethod->upvalues[i];
-                }
-            }
-            if (rawMethod->paramTypesCount > 0) {
-                bound->paramTypesCount = rawMethod->paramTypesCount;
-                bound->paramTypes = new Value[bound->paramTypesCount];
-                for (int i = 0; i < bound->paramTypesCount; ++i) {
-                    bound->paramTypes[i] = rawMethod->paramTypes[i];
-                }
-            }
-            bound->returnType = rawMethod->returnType;
-            bound->nativeFn = rawMethod->nativeFn;
-            bound->boundSelf = Value(inst);
-            bound->boundClass = Value(ic.cachedClass);
-            result = Value(bound);
+            result = Value(rawMethod);
             found = true;
         }
         if (!found) {
@@ -8975,33 +8397,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = cls;
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = Value(inst);
-                    bound->boundClass = Value(cls);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                     found = true;
                     break;
                 }
@@ -9035,33 +8431,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                     ic.cachedBuiltinType = objBt;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = nativeProto;
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = obj;
-                    bound->boundClass = Value(nativeProto);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                 } else {
                     result = it->second.val;
                 }
@@ -9090,33 +8460,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
             if (it != cls->properties.end() && !it->second.is_local) {
                 if (it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = Value::none();
-                    bound->boundClass = Value(cls);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                 } else {
                     result = it->second.val;
                 }
@@ -9129,241 +8473,31 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
     
     if (!found) {
         if (ic.cachedGlobalSlot == -4) {
-            auto bound = GcHeap::get().allocate<ObjClosure>(
-                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-            );
-            bound->boundSelf = obj;
             
-            Value builtinClosureVal = vm->getBuiltinClosure(field);
-            ObjClosure* targetFn = builtinClosureVal.asFunction();
-            bound->paramNames = targetFn->paramNames;
-            bound->isRef = targetFn->isRef;
-            bound->defaultValues = targetFn->defaultValues;
-            bound->restName = targetFn->restName;
-            bound->isUFCS = true;
 
-            bound->nativeFn = ic.cachedNativeFn;
-            result = Value(bound);
+            result = vm->getBuiltinClosure(field);
             found = true;
         } else {
             if (ic.cachedGlobalSlot >= 0) {
                 Value gVal = vm->getGlobal(field);
                 if (gVal.isFunctionClosure()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->restName = targetFn->restName;
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->isUFCS = true;
 
-                    if (targetFn->isBytecode()) {
-                        bound->compiledFnIndex = targetFn->compiledFnIndex;
-                        if (targetFn->upvalueCount > 0) {
-                            bound->upvalueCount = targetFn->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = targetFn->upvalues[i];
-                            }
-                        }
-                        if (targetFn->paramTypesCount > 0) {
-                            bound->paramTypesCount = targetFn->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = targetFn->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = targetFn->returnType;
-                    } else {
-                        bound->boundClass = targetFn->boundClass;
-                    }
-                    bound->nativeFn = targetFn->nativeFn;
-                    result = Value(bound);
+                    result = Value(gVal.asFunction());
                     found = true;
                 } else if (gVal.isType() || gVal.isClass()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    bound->isUFCS = true;
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [gVal](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(args.size() + 1);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            
-                            if (gVal.isType()) {
-                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
-                                if (td->converter) {
-                                    return td->converter(fullArgs);
-                                }
-                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
-                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
-                                    if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
-                                        Value v = fullArgs[0];
-                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
-                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
-                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
-                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
-                                        else {
-                                            BuiltinType vbt = BuiltinType::ANY;
-                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
-                                            else if (v.isString()) vbt = BuiltinType::STRING;
-                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
-                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
-                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
-                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
-                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
-                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
-                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
-                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
-                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
-                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
-                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
-                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                                            resTd->types.push_back(vbt);
-                                        }
-                                        resTd->normalize();
-                                        return Value(resTd);
-                                    }
-                                }
-                                JC2_THROW(TypeError, "This type object is not callable.");
-                            } else {
-                                auto cls = static_cast<ObjClass*>(gVal.asObj());
-                                if (cls->native_allocator) {
-                                    return cls->native_allocator(fullArgs);
-                                }
-                                auto instance = GcHeap::get().allocate<ObjInstance>();
-                                Value res(instance);
-                                GcValueGuard guard(res);
-                                instance->classDef = cls;
-                                
-                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
-                                return res;
-                            }
-                        }
-                    );
-                    result = Value(bound);
+                    result = gVal;
                     found = true;
                 }
             } else {
                 Value gVal = vm->getGlobal(field);
                 if (gVal.isFunctionClosure()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->restName = targetFn->restName;
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->isUFCS = true;
 
-                    if (targetFn->isBytecode()) {
-                        bound->compiledFnIndex = targetFn->compiledFnIndex;
-                        if (targetFn->upvalueCount > 0) {
-                            bound->upvalueCount = targetFn->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = targetFn->upvalues[i];
-                            }
-                        }
-                        if (targetFn->paramTypesCount > 0) {
-                            bound->paramTypesCount = targetFn->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = targetFn->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = targetFn->returnType;
-                    } else {
-                        bound->boundClass = targetFn->boundClass;
-                    }
-                    bound->nativeFn = targetFn->nativeFn;
-                    result = Value(bound);
+                    result = Value(gVal.asFunction());
                     found = true;
                 } else if (gVal.isType() || gVal.isClass()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    bound->isUFCS = true;
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [gVal](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(args.size() + 1);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            
-                            if (gVal.isType()) {
-                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
-                                if (td->converter) {
-                                    return td->converter(fullArgs);
-                                }
-                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
-                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
-                                    if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
-                                        Value v = fullArgs[0];
-                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
-                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
-                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
-                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
-                                        else {
-                                            BuiltinType vbt = BuiltinType::ANY;
-                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
-                                            else if (v.isString()) vbt = BuiltinType::STRING;
-                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
-                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
-                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
-                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
-                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
-                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
-                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
-                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
-                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
-                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
-                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
-                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                                            resTd->types.push_back(vbt);
-                                        }
-                                        resTd->normalize();
-                                        return Value(resTd);
-                                    }
-                                }
-                                JC2_THROW(TypeError, "This type object is not callable.");
-                            } else {
-                                auto cls = static_cast<ObjClass*>(gVal.asObj());
-                                if (cls->native_allocator) {
-                                    return cls->native_allocator(fullArgs);
-                                }
-                                auto instance = GcHeap::get().allocate<ObjInstance>();
-                                Value res(instance);
-                                GcValueGuard guard(res);
-                                instance->classDef = cls;
-                                
-                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
-                                return res;
-                            }
-                        }
-                    );
-                    result = Value(bound);
+                    result = gVal;
                     found = true;
                 }
             }
@@ -9372,50 +8506,15 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
                 const auto& nativeBuiltins = vm->getNativeBuiltins();
                 auto nIt = nativeBuiltins.find(field);
                 if (nIt != nativeBuiltins.end()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
                     
-                    Value builtinClosureVal = vm->getBuiltinClosure(field);
-                    ObjClosure* targetFn = builtinClosureVal.asFunction();
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->restName = targetFn->restName;
-                    bound->isUFCS = true;
 
-                    NativeCallable nativeFn = nIt->second;
                     
-                    const auto& builtinArity = vm->getBuiltinArity();
-                    auto ait = builtinArity.find(field);
-                    std::set<int> allowedArities;
-                    if (ait != builtinArity.end()) allowedArities = ait->second;
 
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            int totalArgs = static_cast<int>(args.size()) + 1;
-                            if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                std::string expected;
-                                for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                    if (aIt != allowedArities.begin()) expected += " or ";
-                                    expected += std::to_string(*aIt - 1);
-                                }
-                                JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                            }
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(totalArgs);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            return nativeFn(fullArgs);
-                        }
-                    );
                     
                     ic.cachedGlobalSlot = -4;
-                    ic.cachedNativeFn = bound->nativeFn;
+                    ic.cachedNativeFn = std::make_any<NativeCallable>(nIt->second);
                     
-                    result = Value(bound);
+                    result = vm->getBuiltinClosure(field);
                     found = true;
                 }
             }
@@ -9478,65 +8577,13 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
 
     if (objBt != BuiltinType::UNKNOWN && ic.cachedBuiltinType == objBt && ic.cachedMethod) {
         auto rawMethod = ic.cachedMethod;
-        auto bound = GcHeap::get().allocate<ObjClosure>(
-            std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-        );
-        bound->paramNames = rawMethod->paramNames;
-        bound->isRef = rawMethod->isRef;
-        bound->defaultValues = rawMethod->defaultValues;
-        bound->restName = rawMethod->restName;
-        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-        if (rawMethod->upvalueCount > 0) {
-            bound->upvalueCount = rawMethod->upvalueCount;
-            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-            for (int i = 0; i < bound->upvalueCount; ++i) {
-                bound->upvalues[i] = rawMethod->upvalues[i];
-            }
-        }
-        if (rawMethod->paramTypesCount > 0) {
-            bound->paramTypesCount = rawMethod->paramTypesCount;
-            bound->paramTypes = new Value[bound->paramTypesCount];
-            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                bound->paramTypes[i] = rawMethod->paramTypes[i];
-            }
-        }
-        bound->returnType = rawMethod->returnType;
-        bound->nativeFn = rawMethod->nativeFn;
-        bound->boundSelf = obj;
-        bound->boundClass = Value(ic.cachedClass);
-        result = Value(bound);
+        result = Value(rawMethod);
         found = true;
     } else if (obj.isInstance()) {
         auto inst = obj.asInstance();
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
             auto rawMethod = ic.cachedMethod;
-            auto bound = GcHeap::get().allocate<ObjClosure>(
-                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-            );
-            bound->paramNames = rawMethod->paramNames;
-            bound->isRef = rawMethod->isRef;
-            bound->defaultValues = rawMethod->defaultValues;
-            bound->restName = rawMethod->restName;
-            bound->compiledFnIndex = rawMethod->compiledFnIndex;
-            if (rawMethod->upvalueCount > 0) {
-                bound->upvalueCount = rawMethod->upvalueCount;
-                bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                for (int i = 0; i < bound->upvalueCount; ++i) {
-                    bound->upvalues[i] = rawMethod->upvalues[i];
-                }
-            }
-            if (rawMethod->paramTypesCount > 0) {
-                bound->paramTypesCount = rawMethod->paramTypesCount;
-                bound->paramTypes = new Value[bound->paramTypesCount];
-                for (int i = 0; i < bound->paramTypesCount; ++i) {
-                    bound->paramTypes[i] = rawMethod->paramTypes[i];
-                }
-            }
-            bound->returnType = rawMethod->returnType;
-            bound->nativeFn = rawMethod->nativeFn;
-            bound->boundSelf = Value(inst);
-            bound->boundClass = Value(ic.cachedClass);
-            result = Value(bound);
+            result = Value(rawMethod);
             found = true;
         }
         if (!found) {
@@ -9548,33 +8595,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = cls;
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = Value(inst);
-                    bound->boundClass = Value(cls);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                     found = true;
                     break;
                 }
@@ -9608,33 +8629,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                     ic.cachedBuiltinType = objBt;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = nativeProto;
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = obj;
-                    bound->boundClass = Value(nativeProto);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                 } else {
                     result = it->second.val;
                 }
@@ -9663,33 +8658,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
             if (it != cls->properties.end() && !it->second.is_local) {
                 if (it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->paramNames = rawMethod->paramNames;
-                    bound->isRef = rawMethod->isRef;
-                    bound->defaultValues = rawMethod->defaultValues;
-                    bound->restName = rawMethod->restName;
-                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                    if (rawMethod->upvalueCount > 0) {
-                        bound->upvalueCount = rawMethod->upvalueCount;
-                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                            bound->upvalues[i] = rawMethod->upvalues[i];
-                        }
-                    }
-                    if (rawMethod->paramTypesCount > 0) {
-                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                        bound->paramTypes = new Value[bound->paramTypesCount];
-                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                        }
-                    }
-                    bound->returnType = rawMethod->returnType;
-                    bound->nativeFn = rawMethod->nativeFn;
-                    bound->boundSelf = Value::none();
-                    bound->boundClass = Value(cls);
-                    result = Value(bound);
+                    result = Value(rawMethod);
                 } else {
                     result = it->second.val;
                 }
@@ -9702,241 +8671,31 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
     
     if (!found) {
         if (ic.cachedGlobalSlot == -4) {
-            auto bound = GcHeap::get().allocate<ObjClosure>(
-                std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-            );
-            bound->boundSelf = obj;
             
-            Value builtinClosureVal = vm->getBuiltinClosure(field);
-            ObjClosure* targetFn = builtinClosureVal.asFunction();
-            bound->paramNames = targetFn->paramNames;
-            bound->isRef = targetFn->isRef;
-            bound->defaultValues = targetFn->defaultValues;
-            bound->restName = targetFn->restName;
-            bound->isUFCS = true;
 
-            bound->nativeFn = ic.cachedNativeFn;
-            result = Value(bound);
+            result = vm->getBuiltinClosure(field);
             found = true;
         } else {
             if (ic.cachedGlobalSlot >= 0) {
                 Value gVal = vm->getGlobal(field);
                 if (gVal.isFunctionClosure()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->restName = targetFn->restName;
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->isUFCS = true;
 
-                    if (targetFn->isBytecode()) {
-                        bound->compiledFnIndex = targetFn->compiledFnIndex;
-                        if (targetFn->upvalueCount > 0) {
-                            bound->upvalueCount = targetFn->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = targetFn->upvalues[i];
-                            }
-                        }
-                        if (targetFn->paramTypesCount > 0) {
-                            bound->paramTypesCount = targetFn->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = targetFn->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = targetFn->returnType;
-                    } else {
-                        bound->boundClass = targetFn->boundClass;
-                    }
-                    bound->nativeFn = targetFn->nativeFn;
-                    result = Value(bound);
+                    result = Value(gVal.asFunction());
                     found = true;
                 } else if (gVal.isType() || gVal.isClass()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    bound->isUFCS = true;
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [gVal](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(args.size() + 1);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            
-                            if (gVal.isType()) {
-                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
-                                if (td->converter) {
-                                    return td->converter(fullArgs);
-                                }
-                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
-                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
-                                    if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
-                                        Value v = fullArgs[0];
-                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
-                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
-                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
-                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
-                                        else {
-                                            BuiltinType vbt = BuiltinType::ANY;
-                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
-                                            else if (v.isString()) vbt = BuiltinType::STRING;
-                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
-                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
-                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
-                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
-                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
-                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
-                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
-                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
-                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
-                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
-                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
-                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                                            resTd->types.push_back(vbt);
-                                        }
-                                        resTd->normalize();
-                                        return Value(resTd);
-                                    }
-                                }
-                                JC2_THROW(TypeError, "This type object is not callable.");
-                            } else {
-                                auto cls = static_cast<ObjClass*>(gVal.asObj());
-                                if (cls->native_allocator) {
-                                    return cls->native_allocator(fullArgs);
-                                }
-                                auto instance = GcHeap::get().allocate<ObjInstance>();
-                                Value res(instance);
-                                GcValueGuard guard(res);
-                                instance->classDef = cls;
-                                
-                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
-                                return res;
-                            }
-                        }
-                    );
-                    result = Value(bound);
+                    result = gVal;
                     found = true;
                 }
             } else {
                 Value gVal = vm->getGlobal(field);
                 if (gVal.isFunctionClosure()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    ObjClosure* targetFn = gVal.asFunction();
                 
-                    bound->restName = targetFn->restName;
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->isUFCS = true;
 
-                    if (targetFn->isBytecode()) {
-                        bound->compiledFnIndex = targetFn->compiledFnIndex;
-                        if (targetFn->upvalueCount > 0) {
-                            bound->upvalueCount = targetFn->upvalueCount;
-                            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                            for (int i = 0; i < bound->upvalueCount; ++i) {
-                                bound->upvalues[i] = targetFn->upvalues[i];
-                            }
-                        }
-                        if (targetFn->paramTypesCount > 0) {
-                            bound->paramTypesCount = targetFn->paramTypesCount;
-                            bound->paramTypes = new Value[bound->paramTypesCount];
-                            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                bound->paramTypes[i] = targetFn->paramTypes[i];
-                            }
-                        }
-                        bound->returnType = targetFn->returnType;
-                    } else {
-                        bound->boundClass = targetFn->boundClass;
-                    }
-                    bound->nativeFn = targetFn->nativeFn;
-                    result = Value(bound);
+                    result = Value(gVal.asFunction());
                     found = true;
                 } else if (gVal.isType() || gVal.isClass()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
-                    bound->isUFCS = true;
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [gVal](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(args.size() + 1);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            
-                            if (gVal.isType()) {
-                                ObjTypeDef* td = static_cast<ObjTypeDef*>(gVal.asObj());
-                                if (td->converter) {
-                                    return td->converter(fullArgs);
-                                }
-                                if (td->types.size() == 1 && std::holds_alternative<BuiltinType>(td->types[0])) {
-                                    BuiltinType bt = std::get<BuiltinType>(td->types[0]);
-                                    if (bt == BuiltinType::TYPE_DEF) {
-                                        if (fullArgs.size() != 1) JC2_THROW(TypeError, "type() expects 1 argument.");
-                                        Value v = fullArgs[0];
-                                        ObjTypeDef* resTd = GcHeap::get().allocate<ObjTypeDef>();
-                                        if (v.isType()) resTd->types.push_back(BuiltinType::TYPE_DEF);
-                                        else if (v.isClass()) resTd->types.push_back(BuiltinType::CLASS);
-                                        else if (v.isInstance()) resTd->types.push_back(v.asInstance()->classDef);
-                                        else {
-                                            BuiltinType vbt = BuiltinType::ANY;
-                                            if (v.isInt32() || v.isBigInt()) vbt = BuiltinType::INT;
-                                            else if (v.isFloat()) vbt = BuiltinType::FLOAT;
-                                            else if (v.isString()) vbt = BuiltinType::STRING;
-                                            else if (v.isBool()) vbt = BuiltinType::BOOL;
-                                            else if (v.isNone()) vbt = BuiltinType::NONE_TYPE;
-                                            else if (v.isObjType(ObjType::LIST)) vbt = BuiltinType::LIST;
-                                            else if (v.isObjType(ObjType::DICT)) vbt = BuiltinType::DICT;
-                                            else if (v.isObjType(ObjType::SET)) vbt = BuiltinType::SET;
-                                            else if (v.isObjType(ObjType::FRACTION)) vbt = BuiltinType::FRACTION;
-                                            else if (v.isObjType(ObjType::COMPLEX)) vbt = BuiltinType::COMPLEX;
-                                            else if (v.isObjType(ObjType::SYMBOLIC)) vbt = BuiltinType::SYMBOLIC;
-                                            else if (v.isObjType(ObjType::REAL_MATRIX)) vbt = BuiltinType::REALMAT;
-                                            else if (v.isObjType(ObjType::COMPLEX_MATRIX)) vbt = BuiltinType::COMPLEXMAT;
-                                            else if (v.isObjType(ObjType::SYM_MATRIX)) vbt = BuiltinType::SYMMAT;
-                                            else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
-                                            else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
-                                            else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                                            resTd->types.push_back(vbt);
-                                        }
-                                        resTd->normalize();
-                                        return Value(resTd);
-                                    }
-                                }
-                                JC2_THROW(TypeError, "This type object is not callable.");
-                            } else {
-                                auto cls = static_cast<ObjClass*>(gVal.asObj());
-                                if (cls->native_allocator) {
-                                    return cls->native_allocator(fullArgs);
-                                }
-                                auto instance = GcHeap::get().allocate<ObjInstance>();
-                                Value res(instance);
-                                GcValueGuard guard(res);
-                                instance->classDef = cls;
-                                
-                                VM::activeVM->runFieldInitializersAndInit(cls, res, fullArgs);
-                                return res;
-                            }
-                        }
-                    );
-                    result = Value(bound);
+                    result = gVal;
                     found = true;
                 }
             }
@@ -9945,50 +8704,15 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
                 const auto& nativeBuiltins = vm->getNativeBuiltins();
                 auto nIt = nativeBuiltins.find(field);
                 if (nIt != nativeBuiltins.end()) {
-                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-                    );
-                    bound->boundSelf = obj;
                     
-                    Value builtinClosureVal = vm->getBuiltinClosure(field);
-                    ObjClosure* targetFn = builtinClosureVal.asFunction();
-                    bound->paramNames = targetFn->paramNames;
-                    bound->isRef = targetFn->isRef;
-                    bound->defaultValues = targetFn->defaultValues;
-                    bound->restName = targetFn->restName;
-                    bound->isUFCS = true;
 
-                    NativeCallable nativeFn = nIt->second;
                     
-                    const auto& builtinArity = vm->getBuiltinArity();
-                    auto ait = builtinArity.find(field);
-                    std::set<int> allowedArities;
-                    if (ait != builtinArity.end()) allowedArities = ait->second;
 
-                    bound->nativeFn = std::make_any<NativeCallable>(
-                        [nativeFn, allowedArities, field](const std::vector<Value>& args) -> Value {
-                            Value capturedObj = helpers::nativeSelfStack.back();
-                            int totalArgs = static_cast<int>(args.size()) + 1;
-                            if (!allowedArities.empty() && allowedArities.find(totalArgs) == allowedArities.end()) {
-                                std::string expected;
-                                for (auto aIt = allowedArities.begin(); aIt != allowedArities.end(); ++aIt) {
-                                    if (aIt != allowedArities.begin()) expected += " or ";
-                                    expected += std::to_string(*aIt - 1);
-                                }
-                                JC2_THROW(RuntimeError, "Method '" + field + "' expects " + expected + " arguments, got " + std::to_string(args.size()) + ".");
-                            }
-                            std::vector<Value> fullArgs;
-                            fullArgs.reserve(totalArgs);
-                            fullArgs.push_back(capturedObj);
-                            fullArgs.insert(fullArgs.end(), args.begin(), args.end());
-                            return nativeFn(fullArgs);
-                        }
-                    );
                     
                     ic.cachedGlobalSlot = -4;
-                    ic.cachedNativeFn = bound->nativeFn;
+                    ic.cachedNativeFn = std::make_any<NativeCallable>(nIt->second);
                     
-                    result = Value(bound);
+                    result = vm->getBuiltinClosure(field);
                     found = true;
                 }
             }
@@ -10635,34 +9359,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                         if (it != ctxOwner->properties.end()) {
                             if (it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
-                                auto bound = GcHeap::get().allocate<ObjClosure>(
-                                    std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
-                                );
-                                bound->paramNames = rawMethod->paramNames;
-                                bound->isRef = rawMethod->isRef;
-                                bound->defaultValues = rawMethod->defaultValues;
-                                bound->restName = rawMethod->restName;
-                                bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                if (rawMethod->upvalueCount > 0) {
-                                    bound->upvalueCount = rawMethod->upvalueCount;
-                                    bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                    for (int i = 0; i < bound->upvalueCount; ++i) {
-                                        bound->upvalues[i] = rawMethod->upvalues[i];
-                                    }
-                                }
-                                if (rawMethod->paramTypesCount > 0) {
-                                    bound->paramTypesCount = rawMethod->paramTypesCount;
-                                    bound->paramTypes = new Value[bound->paramTypesCount];
-                                    for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                        bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                    }
-                                }
-                                bound->returnType = rawMethod->returnType;
-                                bound->nativeFn = rawMethod->nativeFn;
-                                bound->boundSelf = Value::none();
-                                bound->boundClass = Value(ctxOwner);
-                                bound->is_local = true;
-                                result = Value(bound);
+                                result = Value(rawMethod);
                             } else {
                                 result = it->second.val;
                             }
@@ -10676,33 +9373,7 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                             if (it != c_cls->properties.end() && !it->second.is_local) {
                                 if (it->second.val.isFunctionClosure()) {
                                     auto rawMethod = it->second.val.asFunction();
-                                    auto bound = GcHeap::get().allocate<ObjClosure>(
-                                        std::vector<std::string>{}, std::vector<bool>{}, key, nullptr
-                                    );
-                                    bound->paramNames = rawMethod->paramNames;
-                                    bound->isRef = rawMethod->isRef;
-                                    bound->defaultValues = rawMethod->defaultValues;
-                                    bound->restName = rawMethod->restName;
-                                    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-                                    if (rawMethod->upvalueCount > 0) {
-                                        bound->upvalueCount = rawMethod->upvalueCount;
-                                        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-                                        for (int i = 0; i < bound->upvalueCount; ++i) {
-                                            bound->upvalues[i] = rawMethod->upvalues[i];
-                                        }
-                                    }
-                                    if (rawMethod->paramTypesCount > 0) {
-                                        bound->paramTypesCount = rawMethod->paramTypesCount;
-                                        bound->paramTypes = new Value[bound->paramTypesCount];
-                                        for (int i = 0; i < bound->paramTypesCount; ++i) {
-                                            bound->paramTypes[i] = rawMethod->paramTypes[i];
-                                        }
-                                    }
-                                    bound->returnType = rawMethod->returnType;
-                                    bound->nativeFn = rawMethod->nativeFn;
-                                    bound->boundSelf = Value::none();
-                                    bound->boundClass = Value(c_cls);
-                                    result = Value(bound);
+                                    result = Value(rawMethod);
                                 } else {
                                     result = it->second.val;
                                 }
@@ -11030,7 +9701,6 @@ uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chu
     const std::string& field = chunk->constants[nameIdx].asString();
     Value selfVal = Value::fromRawBits(obj_bits);
     if (!selfVal.isInstance()) errSuperInstanceContext();
-    auto inst = selfVal.asInstance();
     
     Value classVal = frame->classContext;
     if (!classVal.isClass()) errSuperClassContext();
@@ -11052,34 +9722,8 @@ uint64_t jc2_jit_get_super(uint64_t obj_bits, uint32_t nameIdx, const Chunk* chu
     }
     if (!rawMethod) JC2_THROW(RuntimeError, "Parent class has no method '" + field + "'.");
     
-    auto bound = GcHeap::get().allocate<ObjClosure>(
-        std::vector<std::string>{}, std::vector<bool>{}, field, nullptr
-    );
-    bound->paramNames = rawMethod->paramNames;
-    bound->isRef = rawMethod->isRef;
-    bound->defaultValues = rawMethod->defaultValues;
-    bound->restName = rawMethod->restName;
-    bound->compiledFnIndex = rawMethod->compiledFnIndex;
-    if (rawMethod->upvalueCount > 0) {
-        bound->upvalueCount = rawMethod->upvalueCount;
-        bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-        for (int i = 0; i < bound->upvalueCount; ++i) {
-            bound->upvalues[i] = rawMethod->upvalues[i];
-        }
-    }
-    if (rawMethod->paramTypesCount > 0) {
-        bound->paramTypesCount = rawMethod->paramTypesCount;
-        bound->paramTypes = new Value[bound->paramTypesCount];
-        for (int i = 0; i < bound->paramTypesCount; ++i) {
-            bound->paramTypes[i] = rawMethod->paramTypes[i];
-        }
-    }
-    bound->returnType = rawMethod->returnType;
-    bound->nativeFn = rawMethod->nativeFn;
-    bound->boundSelf = Value(inst);
-    bound->boundClass = Value(ownerClass);
-    
-    Value res(bound);
+    (void)ownerClass;
+    Value res(rawMethod);
     frame->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
@@ -11166,6 +9810,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         }
         if (!found) {
             vm->invalidateJITOnContainerReplace(Value::none(), val);
+            if (cls && val.isFunctionClosure() && !val.asFunction()->owner_class) val.asFunction()->owner_class = cls;
             if (cls) cls->properties[keyStr] = { val, false, false };
         }
     } else {
@@ -11908,37 +10553,10 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
     Value keyVal = chunk->constants[ic.nameIdx];
     Value result;
 
-    auto bindPrivate = [&](ObjClosure* rawMethod, ObjClass* owner, Value boundSelf) -> Value {
-        auto bound = GcHeap::get().allocate<ObjClosure>(
-            std::vector<std::string>{}, std::vector<bool>{}, keyVal.asString(), nullptr
-        );
-        Value res(bound);
-        GcValueGuard guard(res);
-        bound->paramNames = rawMethod->paramNames;
-        bound->isRef = rawMethod->isRef;
-        bound->defaultValues = rawMethod->defaultValues;
-        bound->restName = rawMethod->restName;
-        bound->compiledFnIndex = rawMethod->compiledFnIndex;
-        if (rawMethod->upvalueCount > 0) {
-            bound->upvalueCount = rawMethod->upvalueCount;
-            bound->upvalues = new ObjUpVal*[bound->upvalueCount];
-            for (int i = 0; i < bound->upvalueCount; ++i) {
-                bound->upvalues[i] = rawMethod->upvalues[i];
-            }
-        }
-        if (rawMethod->paramTypesCount > 0) {
-            bound->paramTypesCount = rawMethod->paramTypesCount;
-            bound->paramTypes = new Value[bound->paramTypesCount];
-            for (int i = 0; i < bound->paramTypesCount; ++i) {
-                bound->paramTypes[i] = rawMethod->paramTypes[i];
-            }
-        }
-        bound->returnType = rawMethod->returnType;
-        bound->nativeFn = rawMethod->nativeFn;
-        bound->boundSelf = boundSelf;
-        bound->boundClass = Value(owner);
-        bound->is_local = true;
-        return res;
+    // ★ 私有成员读取不再在读取时绑定接收者：调用点会把当前 self 交给它。
+    //   私有可见性由上面的 findPrivateMember 词法检查负责，与绑定无关。
+    auto bindPrivate = [](ObjClosure* rawMethod, ObjClass*, Value) -> Value {
+        return Value(rawMethod);
     };
 
     if (obj.isInstance()) {

@@ -2593,27 +2593,42 @@ void BuiltinRegistry::registerStringFunctions() {
     reg("repr", { 1 }, [](const std::vector<Value>& args) -> Value {
         return Value(args[0].toRepr());
         }, {"x"}, "", {}, "", 0, {}, {}, TypeSig::bt(BuiltinType::STRING));
-    reg("len", { 1 }, [](const std::vector<Value>& args) -> Value {
+    // ★ len 的实现抽成一份：全局 len(x) 与原型方法 .len() 共用，保证两者行为逐字一致。
+    auto lenImpl = [](const Value& v) -> Value {
         // ★ Dunder 钩子: __len__
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+        if (v.isInstance()) {
+            auto inst = v.asInstance();
             auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
             if (found) return result;
             return Value::fromInt32(static_cast<int32_t>(inst->properties.size()));
         }
-        if (args[0].isString()) return Value::fromInt32(static_cast<int32_t>(args[0].asObjString()->charLength));
-        if (args[0].isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
-        if (args[0].isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(args[0].asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
-        if (args[0].isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(args[0].asObj())->elements.size()));
-        if (args[0].isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(args[0].asObj())->vec.size()));
-        if (args[0].isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(args[0].asObj())->elements.size()));
-        if (args[0].isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(args[0].asObj())->fields.size()));
-        if (args[0].isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(args[0].asObj())->num.digitCount()));
-        if (args[0].isInt32()) return Value::fromInt32(args[0].asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(args[0].asInt32()).size() - (args[0].asInt32() < 0 ? 1 : 0)));
+        if (v.isString()) return Value::fromInt32(static_cast<int32_t>(v.asObjString()->charLength));
+        if (v.isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (v.isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
+        if (v.isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(v.asObj())->elements.size()));
+        if (v.isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(v.asObj())->vec.size()));
+        if (v.isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(v.asObj())->elements.size()));
+        if (v.isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(v.asObj())->fields.size()));
+        if (v.isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(v.asObj())->num.digitCount()));
+        if (v.isInt32()) return Value::fromInt32(v.asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(v.asInt32()).size() - (v.asInt32() < 0 ? 1 : 0)));
         JC2_THROW(TypeError, "len() expects a string, vector, matrix, dict, list, set, namespace, or integer.");
-        }, {"x"});
+    };
+    reg("len", { 1 }, [lenImpl](const std::vector<Value>& args) -> Value { return lenImpl(args[0]); }, {"x"});
     reg("length", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
     reg("size", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
+
+    // ★ .len()：给五个原生原型各补一个 0 参方法，行为与全局 len(x) 完全一致。
+    // 动机（docs/OOP_MODEL_DESIGN.md §六 第 1 步）：接收者不再被隐式填进实参位之后，
+    // `L.len()` 这类"点号调用全局函数"的写法必须由原型成员承接，否则会退化成
+    // "len() 缺参数"。矩阵/集合的 len(M)/len(S) 同样保留。
+    auto lenMethod = [lenImpl](const std::vector<Value>&) -> Value {
+        return lenImpl(helpers::nativeSelfStack.back());
+    };
+    regMethod(VM::activeVM->listProto, "len", {}, lenMethod);
+    regMethod(VM::activeVM->dictProto, "len", {}, lenMethod);
+    regMethod(VM::activeVM->setProto, "len", {}, lenMethod);
+    regMethod(VM::activeVM->stringProto, "len", {}, lenMethod);
+    regMethod(VM::activeVM->matrixProto, "len", {}, lenMethod);
 
     reg("eval", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())

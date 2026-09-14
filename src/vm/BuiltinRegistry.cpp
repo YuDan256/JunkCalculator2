@@ -5767,7 +5767,13 @@ void BuiltinRegistry::registerCAS() {
         }
         SymExpr expr = args[0].asSymbolic();
         std::string var = getVarName(args[1], "diff");
-        return Value(simplify(jc::diff(expr, var)));
+        // 出口用 full_simplify —— 也就是 cas.simplify 的那套规范形。用户拿到的东西
+        // 必须满足 simplify(diff(e)) == diff(e)，否则下游之间按结构做的去重/缓存就
+        // 建立在不一致的表示上（实测 diff(exp(x)/x) 给出 exp(x)*x^(-1) - exp(x)*x^(-2)，
+        // 规范形是 exp(x)*(x-1)*x^(-2)）。
+        // 只在最外层加：diff/integrate 内部的递归仍用轻量 simplify —— 那里上重型
+        // 多重宇宙会在 Cardano 嵌套根式上失控（见 Symbolic.cpp 中 solve 那段注释）。
+        return Value(full_simplify(jc::diff(expr, var)));
         }, {"expr", "var"});
 
     regModule(cas_ns, "integ", { 2, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
@@ -5789,7 +5795,10 @@ void BuiltinRegistry::registerCAS() {
             SymExpr b = args[3].asSymbolic();
             return Value(jc::defint(expr, var, a, b));
         }
-        return Value(simplify(jc::integrate(expr, var)));
+        // 同 diff：出口用 full_simplify 归一成 cas.simplify 的规范形。
+        // 实测 integ(x*log(x)) 原本给出 1/2*x^2*log(x) - 1/4*x^2，规范形是
+        // x^2*(1/2*log(x) - 1/4) —— 后者把公共因子提了出来，更紧凑。
+        return Value(full_simplify(jc::integrate(expr, var)));
         }, {"expr", "var", "a", "b"});
 }
 

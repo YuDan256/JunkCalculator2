@@ -2135,7 +2135,8 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         auto cls = static_cast<ObjClass*>(obj.asObj());
         while (cls) {
             auto it = cls->properties.find(methodName);
-            if (it != cls->properties.end() && !it->second.is_local) {
+            // ★ 类上只有 static 域：实例成员模板不从类上取（docs/OOP_MODEL_DESIGN.md §2.6）
+            if (it != cls->properties.end() && !it->second.is_local && it->second.is_static) {
                 Value fv = it->second.val;
                 if (fv.isFunctionClosure()) {
                     method = fv.asFunction();
@@ -6777,7 +6778,7 @@ Value VM::run(int targetFrameDepth) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     while (cls) {
                         auto it = cls->properties.find(field);
-                        if (it != cls->properties.end() && !it->second.is_local) {
+                        if (it != cls->properties.end() && !it->second.is_local && it->second.is_static) {
                             if (it->second.val.isFunctionClosure()) {
                                 auto rawMethod = it->second.val.asFunction();
                                 result = Value(rawMethod);
@@ -6952,7 +6953,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (!found && obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     auto it = cls->properties.find(field);
-                    if (it != cls->properties.end() && !it->second.is_local && !it->second.is_field_decl) {
+                    if (it != cls->properties.end() && !it->second.is_local && !it->second.is_field_decl && it->second.is_static) {
                         result = it->second.val;
                         found = true;
                     }
@@ -8460,7 +8461,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
         auto cls = static_cast<ObjClass*>(obj.asObj());
         while (cls) {
             auto it = cls->properties.find(field);
-            if (it != cls->properties.end() && !it->second.is_local) {
+            if (it != cls->properties.end() && !it->second.is_local && it->second.is_static) {
                 if (it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
                     result = Value(rawMethod);
@@ -8658,7 +8659,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
         auto cls = static_cast<ObjClass*>(obj.asObj());
         while (cls) {
             auto it = cls->properties.find(field);
-            if (it != cls->properties.end() && !it->second.is_local) {
+            if (it != cls->properties.end() && !it->second.is_local && it->second.is_static) {
                 if (it->second.val.isFunctionClosure()) {
                     auto rawMethod = it->second.val.asFunction();
                     result = Value(rawMethod);

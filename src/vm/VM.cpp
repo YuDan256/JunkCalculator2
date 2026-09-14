@@ -6952,7 +6952,7 @@ Value VM::run(int targetFrameDepth) {
                 } else if (!found && obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     auto it = cls->properties.find(field);
-                    if (it != cls->properties.end() && !it->second.is_local) {
+                    if (it != cls->properties.end() && !it->second.is_local && !it->second.is_field_decl) {
                         result = it->second.val;
                         found = true;
                     }
@@ -7055,8 +7055,13 @@ Value VM::run(int targetFrameDepth) {
                         const_cast<PropertyDescriptor*>(pd)->val = val;
                     } else {
                         std::string mangledName = manglePrivate(cls->classId, keyStr);
+                        if (val.isNone()) {
+                            // ★ local 字段声明登记（同 DEFINE_PROP 的声明分支）
+                            if (cls) cls->properties[mangledName] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
+                            break;
+                        }
                         auto it = cls->properties.find(mangledName);
-                        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
+                        if (it != cls->properties.end() && !it->second.is_field_decl) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
                         if (cls) {
                             cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true, false, true };
                             cls->ownMembers.insert(mangledName);
@@ -7098,7 +7103,8 @@ Value VM::run(int targetFrameDepth) {
                     //   const 只管它所在的那个域——类域那份在类上写会被拒，实例域这份在这里被拒。
                     for (auto* cc = inst->classDef; cc; cc = cc->parent) {
                         auto cit = cc->properties.find(keyStr);
-                        if (cit != cc->properties.end() && !cit->second.is_local && cit->second.is_const)
+                        // 字段声明登记不算类成员：实例上的那份正是这个字段自己的值
+                        if (cit != cc->properties.end() && !cit->second.is_local && !cit->second.is_field_decl && cit->second.is_const)
                             JC2_THROW(RuntimeError, "Cannot modify const property '" + keyStr + "'.");
                     }
                     inst->properties[keyStr] = {val, op == OpCode::DEFINE_PROP_CONST, false};
@@ -7106,8 +7112,14 @@ Value VM::run(int targetFrameDepth) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
                     if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen trait '" + cls->name + "'.");
                     std::string keyStr = keyVal.asString();
+                    if (val.isNone()) {
+                        // ★ 字段声明登记（值为 none）：只带标志，不带值；对类/实例都不可见，
+                        //   也不参与 const 检查，因此 K.cf = 21 仍会新建一个 static。
+                        if (cls) cls->properties[keyStr] = { Value::none(), op == OpCode::DEFINE_PROP_CONST, false, false, false, true };
+                        break;
+                    }
                     auto it = cls->properties.find(keyStr);
-                    if (it != cls->properties.end()) {
+                    if (it != cls->properties.end() && !it->second.is_field_decl) {
                         JC2_THROW(RuntimeError, "Static property '" + keyStr + "' already defined.");
                     }
                     // ★ 静态属性覆盖从 trait 继承来的默认方法时同样校验签名。
@@ -7195,6 +7207,11 @@ Value VM::run(int targetFrameDepth) {
                     auto c_cls = cls;
                     while (c_cls) {
                         auto it = c_cls->properties.find(keyStr);
+                        if (it != c_cls->properties.end() && it->second.is_field_decl) {
+                            // 字段声明不是类成员：类上的赋值照旧新建一个 static（§2.6）
+                            c_cls = c_cls->parent;
+                            continue;
+                        }
                         if (it != c_cls->properties.end()) {
                             if (it->second.is_local) {
                                 if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + keyStr + "'.");

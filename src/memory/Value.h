@@ -540,6 +540,8 @@ namespace jc {
         bool is_local = false;
         bool is_abstract = false;   // ★ 抽象方法标记（trait 契约）
         bool is_static = false;     // ★ 静态成员：只住类袋子，实例沿类链查找时跳过
+        bool is_field_decl = false; // ★ 字段声明登记（只有标志、没有值）：供成员编号使用，
+                                    //   对类与实例都不可见，也不参与 const 检查
     };
 
     struct ObjClass : public Obj {
@@ -749,7 +751,8 @@ namespace jc {
                 // ★ 类链上的 const 成员不许被实例影子覆盖（见 docs/OOP_MODEL_DESIGN.md §2.6）
                 for (auto* cc = classDef; cc; cc = cc->parent) {
                     auto cit = cc->properties.find(key);
-                    if (cit != cc->properties.end() && !cit->second.is_local && cit->second.is_const)
+                    // 字段声明登记不算类成员：实例上的那份正是这个字段自己的值
+                    if (cit != cc->properties.end() && !cit->second.is_local && !cit->second.is_field_decl && cit->second.is_const)
                         errModifyConstProp(key);
                 }
                 properties[key] = {val, false, false};

@@ -3880,6 +3880,26 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         }
     }
 
+    // ★ 字段声明登记：类体里声明的实例字段（非 lambda）以"只有标志、没有值"的形式
+    //   记到类上，供后续「成员编号 + 扁平槽位」使用。值为 none 即"这是声明，不是赋值"，
+    //   因此对类与实例都不可见（见 docs/OOP_MODEL_DESIGN.md §六 第 10 步）。
+    for (auto& p : expr->instanceProperties) {
+        if (dynamic_cast<LambdaExpr*>(p.value.get())) continue;
+        IRNode* noneNode = graph->createValueNode(IROp::Constant);
+        noneNode->setControl(currentControl);
+        noneNode->constVal = Value::none();
+        IROp defOp = IROp::DefineProp;
+        if (p.isLocal && p.isConst) defOp = IROp::DefinePrivateConst;
+        else if (p.isLocal) defOp = IROp::DefinePrivate;
+        else if (p.isConst) defOp = IROp::DefinePropConst;
+        IRNode* defNode = graph->createValueNode(defOp);
+        defNode->setControl(currentControl);
+        defNode->addData(classNode);
+        defNode->addData(noneNode);
+        defNode->name = p.name.lexeme;
+        currentControl = defNode;
+    }
+
     for (auto& p : expr->staticProperties) {
         p.value->accept(*this);
         IRNode* valNode = lastValue;

@@ -10,6 +10,9 @@
 
 namespace jc {
 
+    // 前置声明：策略 1 要把首项系数的 N 次根分配进底数（定义在文件后段）。
+    static std::pair<bool, SymExpr> tryExactRoot(const SymExpr& expr, int64_t k);
+
     // =================================================================
     // 「表达式里是否含非多项式幂」——负指数、分数指数或符号指数。
     //   多个"只对多项式成立"的策略在动手前都要先问这一句：有理式（x*(x+y)^(-1)）
@@ -233,7 +236,13 @@ namespace jc {
             // 策略 1：N次完全平方式嗅探
             // =======================================================
             SymExpr nextCoeff = coeffs[N - 1];
-            SymExpr R = simplifyCore(nextCoeff / (SymExpr(BigInt(N)) * lead));
+            // ★ R = nextCoeff/(N*lead) 必须用 simplifyRational 而不是 simplifyCore。
+            //   simplifyCore 不做约分，于是 (3y+3z)/3 会留成 1/3*(3y+3z)，验证虽然能过
+            //   （checkZero 判的是值），最终返回的却是
+            //       simplify(expand((x+y+z)^3)) = (1/3*(3*y+3*z) + x)^3
+            //   这种读不出来的形态。同一个根因在二次路径上已修（ef11bdf），这条漏了。
+            //   换成 simplifyRational 后是 (x + y + z)^3。
+            SymExpr R = simplifyRational(nextCoeff / (SymExpr(BigInt(N)) * lead));
             SymExpr rawCandidate = simplifyCore(lead * ((X + R) ^ SymExpr(BigInt(N))));
 
             SymExpr checkZero;
@@ -247,6 +256,17 @@ namespace jc {
                     auto [sqrtOk, rootLead] = trySquareRoot(lead);
                     if (sqrtOk) {
                         return simplifyCore((rootLead * X + simplifyCore(rootLead * R)) ^ SymExpr(BigInt(2)));
+                    }
+                }
+                // N ≥ 3：若首项系数是精确的 N 次幂，同样把它的 N 次根分配进底数。
+                // 不做这一步会留下带分数的形态：rawCandidate 是 lead*(X+R)^N，
+                // 而 R 已经把分母约干净了，于是 (2x+3y)^3 会写成 8*(x + 3/2*y)^3。
+                // 分配之后是 (2x+3y)^3 —— 与 N==2 分支的做法统一（那里用 trySquareRoot，
+                // 还额外支持部分开方 √8 → 2√2；这里只要精确根）。
+                if (N >= 3) {
+                    auto [rootOk, rootLead] = tryExactRoot(lead, N);
+                    if (rootOk && !rootLead.isOne()) {
+                        return simplifyCore((rootLead * X + simplifyCore(rootLead * R)) ^ SymExpr(BigInt(N)));
                     }
                 }
                 return rawCandidate;

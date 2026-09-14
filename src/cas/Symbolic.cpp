@@ -1027,27 +1027,25 @@ namespace jc {
     bool SymExpr::isZero() const { return ptr && ptr->isZero(); }
     bool SymExpr::isOne() const { return ptr && ptr->isOne(); }
 
-    SymExpr operator+(const SymExpr& a, const SymExpr& b) {
-        if (!a.ptr) return b;
-        if (!b.ptr) return a;
-        if (a.isZero()) return b;
-        if (b.isZero()) return a;
-        std::vector<SymNode*> flatArgs;
-        if (a.ptr->getType() == SymType::ADD) {
-            auto addA = static_cast<SymAdd*>(a.ptr);
-            flatArgs.insert(flatArgs.end(), addA->args.begin(), addA->args.end());
-        } else {
-            flatArgs.push_back(a.ptr);
-        }
-        if (b.ptr->getType() == SymType::ADD) {
-            auto addB = static_cast<SymAdd*>(b.ptr);
-            flatArgs.insert(flatArgs.end(), addB->args.begin(), addB->args.end());
-        } else {
-            flatArgs.push_back(b.ptr);
-        }
+    // =================================================================
+    // 把一串项合并成规范的 ADD：合同类项、丢零项、按 hash 降序排列。
+    //   键是「去掉数值系数后剩下的部分」，节点已内部化，所以指针就是规范键；
+    //   项数 ≤ 8 时走栈上小数组，否则用哈希表 —— 都是 O(N)。
+    //   这段逻辑原本整个长在 operator+ 里。抽出来是因为 expand 的幂次展开路径需要
+    //   「一次性合并一批项」：
+    //     · 逐项调 operator+ 是 O(N²)（每次都重新展平并重排已累积的结果），
+    //       那条路径当初正是为了躲开这个代价，才直接调 makeAdd 把原始项塞进 ADD —
+    //       于是同类项根本不合并。
+    //     · 但多项式定理天然会产出同类的项：
+    //         expand(((x+y)^2 + z)^2) 同时给出 2*x^2*y^2（来自 A·C）与
+    //         4*x^2*y^2（来自 B²），原来两者都原样留在 ADD 里，
+    //         expand((x^2+xy+y^2)^2) 里 x^2*y^2 也出现两次。
+    //       结果就是「expand 出来的树压不下去」，重复单项式一直挂到下游。
+    // =================================================================
+    static SymExpr mergeAddTerms(const std::vector<SymNode*>& flatArgs) {
         CASVal sumConst = BigInt(0);
         struct TermData { CASVal coeff; SymNode* baseNode = nullptr; };
-        
+
         constexpr int SMALL_CAP = 8;
         TermData smallTerms[SMALL_CAP];
         int smallCount = 0;
@@ -1137,6 +1135,27 @@ namespace jc {
         if (newArgs.empty()) return SymExpr(BigInt(0));
         if (newArgs.size() == 1) return SymExpr(newArgs[0]);
         return SymExpr::makeAdd(std::move(newArgs));
+    }
+
+    SymExpr operator+(const SymExpr& a, const SymExpr& b) {
+        if (!a.ptr) return b;
+        if (!b.ptr) return a;
+        if (a.isZero()) return b;
+        if (b.isZero()) return a;
+        std::vector<SymNode*> flatArgs;
+        if (a.ptr->getType() == SymType::ADD) {
+            auto addA = static_cast<SymAdd*>(a.ptr);
+            flatArgs.insert(flatArgs.end(), addA->args.begin(), addA->args.end());
+        } else {
+            flatArgs.push_back(a.ptr);
+        }
+        if (b.ptr->getType() == SymType::ADD) {
+            auto addB = static_cast<SymAdd*>(b.ptr);
+            flatArgs.insert(flatArgs.end(), addB->args.begin(), addB->args.end());
+        } else {
+            flatArgs.push_back(b.ptr);
+        }
+        return mergeAddTerms(flatArgs);
     }
     // ==========================================
     // operator*（乘法与同底数指数合并：带 ADD 基底正规化）
@@ -2489,12 +2508,12 @@ namespace jc {
                                 generateMulti(0, n);
                             }
 
-                            // 极速组装：一口气将几十上百个节点封入一把加法树中，省去全部树并排开销！
-                            std::sort(finalTerms.begin(), finalTerms.end(), [](const auto& a, const auto& b) {
-                                return a->hashValue > b->hashValue;
-                            });
-                            if (finalTerms.size() == 1) return SymExpr(finalTerms[0]);
-                            return SymExpr::makeAdd(std::move(finalTerms));
+                            // 组装：必须合并同类项。多项式定理会产出同类的项
+                            // （见 mergeAddTerms 的说明），直接用 makeAdd 把原始项
+                            // 塞进去会让重复单项式留在树里 —— expand 出来的东西压不下去。
+                            // mergeAddTerms 本身是 O(N) 哈希合并（≤8 项走栈上小数组），
+                            // 不会退化成逐项 operator+ 的 O(N²)。
+                            return mergeAddTerms(finalTerms);
                         }
                     }
 

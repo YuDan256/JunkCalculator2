@@ -1,0 +1,184 @@
+// ★ 成员模型不变式（docs/OOP_MODEL_DESIGN.md §八 的验证点，逐条落成断言）
+//   这些断言在第二阶段（模板冻结 / 实例成员编号 / 桶预留）落地后仍然成立。
+
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+test_member_read_is_raw() = {
+    class A {
+        v = 7
+        who() = self.v
+        static tag() = "tag"
+    }
+    a = A()
+    // §八 1：读两次是同一个函数对象（不复制、不包装、不绑定）
+    assert(a.who == a.who, "reading a member twice must yield the same function object")
+    // §八 4
+    assert(a.who() == 7, "member call still works")
+    // §八 2：取出来再调用没有接收者
+    g = a.who
+    assert(throws(() => g()), "extracted method has no self")
+    // §八 3：字典的键作为 self，不占实参位
+    d = { "f": sin }
+    assert(abs(d.f(1.0) - 0.841471) < 1e-6, "dict key's closure gets the dict as self")
+    // §八 5：挂上去的闭包拿实例当 self，取出来就没有
+    h = A()
+    h.cb = () => self
+    assert(h.cb() == h, "hung closure gets the instance as self")
+    k = h.cb
+    assert(throws(() => k()), "extracted hung closure has no self")
+}
+test_member_read_is_raw()
+
+test_class_exposes_only_statics() = {
+    class A {
+        v = 7
+        who() = self.v
+        static tag() = "tag"
+    }
+    a = A()
+    // §八 6：类上只有 static 域，实例方法模板不从类上取
+    assert(throws(() => A.who), "instance method template is not readable from the class")
+    assert(throws(() => A.who()), "and not invokable from the class")
+    assert(throws(() => A.who(a)), "and not invokable with an explicit receiver")
+    // §八 7 / static 照旧
+    assert(A.tag() == "tag", "static method still callable from the class")
+    assert(throws(() => a.tag), "static member is not reachable from an instance")
+    assert(throws(() => a.tag()), "and not invokable from an instance")
+}
+test_class_exposes_only_statics()
+
+test_dot_call_fills_self() = {
+    // §八 8 / 9：点号调用把接收者交给隐藏通道 self，不占实参位
+    free_self() = self
+    assert(throws(() => free_self()), "plain call has no self")
+    assert(5.free_self() == 5, "dot call passes the receiver through self")
+    echo_self(x) = self
+    assert(1.echo_self(0) == 1, "receiver does not occupy an argument slot")
+}
+test_dot_call_fills_self()
+
+test_receiver_is_not_an_argument() = {
+    // §八 10 / 12：接收者不再被隐式填进实参位
+    assert(throws(() => 1.0.sin()), "dot call to a global math function needs the argument explicitly")
+    assert(abs(sin(1.0) - 0.841471) < 1e-6, "sin(1.0) works")
+    // §八 11 / 12：长度与原型成员照旧
+    assert(@[1, 2, 3].len() == 3, "list length via prototype method")
+    assert(len(@[1, 2, 3]) == 3, "and via the global function")
+    assert(@[1, 2, 3].sum() == 6, "prototype methods keep working")
+    assert("ab".upper() == "AB", "string prototype methods keep working")
+    assert("ab".reverse() == "ba", "chained prototype calls keep working")
+    assert(len({ x: 1 }.keys()) == 1, "dict prototype methods keep working")
+    // §八 18：0 参原生方法不再静默吞掉多余实参
+    assert(throws(() => @[1, 2, 3].sum(5)), "extra args to a 0-param native are rejected")
+    assert(throws(() => "ab".upper(5)), "same for string natives")
+}
+test_receiver_is_not_an_argument()
+
+test_const_and_static_boundaries() = {
+    class K {
+        const cf = 1
+        const cm() = 2
+        static const scf = 3
+        nf = 4
+        nm() = 5
+    }
+    k = K()
+    // §八 13：const 只管它所在的那个域
+    assert(throws(() => { k.cf = 11 }), "instance write to a const field is rejected")
+    assert(throws(() => { k.cm = 12 }), "instance write to a const method is rejected")
+    assert(throws(() => { K.cm = 22 }), "class write to a const method template is rejected")
+    assert(throws(() => { K.scf = 23 }), "class write to a static const is rejected")
+    assert(throws(() => k.scf), "static const is not reachable from an instance")
+    // §八 14：字段声明名在类上写 => 新建一个 static
+    K.cf = 21
+    assert(K.cf == 21, "class write to a field declaration name creates a static")
+    // 非 const 成员照旧可写
+    k.nf = 41
+    assert(k.nf == 41, "non-const instance field stays writable")
+    k.nm = 51
+    assert(k.nm == 51, "non-const instance member can be shadowed")
+}
+test_const_and_static_boundaries()
+
+test_templates_are_frozen() = {
+    class T {
+        m() = 1
+    }
+    // §2.8 / §六 第 11 步：类定义完成后模板冻结（类上的赋值碰不到实例方法模板）
+    assert(throws(() => { T.m = () => 2 }), "method template is frozen after definition")
+    assert(throws(() => { T["m"] = () => 2 }), "index write to a template is rejected too")
+    // static 域不受影响
+    T.s = 5
+    assert(T.s == 5, "statics stay writable")
+    t = T()
+    assert(t.m() == 1, "the method itself is unchanged")
+    assert(throws(() => t.s), "statics are not reachable from instances")
+}
+test_templates_are_frozen()
+
+test_snapshot_intent() = {
+    // §八 19 的意图：改类（重新定义 = 换一个新类对象）不影响已经造出来的对象
+    class A {
+        v = 1
+        who() = "old"
+    }
+    a = A()
+    A = class {
+        v = 2
+        who() = "new"
+    }
+    b = A()
+    assert(a.who() == "old", "old object keeps its old method")
+    assert(a.v == 1, "old object keeps its old field")
+    assert(b.who() == "new", "new object uses the new method")
+    assert(b.v == 2, "new object uses the new field")
+    assert(!isinstance(a, A), "old object is not an instance of the redefined class")
+    assert(isinstance(b, A), "new object is an instance of the redefined class")
+}
+test_snapshot_intent()
+
+test_lookup_order_is_shared() = {
+    // §八 23 / §2.1：自己的袋子 -> 原型 -> 全局，读与调用同一条顺序
+    d = { keys: 5 }
+    assert(d.keys == 5, "dict key shadows the prototype method for reads")
+    assert(throws(() => d.keys()), "and for calls the key's value is used (not callable)")
+    l = @[1, 2]
+    assert(l.len() == 2, "prototype method works when no key shadows it")
+}
+test_lookup_order_is_shared()
+
+test_containers_are_not_instances() = {
+    // §八 22：原生容器不受实例语义影响
+    l1 = @[1]
+    l2 = @[2]
+    assert(l1.append == l2.append, "prototype methods are one shared function object")
+    assert(throws(() => { l1.x = 1 }), "containers cannot take new fields")
+    d = { a: 1 }
+    d.x = 1
+    assert(d.x == 1, "a dict takes a new key")
+    assert(l1.len() == 1, "and reading still works")
+}
+test_containers_are_not_instances()
+
+test_freeze_covers_the_whole_class() = {
+    class F {
+        v = 1
+        m() = 2
+    }
+    f = F()
+    assert(!isFrozen(F), "a plain class is not frozen")
+    freeze(F)
+    assert(isFrozen(F), "freeze() marks the class frozen")
+    assert(throws(() => { F.s = 1 }), "a frozen class rejects static writes")
+    assert(throws(() => { F.m = () => 3 }), "a frozen class rejects template writes")
+    assert(f.m() == 2, "existing instances keep working after the class is frozen")
+    f.v = 9
+    assert(f.v == 9, "instance-domain writes are unaffected by the class freeze")
+    trait FT {
+        tm() = 1
+    }
+    assert(isFrozen(FT), "a trait is frozen at definition")
+}
+test_freeze_covers_the_whole_class()

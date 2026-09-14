@@ -360,24 +360,29 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
     //    最派生优先，保持与 ② 的候选顺序一致。
     if (inst) {
         if (lexical && lexical->isTrait) {
-            auto it = inst->ownFind(manglePrivate(lexical->classId, name));
-            if (it != inst->ownEnd()) { found = &it->second; return true; }
+            const PropertyDescriptor* pdesc = inst->ownFlags(manglePrivate(lexical->classId, name));
+            if (inst->ownHas(manglePrivate(lexical->classId, name))) {found = pdesc; return true;}
+
         }
         for (ObjClass* p = inst->classDef; p; p = p->parent) {
-            auto it = inst->ownFind(manglePrivate(p->classId, name));
-            if (it != inst->ownEnd()) { found = &it->second; return true; }
+            const PropertyDescriptor* pdesc = inst->ownFlags(manglePrivate(p->classId, name));
+            if (inst->ownHas(manglePrivate(p->classId, name))) {found = pdesc; return true;}
+
             for (auto* t : p->traits) {
-                auto tit = inst->ownFind(manglePrivate(t->classId, name));
-                if (tit != inst->ownEnd()) { found = &tit->second; return true; }
+                const PropertyDescriptor* pdesc2 = inst->ownFlags(manglePrivate(t->classId, name));
+                if (inst->ownHas(manglePrivate(t->classId, name))) {found = pdesc2; return true;}
+
             }
         }
         if (lexical && !lexical->isTrait) {
-            auto it = inst->ownFind(manglePrivate(lexical->classId, name));
-            if (it != inst->ownEnd()) { found = &it->second; return true; }
+            const PropertyDescriptor* pdesc = inst->ownFlags(manglePrivate(lexical->classId, name));
+            if (inst->ownHas(manglePrivate(lexical->classId, name))) {found = pdesc; return true;}
+
         }
         if (cls) {
-            auto it = inst->ownFind(manglePrivate(cls->classId, name));
-            if (it != inst->ownEnd()) { found = &it->second; return true; }
+            const PropertyDescriptor* pdesc = inst->ownFlags(manglePrivate(cls->classId, name));
+            if (inst->ownHas(manglePrivate(cls->classId, name))) {found = pdesc; return true;}
+
         }
     }
 
@@ -786,13 +791,12 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
                 Value deferEx = wrapException(nullptr, "Exception", ex.val);
                 auto inst = currentException->asInstance();
                 if (inst) {
-                    auto it = inst->ownFind("suppressed");
-                    if (it != inst->ownEnd()) {
-                        Value suppList = it->second.val;
+                    const PropertyDescriptor* pdesc = inst->ownFlags("suppressed");
+                    if (inst->ownHas("suppressed")) {Value suppList = pdesc->val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
-                        }
-                    }
+                        }}
+
                 }
             } else {
                 throw;
@@ -802,13 +806,12 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
                 Value deferEx = wrapException(nullptr, "Exception", Value(ex.what()));
                 auto inst = currentException->asInstance();
                 if (inst) {
-                    auto it = inst->ownFind("suppressed");
-                    if (it != inst->ownEnd()) {
-                        Value suppList = it->second.val;
+                    const PropertyDescriptor* pdesc = inst->ownFlags("suppressed");
+                    if (inst->ownHas("suppressed")) {Value suppList = pdesc->val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
-                        }
-                    }
+                        }}
+
                 }
             } else {
                 throw;
@@ -818,13 +821,12 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
                 Value deferEx = wrapException(nullptr, "Exception", Value("Unknown Error in defer"));
                 auto inst = currentException->asInstance();
                 if (inst) {
-                    auto it = inst->ownFind("suppressed");
-                    if (it != inst->ownEnd()) {
-                        Value suppList = it->second.val;
+                    const PropertyDescriptor* pdesc = inst->ownFlags("suppressed");
+                    if (inst->ownHas("suppressed")) {Value suppList = pdesc->val;
                         if (suppList.isObjType(ObjType::LIST)) {
                             static_cast<ObjList*>(suppList.asObj())->vec.push_back(deferEx);
-                        }
-                    }
+                        }}
+
                 }
             } else {
                 throw;
@@ -2059,7 +2061,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-            if (inst->ownFind(methodName) == inst->ownEnd()) {
+            if (!inst->ownHas(methodName)) {
                 method = ic.cachedMethod;
                 owningClass = ic.cachedClass;
                 goto invoke_method;
@@ -2157,16 +2159,15 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
         bool foundInField = false;
 
         if (ic.cachedClassId == inst->classDef->classId && ic.cachedMethod) {
-            if (inst->ownFind(methodName) == inst->ownEnd()) {
+            if (!inst->ownHas(methodName)) {
                 method = ic.cachedMethod;
                 owningClass = ic.cachedClass;
                 goto invoke_method;
             }
         }
 
-        auto it = inst->ownFind(methodName);
-        if (it != inst->ownEnd() && !it->second.is_local) {
-            Value fv = it->second.val;
+        const PropertyDescriptor* pdesc = inst->ownFlags(methodName);
+        if (inst->ownHas(methodName) && !inst->ownFlags(methodName)->is_local) {Value fv = pdesc->val;
             if (fv.isFunctionClosure()) {
                 method = fv.asFunction();
                 owningClass = inst->classDef;
@@ -2175,8 +2176,8 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 registers[currentFrame->registerBase + a] = fv;
                 execCall(a, b, kwArgc, a, isTailCall);
                 return;
-            }
-        }
+            }}
+
 
         if (!foundInField) {
             auto c = inst->classDef;
@@ -3113,13 +3114,11 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
 Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     if (isExceptionInstance(val)) {
         auto inst = val.asInstance();
-        auto it = inst->ownFind("traceback");
-        if (it != inst->ownEnd()) {
-            Value tbVal = it->second.val;
+        if (inst->ownHas("traceback")) {Value tbVal = *inst->ownGetMut("traceback");
             if (tbVal.isString() && tbVal.asString().empty()) {
-                it->second.val = Value(buildStackTrace());
-            }
-        }
+                *inst->ownGetMut("traceback") = Value(buildStackTrace());
+            }}
+
         return val;
     }
     
@@ -5744,17 +5743,15 @@ Value VM::run(int targetFrameDepth) {
                         bool foundPrivate = false;
                         if (ctxOwner) {
                             std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                            auto it = inst->ownFind(mangledName);
-                            if (it != inst->ownEnd()) {
-                                result = it->second.val;
-                                foundPrivate = true;
-                            }
+                            const PropertyDescriptor* pdesc = inst->ownFlags(mangledName);
+                            if (inst->ownHas(mangledName)) {result = pdesc->val;
+                                foundPrivate = true;}
+
                         }
                         if (!foundPrivate) {
-                            auto it = inst->ownFind(keyStr);
-                            if (it != inst->ownEnd() && !it->second.is_local) {
-                                result = it->second.val;
-                            } else {
+                            const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                            if (inst->ownHas(keyStr) && !inst->ownFlags(keyStr)->is_local) {result = pdesc->val;}
+ else {
                                 if (noThrow) result = Value::uninit();
                                 else JC2_THROW(RuntimeError, "Property '" + keyStr + "' not found.");
                             }
@@ -5992,18 +5989,17 @@ Value VM::run(int targetFrameDepth) {
                         bool foundPrivate = false;
                         if (ctxOwner) {
                             std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                            auto it = inst->ownFind(mangledName);
-                            if (it != inst->ownEnd()) {
-                                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
-                                invalidateJITOnContainerReplace(it->second.val, val);
-                                it->second.val = val;
-                                foundPrivate = true;
-                            }
+                            if (inst->ownHas(mangledName)) {if (inst->ownFlags(mangledName)->is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
+                                invalidateJITOnContainerReplace(*inst->ownGetMut(mangledName), val);
+                                *inst->ownGetMut(mangledName) = val;
+                                foundPrivate = true;}
+
                         }
                         if (!foundPrivate) {
                             Value oldVal = Value::none();
-                            auto oldIt = inst->ownFind(keyStr);
-                            if (oldIt != inst->ownEnd()) oldVal = oldIt->second.val;
+                            const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                            if (inst->ownHas(keyStr)) {oldVal = pdesc->val;}
+
                             invalidateJITOnContainerReplace(oldVal, val);
                             inst->setProperty(keyStr, val);
                         }
@@ -6450,15 +6446,13 @@ Value VM::run(int targetFrameDepth) {
                             ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                             if (ctxOwner) {
                                 std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                                if (inst->ownFind(mangledName) != inst->ownEnd()) {
+                                if (inst->ownHas(mangledName)) {
                                     found = true;
                                 }
                             }
                             if (!found) {
-                                auto it = inst->ownFind(key);
-                                if (it != inst->ownEnd() && !it->second.is_local) {
-                                    found = true;
-                                }
+                                if (inst->ownHas(key) && !inst->ownFlags(key)->is_local) found = true;
+
                             }
                             if (!found) {
                                 auto cls = inst->classDef;
@@ -6679,11 +6673,10 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    auto it = inst->ownFind(keyVal.asString());
-                    if (it != inst->ownEnd() && !it->second.is_local) {
-                        getReg(a) = it->second.val;
-                        break;
-                    }
+                    const PropertyDescriptor* pdesc = inst->ownFlags(keyVal.asString());
+                    if (inst->ownHas(keyVal.asString()) && !inst->ownFlags(keyVal.asString())->is_local) {getReg(a) = pdesc->val;
+                        break;}
+
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
@@ -6871,11 +6864,10 @@ Value VM::run(int targetFrameDepth) {
                 
                 if (obj.isInstance()) {
                     auto inst = obj.asInstance();
-                    auto it = inst->ownFind(keyVal.asString());
-                    if (it != inst->ownEnd() && !it->second.is_local) {
-                        getReg(a) = it->second.val;
-                        break;
-                    }
+                    const PropertyDescriptor* pdesc = inst->ownFlags(keyVal.asString());
+                    if (inst->ownHas(keyVal.asString()) && !inst->ownFlags(keyVal.asString())->is_local) {getReg(a) = pdesc->val;
+                        break;}
+
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
                     if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
@@ -7108,16 +7100,14 @@ Value VM::run(int targetFrameDepth) {
                     inst->checkModify();
                     std::string keyStr = keyVal.asString();
                     
-                    auto it = inst->ownFind(keyStr);
-                    if (it != inst->ownEnd()) {
-                        if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+                    if (inst->ownHas(keyStr)) {if (inst->ownFlags(keyStr)->is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
                         // ★ 字段默认值初始化可能来自多个初始化器（本类 + 各 trait + 父类），
                         // 按「派生优先」顺序执行时后写者即为最终值，因此这里**不是**重复定义错误。
                         // 只有真·重复声明才报错，而那种情况由编译期的重定义检查拦截。
-                        it->second.val = val;
-                        it->second.is_const = (op == OpCode::DEFINE_PROP_CONST) || it->second.is_const;
-                        break;
-                    }
+                        *inst->ownGetMut(keyStr) = val;
+                        if (op == OpCode::DEFINE_PROP_CONST) inst->ownFlagSet(keyStr, true, false);
+                        break;}
+
                     
                     // ★ 类链上的 const 成员不许被实例影子覆盖（docs/OOP_MODEL_DESIGN.md §2.6）：
                     //   const 只管它所在的那个域——类域那份在类上写会被拒，实例域这份在这里被拒。
@@ -7175,17 +7165,17 @@ Value VM::run(int targetFrameDepth) {
                     auto [setattrMethod, owner] = findDunder(obj, DUNDER_SETATTR);
                     if (setattrMethod) {
                         inst->checkModify();
-                        auto it = inst->ownFind(keyStr);
-                        if (it != inst->ownEnd()) {
-                            if (it->second.is_local) errModifyPrivateProp(keyStr);
-                            if (it->second.is_const) errModifyConstProp(keyStr);
-                        }
+                        const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                        if (inst->ownHas(keyStr)) {if (pdesc->is_local) errModifyPrivateProp(keyStr);
+                            if (pdesc->is_const) errModifyConstProp(keyStr);}
+
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
                         // ★ 容器属性被替换时，失效所有 JIT 代码（INSTANCE 分支）
                         Value oldVal = Value::none();
-                        auto oldIt = inst->ownFind(keyStr);
-                        if (oldIt != inst->ownEnd()) oldVal = oldIt->second.val;
+                        const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                        if (inst->ownHas(keyStr)) {oldVal = pdesc->val;}
+
                         invalidateJITOnContainerReplace(oldVal, val);
                         inst->setProperty(keyStr, val);
                     }
@@ -8370,11 +8360,10 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
     
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
-        auto it = inst->ownFind(keyVal.asString());
-        if (it != inst->ownEnd() && !it->second.is_local) {
-            vm->getCurrentFrame()->jitReturnSlot = it->second.val;
-            return it->second.val.as_bits;
-        }
+        const PropertyDescriptor* pdesc = inst->ownFlags(keyVal.asString());
+        if (inst->ownHas(keyVal.asString()) && !inst->ownFlags(keyVal.asString())->is_local) {vm->getCurrentFrame()->jitReturnSlot = pdesc->val;
+            return pdesc->val.as_bits;}
+
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
         if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
@@ -8568,11 +8557,10 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
     
     if (obj.isInstance()) {
         auto inst = obj.asInstance();
-        auto it = inst->ownFind(keyVal.asString());
-        if (it != inst->ownEnd() && !it->second.is_local) {
-            vm->getCurrentFrame()->jitReturnSlot = it->second.val;
-            return it->second.val.as_bits;
-        }
+        const PropertyDescriptor* pdesc = inst->ownFlags(keyVal.asString());
+        if (inst->ownHas(keyVal.asString()) && !inst->ownFlags(keyVal.asString())->is_local) {vm->getCurrentFrame()->jitReturnSlot = pdesc->val;
+            return pdesc->val.as_bits;}
+
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
         if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
@@ -9085,15 +9073,13 @@ bool VM::opIn(Value needle, Value haystack) {
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 if (ctxOwner) {
                     std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                    if (inst->ownFind(mangledName) != inst->ownEnd()) {
+                    if (inst->ownHas(mangledName)) {
                         found = true;
                     }
                 }
                 if (!found) {
-                    auto it = inst->ownFind(key);
-                    if (it != inst->ownEnd() && !it->second.is_local) {
-                        found = true;
-                    }
+                    if (inst->ownHas(key) && !inst->ownFlags(key)->is_local) found = true;
+
                 }
                 if (!found) {
                     auto cls = inst->classDef;
@@ -9253,17 +9239,15 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                 bool foundPrivate = false;
                 if (ctxOwner) {
                     std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                    auto it = inst->ownFind(mangledName);
-                    if (it != inst->ownEnd()) {
-                        result = it->second.val;
-                        foundPrivate = true;
-                    }
+                    const PropertyDescriptor* pdesc = inst->ownFlags(mangledName);
+                    if (inst->ownHas(mangledName)) {result = pdesc->val;
+                        foundPrivate = true;}
+
                 }
                 if (!foundPrivate) {
-                    auto it = inst->ownFind(keyStr);
-                    if (it != inst->ownEnd() && !it->second.is_local) {
-                        result = it->second.val;
-                    } else {
+                    const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                    if (inst->ownHas(keyStr) && !inst->ownFlags(keyStr)->is_local) {result = pdesc->val;}
+ else {
                         if (noThrow) result = Value::uninit();
                         else JC2_THROW(RuntimeError, "Property '" + keyStr + "' not found.");
                     }
@@ -9489,18 +9473,17 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             bool foundPrivate = false;
             if (ctxOwner) {
                 std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                auto it = inst->ownFind(mangledName);
-                if (it != inst->ownEnd()) {
-                    if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
-                    vm->invalidateJITOnContainerReplace(it->second.val, val);
-                    it->second.val = val;
-                    foundPrivate = true;
-                }
+                if (inst->ownHas(mangledName)) {if (inst->ownFlags(mangledName)->is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
+                    vm->invalidateJITOnContainerReplace(*inst->ownGetMut(mangledName), val);
+                    *inst->ownGetMut(mangledName) = val;
+                    foundPrivate = true;}
+
             }
             if (!foundPrivate) {
                 Value oldVal = Value::none();
-                auto oldIt = inst->ownFind(keyStr);
-                if (oldIt != inst->ownEnd()) oldVal = oldIt->second.val;
+                const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+                if (inst->ownHas(keyStr)) {oldVal = pdesc->val;}
+
                 vm->invalidateJITOnContainerReplace(oldVal, val);
                 inst->setProperty(keyStr, val);
             }
@@ -9780,16 +9763,16 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         auto [setattrMethod, owner] = vm->findDunder(obj, DUNDER_SETATTR);
         if (setattrMethod) {
             inst->checkModify();
-            auto it = inst->ownFind(keyStr);
-            if (it != inst->ownEnd()) {
-                if (it->second.is_local) errModifyPrivateProp(keyStr);
-                if (it->second.is_const) errModifyConstProp(keyStr);
-            }
+            const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+            if (inst->ownHas(keyStr)) {if (pdesc->is_local) errModifyPrivateProp(keyStr);
+                if (pdesc->is_const) errModifyConstProp(keyStr);}
+
             vm->callDunder(obj, setattrMethod, owner, {keyVal, val});
         } else {
             Value oldVal = Value::none();
-            auto oldIt = inst->ownFind(keyStr);
-            if (oldIt != inst->ownEnd()) oldVal = oldIt->second.val;
+            const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+            if (inst->ownHas(keyStr)) {oldVal = pdesc->val;}
+
             vm->invalidateJITOnContainerReplace(oldVal, val);
             inst->setProperty(keyStr, val);
         }
@@ -10697,8 +10680,8 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = inst->ownFind(mangledName);
-        if (it != inst->ownEnd()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+
         inst->ownPut(mangledName, val, false, true);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -10727,8 +10710,8 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        auto it = inst->ownFind(mangledName);
-        if (it != inst->ownEnd()) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+
         inst->ownPut(mangledName, val, true, true);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -10753,11 +10736,10 @@ void jc2_jit_define_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         auto inst = obj.asInstance();
         inst->checkModify();
         std::string keyStr = keyVal.asString();
-        auto it = inst->ownFind(keyStr);
-        if (it != inst->ownEnd()) {
-            if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
-            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
-        }
+        const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+        if (inst->ownHas(keyStr)) {if (pdesc->is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");}
+
         inst->ownPut(keyStr, val, false, false);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -10782,11 +10764,10 @@ void jc2_jit_define_prop_const(uint64_t obj_bits, uint64_t val_bits, uint32_t ic
         auto inst = obj.asInstance();
         inst->checkModify();
         std::string keyStr = keyVal.asString();
-        auto it = inst->ownFind(keyStr);
-        if (it != inst->ownEnd()) {
-            if (it->second.is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
-            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");
-        }
+        const PropertyDescriptor* pdesc = inst->ownFlags(keyStr);
+        if (inst->ownHas(keyStr)) {if (pdesc->is_local) JC2_THROW(RuntimeError, "Cannot access private property '" + keyStr + "' externally.");
+            JC2_THROW(RuntimeError, "Property '" + keyStr + "' already defined.");}
+
         inst->ownPut(keyStr, val, true, false);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());

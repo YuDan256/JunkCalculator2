@@ -768,6 +768,24 @@ namespace jc {
         void ownPut(const std::string& k, const Value& v, bool isConst, bool isLocal) {
             properties[k] = { v, isConst, isLocal };
         }
+        // 就地改一个已存在成员的标志（只有 DEFINE_PROP_CONST 会用到）
+        void ownFlagSet(const std::string& k, bool isConst, bool isLocal) {
+            auto it = properties.find(k);
+            if (it != properties.end()) {
+                it->second.is_const = isConst;
+                it->second.is_local = isLocal;
+            }
+        }
+        // 迭代：槽位与溢出表统一成回调，调用方不再直接碰容器
+        size_t ownSize() const { return properties.size(); }
+        template <typename Fn>
+        void ownForEach(Fn&& fn) const {
+            for (const auto& kv : properties) fn(kv.first, kv.second);
+        }
+        template <typename Fn>
+        void ownForEachMut(Fn&& fn) {
+            for (auto& kv : properties) fn(kv.first, kv.second);
+        }
         PropMap&                ownItems()                          { return properties; }
         const PropMap&          ownItems() const                    { return properties; }
         void clear() override { clearProperties(); }

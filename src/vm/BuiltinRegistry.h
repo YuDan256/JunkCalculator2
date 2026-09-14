@@ -142,7 +142,7 @@ namespace helpers {
         if (callee.isClass()) return true;
         if (callee.isInstance()) {
             auto c = callee.asInstance()->classDef;
-            while (c) { if (c->properties.count("__call__")) return true; c = c->parent; }
+            while (c) { if (c->members.count("__call__") || c->properties.count("__call__")) return true; c = c->parent; }
         }
         return false;
     }

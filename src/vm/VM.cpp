@@ -6169,7 +6169,8 @@ Value VM::run(int targetFrameDepth) {
                                 }
                                 if (it != c_cls->properties.end()) {
                                     // ★ 类定义完成后模板冻结（§2.8）：类上的赋值碰不到实例方法模板
-                                    if (!it->second.is_static) JC2_THROW(RuntimeError, "Cannot modify frozen method template '" + key + "'.");
+                                    // 统一写规则（§2.6）：实例方法模板住另一张表，这里只会看到 static
+                                    if (!it->second.is_static) JC2_THROW(RuntimeError, "Internal: class write resolved into the member table.");
                                     if (it->second.is_local) {
                                         if (c_cls == cls) JC2_THROW(RuntimeError, "Cannot modify private static property '" + key + "'.");
                                         break;

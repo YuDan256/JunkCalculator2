@@ -8504,9 +8504,9 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
         if (!found) {
             auto cls = inst->classDef;
             while (cls) {
-                auto it = cls->properties.find(field);
-                if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                    auto rawMethod = it->second.val.asFunction();
+                const PropertyDescriptor* it = cls->ownMember(field);
+                if (it && !it->is_local && !it->is_static && it->val.isFunctionClosure()) {
+                    auto rawMethod = it->val.asFunction();
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = cls;
@@ -8701,9 +8701,9 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
         if (!found) {
             auto cls = inst->classDef;
             while (cls) {
-                auto it = cls->properties.find(field);
-                if (it != cls->properties.end() && !it->second.is_local && !it->second.is_static && it->second.val.isFunctionClosure()) {
-                    auto rawMethod = it->second.val.asFunction();
+                const PropertyDescriptor* it = cls->ownMember(field);
+                if (it && !it->is_local && !it->is_static && it->val.isFunctionClosure()) {
+                    auto rawMethod = it->val.asFunction();
                     ic.cachedClassId = inst->classDef->classId;
                     ic.cachedMethod = rawMethod;
                     ic.cachedClass = cls;

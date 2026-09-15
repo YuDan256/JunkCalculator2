@@ -2877,6 +2877,8 @@
       "    Iteration & Callable:",
       "      __iter__()                   Returns an iterator object (usually `self`) for `for-in` loops.",
       "                                   (If not defined, 'for-in' iterates over instance fields like a Dict)",
+      "                                   (When it ends, `__next__` must THROW `StopIteration`,",
+      "                                   see below.)",
       "      __next__()                   Returns the next value; THROWS `StopIteration` when the",
       "                                   iteration is over. (`StopIteration` extends `Exception`;",
       "                                   the iteration protocol catches it and ends the loop silently,",

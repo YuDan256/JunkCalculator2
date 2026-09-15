@@ -113,6 +113,18 @@ static bool isExceptionInstance(const Value& v) {
     return v.asInstance()->classDef->conformsTo(exceptionClass);
 }
 
+// ★ 迭代结束信号：`__next__` 抛出的 StopIteration 被迭代协议当"到头了"吃掉，
+//   不当错误往外冒（docs/OOP_MODEL_DESIGN.md §2.1.1 / data/documentation.json 的 __next__）
+static bool isStopIteration(const Value& v) {
+    if (!v.isInstance()) return false;
+    ObjClass* cls = err::StopIterationClass;
+    if (!cls) return false;
+    return v.asInstance()->classDef->conformsTo(cls);
+}
+static bool isStopIteration(const Jc2Error& e) {
+    return e.errorClass && err::StopIterationClass && e.errorClass == err::StopIterationClass;
+}
+
 // trait 签名校验：抽象方法 vs 实现方法（参数名/rest/kwarg/参数类型/返回类型 全相等）
 static bool traitSignatureMatches(const ObjClosure* a, const ObjClosure* b) {
     if (!a || !b) return false;
@@ -6424,8 +6436,20 @@ Value VM::run(int targetFrameDepth) {
                 } else {
                     ObjClosure* method = state->vec[1].asFunction();
                     ObjClass* owner = state->vec.size() > 2 ? static_cast<ObjClass*>(state->vec[2].asObj()) : nullptr;
-                    Value nextVal = callDunder(iterObj, method, owner, {});
-                    if (nextVal.isNone()) {
+                    // ★ `__next__` 抛 StopIteration = 迭代到头（§2.1.1）。只裹这一次调用，
+                    //   循环体（拿到值之后的代码）不在 try 里，用户自己抛的 StopIteration 不会被吞。
+                    bool exhausted = false;
+                    Value nextVal;
+                    try {
+                        nextVal = callDunder(iterObj, method, owner, {});
+                    } catch (const ValueException& ex) {
+                        if (!isStopIteration(ex.val)) throw;
+                        exhausted = true;
+                    } catch (const Jc2Error& ex) {
+                        if (!isStopIteration(ex)) throw;
+                        exhausted = true;
+                    }
+                    if (exhausted) {
                         getReg(a) = Value::uninit();
                     } else {
                         getReg(a) = nextVal;

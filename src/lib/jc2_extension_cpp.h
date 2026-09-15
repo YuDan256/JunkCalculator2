@@ -395,6 +395,8 @@ public:
 enum class ErrorType : uint8_t {
     TypeError, ValueError, MathError, MatchError, IOError, RuntimeError,
     OverflowError, CalculusError, SymbolicError,
+    // ★ 迭代结束信号：原生迭代器的 `__next__` 在到头时抛它（不是"错误"）
+    StopIteration,
 };
 
 constexpr const char* error_type_name(ErrorType t) {
@@ -408,6 +410,7 @@ constexpr const char* error_type_name(ErrorType t) {
         case ErrorType::OverflowError: return "OverflowError";
         case ErrorType::CalculusError: return "CalculusError";
         case ErrorType::SymbolicError: return "SymbolicError";
+        case ErrorType::StopIteration: return "StopIteration";
     }
     return "RuntimeError";
 }

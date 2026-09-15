@@ -314,7 +314,10 @@ METHOD(iter) {
 }
 
 METHOD(next) {
-    return file_readLine(nullptr, argc, argv, nullptr);
+    // ★ 迭代到头：抛 StopIteration（不再用 `return none`，§2.1.1）
+    jc2::Value line = jc2::Value(file_readLine(nullptr, argc, argv, nullptr));
+    if (line.is_none()) jc2::throw_error(jc2::ErrorType::StopIteration, "");
+    return line.get_handle();
 }
 
 static std::vector<std::vector<std::string>> parseCSV(const std::string& path, char delim, const std::string& encoding) {

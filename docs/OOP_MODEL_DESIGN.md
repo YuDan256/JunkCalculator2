@@ -82,6 +82,12 @@
 - 代价（已认下）：同一个名字会出现"读一套、派一套"——`d.__len__` 给影子、`len(d)` 给模板。
   **这条不对齐只限 dunder**，普通成员照旧读调一致（§2.1 第一条）。
 - 类上写 `D.__len__ = f` 也只新建一个 static（§2.6），既碰不到模板，也碰不到任何实例袋子。
+- **迭代结束用异常**：`__next__` 到头时 **`throw StopIteration()`**（不是 `return none`）。
+  `StopIteration` 是 `Exception` 的子类（内置类，`PredefinedErrors` 里注册），迭代协议在
+  「只裹 `__next__` 这一次调用」的 try 里把它吃掉、结束循环，所以它不会作为错误冒出去；
+  用户在**循环体**里自己抛的 `StopIteration` 不在那个 try 里，照常冒出。
+  原生扩展的 `__next__` 同样抛它（`jc2::ErrorType::StopIteration`）。
+  宿主侧的 `c_nativeNext` 仍用 `Value::uninit()` 表示到头（那是 C++ 层的哨兵，不是脚本协议）。
 
 ### 2.2 `a.名字` 读出什么
 

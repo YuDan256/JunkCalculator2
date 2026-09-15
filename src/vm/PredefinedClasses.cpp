@@ -931,6 +931,8 @@ void registerPredefinedClasses() {
             {"OverflowError", &err::OverflowErrorClass},
             {"CalculusError", &err::CalculusErrorClass},
             {"SymbolicError", &err::SymbolicErrorClass},
+            // ★ 迭代结束信号：`__next__` 抛它表示"到头了"，不当作错误打印
+            {"StopIteration", &err::StopIterationClass},
         };
         for (const auto& entry : exceptionClasses) {
             ObjClass* cls = GcHeap::get().allocate<ObjClass>();

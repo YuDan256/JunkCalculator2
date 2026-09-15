@@ -16,6 +16,7 @@ namespace jc {
         ObjClass* OverflowErrorClass = nullptr;
         ObjClass* CalculusErrorClass = nullptr;
         ObjClass* SymbolicErrorClass = nullptr;
+        ObjClass* StopIterationClass = nullptr;
         // 编译期/内部错误（恒为 nullptr，不进运行时类注册）
         ObjClass* SyntaxErrorClass = nullptr;
         ObjClass* ParserErrorClass = nullptr;

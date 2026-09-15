@@ -3,6 +3,8 @@
 
 #include "../memory/Value.h"
 #include "../frontend/Utf8.h"
+#include "../memory/Exceptions.h"
+#include "VmException.h"
 #include <any>
 #include <functional>
 #include <map>
@@ -292,8 +294,23 @@ namespace helpers {
                     }
                 } else {
                     while (true) {
-                        auto [hasNext, nextVal] = invokeDunder(iterInst, "__next__");
-                        if (!hasNext || nextVal.isNone()) break;
+                        // ★ `__next__` 抛 StopIteration = 迭代到头（§2.1.1 / documentation.json）。
+                        //   只裹这一次调用，回调（循环体）在 try 之外。
+                        bool exhausted = false;
+                        Value nextVal;
+                        try {
+                            auto [hasNext, got] = invokeDunder(iterInst, "__next__");
+                            if (!hasNext) break;
+                            nextVal = got;
+                        } catch (const ValueException& e) {
+                            if (!(e.val.isInstance() && err::StopIterationClass &&
+                                  e.val.asInstance()->classDef->conformsTo(err::StopIterationClass))) throw;
+                            exhausted = true;
+                        } catch (const Jc2Error& e) {
+                            if (!(err::StopIterationClass && e.errorClass == err::StopIterationClass)) throw;
+                            exhausted = true;
+                        }
+                        if (exhausted) break;
                         if (!callback(nextVal)) break;
                     }
                 }

@@ -27,6 +27,8 @@ namespace jc {
         extern ObjClass* OverflowErrorClass;
         extern ObjClass* CalculusErrorClass;
         extern ObjClass* SymbolicErrorClass;
+        // ★ 迭代结束信号（不是"错误"）：`__next__` 抛它表示迭代到头
+        extern ObjClass* StopIterationClass;
         // 编译期错误（不进运行时）
         extern ObjClass* SyntaxErrorClass;
         extern ObjClass* ParserErrorClass;

@@ -16,9 +16,9 @@ test_closure_caching() = {
     calcB = make_calc(sin)
     calcC = make_calc(sin)
 
-    assert(isapprox(calcA(math.PI), -1.0), "calcA failed")
-    assert(isapprox(calcB(math.PI), 0.0, 1e-9, 1e-9), "calcB failed")
-    assert(isapprox(calcC(math.PI), 0.0, 1e-9, 1e-9), "calcC failed")
+    assert(isApprox(calcA(math.PI), -1.0), "calcA failed")
+    assert(isApprox(calcB(math.PI), 0.0, 1e-9, 1e-9), "calcB failed")
+    assert(isApprox(calcC(math.PI), 0.0, 1e-9, 1e-9), "calcC failed")
 }
 test_closure_caching()
 

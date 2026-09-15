@@ -7,7 +7,7 @@
       "signature": "e()"
     },
     "i": {
-      "signature": "i()"
+      "signature": "math.i"
     },
     "complex": {
       "signature": "complex(real, [imag])"
@@ -432,69 +432,6 @@
     "copy": {
       "signature": "copy(obj, freeze = none)"
     },
-    "isalpha": {
-      "signature": "isalpha(s)"
-    },
-    "isdigit": {
-      "signature": "isdigit(s)"
-    },
-    "isalnum": {
-      "signature": "isalnum(s)"
-    },
-    "isspace": {
-      "signature": "isspace(s)"
-    },
-    "isupper": {
-      "signature": "isupper(s)"
-    },
-    "islower": {
-      "signature": "islower(s)"
-    },
-    "iscallable": {
-      "signature": "iscallable(x)"
-    },
-    "ishashable": {
-      "signature": "ishashable(x)"
-    },
-    "isindexable": {
-      "signature": "isindexable(x)"
-    },
-    "isiterable": {
-      "signature": "isiterable(x)"
-    },
-    "isempty": {
-      "signature": "isempty(x)"
-    },
-    "isnan": {
-      "signature": "isnan(x)"
-    },
-    "isinf": {
-      "signature": "isinf(x)"
-    },
-    "isfinite": {
-      "signature": "isfinite(x)"
-    },
-    "isprime": {
-      "signature": "isprime(x)"
-    },
-    "iseven": {
-      "signature": "iseven(x)"
-    },
-    "isodd": {
-      "signature": "isodd(x)"
-    },
-    "ispositive": {
-      "signature": "ispositive(x)"
-    },
-    "isnegative": {
-      "signature": "isnegative(x)"
-    },
-    "isapprox": {
-      "signature": "isapprox(a, b, [rtol], [atol])"
-    },
-    "iszero": {
-      "signature": "iszero(x)"
-    },
     "addE": {
       "signature": "A.addE(B)"
     },
@@ -821,6 +758,75 @@
     },
     "gensym": {
       "signature": "gensym([prefix])"
+    },
+    "nan": {
+      "signature": "nan()"
+    },
+    "inf": {
+      "signature": "inf()"
+    },
+    "isIterable": {
+      "signature": "isIterable(x)"
+    },
+    "isCallable": {
+      "signature": "isCallable(x)"
+    },
+    "isIndexable": {
+      "signature": "isIndexable(x)"
+    },
+    "isHashable": {
+      "signature": "isHashable(x)"
+    },
+    "isAlpha": {
+      "signature": "isAlpha(s)"
+    },
+    "isDigit": {
+      "signature": "isDigit(s)"
+    },
+    "isAlnum": {
+      "signature": "isAlnum(s)"
+    },
+    "isSpace": {
+      "signature": "isSpace(s)"
+    },
+    "isUpper": {
+      "signature": "isUpper(s)"
+    },
+    "isLower": {
+      "signature": "isLower(s)"
+    },
+    "isEmpty": {
+      "signature": "isEmpty(x)"
+    },
+    "isNan": {
+      "signature": "isNan(x)"
+    },
+    "isInf": {
+      "signature": "isInf(x)"
+    },
+    "isFinite": {
+      "signature": "isFinite(x)"
+    },
+    "isPrime": {
+      "signature": "isPrime(x)"
+    },
+    "isEven": {
+      "signature": "isEven(x)"
+    },
+    "isOdd": {
+      "signature": "isOdd(x)"
+    },
+    "isPositive": {
+      "signature": "isPositive(x)"
+    },
+    "isNegative": {
+      "signature": "isNegative(x)"
+    },
+    "isZero": {
+      "signature": "isZero(x)"
+    },
+    "isApprox": {
+      "signature": "isApprox(a, b, [rtol], [atol])"
     },
     "ln": {
       "signature": "ln(x) / ln(base, x)"
@@ -1326,9 +1332,6 @@
     },
     "catalan": {
       "signature": "math.catalan(n)"
-    },
-    "isprime": {
-      "signature": "math.isprime(n)"
     }
   },
   "cas_methods": {
@@ -1355,6 +1358,15 @@
     },
     "RootOf": {
       "signature": "cas.RootOf(poly, var, k)"
+    },
+    "pi": {
+      "signature": "cas.pi()"
+    },
+    "e": {
+      "signature": "cas.e()"
+    },
+    "i": {
+      "signature": "cas.i()"
     },
     "RootSum": {
       "signature": "cas.RootSum(expr, var, poly)"

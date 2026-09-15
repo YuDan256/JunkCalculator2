@@ -1341,12 +1341,12 @@
       "  Numeric Predicates (see also: /help type)",
       "  ──────────────────────",
       "    x in int             Is x an int? (int32 or bigint)",
-      "    iseven(n)            Is n even?",
-      "    isodd(n)             Is n odd?",
-      "    isprime(n)           Is n prime?",
-      "    ispositive(n)        Is n > 0?",
-      "    isnegative(n)        Is n < 0?",
-      "    iszero(n)            Is n = 0?"
+      "    isEven(n)            Is n even?",
+      "    isOdd(n)             Is n odd?",
+      "    isPrime(n)           Is n prime?",
+      "    isPositive(n)        Is n > 0?",
+      "    isNegative(n)        Is n < 0?",
+      "    isZero(n)            Is n = 0?"
     ],
     "base": [
       "═══ Radix Arithmetic (math.BaseNum) ═══",
@@ -1508,10 +1508,10 @@
       "      (never <: x is always true; x <: never is always false)",
       "",
       "    Behavioral Checks (isXXX functions):",
-      "      isiterable(x)    → list/dict/set/string/matrix, or instance with __iter__/__next__",
-      "      iscallable(x)    → function/class/callable type, or instance with __call__",
-      "      isindexable(x)   → list/dict/string/matrix, or instance with __getitem__",
-      "      ishashable(x)    → immutable/frozen/instance with __hash__",
+      "      isIterable(x)    → list/dict/set/string/matrix, or instance with __iter__/__next__",
+      "      isCallable(x)    → function/class/callable type, or instance with __call__",
+      "      isIndexable(x)   → list/dict/string/matrix, or instance with __getitem__",
+      "      isHashable(x)    → immutable/frozen/instance with __hash__",
       "",
       "  Callable Types (Constructors)",
       "  ──────────────────────",
@@ -1541,20 +1541,20 @@
       "    Use `in` for membership, `<:` for subset, and isXXX() for behavioral checks:",
       "",
       "      x in (int | float)   // Is x an int or float?",
-      "      isiterable(x)         // Can x be used in a for-in loop?",
-      "      iscallable(x)         // Can x be called?",
+      "      isIterable(x)         // Can x be used in a for-in loop?",
+      "      isCallable(x)         // Can x be called?",
       "      type(x) == list       // Is x exactly a list?",
       "      type(x) == string     // Is x exactly a string?",
       "",
       "  String & Value Predicates",
       "  ──────────────────────",
-      "    isalpha(s)          All characters alphabetic? (\"abc\" → true)",
-      "    isdigit(s)          All characters digits? (\"123\" → true)",
-      "    isalnum(s)          All characters alphanumeric? (\"abc123\" → true)",
-      "    isspace(s)          All characters whitespace? (\"  \\\\t\" → true)",
-      "    isupper(s)          All alphabetic chars uppercase? (\"ABC\" → true)",
-      "    islower(s)          All alphabetic chars lowercase? (\"abc\" → true)",
-      "    isempty(x)          Empty string, empty list, empty dict,",
+      "    isAlpha(s)          All characters alphabetic? (\"abc\" → true)",
+      "    isDigit(s)          All characters digits? (\"123\" → true)",
+      "    isAlnum(s)          All characters alphanumeric? (\"abc123\" → true)",
+      "    isSpace(s)          All characters whitespace? (\"  \\\\t\" → true)",
+      "    isUpper(s)          All alphabetic chars uppercase? (\"ABC\" → true)",
+      "    isLower(s)          All alphabetic chars lowercase? (\"abc\" → true)",
+      "    isEmpty(x)          Empty string, empty list, empty dict,",
       "                        or zero-dimension matrix?",
       "",
       "  Special Checks",
@@ -1565,23 +1565,23 @@
       "",
       "  Floating-Point Checks",
       "  ──────────────────────",
-      "    isnan(x)            Is x NaN? (only for float type)",
-      "    isinf(x)            Is x ±Infinity? (only for float type)",
-      "    isfinite(x)         Is x a finite number? (int/Fraction → always true)",
+      "    isNan(x)            Is x NaN? (only for float type)",
+      "    isInf(x)            Is x ±Infinity? (only for float type)",
+      "    isFinite(x)         Is x a finite number? (int/Fraction → always true)",
       "",
       "  Numeric Value Predicates",
       "  ──────────────────────",
-      "    isapprox(a, b, [rtol], [atol])",
+      "    isApprox(a, b, [rtol], [atol])",
       "                        Returns true if a and b are approximately equal.",
       "                        rtol defaults to 1e-9, atol defaults to 0.0.",
       "                        Formula: |a - b| <= max(atol, rtol * max(|a|, |b|))",
-      "    iszero(x)           Is x equal to zero? (works on float, int,",
+      "    isZero(x)           Is x equal to zero? (works on float, int,",
       "                        complex, fraction — exact comparison)",
-      "    ispositive(x)       Is x > 0? (float, int, fraction)",
-      "    isnegative(x)       Is x < 0? (float, int, fraction)",
-      "    iseven(n)           Is n an even integer?",
-      "    isodd(n)            Is n an odd integer?",
-      "    isprime(n)          Is n a prime number? (Miller-Rabin test)"
+      "    isPositive(x)       Is x > 0? (float, int, fraction)",
+      "    isNegative(x)       Is x < 0? (float, int, fraction)",
+      "    isEven(n)           Is n an even integer?",
+      "    isOdd(n)            Is n an odd integer?",
+      "    isPrime(n)          Is n a prime number? (Miller-Rabin test)"
     ],
     "sys": [
       "═══ System, Generators & Runtime ═══",
@@ -2035,13 +2035,13 @@
       "  String Predicates (return true or false)",
       "  ──────────────────────",
       "    x in string         Is x a string type?",
-      "    isalpha(s)          All characters are alphabetic?",
-      "    isdigit(s)          All characters are digits?",
-      "    isalnum(s)          All characters are alphanumeric?",
-      "    isspace(s)          All characters are whitespace?",
-      "    isupper(s)          All alphabetic characters are uppercase?",
-      "    islower(s)          All alphabetic characters are lowercase?",
-      "    isempty(s)          Is the string empty (length 0)?",
+      "    isAlpha(s)          All characters are alphabetic?",
+      "    isDigit(s)          All characters are digits?",
+      "    isAlnum(s)          All characters are alphanumeric?",
+      "    isSpace(s)          All characters are whitespace?",
+      "    isUpper(s)          All alphabetic characters are uppercase?",
+      "    isLower(s)          All alphabetic characters are lowercase?",
+      "    isEmpty(s)          Is the string empty (length 0)?",
       "",
       "  String Interpolation (f-strings)",
       "  ──────────────────────",
@@ -2603,7 +2603,7 @@
       "  ──────────────────────",
       "    x in set                        true if x is a set",
       "    type(s)                         → <type 'set'>",
-      "    isempty(s)                      true if set has no elements",
+      "    isEmpty(s)                      true if set has no elements",
       "",
       "  Conversion",
       "  ──────────────────────",
@@ -2938,16 +2938,16 @@
       "    type(p)                  → <type 'Point'> (class type object)",
       "    isinstance(p)            true if p is any class instance",
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
-      "    hasField(p, \"x\")         true if field exists",
-      "    getFields(p)             All field names as list",
+      "    // hasField(p, \"x\")         true if field exists   // TODO: 未实现（文档漂移）",
+      "    // getFields(p)             All field names as list   // TODO: 未实现（文档漂移）",
       "    getClass(p)              The class definition object",
       "    getParent(Dog)           Parent class or none",
       "",
       "  Type Predicates (see: /help type)",
       "  ──────────────────────",
-      "    isclass(Point)           true if argument is a class definition",
+      "    type(Point) is class_type  true if argument is a class definition",
       "    isinstance(p)            true if argument is any instance",
-      "    isfunction(sin)          true if argument is a function/closure"
+      "    // isfunction(sin)          true if argument is a function/closure   // TODO: 未实现（文档漂移）"
     ],
     "match": [
       "═══ Pattern Matching (match) ═══",
@@ -4724,155 +4724,6 @@
         "copy(myDict, false)"
       ]
     },
-    "isalpha": {
-      "signature": "isalpha(s)",
-      "desc": "Returns true if all characters in s are alphabetic.",
-      "examples": [
-        "isalpha(\"abc\")"
-      ]
-    },
-    "isdigit": {
-      "signature": "isdigit(s)",
-      "desc": "Returns true if all characters in s are digits.",
-      "examples": [
-        "isdigit(\"123\")"
-      ]
-    },
-    "isalnum": {
-      "signature": "isalnum(s)",
-      "desc": "Returns true if all characters in s are alphanumeric.",
-      "examples": [
-        "isalnum(\"abc123\")"
-      ]
-    },
-    "isspace": {
-      "signature": "isspace(s)",
-      "desc": "Returns true if all characters in s are whitespace.",
-      "examples": [
-        "isspace(\"  \\t\")"
-      ]
-    },
-    "isupper": {
-      "signature": "isupper(s)",
-      "desc": "Returns true if all alphabetic characters in s are uppercase.",
-      "examples": [
-        "isupper(\"ABC\")"
-      ]
-    },
-    "islower": {
-      "signature": "islower(s)",
-      "desc": "Returns true if all alphabetic characters in s are lowercase.",
-      "examples": [
-        "islower(\"abc\")"
-      ]
-    },
-    "iscallable": {
-      "signature": "iscallable(x)",
-      "desc": "Returns true if x is callable (function, class, callable type, or instance with __call__).",
-      "examples": [
-        "iscallable(int)"
-      ]
-    },
-    "ishashable": {
-      "signature": "ishashable(x)",
-      "desc": "Returns true if x is hashable (usable as a dict key or set element).",
-      "examples": [
-        "ishashable(@{1, 2})"
-      ]
-    },
-    "isindexable": {
-      "signature": "isindexable(x)",
-      "desc": "Returns true if x supports indexing (list, dict, string, matrix, or instance with __getitem__).",
-      "examples": [
-        "isindexable(@[1, 2])"
-      ]
-    },
-    "isiterable": {
-      "signature": "isiterable(x)",
-      "desc": "Returns true if x is iterable (list, dict, set, string, matrix, or instance with __iter__/__next__).",
-      "examples": [
-        "isiterable(@[1, 2])"
-      ]
-    },
-    "isempty": {
-      "signature": "isempty(x)",
-      "desc": "Returns true if the string, list, dict, or matrix is empty.",
-      "examples": [
-        "isempty(\"\")"
-      ]
-    },
-    "isnan": {
-      "signature": "isnan(x)",
-      "desc": "Returns true if x is NaN (Not a Number). Since JC2 rejects division by zero, NaN has to be created with nan(). Non-float values return false.",
-      "examples": [
-        "isnan(nan())",
-        "isnan(1.0)"
-      ]
-    },
-    "isinf": {
-      "signature": "isinf(x)",
-      "desc": "Returns true if x is +Infinity or -Infinity. Non-float values return false.",
-      "examples": [
-        "isinf(inf())",
-        "isinf(1.0)"
-      ]
-    },
-    "isfinite": {
-      "signature": "isfinite(x)",
-      "desc": "Returns true if x is a finite number.",
-      "examples": [
-        "isfinite(42)"
-      ]
-    },
-    "isprime": {
-      "signature": "isprime(x)",
-      "desc": "Returns true if x is a prime number.",
-      "examples": [
-        "isprime(7)"
-      ]
-    },
-    "iseven": {
-      "signature": "iseven(x)",
-      "desc": "Returns true if x is an even integer.",
-      "examples": [
-        "iseven(4)"
-      ]
-    },
-    "isodd": {
-      "signature": "isodd(x)",
-      "desc": "Returns true if x is an odd integer.",
-      "examples": [
-        "isodd(3)"
-      ]
-    },
-    "ispositive": {
-      "signature": "ispositive(x)",
-      "desc": "Returns true if x > 0.",
-      "examples": [
-        "ispositive(5)"
-      ]
-    },
-    "isnegative": {
-      "signature": "isnegative(x)",
-      "desc": "Returns true if x < 0.",
-      "examples": [
-        "isnegative(-5)"
-      ]
-    },
-    "isapprox": {
-      "signature": "isapprox(a, b, [rtol], [atol])",
-      "desc": "Returns true if a and b are approximately equal within relative tolerance rtol (default 1e-9) and absolute tolerance atol (default 0.0).",
-      "examples": [
-        "isapprox(1.0000000001, 1.0)"
-      ]
-    },
-    "iszero": {
-      "signature": "iszero(x)",
-      "desc": "Returns true if x is equal to zero.",
-      "examples": [
-        "iszero(0)"
-      ]
-    },
     "addE": {
       "signature": "A.addE(B)",
       "desc": "Element-wise addition. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports string concatenation.",
@@ -5644,18 +5495,167 @@
     },
     "nan": {
       "signature": "nan()",
-      "desc": "Returns NaN (Not a Number) as a float. JC2 forbids division by zero (0/0 and 1.0/0.0 both throw MathError), so NaN cannot be produced by arithmetic and must be constructed explicitly. Use isnan() to test for it.",
+      "desc": "Returns NaN (Not a Number) as a float. JC2 forbids division by zero (0/0 and 1.0/0.0 both throw MathError), so NaN cannot be produced by arithmetic and must be constructed explicitly. Use isNan() to test for it.",
       "examples": [
-        "isnan(nan())"
+        "isNan(nan())"
       ]
     },
     "inf": {
       "signature": "inf()",
-      "desc": "Returns positive infinity as a float; use -inf() for negative infinity. Infinity can also arise from overflow (e.g. exp(1000.0)), but NaN has no other way to be produced. Use isinf() / isfinite() to test.",
+      "desc": "Returns positive infinity as a float; use -inf() for negative infinity. Infinity can also arise from overflow (e.g. exp(1000.0)), but NaN has no other way to be produced. Use isInf() / isFinite() to test.",
       "examples": [
-        "isinf(inf())",
-        "isinf(-inf())",
-        "isfinite(inf())"
+        "isInf(inf())",
+        "isInf(-inf())",
+        "isFinite(inf())"
+      ]
+    },
+    "isIterable": {
+      "signature": "isIterable(x)",
+      "desc": "Returns true if x is iterable (list, dict, set, string, matrix, or instance with __iter__/__next__).",
+      "examples": [
+        "isIterable(@[1, 2])"
+      ]
+    },
+    "isCallable": {
+      "signature": "isCallable(x)",
+      "desc": "Returns true if x is callable (function, class, callable type, or instance with __call__).",
+      "examples": [
+        "isCallable(int)"
+      ]
+    },
+    "isIndexable": {
+      "signature": "isIndexable(x)",
+      "desc": "Returns true if x supports indexing (list, dict, string, matrix, or instance with __getitem__).",
+      "examples": [
+        "isIndexable(@[1, 2])"
+      ]
+    },
+    "isHashable": {
+      "signature": "isHashable(x)",
+      "desc": "Returns true if x is hashable (usable as a dict key or set element).",
+      "examples": [
+        "isHashable(@{1, 2})"
+      ]
+    },
+    "isAlpha": {
+      "signature": "isAlpha(s)",
+      "desc": "Returns true if all characters in s are alphabetic.",
+      "examples": [
+        "isAlpha(\"abc\")"
+      ]
+    },
+    "isDigit": {
+      "signature": "isDigit(s)",
+      "desc": "Returns true if all characters in s are digits.",
+      "examples": [
+        "isDigit(\"123\")"
+      ]
+    },
+    "isAlnum": {
+      "signature": "isAlnum(s)",
+      "desc": "Returns true if all characters in s are alphanumeric.",
+      "examples": [
+        "isAlnum(\"abc123\")"
+      ]
+    },
+    "isSpace": {
+      "signature": "isSpace(s)",
+      "desc": "Returns true if all characters in s are whitespace.",
+      "examples": [
+        "isSpace(\"  \\t\")"
+      ]
+    },
+    "isUpper": {
+      "signature": "isUpper(s)",
+      "desc": "Returns true if all alphabetic characters in s are uppercase.",
+      "examples": [
+        "isUpper(\"ABC\")"
+      ]
+    },
+    "isLower": {
+      "signature": "isLower(s)",
+      "desc": "Returns true if all alphabetic characters in s are lowercase.",
+      "examples": [
+        "isLower(\"abc\")"
+      ]
+    },
+    "isEmpty": {
+      "signature": "isEmpty(x)",
+      "desc": "Returns true if the string, list, dict, or matrix is empty.",
+      "examples": [
+        "isEmpty(\"\")"
+      ]
+    },
+    "isNan": {
+      "signature": "isNan(x)",
+      "desc": "Returns true if x is NaN (Not a Number). Since JC2 rejects division by zero, NaN has to be created with nan(). Non-float values return false.",
+      "examples": [
+        "isNan(nan())",
+        "isNan(1.0)"
+      ]
+    },
+    "isInf": {
+      "signature": "isInf(x)",
+      "desc": "Returns true if x is +Infinity or -Infinity. Non-float values return false.",
+      "examples": [
+        "isInf(inf())",
+        "isInf(1.0)"
+      ]
+    },
+    "isFinite": {
+      "signature": "isFinite(x)",
+      "desc": "Returns true if x is a finite number.",
+      "examples": [
+        "isFinite(42)"
+      ]
+    },
+    "isPrime": {
+      "signature": "isPrime(x)",
+      "desc": "Returns true if x is a prime number.",
+      "examples": [
+        "isPrime(7)"
+      ]
+    },
+    "isEven": {
+      "signature": "isEven(x)",
+      "desc": "Returns true if x is an even integer.",
+      "examples": [
+        "isEven(4)"
+      ]
+    },
+    "isOdd": {
+      "signature": "isOdd(x)",
+      "desc": "Returns true if x is an odd integer.",
+      "examples": [
+        "isOdd(3)"
+      ]
+    },
+    "isPositive": {
+      "signature": "isPositive(x)",
+      "desc": "Returns true if x > 0.",
+      "examples": [
+        "isPositive(5)"
+      ]
+    },
+    "isNegative": {
+      "signature": "isNegative(x)",
+      "desc": "Returns true if x < 0.",
+      "examples": [
+        "isNegative(-5)"
+      ]
+    },
+    "isZero": {
+      "signature": "isZero(x)",
+      "desc": "Returns true if x is equal to zero.",
+      "examples": [
+        "isZero(0)"
+      ]
+    },
+    "isApprox": {
+      "signature": "isApprox(a, b, [rtol], [atol])",
+      "desc": "Returns true if a and b are approximately equal within relative tolerance rtol (default 1e-9) and absolute tolerance atol (default 0.0).",
+      "examples": [
+        "isApprox(1.0000000001, 1.0)"
       ]
     }
   },
@@ -7035,7 +7035,7 @@
       "signature": "math.isPrime(n)",
       "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
       "aliases": [
-        "isprime"
+        "isPrime"
       ],
       "examples": [
         "import math; math.isPrime(10^9 + 7)"

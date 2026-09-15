@@ -42,21 +42,21 @@ test_matrix_math()
 
 // ── 非有限值：nan() / inf() ──
 // JC2 禁止除零（0/0、1.0/0.0 均抛 MathError），因此 NaN 只能由 nan() 构造；
-// 没有这两个构造器时 isnan/isinf 不可达。
+// 没有这两个构造器时 isNan/isInf 不可达。
 throws(f) = { try { f(); return false } catch (e) { return true } }
 
 test_non_finite() = {
-    assert(isnan(nan()), "nan() should be NaN")
-    assert(!isnan(1.0), "finite value should not be NaN")
-    assert(!isnan("abc"), "non-float should not be NaN")
+    assert(isNan(nan()), "nan() should be NaN")
+    assert(!isNan(1.0), "finite value should not be NaN")
+    assert(!isNan("abc"), "non-float should not be NaN")
 
-    assert(isinf(inf()), "inf() should be infinite")
-    assert(isinf(-inf()), "-inf() should be infinite")
-    assert(!isinf(1.0), "finite value should not be infinite")
+    assert(isInf(inf()), "inf() should be infinite")
+    assert(isInf(-inf()), "-inf() should be infinite")
+    assert(!isInf(1.0), "finite value should not be infinite")
 
-    assert(!isfinite(inf()), "inf is not finite")
-    assert(!isfinite(nan()), "nan is not finite")
-    assert(isfinite(1.0), "1.0 is finite")
+    assert(!isFinite(inf()), "inf is not finite")
+    assert(!isFinite(nan()), "nan is not finite")
+    assert(isFinite(1.0), "1.0 is finite")
 
     // 除零仍然报错（不是靠产生 inf 来"绕过"）
     assert(throws(() => 1.0 / 0.0), "float division by zero should throw")

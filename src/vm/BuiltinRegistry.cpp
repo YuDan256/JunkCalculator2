@@ -483,7 +483,7 @@ void BuiltinRegistry::registerMath() {
     reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
     reg("e", { 0 }, [](const std::vector<Value>&) -> Value { return Value(2.71828182845904523536); }, {});
     // ★ 非有限值构造函数：语言层面禁止除零（0/0、1.0/0.0 均抛 MathError），
-    //   因此 NaN 无法由算术产生，必须提供显式构造，否则 isnan/isinf 不可达。
+    //   因此 NaN 无法由算术产生，必须提供显式构造，否则 isNan/isInf 不可达。
     //   （Inf 还可能由上溢产生，如 exp(1000.0)；但 NaN 没有任何其它产生途径。）
     reg("nan", { 0 }, [](const std::vector<Value>&) -> Value {
         return Value(std::numeric_limits<double>::quiet_NaN());
@@ -3773,7 +3773,7 @@ void BuiltinRegistry::registerIntrospection() {
         auto cls = static_cast<ObjClass*>(args[1].asObj());
         return Value(inst->classDef->conformsTo(cls));
         }, {"obj", "cls"});    
-    reg("isiterable", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isIterable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isObjType(ObjType::LIST) || v.isObjType(ObjType::DICT) || v.isObjType(ObjType::SET) ||
             v.isString() || v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) ||
@@ -3783,14 +3783,14 @@ void BuiltinRegistry::registerIntrospection() {
         }
         return Value(false);
     }, {"obj"});
-    reg("iscallable", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isCallable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isFunctionClosure() || v.isClass() || v.isString()) return Value(true);
         if (v.isType()) { if (static_cast<ObjTypeDef*>(v.asObj())->converter) return Value(true); }
         if (v.isInstance()) { if (helpers::hasDunder(v, "__call__")) return Value(true); }
         return Value(false);
     }, {"obj"});
-    reg("isindexable", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isIndexable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isObjType(ObjType::LIST) || v.isObjType(ObjType::DICT) || v.isString() ||
             v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) ||
@@ -3798,7 +3798,7 @@ void BuiltinRegistry::registerIntrospection() {
         if (v.isInstance()) { if (helpers::hasDunder(v, "__getitem__")) return Value(true); }
         return Value(false);
     }, {"obj"});
-    reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isHashable", { 1 }, [](const std::vector<Value>& args) -> Value {
         try { return Value(args[0].isHashable()); } catch (...) { return Value(false); }
     }, {"obj"});
     reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) JC2_THROW(TypeError, "getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
@@ -4907,7 +4907,7 @@ void BuiltinRegistry::registerTypeChecks() {
 
     // ═══ 字符串谓词 ═══
 
-    reg("isalpha", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isAlpha", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4915,7 +4915,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("isdigit", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isDigit", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4923,7 +4923,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("isalnum", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isAlnum", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4931,7 +4931,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("isspace", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isSpace", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4939,7 +4939,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("isupper", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isUpper", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4947,7 +4947,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("islower", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isLower", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) return Value(false);
         const auto& s = args[0].asString();
         if (s.empty()) return Value(false);
@@ -4955,7 +4955,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(true);
         }, {"s"});
 
-    reg("isempty", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isEmpty", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isString())
             return Value(args[0].asString().empty());
         if (args[0].isObjType(ObjType::LIST))
@@ -4981,26 +4981,26 @@ void BuiltinRegistry::registerTypeChecks() {
 
     // ═══ 特殊谓词 ═══
 
-    reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isNan", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isFloat())
             return Value(std::isnan(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
-    reg("isinf", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isInf", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isFloat())
             return Value(std::isinf(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
-    reg("isfinite", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isFinite", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isFloat()) return Value(std::isfinite(v.asFloatRaw()));
         if (v.isInt32() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) return Value(true);
         return Value(false);
         }, {"x"});
 
-    reg("isprime", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isPrime", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(BigInt(v.asInt32()).isPrime());
         if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isPrime());
@@ -5008,7 +5008,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("iseven", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isEven", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) == 0);
         if (v.isBigInt()) return Value((static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
@@ -5019,7 +5019,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isodd", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isOdd", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) != 0);
         if (v.isBigInt()) return Value(!(static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
@@ -5030,7 +5030,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("ispositive", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isPositive", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() > 0);
         if (v.isFloat()) return Value(v.asFloatRaw() > 0.0);
@@ -5039,7 +5039,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isnegative", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isNegative", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() < 0);
         if (v.isFloat()) return Value(v.asFloatRaw() < 0.0);
@@ -5048,7 +5048,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("iszero", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isZero", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() == 0);
         if (v.isFloat()) return Value(v.asFloatRaw() == 0.0);
@@ -5061,7 +5061,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
+    reg("isApprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
         double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asFloat() : 1e-9;
         double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asFloat() : 0.0;
 

@@ -250,3 +250,27 @@ test_dunders_resolve_in_the_class_domain_only() = {
     assert(len(D()) == 7, "and a new instance still uses the template")
 }
 test_dunders_resolve_in_the_class_domain_only()
+
+test_hash_dunder_is_found_in_the_member_table() = {
+    // 回归：类袋子分两张表后，实例方法住在 members。散列能力探测如果只看
+    // properties，就会「明明定义了 __hash__ 却报 unhashable」。
+    class H {
+        k = 1
+        __hash__() = self.k
+        __eq__(o) = self.k == o.k
+    }
+    h = H()
+    assert(ishashable(h), "an instance with __hash__ is hashable")
+    assert(hash(h) == hash(H()), "hash() is stable across equal instances")
+    assert(h.__hash__() == 1, "and __hash__ itself returns the declared value")
+    d = {}
+    d[h] = "v"
+    assert(d[H()] == "v", "and it works as a dict key")
+    // 父类提供的 __hash__ 同样算数
+    class H2 extends H { }
+    assert(ishashable(H2()), "an inherited __hash__ counts too")
+    // 没有 __hash__ 的普通实例照旧不可哈希
+    class Plain { x = 1 }
+    assert(!ishashable(Plain()), "a plain instance stays unhashable")
+}
+test_hash_dunder_is_found_in_the_member_table()

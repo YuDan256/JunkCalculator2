@@ -2190,7 +2190,9 @@ namespace jc {
                 if (guard.isCycle) return true;
                 auto c = inst->classDef;
                 while (c) {
-                    if (c->properties.count("__hash__")) {
+                    // ★ 类袋子分两张表（OOP_MODEL_DESIGN.md §2.6）：实例方法住在 members，
+                    //   static 住 properties —— 这里必须两张都看，否则定义了 __hash__ 也报不可哈希。
+                    if (c->members.count("__hash__") || c->properties.count("__hash__")) {
                         inst->is_hashable_cached = true;
                         return true;
                     }

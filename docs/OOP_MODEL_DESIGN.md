@@ -65,6 +65,9 @@
 
 ### 2.1.1 例外：协议方法（dunder）只在类域解析
 
+> **权威表述在 `data/documentation.json` 的 `topics.class` →「Magic Method Bypass (Dunders)」**
+> （`/help class` 显示的就是它）。本节只是把它展开讲清楚。
+
 `__len__` / `__str__` / `__eq__` / `__getitem__` / `__iter__` / `__next__` / `__call__` / `__hash__` 这些
 是**语言协议**，不是普通成员，所以它们**不走 §2.1 的顺序**：
 
@@ -72,10 +75,12 @@
   一律**沿类链查模板**（本类模板 → `parent` 链），**不看实例袋子里的那份**。
 - 因此 `d.__len__ = f` 之后：`d.__len__` 读得到、`d.__len__()` 也调得动（它就是实例袋子里的一份普通值），
   但 **`len(d)` 仍然用类上的模板**——和 Python 一样（隐式查找走类型槽位，不走实例字典）。
-- 理由：协议不该被实例上的一次误赋值静默改掉。`obj.__iter__ = something` 这种手滑，代价是整条
-  `for` 循环语义变了，而错误现场离赋值处很远。
+- 理由（documentation.json 的原话）：协议绕过实例字段，"guarantees that all instances of a class
+  share the exact same mathematical and hashing behavior, keeping data structures safe"——协议不该被
+  实例上的一次误赋值静默改掉。`obj.__iter__ = something` 这种手滑，代价是整条 `for` 循环语义变了，
+  而错误现场离赋值处很远。
 - 代价（已认下）：同一个名字会出现"读一套、派一套"——`d.__len__` 给影子、`len(d)` 给模板。
-  **这条不对齐只限 dunder**，普通成员照旧读调一致。
+  **这条不对齐只限 dunder**，普通成员照旧读调一致（§2.1 第一条）。
 - 类上写 `D.__len__ = f` 也只新建一个 static（§2.6），既碰不到模板，也碰不到任何实例袋子。
 
 ### 2.2 `a.名字` 读出什么

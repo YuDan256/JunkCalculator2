@@ -1309,7 +1309,7 @@
       "  Divisibility & Primes",
       "  ──────────────────────",
       "    math.gcd(a, b), math.lcm(a, b), math.digits(n)",
-      "    math.isPrime(n)      Deterministic Miller-Rabin test",
+      "    math.isprime(n)      Deterministic Miller-Rabin test",
       "    math.isprime(n)      Lowercase alias (same function)",
       "    math.nextPrime(n)    Smallest prime > n",
       "    math.nthPrime(k)     k-th prime (requires mounted Prime.bin)",
@@ -1334,7 +1334,7 @@
       "    math.sigma(n, k)     Sum of k-th powers of divisors",
       "    math.omega(n), math.bigOmega(n) Prime factor counts",
       "    math.mobius(n)       Möbius function",
-      "    math.isPerfect(n)    Perfect number test",
+      "    math.isperfect(n)    Perfect number test",
       "    math.mod(a, b)       Mathematical mod (always ≥ 0)",
       "    math.modpow(a, e, m) aᵉ mod m",
       "",
@@ -2351,7 +2351,7 @@
       "    freeze(L)               Locks the list physically. Any future attempt to ",
       "                            modify it (push, pop, L[i]=) will throw an error.",
       "                            Returns the list itself.",
-      "    isFrozen(L)             Returns true if the list is locked, false otherwise.",
+      "    isfrozen(L)             Returns true if the list is locked, false otherwise.",
       "    copy(L, true)           Creates a deep-copy snapshot of the list (and all ",
       "                            nested containers), freezes the new copy, and returns it.",
       "                            Perfect for safely passing data to untrusted functions.",
@@ -2515,7 +2515,7 @@
       "      • Class instances (ONLY if frozen, or if they define a `__hash__` dunder method)",
       "",
       "    freeze(d)                           Locks the dictionary permanently.",
-      "    isFrozen(d)                         Returns true if locked, false otherwise.",
+      "    isfrozen(d)                         Returns true if locked, false otherwise.",
       "    copy(d, true)                       Returns a deep-copied, frozen snapshot.",
       "    hash(x)                             Returns the native hash value of x (as int).",
       "    ",
@@ -2584,9 +2584,9 @@
       "",
       "  Relation Predicates (return true or false)",
       "  ──────────────────────",
-      "    a.isSubset(b)                   Is every element of a also in b?",
-      "    a.isSuperset(b)                 Is every element of b also in a?",
-      "    a.isDisjoint(b)                 Do a and b share no elements?",
+      "    a.issubset(b)                   Is every element of a also in b?",
+      "    a.issuperset(b)                 Is every element of b also in a?",
+      "    a.isdisjoint(b)                 Do a and b share no elements?",
       "    a == b                          set equality (same elements, any order)",
       "",
       "  Functional Programming (Universal API)",
@@ -2629,7 +2629,7 @@
       "    Functions and namespaces are always hashable. Class instances are only hashable if frozen or if they define __hash__.",
       "",
       "    freeze(s)               Locks the set permanently.",
-      "    isFrozen(s)             Returns true if locked, false otherwise.",
+      "    isfrozen(s)             Returns true if locked, false otherwise.",
       "    copy(s, true)           Returns a deep-copied, frozen snapshot of the set.",
       "    hash(x)                 Returns the native hash value of x (as int).",
       "    ",
@@ -2658,7 +2658,7 @@
       "    chars = toSet(\"abracadabra\")    → @{\"a\", \"b\", \"c\", \"d\", \"r\"}",
       "    3 in a                          → true",
       "    9 in a                          → false",
-      "    @{1, 2}.isSubset(a)             → true"
+      "    @{1, 2}.issubset(a)             → true"
     ],
     "enum": [
       "═══ Enumerations (enum) ═══",
@@ -4701,11 +4701,11 @@
         "freeze(myList)"
       ]
     },
-    "isFrozen": {
-      "signature": "isFrozen(obj)",
+    "isfrozen": {
+      "signature": "isfrozen(obj)",
       "desc": "Returns true if the container is locked, false otherwise.",
       "examples": [
-        "isFrozen(myList)"
+        "isfrozen(myList)"
       ]
     },
     "hash": {
@@ -6722,25 +6722,25 @@
         "@{1, 2}.symDiff(@{2, 3})"
       ]
     },
-    "isSubset": {
-      "signature": "a.isSubset(b)",
+    "issubset": {
+      "signature": "a.issubset(b)",
       "desc": "Returns true if a is a subset of b.",
       "examples": [
-        "@{1}.isSubset(@{1, 2})"
+        "@{1}.issubset(@{1, 2})"
       ]
     },
-    "isSuperset": {
-      "signature": "a.isSuperset(b)",
+    "issuperset": {
+      "signature": "a.issuperset(b)",
       "desc": "Returns true if a is a superset of b.",
       "examples": [
-        "@{1, 2}.isSuperset(@{1})"
+        "@{1, 2}.issuperset(@{1})"
       ]
     },
-    "isDisjoint": {
-      "signature": "a.isDisjoint(b)",
+    "isdisjoint": {
+      "signature": "a.isdisjoint(b)",
       "desc": "Returns true if a and b share no elements.",
       "examples": [
-        "@{1}.isDisjoint(@{2})"
+        "@{1}.isdisjoint(@{2})"
       ]
     },
     "cartesian": {
@@ -7031,14 +7031,14 @@
         "import math; math.BaseNum(255, 16).digits()"
       ]
     },
-    "isPrime": {
-      "signature": "math.isPrime(n)",
+    "isprime": {
+      "signature": "math.isprime(n)",
       "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
       "aliases": [
         "isprime"
       ],
       "examples": [
-        "import math; math.isPrime(10^9 + 7)"
+        "import math; math.isprime(10^9 + 7)"
       ]
     },
     "nextPrime": {
@@ -7104,11 +7104,11 @@
         "import math; math.mobius(10)"
       ]
     },
-    "isPerfect": {
-      "signature": "math.isPerfect(n)",
+    "isperfect": {
+      "signature": "math.isperfect(n)",
       "desc": "Returns true if n is a perfect number (sum of proper divisors equals n), false otherwise.",
       "examples": [
-        "import math; math.isPerfect(28)"
+        "import math; math.isperfect(28)"
       ]
     },
     "mod": {

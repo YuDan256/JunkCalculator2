@@ -1786,7 +1786,7 @@ void BuiltinRegistry::registerNumberTheory() {
     regModule(math_ns, "omega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).omega())); }, {"n"});
     regModule(math_ns, "bigOmega", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).bigOmega())); }, {"n"});
     regModule(math_ns, "mobius", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(BigInt(toBigInt(args[0]).mobius())); }, {"n"});
-    regModule(math_ns, "isPerfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); }, {"n"});
+    regModule(math_ns, "isperfect", { 1 }, [toBigInt](const std::vector<Value>& args) -> Value { return Value(toBigInt(args[0]).isPerfect()); }, {"n"});
     regModule(math_ns, "mod", { 2 }, [toBigInt](const std::vector<Value>& args) -> Value {
         if ((args[0].isBigInt() || args[0].isInt32()) && (args[1].isBigInt() || args[1].isInt32())) return Value(BigInt::mathMod(toBigInt(args[0]), toBigInt(args[1])));
         if (args[0].isObjType(ObjType::FRACTION)) { const auto& f = static_cast<ObjFraction*>(args[0].asObj())->frac; if (f.getDen() == BigInt(1)) return Value(BigInt::mathMod(f.getNum(), toBigInt(args[1]))); }
@@ -2148,7 +2148,7 @@ void BuiltinRegistry::registerSystemUtils() {
         return args[0];
         }, {"obj"});
 
-    reg("isFrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
+    reg("isfrozen", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             return Value(static_cast<ObjList*>(args[0].asObj())->is_frozen);
         } else if (args[0].isObjType(ObjType::DICT)) {
@@ -5259,7 +5259,7 @@ void BuiltinRegistry::registerSetFunctions() {
     auto isSubsetFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            JC2_THROW(TypeError, "isSubset() expects two Sets.");
+            JC2_THROW(TypeError, "issubset() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : a->elements) {
@@ -5267,12 +5267,12 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(true);
     };
-    regMethod(VM::activeVM->setProto, "isSubset", {"b"}, isSubsetFn);
+    regMethod(VM::activeVM->setProto, "issubset", {"b"}, isSubsetFn);
 
     auto isSupersetFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            JC2_THROW(TypeError, "isSuperset() expects two Sets.");
+            JC2_THROW(TypeError, "issuperset() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : b->elements) {
@@ -5280,12 +5280,12 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(true);
     };
-    regMethod(VM::activeVM->setProto, "isSuperset", {"b"}, isSupersetFn);
+    regMethod(VM::activeVM->setProto, "issuperset", {"b"}, isSupersetFn);
 
     auto isDisjointFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            JC2_THROW(TypeError, "isDisjoint() expects two Sets.");
+            JC2_THROW(TypeError, "isdisjoint() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
         for (const auto& val : a->elements) {
@@ -5293,7 +5293,7 @@ void BuiltinRegistry::registerSetFunctions() {
         }
         return Value(true);
     };
-    regMethod(VM::activeVM->setProto, "isDisjoint", {"b"}, isDisjointFn);
+    regMethod(VM::activeVM->setProto, "isdisjoint", {"b"}, isDisjointFn);
 
     // ═══ 笛卡尔积 ═══
     auto setProductFn = [](const std::vector<Value>& args) -> Value {

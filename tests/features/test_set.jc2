@@ -21,9 +21,9 @@ test_set_predicates() = {
     a = @{1, 2}
     b = @{1, 2, 3}
     
-    assert(a.isSubset(b), "isSubset failed")
-    assert(b.isSuperset(a), "isSuperset failed")
-    assert(a.isDisjoint(@{99}), "isDisjoint failed")
+    assert(a.issubset(b), "issubset failed")
+    assert(b.issuperset(a), "issuperset failed")
+    assert(a.isdisjoint(@{99}), "isdisjoint failed")
 }
 test_set_predicates()
 

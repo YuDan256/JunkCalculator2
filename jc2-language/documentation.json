@@ -423,8 +423,8 @@
     "freeze": {
       "signature": "freeze(obj)"
     },
-    "isFrozen": {
-      "signature": "isFrozen(obj)"
+    "isfrozen": {
+      "signature": "isfrozen(obj)"
     },
     "hash": {
       "signature": "hash(x)"
@@ -1149,14 +1149,14 @@
     "symDiff": {
       "signature": "a.symDiff(b)"
     },
-    "isSubset": {
-      "signature": "a.isSubset(b)"
+    "issubset": {
+      "signature": "a.issubset(b)"
     },
-    "isSuperset": {
-      "signature": "a.isSuperset(b)"
+    "issuperset": {
+      "signature": "a.issuperset(b)"
     },
-    "isDisjoint": {
-      "signature": "a.isDisjoint(b)"
+    "isdisjoint": {
+      "signature": "a.isdisjoint(b)"
     },
     "cartesian": {
       "signature": "a.cartesian(b)"
@@ -1285,8 +1285,8 @@
     "digits": {
       "signature": "math.digits(n)"
     },
-    "isPrime": {
-      "signature": "math.isPrime(n)"
+    "isprime": {
+      "signature": "math.isprime(n)"
     },
     "nextPrime": {
       "signature": "math.nextPrime(n)"
@@ -1315,8 +1315,8 @@
     "mobius": {
       "signature": "math.mobius(n)"
     },
-    "isPerfect": {
-      "signature": "math.isPerfect(n)"
+    "isperfect": {
+      "signature": "math.isperfect(n)"
     },
     "mod": {
       "signature": "math.mod(a, b)"
@@ -1332,9 +1332,6 @@
     },
     "catalan": {
       "signature": "math.catalan(n)"
-    },
-    "isprime": {
-      "signature": "math.isprime(n)"
     }
   },
   "cas_methods": {

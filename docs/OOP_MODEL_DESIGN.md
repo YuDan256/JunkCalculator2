@@ -434,7 +434,7 @@ T.m  = ...   ->  RuntimeError: Cannot modify frozen trait 'T'.
 2. **`L.sum(5)` / `S.upper(5)` 静默吞掉多余实参**：`VM.cpp:2420` 的检查是 `if (maxArgs() > 0 && restName.empty())`——`maxArgs()==0` 时**整个检查被跳过**。这是既有缺陷，顺手修。
 3. **`a.f(_)` 占位符柯里化**：目前是编译器机制，与成员查找的交互（固定的是当时查到的那个函数）要在第 2 步之后回归确认。实测：`f = a.add(_)` 建好之后把 `A.add` 换成 `(y) => 999`，`f(5)` 仍是 `15`（当场固定）。
 4. **trait 成员的 `is_static` 传递**：trait 复制路径（`TRAIT_DESIGN.md` §七.2）要跟着带。
-5. **`freeze()` / `isFrozen()` 缺 CLASS 分支**：实测 `freeze(A)` 返回"成功"但什么都没做，`isFrozen(A)` 永远为 `false`——连内部 `is_frozen = true` 的 trait 也报 `false`。既然 `is_frozen` 是"可哈希"的前提，这个缺口要补：`freeze(C)` 真的把类置冻结，`isFrozen(C)` 如实返回。同时确认 `CONST` 与 `is_frozen` 的关系（`const` 是成员级的，`is_frozen` 是整体的）。
+5. **`freeze()` / `isfrozen()` 缺 CLASS 分支**：实测 `freeze(A)` 返回"成功"但什么都没做，`isfrozen(A)` 永远为 `false`——连内部 `is_frozen = true` 的 trait 也报 `false`。既然 `is_frozen` 是"可哈希"的前提，这个缺口要补：`freeze(C)` 真的把类置冻结，`isfrozen(C)` 如实返回。同时确认 `CONST` 与 `is_frozen` 的关系（`const` 是成员级的，`is_frozen` 是整体的）。
 
 ## 八、验证点
 
@@ -458,7 +458,7 @@ T.m  = ...   ->  RuntimeError: Cannot modify frozen trait 'T'.
 18. `L.sum(5)` 不再静默返回 `6`，而是报参数个数错
 19. `C.newf = f` 之后 `C.newf` 是 `f`、`C().newf` 找不到；`C.who = 新函数` 之后**新**对象仍用老方法
 20. **第 9 步之后**：`A.who = 新函数` 后老实例仍返回旧值；10 成员对象的构造耗时相对今天不退化
-21. `freeze(C)` 之后 `isFrozen(C)` 为 `true`，`C.s = 1` 与 `C.who = ...` 一律报错；trait 定义完成后 `T.s = 1` 仍报 `Cannot modify frozen trait`
+21. `freeze(C)` 之后 `isfrozen(C)` 为 `true`，`C.s = 1` 与 `C.who = ...` 一律报错；trait 定义完成后 `T.s = 1` 仍报 `Cannot modify frozen trait`
 22. 原生容器不受快照影响：`.append()` / `.keys()` / `.upper()` / `.floor()` / `.len()` 全部照旧；`L1.append == L2.append` 为 `true`；`L.x = 1` 仍报 `Cannot set property on this type.`；`D.x = 1` 仍是加一个键
 23. `D.keys = f` 之后 `D.keys` 读与 `D.keys()` 调走**同一条**查找顺序（不出现读一套、调一套）
 24. `--jit` 下以上第 1、3、8、10、11 条结果一致

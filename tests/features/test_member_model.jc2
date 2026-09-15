@@ -178,9 +178,9 @@ test_freeze_covers_the_whole_class() = {
         m() = 2
     }
     f = F()
-    assert(!isFrozen(F), "a plain class is not frozen")
+    assert(!isfrozen(F), "a plain class is not frozen")
     freeze(F)
-    assert(isFrozen(F), "freeze() marks the class frozen")
+    assert(isfrozen(F), "freeze() marks the class frozen")
     assert(throws(() => { F.s = 1 }), "a frozen class rejects static writes")
     assert(throws(() => { F.m = () => 3 }), "a frozen class rejects template writes")
     assert(f.m() == 2, "existing instances keep working after the class is frozen")
@@ -189,7 +189,7 @@ test_freeze_covers_the_whole_class() = {
     trait FT {
         tm() = 1
     }
-    assert(isFrozen(FT), "a trait is frozen at definition")
+    assert(isfrozen(FT), "a trait is frozen at definition")
 }
 test_freeze_covers_the_whole_class()
 

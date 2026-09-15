@@ -58,8 +58,8 @@ test_kwargs_escape_hatch() = {
 test_kwargs_escape_hatch()
 
 test_native_kwargs() = {
-    // isApprox(a, b, rtol, atol)
-    assert(isApprox(1.0, 1.001, atol=0.01), "Native kwarg failed")
-    assert(!isApprox(1.0, 1.001, atol=0.0001), "Native kwarg failed (should be false)")
+    // isapprox(a, b, rtol, atol)
+    assert(isapprox(1.0, 1.001, atol=0.01), "Native kwarg failed")
+    assert(!isapprox(1.0, 1.001, atol=0.0001), "Native kwarg failed (should be false)")
 }
 test_native_kwargs()

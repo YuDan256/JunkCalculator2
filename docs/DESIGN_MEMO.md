@@ -60,7 +60,7 @@
 *   **内置类型原型链 (Type Prototypes)**：将容器与字符串操作（如 `push`, `map`, `filter`, `split`, `join`, `keys`）从全局函数中彻底剔除，改为挂载到 `List`, `Dict`, `String`, `Matrix` 等内置类型的 `ObjClass` 原型上。这不仅符合纯正的 OOP 语义，还能极大提升 VM 方法查找（Inline Cache）的效率与安全性。
 *   **管道操作符演进 (Pipe Operator)**：采用显式方法调用语法 `data |> .sort() |> .unique()`。在编译期解构为 `data.sort().unique()`，彻底消除作用域解析歧义，并完美兼容全局归约函数（如 `data |> .filter(f) |> sum`）。
 *   **内置命名空间 (Built-in Namespaces)**：边缘函数打包为小写的命名空间（如 `sys`, `io`, `cas`），必须通过 `import sys` 显式引入。这不仅实现了与用户定义类型（大写驼峰）的视觉隔离，更实现了零开销的极速冷启动。
-*   **鸭子类型谓词 (Duck-Typing Predicates)**：保留 `isIterable`, `isCallable` 等行为契约检查函数，以支持鲁棒的泛型编程与多态；而具体类型检查则收敛为 `type(x) == list` 或 `isinstance`。
+*   **鸭子类型谓词 (Duck-Typing Predicates)**：保留 `isiterable`, `iscallable` 等行为契约检查函数，以支持鲁棒的泛型编程与多态；而具体类型检查则收敛为 `type(x) == list` 或 `isinstance`。
 
 ## 10. 符号矩阵与高级特性 (Symbolic Matrix & Advanced Features)
 *   **符号矩阵的双重身份 (Dual Role of SymMatrix)**：由于 `RealMatrix` 底层强制使用 `double`（在 $2^{53}$ 后丢失精度），`SymMatrix` 不仅用于代数推导，更是 JC2 中**唯一的精确数学矩阵**。通过 `symmatrix(r, c, ...)` 构建，内部的 `SymExpr` 节点可完美无损地承载任意精度的 `BigInt` 和 `Fraction`，从而支持精确的矩阵求逆与代数计算。

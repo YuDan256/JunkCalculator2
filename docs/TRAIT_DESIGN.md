@@ -81,17 +81,24 @@ class C with I {
 
 ## 六、方法查找顺序
 
-复制语义下，查找与普通类一致：
+复制语义下，查找与普通类一致（类袋子分两张表，见 `OOP_MODEL_DESIGN.md` §2.6：
+`classDef->members` 是实例成员模板，`classDef->properties` 是 static 域）：
 
 ```
 obj.draw() 查找顺序：
-1. obj 的类方法表（classDef->properties）
+1. obj 的类成员模板表（classDef->members）
    └─ 类自身方法（先写，最高）
    └─ trait 复制进来的默认方法（补缺，后覆盖先）
-2. 找不到 → 沿 parent 链查父类
+2. 找不到 → 沿 parent 链查父类（父类自己的 members，再父类的父类…）
 ```
 
 优先级：**类自身 > trait 默认 > 父类**。运行时零额外开销。
+
+- **trait 默认能把父类的同名方法盖掉**：trait 的语义是"复制进当前的类定义"，所以它算这个类
+  自己写的方法，而"自己写的"高于"继承来的"。`class D extends A with J {}` 里 A 有 `n`、J 也有 `n`
+  时，`D().n()` 走 J 那份；A 自己的 `A().n()` 不受影响。
+- 复制阶段跳过的是**类体里自己定义的**同名成员（`ownMembers` 只装类体里写过的名字），
+  父类继承来的名字不在其中，所以父类挡不住 trait。
 
 ## 七、底层实现
 

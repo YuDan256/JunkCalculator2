@@ -595,7 +595,7 @@ class Raycaster3D extends engine.GameEngine {
         
         disp_hp = self.hp > 0.0 ? self.hp : 0.0
         im.text(f"HP: {int(disp_hp)}%", 20, self.H - 40, hp_color, 2)
-        im.text(f"AMMO: {self.ammo.int()}", 180, self.H - 40, ammo_color, 2)
+        im.text(f"AMMO: {self.ammo}", 180, self.H - 40, ammo_color, 2)
         im.text(f"SCORE: {self.score}", 350, self.H - 40, "#FFFFFF", 2)
         im.text(f"SECTOR: {self.level} / {self.MAX_LEVEL}", self.W - 220, self.H - 40, "#00AADD", 2)
 

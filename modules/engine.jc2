@@ -6,7 +6,7 @@ const local import window
 const local import sys
 
 class GameEngine {
-    init(title: string = "JC2 Game", width: int | double = 800, height: int | double = 600, fps: int | double = 60) = {
+    init(title: string = "JC2 Game", width: int | float = 800, height: int | float = 600, fps: int | float = 60) = {
         self.width = round(width)
         self.height = round(height)
         self.fps = round(fps)
@@ -19,14 +19,14 @@ class GameEngine {
     }
 
     // ─── Virtual Methods ───
-    update(dt: double) = {}
+    update(dt: float) = {}
     draw(im: any)      = {}
 
     // ─── Event Callbacks ───
     onKeyDown(key: string) = {}
     onKeyUp(key: string)   = {}
-    onMouseDown(x: any, y: any, btn: int | double) = {}
-    onMouseUp(x: any, y: any, btn: int | double)   = {}
+    onMouseDown(x: any, y: any, btn: int | float) = {}
+    onMouseUp(x: any, y: any, btn: int | float)   = {}
     onMouseMove(x: any, y: any)           = {}
 
     // ─── Utilities ───
@@ -81,7 +81,7 @@ try {
 
   A fully Object-Oriented, Pygame-like framework for rapid interactive 
   application and game development in JC2. It manages the boilerplate of 
-  frame-pacing, double-buffering, delta-time calculation, and event routing.
+  frame-pacing, float-buffering, delta-time calculation, and event routing.
 
   Getting Started (Inheritance)
   ──────────────────────

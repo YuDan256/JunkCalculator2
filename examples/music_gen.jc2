@@ -1,4 +1,4 @@
-import buffer
+import bytes
 
 print("=============================================")
 print("  JC2 Synthesizer: True Idiomatic Edition    ")
@@ -27,7 +27,7 @@ samples_per_note = int(SAMPLE_RATE * time_per_note)
 data_size = total_beats * notes_per_beat * samples_per_note * 2 
 file_size = 44 + data_size
 
-buf = buffer.alloc(file_size)
+buf = bytes.alloc(file_size)
 
 // Method Chaining (Fluent API)
 (buf.writeStr("RIFF")
@@ -58,8 +58,6 @@ for (measure in range(8)) {
                 sgn(sin(2.0 * pi() * f * (i / SAMPLE_RATE))) * exp(-6.0 * (i / SAMPLE_RATE)) * 0.4
                 for (i in range(samples_per_note))
             ]
-            
-            note_wave = note_wave.toMatrix()
             
             // 3. [Zero-Overhead Memory Transfer]
             // Force-feed the pure RealMatrix directly into the underlying C++ volumetric pointers.

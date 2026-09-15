@@ -19,7 +19,7 @@ class LifeGame extends engine.GameEngine {
         // 2. Setup game-specific states
         self.universe = @[ @[0 for (c in range(self.COLS))] for (r in range(self.ROWS)) ]
         self.is_paused = false
-        self.speeds = [0.5, 0.2, 0.08, 0.05, 0]
+        self.speeds = @[0.5, 0.2, 0.08, 0.05, 0]
         self.speed_idx = 2
         
         self.time_acc = 0.0     // Physics evolution time accumulator

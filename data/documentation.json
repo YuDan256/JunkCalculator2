@@ -511,9 +511,9 @@
       "    sqrt(x)             Square root     sqrt(−4) → 2i",
       "    cbrt(x)             Cube root",
       "    root(x, y)          y-th root of x",
-      "    sqrtF(x)            Square root (forced float/complex result)",
-      "    cbrtF(x)            Cube root (forced float/complex result)",
-      "    rootF(x, y)         y-th root of x (forced float/complex result)",
+      "    sqrtf(x)            Square root (forced float/complex result)",
+      "    cbrtf(x)            Cube root (forced float/complex result)",
+      "    rootf(x, y)         y-th root of x (forced float/complex result)",
       "    exp(x)              e^x",
       "    log(x) / ln(x)      Natural logarithm  log(−1) → πi",
       "    log(base, x)        Custom-base logarithm",
@@ -3754,25 +3754,25 @@
         "root(8, 3)"
       ]
     },
-    "sqrtF": {
-      "signature": "sqrtF(x)",
+    "sqrtf": {
+      "signature": "sqrtf(x)",
       "desc": "Returns the principal square root of x, forced to a floating-point or complex result.",
       "examples": [
-        "sqrtF(2)"
+        "sqrtf(2)"
       ]
     },
-    "cbrtF": {
-      "signature": "cbrtF(x)",
+    "cbrtf": {
+      "signature": "cbrtf(x)",
       "desc": "Returns the cube root of x, forced to a floating-point or complex result.",
       "examples": [
-        "cbrtF(2)"
+        "cbrtf(2)"
       ]
     },
-    "rootF": {
-      "signature": "rootF(x, y)",
+    "rootf": {
+      "signature": "rootf(x, y)",
       "desc": "Returns the y-th root of x, forced to a floating-point or complex result.",
       "examples": [
-        "rootF(2, 3)"
+        "rootf(2, 3)"
       ]
     },
     "pow": {

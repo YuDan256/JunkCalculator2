@@ -362,7 +362,7 @@ class Raycaster3D extends engine.GameEngine {
             if (z.hurt_timer > 0.0) z.hurt_timer -= dt
             if (z.status == "DEAD") continue
             dx = self.pos_x - z.x; dy = self.pos_y - z.y
-            dist = sqrtF(dx^2 + dy^2)
+            dist = sqrtf(dx^2 + dy^2)
             
             if (dist < 0.6) {
                 // 近身攻击玩家
@@ -384,7 +384,7 @@ class Raycaster3D extends engine.GameEngine {
         for (item in self.items) {
             if (!item.active) continue
             dx = self.pos_x - item.x; dy = self.pos_y - item.y
-            dist = sqrtF(dx^2 + dy^2)
+            dist = sqrtf(dx^2 + dy^2)
             
             if (dist < 0.6) { // 玩家走到足够近时自动拾取
                 if (item.type == "HP" && self.hp < 100.0) {

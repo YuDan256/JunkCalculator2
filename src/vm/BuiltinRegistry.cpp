@@ -453,19 +453,19 @@ void BuiltinRegistry::registerMath() {
                 if (name == "sqrt" && symArgs.size() == 1) {
                     return Value(SymExpr(symArgs[0]) ^ SymExpr(Fraction(1, 2)));
                 }
-                if (name == "sqrtF" && symArgs.size() == 1) {
+                if (name == "sqrtf" && symArgs.size() == 1) {
                     return Value(SymExpr(symArgs[0]) ^ SymExpr(0.5));
                 }
                 if (name == "cbrt" && symArgs.size() == 1) {
                     return Value(SymExpr(symArgs[0]) ^ SymExpr(Fraction(1, 3)));
                 }
-                if (name == "cbrtF" && symArgs.size() == 1) {
+                if (name == "cbrtf" && symArgs.size() == 1) {
                     return Value(SymExpr(symArgs[0]) ^ SymExpr(1.0 / 3.0));
                 }
                 if (name == "root" && symArgs.size() == 2) {
                     return Value(SymExpr(symArgs[0]) ^ (SymExpr(BigInt(1)) / SymExpr(symArgs[1])));
                 }
-                if (name == "rootF" && symArgs.size() == 2) {
+                if (name == "rootf" && symArgs.size() == 2) {
                     return Value(SymExpr(symArgs[0]) ^ (SymExpr(1.0) / SymExpr(symArgs[1])));
                 }
                 return Value(SymExpr::makeFunc(name, std::move(symArgs)));
@@ -611,7 +611,7 @@ void BuiltinRegistry::registerMath() {
         return args[0] ^ Value(Fraction(1, 2));
     });
 
-    regMath("sqrtF", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
+    regMath("sqrtf", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(0.5);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());
@@ -621,7 +621,7 @@ void BuiltinRegistry::registerMath() {
         return args[0] ^ Value(Fraction(1, 3));
     });
 
-    regMath("cbrtF", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
+    regMath("cbrtf", { 1 }, {"x"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ Value(1.0 / 3.0);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());
@@ -751,7 +751,7 @@ void BuiltinRegistry::registerMath() {
         return args[0] ^ (Value(BigInt(1)) / args[1]);
     });
 
-    regMath("rootF", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
+    regMath("rootf", { 2 }, {"x", "y"}, [](const std::vector<Value>& args) -> Value {
         Value res = args[0] ^ (Value(1.0) / args[1]);
         if (res.isObjType(ObjType::REAL_MATRIX) || res.isObjType(ObjType::COMPLEX_MATRIX)) return res;
         return res.isComplex() ? Value(res.asComplex()) : Value(res.asFloat());

@@ -30,14 +30,14 @@
     "root": {
       "signature": "root(x, y)"
     },
-    "sqrtF": {
-      "signature": "sqrtF(x)"
+    "sqrtf": {
+      "signature": "sqrtf(x)"
     },
-    "cbrtF": {
-      "signature": "cbrtF(x)"
+    "cbrtf": {
+      "signature": "cbrtf(x)"
     },
-    "rootF": {
-      "signature": "rootF(x, y)"
+    "rootf": {
+      "signature": "rootf(x, y)"
     },
     "pow": {
       "signature": "pow(x, y)"

@@ -31,7 +31,9 @@
 *   **Token 宏**：`syntax` 宏直接操作词法 Token 流，允许定义全新 DSL。支持词法容错 (`ERROR_TOKEN`) 与底层解析桥梁 (`parseExpr`)。
 
 ## 5. CAS 与模式匹配 (CAS & Pattern Matching)
-*   **数值与符号边界**：标准数学函数允许符号节点提升为 `SymFunc`，不兼容函数遇符号变量立即求值或报错。符号常量 `PI`, `E`, `i` (或 `I`) 在 `evalf` 时会被精确解析为对应的浮点数或复数（如 `sym("i")` 解析为 `1i`）。
+*   **数值与符号边界**：标准数学函数允许符号节点提升为 `SymFunc`，不兼容函数遇符号变量立即求值或报错。
+*   **常量身份唯一**：`pi` / `e` / `i` 只经 `cas.pi()` / `cas.e()` / `cas.i()` 与 `SymExpr::makeConst` 取得，是独立的 `SymType::CONST` 节点；内部要表达 π 必须写 `makeConst`，不能借 `makeVar`（`makeVar` 会把常量名转义成自由变量，规则表曾因此得到 `sqrt(PI)`）。`sym("pi")` / `sym("PI")` / `sym("E")` / `sym("i")` 是**自由变量**，打印同名但身份不同（`cas.i() == sym("i")` 为 false），常量逻辑不得认它们。
+*   **数值化两条通道**：`evalf` 走 double/Complex，会把常量解析成数值（`evalf(cas.pi()*2)` → `6.28319`，`evalf(cas.i()*2)` → `2.0i`，`evalf(cas.i()^2)` → `-1.0`）；`evalv` 走精确保值通道，其载体 `CASVal` 不含复数，因此 `cas.i()` 在 `evalv` 下保持符号（`evalv(cas.pi())` → `3.14159`，`evalv(cas.i())` → `i`）。
 *   **视图提取器**：`__match__` 解耦对象内部结构与外部匹配接口。返回 `self` 触发平凡拦截，回退至默认字段匹配。
 
 ## 6. 底层规范与序列化 (Low-Level Rules & Serialization)

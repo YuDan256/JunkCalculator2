@@ -31,10 +31,18 @@ test_imaginary_unit_exact() = {
 test_imaginary_unit_exact()
 
 test_const_numeric_value() = {
-    // 常量仍能数值化
+    // 常量仍能数值化。注意两条通道的不同：
+    //   evalf 走 double/Complex，能把常量（含 i）解析成数值；
+    //   evalv 走精确保值通道，其载体 CASVal 不含复数，i 保持符号。
     assert(cas.evalv(cas.pi()) > 3.14159 && cas.evalv(cas.pi()) < 3.1416, "evalv(pi) approx")
     assert(cas.evalv(cas.e()) > 2.71828 && cas.evalv(cas.e()) < 2.71829, "evalv(e) approx")
+    // i 的整数幂在符号层就折成精确值，所以 evalv 拿到的是实数 -1
     assert(cas.evalv(cas.i() ^ 2) == -1, "evalv(i^2) = -1")
+    // 但裸的 i 本身没有精确保值通道，evalv 只能原样返回符号
+    assert(str(cas.evalv(cas.i())) == "i", "evalv(i) stays symbolic (CASVal has no complex)")
+    // evalf 才有复数通道
+    assert(str(cas.evalf(cas.i() * 2)) == "2.0i", "evalf(i*2) = 2.0i")
+    assert(str(cas.evalf(cas.i() ^ 2)) == "-1.0", "evalf(i^2) = -1.0")
 }
 test_const_numeric_value()
 

@@ -1103,9 +1103,13 @@
       "      (degree <= 3 gives radicals; degree >= 4 stays RootOf to avoid huge Ferrari forms)",
       "",
       "    ★ Constants & Limitations:",
-      "    • PI, E, and i are now parsed as exact symbolic constants in the CAS engine ",
-      "      to prevent premature floating-point evaluation. Calling evalf(sym(\"i\")) ",
-      "      will evaluate it to the complex number 1i.",
+      "    • The constants pi / e / i are exact symbolic constants (SymType::CONST) ",
+      "      obtained via cas.pi() / cas.e() / cas.i(); this keeps them from being ",
+      "      prematurely evaluated to floating point.",
+      "    • sym(\"pi\") / sym(\"PI\") / sym(\"E\") / sym(\"i\") are ORDINARY FREE VARIABLES,",
+      "      not those constants: they only print the same way. Note that writing the",
+      "      numeric literal 1i is a separate thing again - it is already a complex",
+      "      number and never enters the symbolic tree.",
       "    • solve now exactly solves high-degree binomial equations (ax^n + b = 0), ",
       "      returning all complex roots using Euler's formula (E and PI).",
       "    • For high-degree irreducible polynomials, solve returns exact `RootOf` ",
@@ -7197,8 +7201,8 @@
       "signature": "cas.evalf(expr)",
       "desc": "Forces numerical floating-point evaluation of a symbolic expression.",
       "examples": [
-        "import cas; cas.evalf(pi())",
-        "import cas; cas.evalf(sym(\"i\"))"
+        "import cas; cas.evalf(cas.pi()*2)",
+        "import cas; cas.evalf(cas.i()^2)"
       ]
     },
     "RootOf": {

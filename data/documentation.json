@@ -1526,7 +1526,7 @@
       "      iscallable(x)    → function/class/callable type, or instance with __call__",
       "      isindexable(x)   → list/dict/string/matrix, or instance with __getitem__",
       "      ishashable(x)    → immutable/frozen/instance with __hash__",
-      "      istrait(x)       → a trait definition (false for classes, instances, anything else)",
+      "      istrait(x)       → trait definition (false for classes/instances/everything else)",
       "",
       "  Callable Types (Constructors)",
       "  ──────────────────────",
@@ -5556,7 +5556,7 @@
     },
     "istrait": {
       "signature": "istrait(x)",
-      "desc": "Returns true if x is a trait definition, false for anything else (a class, an instance, or any other value). Traits share the same type as classes (type(T) is class_type is true for both); the difference is that a trait cannot be instantiated.",
+      "desc": "Returns true if x is a trait definition, false for anything else (a class, an instance, or any other value).",
       "examples": [
         "trait T { foo() = 1 }; istrait(T)"
       ]

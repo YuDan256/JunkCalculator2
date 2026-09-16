@@ -4075,7 +4075,31 @@ namespace jc {
             auto pow = static_cast<SymPow*>(expr.ptr);
             SymExpr base = simplifyCore(SymExpr(pow->base));
             SymExpr exp = simplifyCore(SymExpr(pow->exp));
-            
+
+            // ★ 规范形：e^u → exp(u)（u 为任何非数值形式，含 e^pi、e^e）。
+            //   e^x 是 POW(CONST e, x)，exp(x) 是 FUNC("exp", x) —— 同一数学量的
+            //   两种节点，此前全流程不通约：simplify(e^x - exp(x)) 不化简、diff 结果
+            //   各是各的，下游 exp 合并规则（MUL 分支的 expCount）也认不出 e^x，
+            //   于是 integrate 的塔里留下 exp(log(e)*x) 这种未化简的扩张。
+            //   归一后两者是同一棵树，所有下游自动一致。
+            //
+            //   归一范围为何含符号常量指数（e^pi）：e^pi 与 exp(pi) 是同一数学量，
+            //   留两种写法只会让通约问题在别处重现。exp(pi)/exp(e) 实测都保持符号，
+            //   不会引入浮点化。
+            //
+            //   为何排除数值指数（e^2）：exp() 在 VM 侧遇数值参数会当场数值化
+            //   （exp(2) → 7.38906），归一会让 e^2 丢掉精确形式。
+            //   e^2 是普通数值幂，其"规范形是否该写成 exp(2)"是独立问题；
+            //   本次不改变 e^2 的既有行为。
+            if (base.ptr->getType() == SymType::CONST &&
+                static_cast<SymConst*>(base.ptr)->id == SymConstId::E &&
+                exp.ptr->getType() != SymType::NUM) {
+                // 指数已在上面递归化简过，但 makeFunc 不化简，这里再走一次，
+                // 避免产出 exp(x - x) 这类未化简的指数。
+                newNode = simplifyCore(SymExpr::makeFunc("exp", std::vector<SymNode*>{exp.ptr})).ptr;
+                break;
+            }
+
             // 代数数降幂 (Algebraic Number Power Reduction)
             if (base.ptr->getType() == SymType::FUNC && exp.ptr->getType() == SymType::NUM) {
                 auto func = static_cast<SymFunc*>(base.ptr);

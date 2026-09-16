@@ -167,6 +167,39 @@ test_sym_is_idempotent_on_symbolic_input() = {
 }
 test_sym_is_idempotent_on_symbolic_input()
 
+test_exp_powers_are_canonicalized() = {
+    // ★ 规范形：e^u → exp(u)。e^x 是 POW(CONST e, x)，exp(x) 是 FUNC("exp", x)，
+    //   同一数学量的两种节点；不归一则全流程不通约（simplify(e^x - exp(x)) 不化简、
+    //   diff 各是各的、下游 exp 合并规则认不出 e^x，integrate 的塔里会留下
+    //   exp(log(e)*x) 这种未化简的扩张）。
+    x = sym("x")
+
+    // 通约：两种写法归一成同一棵树
+    assert(str(cas.simplify(cas.e() ^ x)) == "exp(x)", "e^x normalizes to exp(x)")
+    assert(cas.simplify(cas.e() ^ x - exp(x)) == 0, "the two spellings are now equivalent")
+    assert(str(cas.diff(cas.e() ^ x, x)) == "exp(x)", "diff agrees for both spellings")
+
+    // 符号常量指数也归一（e^pi 与 exp(pi) 是同一量，留两种写法会让问题在别处重现）
+    assert(str(cas.simplify(cas.e() ^ cas.pi())) == "exp(pi)", "e^pi normalizes too")
+    assert(str(cas.simplify(cas.e() ^ cas.e())) == "exp(e)", "and e^e")
+
+    // 数值指数保持精确形式，不被浮点化
+    assert(str(cas.simplify(cas.e() ^ 2)) == "e^2", "e^2 keeps its exact form")
+    assert(str(cas.simplify(cas.e() ^ 1)) == "e", "e^1 stays e")
+    assert(cas.e() ^ 0 == 1, "e^0 is 1")
+
+    // 特殊值规则仍然精确（符号层内判定，不受归一影响）
+    assert(cas.simplify(sin(cas.pi())) == 0, "sin(pi) = 0")
+    assert(str(cas.simplify(sin(cas.pi() / 6))) == "1/2", "sin(pi/6) = 1/2")
+    assert(cas.simplify(log(cas.e())) == 1, "log(e) = 1")
+
+    // 函数调用（普通数值参数）仍数值化——那是调用时行为，与域内归一无关
+    assert(type(exp(1)) == float, "exp(1) still evaluates numerically at the call")
+    assert(type(sym(1)) == symbolic, "but sym(1) is symbolic")
+    assert(str(exp(sym(1))) == "exp(1)", "and exp(sym(1)) stays exact")
+}
+test_exp_powers_are_canonicalized()
+
 test_global_pi_e_stay_float() = {
     // 全局工厂函数保持浮点语义
     assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")

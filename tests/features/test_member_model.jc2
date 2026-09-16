@@ -274,3 +274,36 @@ test_hash_dunder_is_found_in_the_member_table() = {
     assert(!ishashable(Plain()), "a plain instance stays unhashable")
 }
 test_hash_dunder_is_found_in_the_member_table()
+test_hash_of_dunder_result_is_type_consistent() = {
+    // 回归：hash(obj) 必须等于 hash(obj.__hash__())，对 __hash__ 的每种合法
+    // 返回类型都成立。曾经 BigInt 返回值在实例分支里被单独走了
+    // sipHash24String(十进制)，而顶层哈希器对能塞进 ±2^53 的 BigInt 走
+    // sipHash24Double —— 同一个哈希器内部自我不一致：
+    //   __hash__() = hash(1001) 时 hash(obj) != hash(hash(1001))，
+    //   反而 hash(str(hash(1001))) == hash(obj)。
+    // 判定依据是「与同值直接哈希一致」，不是任何字面数值。
+    class HNum { __hash__() = 7 }
+    assert(hash(HNum()) == hash(7), "number-returning __hash__ hashes as that number")
+
+    class HBig { __hash__() = hash(1001) }
+    r = hash(1001)
+    assert(hash(HBig()) == hash(r), "hash(obj) == hash(obj.__hash__()) for BigInt results")
+    assert(HBig().__hash__() == r, "sanity: __hash__ really returns that BigInt")
+
+    class HStr { __hash__() = "abc" }
+    assert(hash(HStr()) == hash("abc"), "string-returning __hash__ hashes as that string")
+
+    // dict/set 仍然正确（哈希值因修复而改变，这里守住功能）
+    class HKey {
+        init(k) = { self.k = k }
+        __hash__() = self.k
+        __eq__(o) = self.k == o.k
+    }
+    d = {}
+    d[HKey(1234567890123456789)] = "big"
+    assert(d[HKey(1234567890123456789)] == "big", "BigInt-valued key still round-trips")
+    st = set()
+    st.add(HKey(1001))
+    assert(HKey(1001) in st, "and set membership still works")
+}
+test_hash_of_dunder_result_is_type_consistent()

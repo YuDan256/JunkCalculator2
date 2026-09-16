@@ -3214,7 +3214,13 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (found) {
                 if (res.isNumber()) return sipHash24Double(res.asFloat());
                 if (res.isString()) return sipHash24String(res.asString());
-                if (res.isBigInt()) return sipHash24String(res.asBigInt().toString());
+                // ★ BigInt 必须复用顶层那个哈希器，而不是另开一条字符串路径。
+                //   顶层对能塞进 ±2^53 的 BigInt 走 sipHash24Double，这里却一律
+                //   sipHash24String(十进制)，于是 hash(obj) != hash(obj.__hash__())：
+                //     __hash__() = hash(1001) 时，hash(obj) 走字符串、hash(1001) 走
+                //     双精度，两者不等（实测 hash(str(r)) == hash(obj) 才是 true）。
+                //   这是同一个哈希器内部的自我不一致，转交给它按类型自行分流即可。
+                if (res.isBigInt()) return ValueHasher{}(res);
             }
             if (inst->is_frozen) {
                 if (inst->has_cached_hash) return inst->cached_hash;

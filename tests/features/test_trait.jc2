@@ -528,3 +528,28 @@ test_trait_conformance_everywhere() = {
     assert(E4 <: Exception, "exception class still derives from Exception")
 }
 test_trait_conformance_everywhere()
+
+test_istrait_distinguishes_trait_from_class() = {
+    // trait 与 class 共用同一个类型（type(T) is class_type 对两者都为 true），
+    // 运行期差别只在"不可实例化"，所以区分手段是 istrait 谓词，不另立类型。
+    trait TA { foo() = 1 }
+    class CA with TA { bar() = 2 }
+    trait TB with TA { extra() = 3 }
+
+    assert(istrait(TA), "a trait definition is a trait")
+    assert(istrait(TB), "a trait composed from another trait is still a trait")
+    assert(!istrait(CA), "a class is not a trait")
+
+    // 非 trait 一律 false（本族谓词的既有契约：不报错）
+    assert(!istrait(CA()), "an instance is not a trait")
+    assert(!istrait(5), "a number is not a trait")
+    assert(!istrait("s"), "a string is not a trait")
+    assert(!istrait(none), "none is not a trait")
+    assert(!istrait(@[1, 2]), "a list is not a trait")
+
+    // 不改动既有语义：trait 仍参与类型符合同一性判定
+    assert(isinstance(CA(), TA), "isinstance with a trait stays true")
+    assert(type(TA) is class_type, "a trait is still class_type")
+    assert(type(CA) is class_type, "and so is a class")
+}
+test_istrait_distinguishes_trait_from_class()

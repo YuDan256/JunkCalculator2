@@ -3791,6 +3791,14 @@ void BuiltinRegistry::registerIntrospection() {
         if (v.isInstance()) { if (helpers::hasDunder(v, "__call__")) return Value(true); }
         return Value(false);
     }, {"obj"});
+    // trait 与 class 共用同一个类型（type(T) is class_type 对两者都为 true），
+    // 运行期差别只在"不可实例化"，所以区分手段是谓词而不是另立类型。
+    // trait 定义 → true；class、实例、其他一切 → false（与本族其余谓词一致，不报错）。
+    reg("istrait", { 1 }, [](const std::vector<Value>& args) -> Value {
+        Value v = args[0];
+        if (v.isClass()) return Value(static_cast<ObjClass*>(v.asObj())->isTrait);
+        return Value(false);
+    }, {"obj"});
     reg("isindexable", { 1 }, [](const std::vector<Value>& args) -> Value {
         Value v = args[0];
         if (v.isObjType(ObjType::LIST) || v.isObjType(ObjType::DICT) || v.isString() ||

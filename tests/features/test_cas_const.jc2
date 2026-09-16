@@ -46,6 +46,67 @@ test_const_numeric_value() = {
 }
 test_const_numeric_value()
 
+test_symbolic_numbers_survive_the_vm_boundary() = {
+    // ★ 回归：符号层的数值结果（SymNum）不再在 Value(SymExpr) 边界被拆成
+    //   原生 int/float/BigInt/Fraction。曾在此降级，于是每个 CAS 出口都掉类型：
+    //   cas.diff(x,x) → int 1。而数学函数的符号捕获判据是"参数是否 symbolic"，
+    //   掉成原生值后再喂回去（exp(cas.diff(x,x))）就走数值分支变成浮点，
+    //   精确形式再也拿不回来。
+    x = sym("x")
+
+    d = cas.diff(x, x)
+    assert(str(d) == "1", "the value still prints as 1")
+    assert(type(d) == symbolic, "but it stays symbolic")
+
+    // 关键收益：纯常数结果喂回数学函数时保持精确
+    assert(str(exp(cas.diff(x, x))) == "exp(1)", "exp of a symbolic constant stays exact")
+    assert(str(sin(cas.diff(x, x))) == "sin(1)", "sin of a symbolic constant stays exact")
+    assert(type(exp(cas.diff(x, x))) == symbolic, "and the result is symbolic")
+
+    // 含变量的表达式不受影响
+    assert(str(cas.diff(x ^ 2, x)) == "2 * x", "variable expressions unchanged")
+    assert(type(cas.diff(x ^ 2, x)) == symbolic, "and stay symbolic")
+
+    // 整族出口口径一致（含 subs，它曾额外单独降级）
+    assert(type(cas.simplify(x - x)) == symbolic, "simplify of a constant is symbolic")
+    assert(type(cas.limit(1 / x, x, 1)) == symbolic, "limit of a constant is symbolic")
+    assert(type(cas.subs(x, x, 5)) == symbolic, "subs of a constant is symbolic")
+}
+test_symbolic_numbers_survive_the_vm_boundary()
+
+test_symbolic_numbers_compare_and_hash_like_numbers() = {
+    // ★ 回归：符号数值必须能与原生数值互操作，否则新语义不可用。
+    //   两条不变量：
+    //     1) 跨类型相等：cas.diff(x,x) == 1 必须为 true（打印是 1，不等于 1 是坑）
+    //     2) 相等 ⇒ 等哈希：否则 dict/set 混用符号值与原生值时查不到
+    x = sym("x")
+    d = cas.diff(x, x)
+
+    // ① 跨类型相等（两个方向）
+    assert((cas.i() ^ 2) == -1, "symbolic -1 equals native -1")
+    assert(d == 1, "symbolic 1 equals native 1")
+    assert(1 == d, "and the comparison is symmetric")
+    assert(!(d == 2), "different values still differ")
+    assert(cas.simplify(x - x) == 0, "symbolic 0 equals native 0")
+
+    // ② 相等 ⇒ 等哈希
+    assert(hash(d) == hash(1), "equal values must hash equally (int)")
+    assert(hash(d) == hash(1.0), "equal values must hash equally (float)")
+
+    // ③ dict / set 双向混用
+    m = {}
+    m[d] = "v"
+    assert(m[cas.diff(x, x)] == "v", "symbolic key, symbolic lookup")
+    assert(m[1] == "v", "symbolic key, native lookup")
+    n = {}
+    n[1] = "w"
+    assert(n[d] == "w", "native key, symbolic lookup")
+
+    assert(1 in toSet(@[d]), "native value found in a set of a symbolic number")
+    assert(d in toSet(@[1]), "symbolic value found in a set of a native number")
+}
+test_symbolic_numbers_compare_and_hash_like_numbers()
+
 test_global_pi_e_stay_float() = {
     // 全局工厂函数保持浮点语义
     assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")

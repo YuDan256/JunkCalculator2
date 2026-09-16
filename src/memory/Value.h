@@ -1119,27 +1119,15 @@ namespace jc {
     };
 
     inline Value::Value(SymExpr val) : as_bits(QNAN | TAG_NONE) {
-        if (val.ptr && val.ptr->getType() == SymType::NUM) {
-            auto numNode = static_cast<SymNum*>(val.ptr);
-            std::visit([this](auto&& arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, int32_t>) {
-                    *this = Value(arg);
-                } else if constexpr (std::is_same_v<T, Fraction>) {
-                    if (arg.getDen() == BigInt(1)) {
-                        *this = Value(arg.getNum());
-                    } else {
-                        *this = Value(arg);
-                    }
-                } else if constexpr (std::is_same_v<T, double>) {
-                    *this = Value(arg);
-                } else if constexpr (std::is_same_v<T, BigInt>) {
-                    *this = Value(arg);
-                }
-            }, numNode->value);
-        } else {
-            *this = fromObj(GcHeap::get().allocate<ObjSym>(std::move(val)));
-        }
+        // ★ 符号层的数值节点（SymNum）不再在这里被拆成原生 int / Fraction /
+        //   double / BigInt。
+        //   曾在此降级，于是每个 CAS 出口都"自动"掉类型：cas.diff(x,x) → int 1、
+        //   cas.simplify(x-x) → int 0。而 regMath 判据是"参数是否 Symbolic"，
+        //   掉成原生数值后再喂回去（exp(cas.diff(x,x))）就走数值分支、变成浮点，
+        //   精确形式再也拿不回来。
+        //   现在一律包装为 ObjSym，符号域内的精确性得以跨越 VM 边界。打印仍是 1
+        //   （ObjSym 走符号打印），但类型是 symbolic。
+        *this = fromObj(GcHeap::get().allocate<ObjSym>(std::move(val)));
     }
 
     inline SymExpr Value::asSymbolic() const {
@@ -2285,6 +2273,17 @@ namespace jc {
             return td->types.size() == 1 && std::holds_alternative<ObjClass*>(td->types[0]) && std::get<ObjClass*>(td->types[0]) == static_cast<ObjClass*>(lhs.asObj());
         }
 
+        // ★ 符号 vs 原生数值：两侧树形不同（ObjSym vs int/float/BigInt/Fraction），
+        //   上面那个"同类型才比较"的开关走不到，曾直接判 false —— 于是
+        //   `cas.i()^2 == -1` 为假（打印却是 -1）。这里把原生一侧提升为符号树再比，
+        //   复用 SymExpr::operator== 的结构/代数等价判定。
+        if (lhs.isSymbolic() && (rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION))) {
+            return static_cast<ObjSym*>(lhs.asObj())->sym == rhs.asSymbolic();
+        }
+        if (rhs.isSymbolic() && (lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION))) {
+            return lhs.asSymbolic() == static_cast<ObjSym*>(rhs.asObj())->sym;
+        }
+
         if (lhs.isObj() && rhs.isObj() && lhs.asObj()->type == rhs.asObj()->type) {
             Obj* lobj = lhs.asObj();
             Obj* robj = rhs.asObj();
@@ -3019,6 +3018,53 @@ inline std::ostream& operator<<(std::ostream& os, const Value& val) {
     return os;
 }
 
+// ★ 精确数值的统一哈希：原生数值分支与符号数值节点（SymNum）共用。
+//   不变量：相等 ⇒ 等哈希。Value::equals 允许 `cas.diff(x,x) == 1`（跨类型相等），
+//   所以符号 1 必须与 int32 1 / BigInt 1 / Fraction 1 哈希一致，否则 dict/set
+//   混用时会查不到。规则与原生 CASVal 分支逐字一致（含 Fraction 的
+//   "可被 double 精确表示就走 double"通道）。缓存由原生分支各自负责，此处不缓存。
+inline size_t hashCASValForValue(const CASVal& cv) {
+    if (std::holds_alternative<int32_t>(cv)) return sipHash24Double(static_cast<double>(std::get<int32_t>(cv)));
+    if (std::holds_alternative<double>(cv)) {
+        double d = std::get<double>(cv);
+        if (d == 0.0) d = 0.0;
+        return sipHash24Double(d);
+    }
+    if (std::holds_alternative<BigInt>(cv)) {
+        const BigInt& bi = std::get<BigInt>(cv);
+        try {
+            int64_t i64 = bi.toInt64();
+            if (i64 >= -9007199254740992LL && i64 <= 9007199254740992LL) {
+                double d = static_cast<double>(i64);
+                if (d == 0.0) d = 0.0;
+                return sipHash24Double(d);
+            }
+        } catch (...) {}
+        const auto& raw = bi.getRawData();
+        size_t h = sipHash24(raw.data(), raw.size() * sizeof(uint32_t));
+        if (bi.getSign()) h ^= 0xAAAAAAAAAAAAAAAAULL;
+        return h ^ 0xCF1A5E7B3D9204F6ULL;
+    }
+    const Fraction& fr = std::get<Fraction>(cv);
+    if (fr.getDenRef() == BigInt(1)) return hashCASValForValue(CASVal(fr.getNumRef()));
+    try {
+        double d = fr.toFloat();
+        if (std::isfinite(d)) {
+            if (Fraction::fromFloat(d == 0.0 ? 0.0 : d) == fr) {
+                if (d == 0.0) d = 0.0;
+                return sipHash24Double(d);
+            }
+        }
+    } catch (...) {}
+    const auto& numRaw = fr.getNumRef().getRawData();
+    const auto& denRaw = fr.getDenRef().getRawData();
+    size_t h1 = sipHash24(numRaw.data(), numRaw.size() * sizeof(uint32_t));
+    if (fr.getNumRef().getSign()) h1 ^= 0xAAAAAAAAAAAAAAAAULL;
+    size_t h2 = sipHash24(denRaw.data(), denRaw.size() * sizeof(uint32_t));
+    if (fr.getDenRef().getSign()) h2 ^= 0xAAAAAAAAAAAAAAAAULL;
+    return h1 ^ (h2 + 0x9e3779b9 + (h1 << 6) + (h1 >> 2)) ^ 0xA38F6D2E1B7C54E0ULL;
+}
+
 inline size_t ValueHasher::operator()(const Value& v) const {
     // 统一将 int32, double, bool 转换为 double 进行哈希，确保 1 == 1.0 == true 时哈希值绝对一致
     if (v.isInt32()) return sipHash24Double(static_cast<double>(v.asInt32()));
@@ -3145,7 +3191,18 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             om->has_cached_hash = true;
             return seed;
         }
-        case ObjType::SYMBOLIC: return sipHash24String(static_cast<ObjSym*>(obj)->sym.toString());
+        // ★ 符号数值节点（SymNum）必须与它所表示的原生数值同哈希。
+        //   Value::equals 已经让 `cas.diff(x,x) == 1` 成立（跨类型相等），若这里
+        //   按 toString() 哈希，就会出现"相等但不等哈希"——dict/set 混用符号值与
+        //   原生值时会查不到（实测 {cas.diff(x,x): "v"}[cas.diff(x,x)] 报
+        //   Key '1' not found）。转交给原生值走上面那套统一规则即可。
+        case ObjType::SYMBOLIC: {
+            const SymExpr& se = static_cast<ObjSym*>(obj)->sym;
+            if (se.ptr && se.ptr->getType() == SymType::NUM) {
+                return hashCASValForValue(static_cast<SymNum*>(se.ptr)->value);
+            }
+            return sipHash24String(se.toString());
+        }
         case ObjType::TYPE_DEF: { const void* p = obj; return static_cast<size_t>(sipHash24(&p, sizeof(p))); }
         case ObjType::SLICE: {
             auto slice = static_cast<ObjSlice*>(obj);

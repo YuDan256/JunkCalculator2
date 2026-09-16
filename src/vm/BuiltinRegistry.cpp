@@ -186,10 +186,6 @@ namespace jc {
 // 符号函数坍缩器：递归求值所有参数已为纯数字的 SymFunc 节点
 // sin(0) → 0,  cos(PI) → -1,  etc.
 // =================================================================
-    static Value casValToValue(const CASVal& v) {
-        return std::visit([](auto&& arg) -> Value { return Value(arg); }, v);
-    }
-
     static bool isConstantExpr(const SymExpr& expr) {
         if (!expr.ptr) return true;
         switch (expr.ptr->getType()) {
@@ -5536,10 +5532,11 @@ void BuiltinRegistry::registerCAS() {
 
             result = simplify(collapseSymFuncs(result, *fnsPtr, this->builtinArity));
 
-            if (result.ptr->getType() == SymType::NUM) {
-                auto num = static_cast<SymNum*>(result.ptr);
-                return casValToValue(num->value);
-            }
+            // ★ 不再在此把 SymNum 降级为原生数值。
+            //   符号族出口（diff / simplify / factor / limit …）一律走 Value(符号结果)，
+            //   纯常数保持符号是本模块的统一语义；只有这里曾额外降级，导致
+            //   cas.subs(x, x, 5) 给出 int 5，而 cas.diff(x,x) 给出符号 1 —— 同族不一致。
+            //   （跨类型相等已在 Value::equals 里补齐，== 1 仍为 true。）
             return Value(result);
         }
         }, {"expr", "var", "val"});

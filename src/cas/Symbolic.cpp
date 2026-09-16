@@ -2706,6 +2706,204 @@ namespace jc {
         return true;
     }
 
+    // =================================================================
+    // 三角 ↔ 复指数 双向重写（公共层）
+    // -----------------------------------------------------------------
+    // 【为什么提到这里】这两个函数原本是 Integration.cpp 的 file-static，
+    // 只有积分引擎内部能用。于是积分器交出"复指数线性组合"（exp((1+i)x) 之类）
+    // 之后，cas.simplify 完全不认识它：exp(i*x) + exp(-i*x) 语法上是两个不同
+    // 的结构键，永远合不成 2*cos(x)。提到公共层后两条路径共用一份实现。
+    // 【两者分工】expToTrig 只套欧拉公式，逐节点改写，不做合并；
+    // 共轭对能坍缩靠的是 simplifyComplex 的"实虚部归并"，所以它们是一对。
+    // =================================================================
+    SymExpr trigToExp(const SymExpr& expr) {
+        if (!expr.ptr) return expr;
+        switch (expr.ptr->getType()) {
+            case SymType::ADD: {
+                SymExpr res(BigInt(0));
+                for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) res = res + trigToExp(SymExpr(arg));
+                return res;
+            }
+            case SymType::MUL: {
+                SymExpr res(BigInt(1));
+                for (auto& arg : static_cast<SymMul*>(expr.ptr)->args) res = res * trigToExp(SymExpr(arg));
+                return res;
+            }
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(expr.ptr);
+                return trigToExp(SymExpr(p->base)) ^ trigToExp(SymExpr(p->exp));
+            }
+            case SymType::FUNC: {
+                auto f = static_cast<SymFunc*>(expr.ptr);
+                std::vector<SymNode*> nArgs;
+                for (auto& arg : f->args) nArgs.push_back(trigToExp(SymExpr(arg)).ptr);
+
+                if (nArgs.size() == 1) {
+                    SymExpr arg(nArgs[0]);
+                    SymExpr I = SymExpr::makeConst(SymConstId::I);
+                    if (f->name == "sin") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return (exp_ix - exp_mix) / (SymExpr(BigInt(2)) * I);
+                    }
+                    if (f->name == "cos") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return (exp_ix + exp_mix) / SymExpr(BigInt(2));
+                    }
+                    if (f->name == "tan") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return -I * (exp_ix - exp_mix) / (exp_ix + exp_mix);
+                    }
+                    if (f->name == "cot") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return I * (exp_ix + exp_mix) / (exp_ix - exp_mix);
+                    }
+                    if (f->name == "sec") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return SymExpr(BigInt(2)) / (exp_ix + exp_mix);
+                    }
+                    if (f->name == "csc") {
+                        SymExpr exp_ix(new SymFunc("exp", std::vector<SymNode*>{(I * arg).ptr}));
+                        SymExpr exp_mix(new SymFunc("exp", std::vector<SymNode*>{(-I * arg).ptr}));
+                        return (SymExpr(BigInt(2)) * I) / (exp_ix - exp_mix);
+                    }
+                    if (f->name == "sinh") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return (exp_x - exp_mx) / SymExpr(BigInt(2));
+                    }
+                    if (f->name == "cosh") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return (exp_x + exp_mx) / SymExpr(BigInt(2));
+                    }
+                    if (f->name == "tanh") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return (exp_x - exp_mx) / (exp_x + exp_mx);
+                    }
+                    if (f->name == "coth") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return (exp_x + exp_mx) / (exp_x - exp_mx);
+                    }
+                    if (f->name == "sech") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return SymExpr(BigInt(2)) / (exp_x + exp_mx);
+                    }
+                    if (f->name == "csch") {
+                        SymExpr exp_x(new SymFunc("exp", std::vector<SymNode*>{arg.ptr}));
+                        SymExpr exp_mx(new SymFunc("exp", std::vector<SymNode*>{(-arg).ptr}));
+                        return SymExpr(BigInt(2)) / (exp_x - exp_mx);
+                    }
+                }
+                return SymExpr::makeFunc(f->name, std::move(nArgs));
+            }
+            default: return expr;
+        }
+    }
+
+    SymExpr expToTrig(const SymExpr& expr) {
+        if (!expr.ptr) return expr;
+        switch (expr.ptr->getType()) {
+            case SymType::ADD: {
+                SymExpr res(BigInt(0));
+                for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args) res = res + expToTrig(SymExpr(arg));
+                return res;
+            }
+            case SymType::MUL: {
+                SymExpr res(BigInt(1));
+                for (auto& arg : static_cast<SymMul*>(expr.ptr)->args) res = res * expToTrig(SymExpr(arg));
+                return res;
+            }
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(expr.ptr);
+                return expToTrig(SymExpr(p->base)) ^ expToTrig(SymExpr(p->exp));
+            }
+            case SymType::FUNC: {
+                auto f = static_cast<SymFunc*>(expr.ptr);
+                std::vector<SymNode*> nArgs;
+                for (auto& arg : f->args) nArgs.push_back(expToTrig(SymExpr(arg)).ptr);
+
+                if (f->name == "exp" && nArgs.size() == 1) {
+                    SymExpr arg(nArgs[0]);
+                    auto coeffs = extractCoeffs(arg, "i");
+                    if (coeffs.size() == 2) {
+                        SymExpr A = coeffs[0];
+                        SymExpr B = coeffs[1];
+                        SymExpr cos_B(new SymFunc("cos", std::vector<SymNode*>{B.ptr}));
+                        SymExpr sin_B(new SymFunc("sin", std::vector<SymNode*>{B.ptr}));
+                        SymExpr I = SymExpr::makeConst(SymConstId::I);
+                        SymExpr trig_part = cos_B + I * sin_B;
+                        if (A.isZero()) return trig_part;
+                        SymExpr exp_A(new SymFunc("exp", std::vector<SymNode*>{A.ptr}));
+                        return exp_A * trig_part;
+                    }
+                }
+                return SymExpr::makeFunc(f->name, std::move(nArgs));
+            }
+            default: return expr;
+        }
+    }
+
+    // 表达式里是否含虚数单位符号常量 i。
+    // ★ 不能查名字：i 是 SymType::CONST（SymConstId::I），不是变量，
+    //   containsVar(node, "i") 恒为 false（x*i 会被判成"不含 i"）。
+    static bool containsImagUnit(SymNode* node, int depth) {
+        if (!node || depth > 64) return false;
+        switch (node->getType()) {
+            case SymType::CONST:
+                return static_cast<SymConst*>(node)->id == SymConstId::I;
+            case SymType::ADD:
+                for (auto& a : static_cast<SymAdd*>(node)->args)
+                    if (containsImagUnit(a, depth + 1)) return true;
+                return false;
+            case SymType::MUL:
+                for (auto& a : static_cast<SymMul*>(node)->args)
+                    if (containsImagUnit(a, depth + 1)) return true;
+                return false;
+            case SymType::POW:
+                return containsImagUnit(static_cast<SymPow*>(node)->base, depth + 1) ||
+                       containsImagUnit(static_cast<SymPow*>(node)->exp, depth + 1);
+            case SymType::FUNC:
+                for (auto& a : static_cast<SymFunc*>(node)->args)
+                    if (containsImagUnit(a, depth + 1)) return true;
+                return false;
+            default: return false;
+        }
+    }
+
+    bool hasComplexExponential(SymNode* node, int depth) {
+        if (!node || depth > 64) return false;
+        switch (node->getType()) {
+            case SymType::FUNC: {
+                auto func = static_cast<SymFunc*>(node);
+                if (func->name == "exp" && func->args.size() == 1 &&
+                    containsImagUnit(func->args[0], 0)) return true;
+                for (auto& a : func->args)
+                    if (hasComplexExponential(a, depth + 1)) return true;
+                return false;
+            }
+            case SymType::ADD:
+                for (auto& a : static_cast<SymAdd*>(node)->args)
+                    if (hasComplexExponential(a, depth + 1)) return true;
+                return false;
+            case SymType::MUL:
+                for (auto& a : static_cast<SymMul*>(node)->args)
+                    if (hasComplexExponential(a, depth + 1)) return true;
+                return false;
+            case SymType::POW:
+                return hasComplexExponential(static_cast<SymPow*>(node)->base, depth + 1) ||
+                       hasComplexExponential(static_cast<SymPow*>(node)->exp, depth + 1);
+            default: return false;
+        }
+    }
+
     bool symEquivalent(const SymExpr& a, const SymExpr& b) {
         if (a.ptr == b.ptr) return true;
         if (!a.ptr || !b.ptr) return false;
@@ -3738,6 +3936,14 @@ namespace jc {
         switch (node->getType()) {
         case SymType::NUM:  return false;
         case SymType::VAR:  return static_cast<SymVar*>(node)->name == var;
+        case SymType::CONST:
+            // ★ 符号常量也能当"多项式变量"查：虚数单位 i 是 SymType::CONST
+            //   （SymConstId::I），不是 SymVar —— 于是 containsVar(x*i, "i") 曾经
+            //   恒为 false，连带 isPolynomialIn / extractCoeffs(·, "i") 全部失效：
+            //   expToTrig 里 extractCoeffs(arg,"i").size() == 2 的判断从来没成立过，
+            //   欧拉公式实际一次都没套上。这里把 i 常量与名字 "i" 对齐，
+            //   pi / e 不做映射（它们不是任何多项式变量）。
+            return static_cast<SymConst*>(node)->id == SymConstId::I && var == "i";
         case SymType::ADD:
             for (auto& a : static_cast<SymAdd*>(node)->args)
                 if (containsVarImpl(a, var, visited)) return true;
@@ -4350,6 +4556,18 @@ namespace jc {
         switch (expr.ptr->getType()) {
             case SymType::VAR: {
                 if (static_cast<SymVar*>(expr.ptr)->name == var) {
+                    SparsePoly p;
+                    p.coeffs[1] = SymExpr(BigInt(1));
+                    return p;
+                }
+                SparsePoly p;
+                p.coeffs[0] = expr;
+                return p;
+            }
+            case SymType::CONST: {
+                // 与 containsVarImpl 的 CONST 分支保持同一口径：var == "i" 时
+                // 虚数单位算一次多项式，其余常量（pi / e）照旧当系数。
+                if (static_cast<SymConst*>(expr.ptr)->id == SymConstId::I && var == "i") {
                     SparsePoly p;
                     p.coeffs[1] = SymExpr(BigInt(1));
                     return p;
@@ -5356,6 +5574,109 @@ namespace jc {
     // =================================================================
 // 轻量级启发式化简：多重宇宙博弈（剥离 factor 和 rational）
 // =================================================================
+    // 复指数规范形：实部 + 虚部*i，各自化简后合起来。
+    // -----------------------------------------------------------------
+    // 【为什么需要它】expToTrig 只把每个 exp(a+bi) 套一次欧拉公式：
+    //     exp(i*x) + exp(-i*x) → cos(x) + i*sin(x) + cos(x) - i*sin(x)
+    // exp 节点确实没了，但实部里躺着两份 cos(x)、虚部里躺着 sin(x) - sin(x)，
+    // 而它们都还被 i 绑在同一棵子树上，simplifyCore 的同类项合并（按结构键
+    // 聚合）看不到它们 —— 结果反而更长。这一步按 i 的幂把表达式拆开、分别化简
+    // 再重组，共轭对才会坍缩成 2*cos(x)。
+    // 【三角保护】展开前把 sin/cos/tan/... 整体换成哑变量，避免 expand_core 把
+    // 它们连同 i 一起揉进多项式而失控（这也是复指数表达式里唯一会爆的地方）。
+    // 本函数原本是 Integration.cpp 里 poly-exp 快速路径的局部 lambda，行为逐字保留。
+    // =================================================================
+    SymExpr simplifyComplex(const SymExpr& expr) {
+        int trig_counter = 0;
+        std::map<std::string, SymExpr> trig_map;
+        std::map<SymNode*, std::string> sig_to_name;
+
+        std::function<SymExpr(const SymExpr&)> protectTrig = [&](const SymExpr& node) -> SymExpr {
+            if (!node.ptr) return node;
+            if (node.ptr->getType() == SymType::FUNC) {
+                auto func = static_cast<SymFunc*>(node.ptr);
+                if (func->name == "sin" || func->name == "cos" || func->name == "tan" ||
+                    func->name == "sinh" || func->name == "cosh" || func->name == "tanh") {
+                    SymNode* sig = node.ptr;
+                    if (sig_to_name.count(sig)) {
+                        return SymExpr::makeVar(sig_to_name[sig]);
+                    }
+                    std::string name = "_trig_protect_" + std::to_string(++trig_counter);
+                    sig_to_name[sig] = name;
+                    trig_map[name] = node;
+                    return SymExpr::makeVar(name);
+                }
+                std::vector<SymNode*> newArgs;
+                for (auto& arg : func->args) newArgs.push_back(protectTrig(SymExpr(arg)).ptr);
+                return SymExpr::makeFunc(func->name, std::move(newArgs));
+            }
+            if (node.ptr->getType() == SymType::ADD) {
+                SymExpr res(BigInt(0));
+                for (auto& arg : static_cast<SymAdd*>(node.ptr)->args) res = res + protectTrig(SymExpr(arg));
+                return res;
+            }
+            if (node.ptr->getType() == SymType::MUL) {
+                SymExpr res(BigInt(1));
+                for (auto& arg : static_cast<SymMul*>(node.ptr)->args) res = res * protectTrig(SymExpr(arg));
+                return res;
+            }
+            if (node.ptr->getType() == SymType::POW) {
+                auto powNode = static_cast<SymPow*>(node.ptr);
+                return protectTrig(SymExpr(powNode->base)) ^ protectTrig(SymExpr(powNode->exp));
+            }
+            return node;
+        };
+
+        SymExpr protected_e = protectTrig(expr);
+        SymExpr expanded;
+        try {
+            expanded = simplifyCore(expand_core(protected_e, SymConfig::maxExpandTerms));
+        }
+        catch (const EngineInterruptError&) { throw; }
+        catch (...) { return expr; }
+
+        auto coeffs = extractCoeffs(expanded, "i");
+        SymExpr real_part(BigInt(0)), imag_part(BigInt(0));
+        for (size_t k = 0; k < coeffs.size(); ++k) {
+            if (k % 4 == 0) real_part = real_part + coeffs[k];
+            else if (k % 4 == 1) imag_part = imag_part + coeffs[k];
+            else if (k % 4 == 2) real_part = real_part - coeffs[k];
+            else if (k % 4 == 3) imag_part = imag_part - coeffs[k];
+        }
+
+        auto unprotectTrig = [&](SymExpr node) -> SymExpr {
+            for (auto it = trig_map.rbegin(); it != trig_map.rend(); ++it) {
+                node = subs(node, it->first, it->second);
+            }
+            return node;
+        };
+
+        auto simplifyTerms = [&](const SymExpr& expr_node) -> SymExpr {
+            if (expr_node.ptr->getType() == SymType::ADD) {
+                std::map<SymNode*, SymExpr> groups;
+                for (auto& arg : static_cast<SymAdd*>(expr_node.ptr)->args) {
+                    auto [n, d] = getFraction(SymExpr(arg));
+                    SymNode* d_sig = d.ptr;
+                    if (groups.count(d_sig)) groups[d_sig] = groups[d_sig] + SymExpr(arg);
+                    else groups[d_sig] = SymExpr(arg);
+                }
+                SymExpr res_add(BigInt(0));
+                for (auto& kv : groups) {
+                    res_add = res_add + simplifyRational(kv.second);
+                }
+                return res_add;
+            }
+            return simplifyRational(expr_node);
+        };
+
+        SymExpr res = unprotectTrig(simplifyTerms(real_part));
+        if (!imag_part.isZero()) {
+            res = res + unprotectTrig(simplifyTerms(imag_part)) * SymExpr::makeConst(SymConstId::I);
+        }
+        return res;
+    }
+
+// =================================================================
     SymExpr simplify(const SymExpr& expr) {
         checkInterrupt();
         if (!expr.ptr) return expr;
@@ -5659,8 +5980,24 @@ namespace jc {
             SymExpr c_rational = current;
             SymExpr c_factor_expand = current;
             SymExpr c_rat_factor = current;
+            SymExpr c_exp2trig = current;
 
             if (mode == CandMode::Probe) return current;   // 只做递归 + 轻量化简
+
+            // ★ 复指数候选（candidate 5）：expToTrig 套欧拉公式 + simplifyComplex 归并实虚部。
+            //   动机：积分器（以及 diff/solve 的一部分路径）交出来的是复指数线性组合
+            //     integ(exp(x)*sin(x), x) → exp((1+i)x)*(1+i)^(-1) 与共轭项并存
+            //   这样的结果在语法上没有任何可合并的结构键，simplify 只能原样退回，
+            //   用户看到的是一堆 exp(...) 而不是实三角函数。这里把它折回实形。
+            //   闸门：只有表达式里真的出现"指数含 i"的 exp 才跑 —— 不含复指数时
+            //   这一步纯粹是白跑一次 expand + simplifyRational，必须省掉。
+            if (hasComplexExponential(current.ptr)) {
+                try {
+                    c_exp2trig = simplify(simplifyComplex(expToTrig(current)));
+                }
+                catch (const EngineInterruptError&) { throw; }
+                catch (const std::runtime_error&) {}
+            }
 
             // ★ simplifyRational 的前提是"这个表达式有分母"。
             //   对没有负指数的表达式（纯多项式、超越式）它进去只会被
@@ -5719,6 +6056,7 @@ namespace jc {
             tryCandidate(c_rational);
             tryCandidate(c_factor_expand);
             tryCandidate(c_rat_factor);
+            tryCandidate(c_exp2trig);
 
             return best;
         };

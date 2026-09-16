@@ -1,0 +1,112 @@
+import cas
+
+// ── 复指数与三角函数的互化（expToTrig / simplifyComplex 候选） ──
+// 背景：积分器走"复指数 + 欧拉公式"路线，出口是 exp((1+i)x) 与共轭项并存的线性
+// 组合。这类结果语法上没有任何可合并的结构键，旧版 cas.simplify 只能原样退回，
+// 用户看到的是 exp(...) 而不是实三角函数。
+// 修复分两处：
+//   1) containsVarImpl / toPolynomial 把虚数单位常量 i 与名字 "i" 对齐 ——
+//      此前 containsVar(x*i, "i") 恒为 false（i 是 SymType::CONST 而非 SymVar），
+//      于是 extractCoeffs(·, "i") 永远返回空，欧拉公式实际一次都没套上；
+//   2) expToTrig / simplifyComplex 从 Integration.cpp 提到公共层，
+//      并在 full_simplify 里作为候选（含复指数时才启用）。
+
+test_euler_conjugate_pair_to_real() = {
+    x = sym("x")
+    ii = cas.i()
+    assert(str(cas.simplify(exp(ii * x) + exp(-ii * x))) == "2 * cos(x)",
+           "exp(ix)+exp(-ix) should collapse to 2cos(x)")
+    assert(str(cas.simplify(exp(ii * x) - exp(-ii * x))) == "2 * sin(x) * i",
+           "exp(ix)-exp(-ix) should collapse to 2i sin(x)")
+    assert(str(cas.simplify((exp(ii * x) + exp(-ii * x)) / 2)) == "cos(x)",
+           "Euler cosine definition")
+    assert(str(cas.simplify((exp(ii * x) - exp(-ii * x)) / (2 * ii))) == "sin(x)",
+           "Euler sine definition")
+}
+test_euler_conjugate_pair_to_real()
+
+test_euler_special_values() = {
+    // exp(i*pi) 曾原样留在符号树里，现在归到精确值
+    assert(str(cas.simplify(exp(cas.i() * cas.pi()))) == "-1", "Euler identity")
+    assert(str(cas.simplify(exp(cas.i() * cas.pi()) + 1)) == "0", "exp(i*pi)+1 = 0")
+    assert(str(cas.simplify(exp(2 * cas.i() * cas.pi()))) == "1", "exp(2i*pi) = 1")
+}
+test_euler_special_values()
+
+test_damped_conjugate_pair() = {
+    // 实部非零的共轭对：exp((1±i)x) 带复数系数，应折成 exp(x) 的实三角函数组合
+    x = sym("x")
+    ii = cas.i()
+    e = exp((1 + ii) * x) * (1 - ii) + exp((1 - ii) * x) * (1 + ii)
+    s = cas.simplify(e)
+    assert(str(s) == "2 * cos(x) * exp(x) + 2 * exp(x) * sin(x)",
+           f"damped conjugate pair should become real trig, got {s}")
+    // 数值对照：x=0.7 时 2e^x(cos x + sin x)
+    v = float(cas.evalf(cas.subs(s, x, 0.7)))
+    expected = 2 * exp(0.7) * (cos(0.7) + sin(0.7))
+    assert(abs(v - expected) < 1e-9, "damped pair numeric mismatch")
+}
+test_damped_conjugate_pair()
+
+test_integral_returns_real_trig_form() = {
+    // 回归入口：integ(exp(x)*sin(x)) 曾返回
+    //   -1/2 * exp((1+i)x) * (1+i)^(-1) * i + 1/2 * exp(-xi+x) * (-i+1)^(-1) * i
+    // 现在必须是紧凑的实形（欧拉公式应已折平，不得再出现复指数）。
+    x = sym("x")
+    I = cas.integ(exp(x) * sin(x), x)
+    assert(str(I) == "(-1/2 * cos(x) + 1/2 * sin(x)) * exp(x)",
+           f"integral should be the compact real form, got {str(I)}")
+    assert(!("exp(-x * i" in str(I) || "1 + i" in str(I)),
+           f"integral should not keep complex exponentials, got {str(I)}")
+    assert(str(cas.simplify(cas.diff(I, x))) == "exp(x) * sin(x)",
+           "derivative of the integral must return the integrand")
+}
+test_integral_returns_real_trig_form()
+
+test_integral_numeric_consistency() = {
+    // 基本定理验证：对若干复指数型积分，比较 F'(t) 与 integrand(t)
+    x = sym("x")
+    integrands = @[
+        exp(x) * sin(x),
+        exp(x) * cos(x),
+        sin(x) * sin(x),
+        cos(x) * cos(x),
+        exp(2 * x) * sin(3 * x),
+        x * exp(x) * cos(2 * x),
+    ]
+    for (f in integrands) {
+        I = cas.integ(f, x)
+        d = cas.diff(I, x)
+        t = 0.4
+        while (t <= 2.5) {
+            err = float(cas.evalf(cas.subs(d, x, t)) - cas.evalf(cas.subs(f, x, t)))
+            assert(abs(err) < 1e-8, f"FTC mismatch at t={t} for {f}")
+            t = t + 0.7
+        }
+    }
+}
+test_integral_numeric_consistency()
+
+test_real_expressions_keep_real_form() = {
+    // 闸门只对"指数含 i"的表达式生效：普通实表达式不得被拖进复指数路径改形
+    x = sym("x")
+    assert(str(cas.simplify(sin(x) ^ 2 + cos(x) ^ 2)) == "1", "pythagorean identity")
+    assert(str(cas.simplify((x ^ 2 - 1) / (x - 1))) == "x + 1", "cancel common factor")
+    assert(str(cas.simplify(x ^ 2 + 2 * x + 1)) == "(x + 1)^2", "poly still factors as before")
+    assert(str(cas.simplify(exp(x) * exp(-x))) == "exp(0)", "real exp product unchanged")
+}
+test_real_expressions_keep_real_form()
+
+test_imaginary_polynomial_extraction() = {
+    // i 常量现在能当多项式变量：extractCoeffs(·, "i") 必须能拆出实部与虚部。
+    // 消费方是 simplifyCore 的复分母有理化 —— (3+4i)^(-1) 曾拿不到系数而放弃，
+    // 只能落到复数浮点路径；现在给出精确有理数。
+    ii = cas.i()
+    assert(str(cas.simplify((3 + 4 * ii) ^ (-1))) == "-4/25 * i + 3/25",
+           "complex denominator rationalization should be exact")
+    assert(str(cas.simplify((1 + ii) ^ (-1) + (1 - ii) ^ (-1))) == "1",
+           "conjugate denominators should sum to real 1")
+    assert(str(cas.simplify(ii ^ 2)) == "-1", "i^2 = -1")
+    assert(str(cas.simplify((1 + ii) ^ (-1))) == "-1/2 * i + 1/2", "1/(1+i) exact")
+}
+test_imaginary_polynomial_extraction()

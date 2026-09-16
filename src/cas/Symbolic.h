@@ -205,6 +205,25 @@ namespace jc {
     SymExpr simplify(const SymExpr& expr);
     SymExpr full_simplify(const SymExpr& expr);
 
+    // ==========================================
+    // 三角 ↔ 复指数 双向重写
+    // ==========================================
+    // 以前这两个函数是 Integration.cpp 里的 file-static，只有积分引擎内部能用，
+    // 于是"积分器交给你的复指数结果"在 cas.simplify 眼里就是一串互不相干的
+    // exp(...)：exp(i*x) + exp(-i*x) 永远合不成 2*cos(x)。提到公共层后
+    // full_simplify 也能用它们做候选，两条路径共用同一份实现。
+    SymExpr trigToExp(const SymExpr& expr);
+    SymExpr expToTrig(const SymExpr& expr);
+
+    // 复指数规范形：把表达式按虚数单位 i 拆成实部 + 虚部*I，各自化简后再合起来。
+    // expToTrig 只套欧拉公式（exp(a+bi) → exp(a)*(cos b + i*sin b)），本身不合并；
+    // 真正让共轭对坍缩成实三角函数的是这一步的实虚归并。
+    SymExpr simplifyComplex(const SymExpr& expr);
+
+    // 表达式里是否出现"指数含虚数单位"的 exp()（即复指数）。
+    // full_simplify 用它当闸门：不含复指数时跳过 expToTrig 候选，免去白跑。
+    bool hasComplexExponential(SymNode* node, int depth = 0);
+
     // 获取多项式最高次幂
     int getDegree(const SymExpr& expr, const std::string& var);
     // 多项式带余除法：返回 {商 (Quotient), 余数 (Remainder)}

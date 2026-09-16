@@ -5366,12 +5366,18 @@ void BuiltinRegistry::registerCAS() {
         // ★ 数值通道：sym(1) → 符号的 1（SymNum）。
         //   用途是给"精确数值"一条进入符号域的入口：数学函数的符号捕获判据是
         //   "参数是否 Symbolic"（见 regMath），而 exact 数值（int/float/BigInt/
-        //   Fraction）本身不是 Symbolic，于是 exp(1) 只能走数值分支掉成浮点。
+        //   Fraction/Complex）本身不是 Symbolic，于是 exp(1) 只能走数值分支掉成浮点。
         //   有了这个通道，exp(sym(1)) 保持 exp(1)，与 exp(cas.e()) 同路。
         const Value& v = args[0];
-        if (v.isInt32() || v.isFloat() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) {
+        // 已经是符号值就原样返回（幂等）：sym(sym(1)) == sym(1)、sym(cas.i()) 可用。
+        // sym() 的定位是"确保拿到符号值"，对符号输入报错没有道理。
+        // 注意 sym("x") 仍走变量通道（字符串代表变量名），不受影响。
+        if (v.isSymbolic()) return v;
+        if (v.isInt32() || v.isFloat() || v.isBigInt() || v.isObjType(ObjType::FRACTION) || v.isComplex()) {
             // SymExpr 由 CASVal（值语义）构造，不保留原 Value 的引用；
             // Value(SymExpr) 现在一律包装为 ObjSym，所以结果是符号的。
+            // 复数经 SymExpr(const Complex&) 产出 real + imag*i
+            // （imag == 0 退化为实数，real == 0 退化为 imag*i）。
             return Value(v.asSymbolic());
         }
         std::string name = getVarName(args[0], "sym");

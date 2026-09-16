@@ -136,6 +136,37 @@ test_sym_accepts_exact_numbers() = {
 }
 test_sym_accepts_exact_numbers()
 
+test_sym_accepts_complex() = {
+    // ★ 复数通道：sym(1+2i) 展开为符号的 real + imag*i（imag == 0 退化为实数，
+    //   real == 0 退化为 imag*i）。这样复数也能进符号域，与 cas.i() 同一表示。
+    assert(type(sym(1 + 2i)) == symbolic, "sym of a complex is symbolic")
+    assert(str(sym(1 + 2i)) == "2.0 * i + 1.0", "expands to real + imag*i")
+    assert(str(sym(2i)) == "2.0 * i", "pure imaginary has no real part")
+    assert(str(sym(1 - 2i)) == "-2.0 * i + 1.0", "negative imaginary part")
+    assert(str(sym(1 + 0i)) == "1.0", "zero imaginary part degenerates to a real")
+
+    // 进得去符号域，就能被数学函数保持为精确形式
+    assert(type(exp(sym(1 + 2i))) == symbolic, "exp of a symbolic complex stays symbolic")
+    assert(str(exp(sym(1 + 2i))) == "exp(2.0 * i + 1.0)", "and keeps its exact argument")
+}
+test_sym_accepts_complex()
+
+test_sym_is_idempotent_on_symbolic_input() = {
+    // ★ sym() 的定位是"确保拿到符号值"，所以对已符号的输入原样返回。
+    //   注意 sym("x") 仍是变量通道（字符串代表变量名），不受影响。
+    x = sym("x")
+    assert(sym(sym(1)) == sym(1), "sym of a symbolic number is itself")
+    assert(type(sym(sym(1))) == symbolic, "and stays symbolic")
+    assert(str(sym(x)) == "x", "sym of a variable returns it")
+    assert(str(sym(x + 1)) == "x + 1", "sym of a symbolic expression returns it")
+    assert(str(sym(cas.i())) == "i", "sym of the imaginary constant works")
+
+    // 字符串通道不受影响：它造的是变量，不是把名字当值
+    assert(str(sym("x")) == "x", "sym(str) still makes a variable")
+    assert(type(sym("x")) == symbolic, "and it is symbolic")
+}
+test_sym_is_idempotent_on_symbolic_input()
+
 test_global_pi_e_stay_float() = {
     // 全局工厂函数保持浮点语义
     assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")

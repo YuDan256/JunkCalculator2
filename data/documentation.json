@@ -4571,8 +4571,8 @@
       ]
     },
     "sym": {
-      "signature": "sym(name_or_number)",
-      "desc": "Creates a symbolic variable (name must be a valid identifier), or wraps an exact number as a symbolic constant.",
+      "signature": "sym(name_or_value)",
+      "desc": "Creates a symbolic variable (name must be a valid identifier), or wraps a number/complex as a symbolic constant. A symbolic argument is returned unchanged.",
       "examples": [
         "x = sym(\"x\")",
         "exp(sym(1))"

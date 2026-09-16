@@ -1689,6 +1689,12 @@ void IRBuilder::visitAssign(Assign* expr) {
     }
 
     if (expr->isState) {
+        // ★ state 永远向上绑定到闭包，闭包外没有可绑定的状态槽。
+        //   顶层 `state y = 2` 曾一路走到 readVariable，那里对
+        //   currentFunction->upvalues 解引用 → 空指针（0xC0000005）。
+        //   在 -e 模式下更是静默无输出，只有崩溃码。
+        //   与 visitStateDecl / visitAssign 的同名检查保持同一措辞。
+        if (!currentFunction) error(expr->name.line, "Syntax Error: 'state' modifier cannot be used at the top level.");
         IRNode* getVal = readVariable(expr->name.lexeme, sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
@@ -4478,7 +4484,21 @@ void IRBuilder::visitContextKeywordExpr(ContextKeywordExpr* expr) {
 void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> boundVars;
     collectPatternVars(expr->pattern.get(), boundVars);
-    
+
+    // ★ state 永远向上绑定到闭包，闭包外没有可绑定的状态槽。
+    //   顶层的 `[state a] = @[1]` 会在 buildPatternMatch 的 state 分支里
+    //   解引用 currentFunction->upvalues → 空指针（0xC0000005）；
+    //   下面那段 state 初始化还带 `&& currentFunction`，不加这条检查它会
+    //   静默跳过、把畸形 IR 留到后面炸。与 visitVarDecl / visitAssign /
+    //   visitStateDecl 的同名检查保持同一措辞。
+    if (!currentFunction) {
+        bool usesState = expr->isState;
+        for (const auto& varTuple : boundVars) {
+            if (std::get<1>(varTuple) == ScopeModifier::State) { usesState = true; break; }
+        }
+        if (usesState) error("Syntax Error: 'state' modifier cannot be used at the top level.");
+    }
+
     std::vector<std::string> tempStateNames;
     std::vector<std::pair<std::string, std::pair<int, IRNode*>>> hiddenVars;
 

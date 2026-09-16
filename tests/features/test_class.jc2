@@ -80,6 +80,34 @@ test_anonymous_class_and_self_ref() = {
 }
 test_anonymous_class_and_self_ref()
 
+test_anonymous_class_keeps_its_name() = {
+    // 回归：匿名 class / trait 的显示名必须来自定义本身，不能来自绑定位置。
+    // 曾把赋值目标名写进 Class 节点，于是 `a = class {}` 显示 <class a>，
+    // 且换绑（b = a）仍显示 <class a> —— 名字成了绑定的属性而非对象的属性。
+    // 现在保持空名，统一显示 <anonymous class>，与匿名 enum 的既有做法一致。
+    local A = class {}
+    local B = trait {}
+    local C = class {}
+    assert(str(A) == "<anonymous class>", "an anonymous class does not inherit the variable name")
+    assert(str(B) == "<anonymous class>", "nor does an anonymous trait")
+    assert(str(C) == "<anonymous class>", "nor a second one bound elsewhere")
+    assert(str(A) == str(C), "two anonymous classes display the same way")
+    assert(A != C, "but they are still distinct objects")
+
+    // 匿名 namespace 同一口径（class / trait / namespace 一致的规则）
+    local NS = namespace {}
+    assert(str(NS) == "<anonymous namespace>", "an anonymous namespace does not inherit the variable name")
+
+    // 具名定义不受影响
+    local Named = class Named {}
+    assert(str(Named) == "<class Named>", "a named class still shows its name")
+    local NamedNS = namespace NamedNS {}
+    assert(str(NamedNS) == "<namespace NamedNS>", "a named namespace still shows its name")
+    // 匿名 trait 仍是 trait
+    assert(istrait(B), "an anonymous trait is still a trait")
+}
+test_anonymous_class_keeps_its_name()
+
 test_access_control() = {
     throws(f) = { try { f(); return false } catch (e) { return true } }
     class Account {

@@ -1765,9 +1765,14 @@ void IRBuilder::visitAssign(Assign* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     
-    if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
-        if (valNode->name.empty() && expr->name.lexeme != "_") valNode->name = expr->name.lexeme;
-    }
+    // ★ 匿名 class / trait / namespace 一律不继承变量名。
+    //   曾在此把赋值目标名写进 Class / BuildNamespace 节点，于是 A = class {}
+    //   打印 <class A>、换绑给别的变量就改名（b = a 仍显示 <class a>）——
+    //   名字成了绑定的属性，而不是对象自身的属性。
+    //   匿名就该保持空名：Parser 给的本来就是空名，打印层也有
+    //   name.empty() → <anonymous class> / <anonymous namespace> 的分支，
+    //   与匿名 enum 的既有做法一致。具名形式（class Name {}）由 Parser 显式赋名，
+    //   不经过这里。
     
     if (expr->typeHint) {
         expr->typeHint->accept(*this);
@@ -2503,9 +2508,7 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
 
-    if (valNode->op == IROp::Class || valNode->op == IROp::BuildNamespace) {
-        if (valNode->name.empty()) valNode->name = expr->name.lexeme;
-    }
+    // ★ 匿名 class / trait / namespace 一律不继承变量名，理由见 visitVarDecl 处的说明。
 
     std::vector<std::vector<IRNode*>> indicesTmp(expr->indexChain.size());
     for (size_t i = 0; i < expr->indexChain.size(); ++i) {

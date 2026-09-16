@@ -3710,7 +3710,7 @@
     },
     "i": {
       "signature": "math.i",
-      "desc": "The imaginary unit (0 + 1i). It is a constant in the math namespace (math.i, alias math.I), so `import math` is required; without an import use the imaginary literal suffix `1i` / `3i` instead. It is NOT a function -- `i()` does not exist. Previously i/I were bare globals, which `for (i in ...)` loops silently overwrote, so they were moved into math.",
+      "desc": "The imaginary unit (0 + 1i). It is a constant in the math namespace (math.i, alias math.I), so `import math` is required; without an import use the imaginary literal suffix `1i` / `3i` instead. It is NOT a function -- `i()` does not exist.",
       "examples": [
         "z = 3 + 4 * 1i"
       ]

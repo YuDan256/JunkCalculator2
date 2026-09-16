@@ -2923,7 +2923,6 @@
       "      p.dist = () => 0           // Overrides the class method for 'p' only",
       "",
       "    ★ Magic Method Bypass (Dunders):",
-      "    (Authoritative statement of this rule; mirrored in docs/OOP_MODEL_DESIGN.md §2.1.1.)",
       "    For implicit operations (like `a + b`, `hash(a)`, `str(a)`), JC2 strictly",
       "    bypasses instance fields and ONLY looks at the class definition. This",
       "    guarantees that all instances of a class share the exact same mathematical",

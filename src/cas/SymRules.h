@@ -17,6 +17,9 @@ namespace jc {
             SymExpr x = SymExpr::makeVar("_x");
             SymExpr _n = SymExpr::makeVar("_n");
             SymExpr _a = SymExpr::makeVar("_a");
+            // 规则表里 π 一律走常量节点。不要写成 makeVar("PI")：常量名会被
+            // makeVar 转义成自由变量 PI（见 makeVar 的说明）。
+            SymExpr PI_CONST = SymExpr::makeConst(SymConstId::Pi);
 
             auto func = [](const std::string& name, const SymExpr& arg) {
                 return SymExpr::makeFunc(name, std::vector<SymNode*>{arg.ptr});
@@ -99,9 +102,12 @@ namespace jc {
             { ((SymExpr(1) - _a * (x ^ SymExpr(2))) / (SymExpr(1) - (x ^ SymExpr(2)))) ^ SymExpr(Fraction(1, 2)), func2("EllipticE", x, _a) },
 
             // 特殊函数 (误差函数与菲涅尔积分)
-            { func("exp", -(x ^ SymExpr(2))), (SymExpr(Fraction(1, 2)) * (SymExpr::makeVar("PI") ^ SymExpr(Fraction(1, 2)))) * func("erf", x) },
-            { func("sin", x ^ SymExpr(2)), ((SymExpr::makeVar("PI") / SymExpr(2)) ^ SymExpr(Fraction(1, 2))) * func("fresnel_s", ((SymExpr(2) / SymExpr::makeVar("PI")) ^ SymExpr(Fraction(1, 2))) * x) },
-            { func("cos", x ^ SymExpr(2)), ((SymExpr::makeVar("PI") / SymExpr(2)) ^ SymExpr(Fraction(1, 2))) * func("fresnel_c", ((SymExpr(2) / SymExpr::makeVar("PI")) ^ SymExpr(Fraction(1, 2))) * x) },
+            // ★ √π 必须用常量节点：makeVar("PI") 产出的是自由变量 PI
+            //   （常量名会被 makeVar 转义），integ(exp(-x^2), x) 曾因此得到
+            //   1/2 * erf(x) * sqrt(PI)，与 exp(-x^2) 的导数对不上。
+            { func("exp", -(x ^ SymExpr(2))), (SymExpr(Fraction(1, 2)) * (PI_CONST ^ SymExpr(Fraction(1, 2)))) * func("erf", x) },
+            { func("sin", x ^ SymExpr(2)), ((PI_CONST / SymExpr(2)) ^ SymExpr(Fraction(1, 2))) * func("fresnel_s", ((SymExpr(2) / PI_CONST) ^ SymExpr(Fraction(1, 2))) * x) },
+            { func("cos", x ^ SymExpr(2)), ((PI_CONST / SymExpr(2)) ^ SymExpr(Fraction(1, 2))) * func("fresnel_c", ((SymExpr(2) / PI_CONST) ^ SymExpr(Fraction(1, 2))) * x) },
             
             // 积分正弦、余弦与指数积分
             { func("sin", x) / x, func("Si", x) },

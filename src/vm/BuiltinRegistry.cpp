@@ -198,7 +198,7 @@ namespace jc {
             //   这里曾经只认 SymType::VAR 上的那几个名字，于是常量节点被判成
             //   "非常量表达式"，evalf 的数值折叠整条路都对 π 视而不见。
             case SymType::CONST: return true;
-            case SymType::VAR: return false;   // 真正的自由变量
+            case SymType::VAR: return false;   // 自由变量（sym("PI") 之类也是它）
             case SymType::ADD:
                 for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
                     if (!isConstantExpr(SymExpr(arg))) return false;

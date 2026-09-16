@@ -56,51 +56,35 @@ test_const_in_calculus() = {
 }
 test_const_in_calculus()
 
-test_const_names_are_unified() = {
-    // ★ 常量身份唯一：sym("pi") / sym("PI") / sym("E") / sym("i") 与
-    //   cas.pi() / cas.e() / cas.i() 产出同一个 SymConst 节点，
-    //   不存在"用户符号冒充常量"的那条劫持路径（曾是 <var:PI> 转义）。
-    assert(sym("pi") == cas.pi(), "sym(\"pi\") is the pi constant")
-    assert(sym("PI") == cas.pi(), "sym(\"PI\") is the pi constant")
-    assert(sym("Pi") == cas.pi(), "const name lookup ignores case")
-    assert(sym("e") == cas.e(), "sym(\"e\") is the e constant")
-    assert(sym("E") == cas.e(), "sym(\"E\") is the e constant")
-    assert(sym("i") == cas.i(), "sym(\"i\") is the imaginary constant")
-    assert(sym("I") == cas.i(), "sym(\"I\") is the imaginary constant")
-    // 三个常量彼此不得混同
-    assert(sym("PI") != sym("e"), "pi and e stay distinct")
-    assert(sym("i") != cas.pi(), "i and pi stay distinct")
-}
-test_const_names_are_unified()
-
-test_const_names_fold_like_constants() = {
-    // 既然是常量节点，就该有常量的代数行为（旧设计里 sym("i")^2 停在 i^2）
-    assert(str(cas.simplify(sym("i") ^ 2)) == "-1", "sym(\"i\")^2 folds to -1")
-    assert(str(cas.simplify(sym("PI") * 2)) == "2 * pi", "sym(\"PI\")*2 stays symbolic 2*pi")
-    assert(str(cas.simplify(sym("E"))) == "e", "sym(\"E\") prints as e")
-    assert(str(cas.simplify(log(sym("E")))) == "1", "log of the e constant is 1")
-    assert(cas.evalv(sym("PI")) > 3.14159 && cas.evalv(sym("PI")) < 3.1416, "evalv(sym(PI)) approx")
-    assert(cas.evalv(sym("E")) > 2.71828 && cas.evalv(sym("E")) < 2.71829, "evalv(sym(E)) approx")
-}
-test_const_names_fold_like_constants()
-
-test_similar_names_stay_free_variables() = {
-    // 只有 pi/e/i 本身是常量：名字相似或更长的仍是普通自由变量
+test_user_symbols_not_hijacked() = {
+    // ★ 常量节点与用户符号互不冒充，两个方向都要挡住：
+    //   1) 用户定义的同名符号必须保持自由变量，不能被常量逻辑悄悄当成常数
+    //      （曾出现 log(sym("E")) 直接被化简成 1，evalv(sym("PI")) 得到 3.14159）；
+    //   2) 常量也不能被用户符号定义覆盖 —— 常量身份只经 cas.pi()/cas.e()/cas.i()
+    //      与 SymConst 节点存在，sym("PI") 造出来的是另一个东西。
     x = sym("x")
-    assert(str(sym("pi2")) == "pi2", "pi2 is a free variable")
-    assert(str(sym("PIX")) == "PIX", "PIX is a free variable")
-    assert(str(sym("ee")) == "ee", "ee is a free variable")
-    assert(str(sym("ii")) == "ii", "ii is a free variable")
-    assert(str(cas.diff(sym("pi2") * x, x)) == "pi2", "free variable behaves as constant in x")
-    assert(str(cas.simplify(sym("ee") ^ 2)) == "ee^2", "free variable is not folded")
+    E = sym("E")
+    PI = sym("PI")
+    I = sym("i")
+    assert(str(E) == "E", "user E prints as E")
+    assert(str(PI) == "PI", "user PI prints as PI")
+    assert(str(I) == "i", "user i prints as i")
+    assert(str(cas.simplify(log(E))) == "log(E)", "user E must not become e")
+    assert(str(cas.diff(E * x, x)) == "E", "user E is a constant w.r.t. x")
+    assert(str(cas.expand(E ^ 2)) == "E^2", "user E^2 stays symbolic")
+    assert(str(I ^ 2) == "i^2", "user i must not fold to -1")
+    // 同名但不同身份：用户符号与常量节点不得判等
+    assert(E != cas.e(), "user E is not the constant e")
+    assert(PI != cas.pi(), "user PI is not the constant pi")
+    assert(I != cas.i(), "user i is not the imaginary constant")
 }
-test_similar_names_stay_free_variables()
+test_user_symbols_not_hijacked()
 
 test_const_in_rules_table() = {
-    // ★ 回归：SymRules.h 的规则表用 makeVar("PI") 表达 √π。
-    //   转义方案实施后 PI 变成普通变量，integ(exp(-x^2), x) 曾吐出
-    //   1/2 * erf(x) * sqrt(PI) —— 形式对、π 却是自由变量，导致
-    //   d/dx(结果) != exp(-x^2)。现在必须落在常量 pi 上。
+    // ★ 回归：SymRules.h 的规则表曾用 makeVar("PI") 表达 √π。
+    //   常量名会被 makeVar 转义成自由变量，于是 integ(exp(-x^2), x) 吐出
+    //   1/2 * erf(x) * sqrt(PI) —— 形式对、π 却是自由变量，导数回验不过。
+    //   规则表现在直写 makeConst(SymConstId::Pi)，必须落在常量 pi 上。
     x = sym("x")
     I = cas.integ(exp(-(x ^ 2)), x)
     assert(str(I) == "1/2 * erf(x) * sqrt(pi)",

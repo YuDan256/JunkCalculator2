@@ -1037,7 +1037,8 @@
       "    • Symbolic (CAS): Variables hold AST nodes (x = sym(\"x\")). Expressions ",
       "      build algebraic trees instead of evaluating.",
       "      ",
-      "    You cross from Numerical → Symbolic by using `sym(\"x\")` or string variables.",
+      "    You cross from Numerical → Symbolic by using `sym(\"x\")`, string variables",
+      "    or `sym(1)` (wraps an exact number so math functions keep it exact).",
       "    You cross from Symbolic → Numerical by using `evalf()`, `subs()`, or `toFunc()`.",
       "",
       "  ★ Automatic Symbolic Promotion",
@@ -4570,10 +4571,11 @@
       ]
     },
     "sym": {
-      "signature": "sym(name)",
-      "desc": "Creates a symbolic variable for CAS operations. The name must be a valid identifier.",
+      "signature": "sym(name_or_number)",
+      "desc": "Creates a symbolic variable (name must be a valid identifier), or wraps an exact number as a symbolic constant.",
       "examples": [
-        "x = sym(\"x\")"
+        "x = sym(\"x\")",
+        "exp(sym(1))"
       ]
     },
     "symbolics": {

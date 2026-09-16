@@ -5363,9 +5363,20 @@ void BuiltinRegistry::registerCAS() {
     };
 
     reg("sym", { 1 }, [getVarName](const std::vector<Value>& args) -> Value {
+        // ★ 数值通道：sym(1) → 符号的 1（SymNum）。
+        //   用途是给"精确数值"一条进入符号域的入口：数学函数的符号捕获判据是
+        //   "参数是否 Symbolic"（见 regMath），而 exact 数值（int/float/BigInt/
+        //   Fraction）本身不是 Symbolic，于是 exp(1) 只能走数值分支掉成浮点。
+        //   有了这个通道，exp(sym(1)) 保持 exp(1)，与 exp(cas.e()) 同路。
+        const Value& v = args[0];
+        if (v.isInt32() || v.isFloat() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) {
+            // SymExpr 由 CASVal（值语义）构造，不保留原 Value 的引用；
+            // Value(SymExpr) 现在一律包装为 ObjSym，所以结果是符号的。
+            return Value(v.asSymbolic());
+        }
         std::string name = getVarName(args[0], "sym");
         if (name.empty()) JC2_THROW(ValueError, "sym() variable name cannot be empty.");
-        
+
         return Value(SymExpr::makeVar(name));
         }, {"name"});
 

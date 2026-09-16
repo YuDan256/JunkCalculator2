@@ -107,6 +107,35 @@ test_symbolic_numbers_compare_and_hash_like_numbers() = {
 }
 test_symbolic_numbers_compare_and_hash_like_numbers()
 
+test_sym_accepts_exact_numbers() = {
+    // ★ sym 的数值通道：给精确数值一条进入符号域的入口。
+    //   数学函数的符号捕获判据是"参数是否 Symbolic"（regMath），而 exact 数值
+    //   本身不是 Symbolic，所以 exp(1) 只能走数值分支掉成浮点。用 sym(1) 包一层
+    //   就与 exp(cas.e()) 同路，精确形式得以保留。
+    assert(type(sym(1)) == symbolic, "sym(1) is symbolic")
+    assert(type(sym(1.5)) == symbolic, "sym(1.5) is symbolic")
+    assert(type(sym(1 / 2)) == symbolic, "sym(1/2) is symbolic")
+    assert(type(sym(10 ^ 30)) == symbolic, "sym of a big integer is symbolic")
+
+    // 这是这个通道存在的理由
+    assert(str(exp(sym(1))) == "exp(1)", "exp(sym(1)) stays exact")
+    assert(str(sin(sym(1))) == "sin(1)", "sin(sym(1)) stays exact")
+    assert(str(log(sym(2))) == "log(2)", "log(sym(2)) stays exact")
+    assert(type(exp(sym(1))) == symbolic, "and the result is symbolic")
+
+    // 与原生数值互操作（依赖上一组补的跨类型相等 / 等哈希）
+    assert(sym(1) == 1, "symbolic 1 equals native 1")
+    assert(hash(sym(1)) == hash(1), "and hashes equally")
+    assert(str(sym(1) + sym(2)) == "3", "symbolic number arithmetic")
+    assert(str(sym(1) + 2) == "3", "mixed with native arithmetic")
+
+    // 变量通道不受影响
+    x = sym("x")
+    assert(str(x) == "x", "sym(str) still makes a variable")
+    assert(str(x + 1) == "x + 1", "and it still builds expressions")
+}
+test_sym_accepts_exact_numbers()
+
 test_global_pi_e_stay_float() = {
     // 全局工厂函数保持浮点语义
     assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")

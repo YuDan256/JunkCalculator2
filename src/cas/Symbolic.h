@@ -45,8 +45,9 @@ namespace jc {
     // ==========================================
     // AST 节点定义
     // ==========================================
-    // CONST = 数学常量节点（pi / e / i）。常量不是普通变量：它们有自己的类型，
-    // 因此用户定义的同名符号（sym("PI") 等）不会被常量逻辑误当成常数。
+    // CONST = 数学常量节点（pi / e / i）。常量不是普通变量，也不是"用户符号的
+    // 一个特例"：sym("pi") / sym("PI") / sym("E") / sym("i") 与 cas.pi() / cas.e()
+    // / cas.i() 产出的是同一个常量节点，常量身份唯一，不存在同名用户变量。
     enum class SymType { NUM, VAR, ADD, MUL, POW, FUNC, CONST };
 
     // ★ 符号常量表：单一事实来源（身份 / 名称 / 显示 / 数值）
@@ -66,12 +67,8 @@ namespace jc {
         { SymConstId::I,  "i",  "i",  0.0 },
     };
 
-    // 按名称查常量（仅规范名 pi / e / i）；找不到返回 false。
+    // 按名称查常量（大小写不敏感：pi / e / i 与 PI / E / I 等价）；找不到返回 false。
     bool lookupSymbolicConstant(const std::string& name, SymConstId& outId);
-
-    // 用户符号与常量规范名冲名时的转义（sym("e") 不应变成常量 e）
-    std::string escapeConstVarName(const std::string& name);
-    std::string unescapeConstVarName(const std::string& name);
 
     // 常量的数值（pi/e 为实数，i 为虚数单位）。★ 只提供数，不把复数塞进符号节点。
     Complex symbolicConstantValue(SymConstId id);

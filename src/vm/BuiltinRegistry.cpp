@@ -194,10 +194,11 @@ namespace jc {
         if (!expr.ptr) return true;
         switch (expr.ptr->getType()) {
             case SymType::NUM: return true;
-            case SymType::VAR: {
-                auto name = static_cast<SymVar*>(expr.ptr)->name;
-                return name == "PI" || name == "E" || name == "i" || name == "I";
-            }
+            // ★ 常量（pi/e/i）是独立的 CONST 节点，不是名为 "PI"/"E"/"i" 的变量。
+            //   这里曾经只认 SymType::VAR 上的那几个名字，于是常量节点被判成
+            //   "非常量表达式"，evalf 的数值折叠整条路都对 π 视而不见。
+            case SymType::CONST: return true;
+            case SymType::VAR: return false;   // 真正的自由变量
             case SymType::ADD:
                 for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
                     if (!isConstantExpr(SymExpr(arg))) return false;

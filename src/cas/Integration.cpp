@@ -3487,8 +3487,15 @@ namespace jc {
                     return;
                 }
             } else if (node->getType() == SymType::VAR) {
+                // i 已迁到 SymType::CONST（见 Factorization.cpp 的同名判定）；
+                // 这里再认 VAR 的 "i"/"I" 是防历史符号树，不能只留 CONST 一条。
                 auto varName = static_cast<SymVar*>(node)->name;
                 if (varName == "i" || varName == "I") {
+                    found = true;
+                    return;
+                }
+            } else if (node->getType() == SymType::CONST) {
+                if (static_cast<SymConst*>(node)->id == SymConstId::I) {
                     found = true;
                     return;
                 }

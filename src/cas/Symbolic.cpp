@@ -741,34 +741,31 @@ namespace jc {
         return name == static_cast<const SymVar*>(other)->name;
     }
     std::string SymVar::computeString() const {
-        return unescapeConstVarName(name);
+        return name;
     }
 
     // ==========================================
     // ★ 符号常量：单一事实来源的查询入口
     // ==========================================
-    // 只有规范名（pi/e/i）代表常量。历史上内部用大写 "PI"/"E"/"I"，那些名字
-    // 现在一律当作普通变量（见 makeVar 的转义），否则用户定义的同名符号会被
-    // 悄悄当成常数（log(sym("E")) 曾直接化简成 1）。
+    // 规范名 pi / e / i 代表常量。匹配大小写不敏感，于是 "PI" / "E" / "I" 这些
+    // 内部与用户惯用的写法也落到同一个常量节点上 —— SymRules.h 里的规则表就是
+    // 用 makeVar("PI") 表达 √π 的（见 makeVar 的说明）。
     bool lookupSymbolicConstant(const std::string& name, SymConstId& outId) {
         for (const auto& d : kSymConstDefs) {
-            if (name == d.name) { outId = d.id; return true; }
+            const char* cn = d.name;
+            size_t len = std::strlen(cn);
+            if (name.size() != len) continue;
+            bool same = true;
+            for (size_t i = 0; i < len; ++i) {
+                char a = cn[i];
+                char b = name[i];
+                if (a >= 'A' && a <= 'Z') a = static_cast<char>(a - 'A' + 'a');
+                if (b >= 'A' && b <= 'Z') b = static_cast<char>(b - 'A' + 'a');
+                if (a != b) { same = false; break; }
+            }
+            if (same) { outId = d.id; return true; }
         }
         return false;
-    }
-
-    // 用户符号若与常量规范名冲名，转义成内部名保留，显示时再还原。
-    std::string escapeConstVarName(const std::string& name) {
-        return "<var:" + name + ">";
-    }
-    std::string unescapeConstVarName(const std::string& name) {
-        const std::string pre = "<var:", suf = ">";
-        if (name.size() > pre.size() + suf.size() &&
-            name.compare(0, pre.size(), pre) == 0 &&
-            name.compare(name.size() - suf.size(), suf.size(), suf) == 0) {
-            return name.substr(pre.size(), name.size() - pre.size() - suf.size());
-        }
-        return name;
     }
 
     static const SymConstDef& constDef(SymConstId id) {
@@ -945,18 +942,23 @@ namespace jc {
     }
 
     SymExpr SymExpr::makeVar(const std::string& name) {
-        // ★ 与常量规范名冲名的用户符号一律转义后当普通变量处理。
-        //   makeVar("pi") 曾经直接产出常量节点，等于让 sym("pi") 静默变成 π。
-        //   常量节点只经 makeConst 显式构造。
-        std::string actual = name;
-        if (isSymbolicConstantName(name)) actual = escapeConstVarName(name);
-        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(actual));
+        // ★ 常量名一律产出常量节点，不存在"用户符号冒充常量"这条路。
+        //   曾经的方案是把 sym("pi") 转义成内部名 <var:pi> 保留为用户变量，
+        //   但那是一条劫持路径，而且把 SymRules.h 的规则表一起坑了：
+        //   规则表用 makeVar("PI") 表达 √π（{exp(-x^2) → √π/2·erf(x)}），
+        //   转义后 PI 变成普通变量，integ(exp(-x^2), x) 于是吐出
+        //   1/2 * erf(x) * sqrt(PI) —— 表达式形式正确、π 却是自由变量。
+        //   现在 sym("pi")/sym("PI")/sym("E")/sym("i") 与 cas.pi()/cas.e()/cas.i()
+        //   是同一个节点，常量身份唯一。
+        SymConstId cid;
+        if (lookupSymbolicConstant(name, cid)) return makeConst(cid);
+        uint64_t h = hashCombine(static_cast<uint64_t>(SymType::VAR), hashString(name));
         if (SymNode* hit = g_symPool.find(h, [&](SymNode* n) {
-                return n->getType() == SymType::VAR && static_cast<SymVar*>(n)->name == actual;
+                return n->getType() == SymType::VAR && static_cast<SymVar*>(n)->name == name;
             })) {
             return SymExpr::fromInterned(hit);
         }
-        SymNode* newNode = new SymVar(actual);
+        SymNode* newNode = new SymVar(name);
         g_symPool.insert(h, newNode);
         return SymExpr::fromInterned(newNode);
     }

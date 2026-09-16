@@ -3486,15 +3486,11 @@ namespace jc {
                     found = true;
                     return;
                 }
-            } else if (node->getType() == SymType::VAR) {
-                // i 已迁到 SymType::CONST（见 Factorization.cpp 的同名判定）；
-                // 这里再认 VAR 的 "i"/"I" 是防历史符号树，不能只留 CONST 一条。
-                auto varName = static_cast<SymVar*>(node)->name;
-                if (varName == "i" || varName == "I") {
-                    found = true;
-                    return;
-                }
             } else if (node->getType() == SymType::CONST) {
+                // i 是 SymType::CONST 常量节点，不存在"名为 i 的 VAR"：
+                // 常量名会被 makeVar 转义成 <var:i>，用户符号 sym("i") 是另一个
+                // 东西（自由变量）。查 VAR 名字的写法永远不触发，已删（同
+                // Factorization.cpp 的复根判定）。
                 if (static_cast<SymConst*>(node)->id == SymConstId::I) {
                     found = true;
                     return;

@@ -2131,12 +2131,12 @@ namespace jc {
                             bool hasComplex = false;
                             std::function<void(SymNode*)> checkComplex = [&](SymNode* node) {
                                 if (!node || hasComplex) return;
-                                // i 现在是 SymType::CONST 常量节点，不再是名为 "i" 的变量
+                                // i 是 SymType::CONST 常量节点。这里不能也不必查"名为 i 的
+                                // VAR"：常量名会被 makeVar 转义成 <var:i>，用户符号
+                                // sym("i") 既匹配不上名字 "i"，也不是常量 —— 那样写出来
+                                // 的判定永远不触发（且会误剔含用户符号 i 的因式）。
                                 if (node->getType() == SymType::CONST) {
                                     if (static_cast<SymConst*>(node)->id == SymConstId::I) hasComplex = true;
-                                } else if (node->getType() == SymType::VAR) {
-                                    auto varNode = static_cast<SymVar*>(node);
-                                    if (varNode->name == "i" || varNode->name == "I") hasComplex = true;
                                 } else if (node->getType() == SymType::ADD) {
                                     for (auto& arg : static_cast<SymAdd*>(node)->args) checkComplex(arg);
                                 } else if (node->getType() == SymType::MUL) {

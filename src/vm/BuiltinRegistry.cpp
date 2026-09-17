@@ -734,6 +734,13 @@ void BuiltinRegistry::registerMath() {
             auto [found, result] = invokeDunder(inst, DUNDER_ABS, {});
             if (found) return result;
         }
+        if (args[0].isInt32()) {
+            // ★ int32 必须显式处理，否则落到下面 std::abs(asFloat()) 而变成浮点。
+            //   同族的 round/floor/ceil/trunc/sgn 都走 Value(BigInt(...))，abs 曾漏掉
+            //   这一支：abs(1) → 1.0 而 round(1) → 1，同一语言两种口径。
+            //   经 BigInt 取值，INT32_MIN 取绝对值不会溢出。
+            return Value(BigInt(args[0].asInt32()).abs());
+        }
         if (args[0].isObjType(ObjType::BIGINT)) return Value(static_cast<ObjBigInt*>(args[0].asObj())->num.abs());
         if (args[0].isComplex()) return Value(args[0].asComplex().modulus());
         if (args[0].isObjType(ObjType::FRACTION)) return Value(static_cast<ObjFraction*>(args[0].asObj())->frac.abs());

@@ -7,6 +7,32 @@ test_basic_math() = {
 }
 test_basic_math()
 
+test_abs_preserves_numeric_type() = {
+    // ★ 回归：abs 曾漏掉 int32 分支，径直落到 std::abs(asFloat())，于是
+    //   abs(1) → 1.0（float），而同族的 round/floor/ceil/trunc/sgn 都保持 int，
+    //   同一语言两种口径。精确整数值必须在取绝对值后仍是精确整数。
+    assert(type(abs(1)) == int, "abs(1) stays int")
+    assert(type(abs(-1)) == int, "abs(-1) stays int")
+    assert(type(abs(0)) == int, "abs(0) stays int")
+    assert(abs(-1) == 1, "and the value is right")
+    assert(abs(0) == 0, "abs(0) = 0")
+
+    // 与 round 族口径一致
+    assert(type(abs(round(1))) == int, "abs of an int from round() is still int")
+
+    // 边界：INT32_MIN 取绝对值不溢出（经 BigInt 取值）
+    assert(abs(-2147483648) == 2147483648, "abs(INT32_MIN) does not overflow")
+
+    // 其它类型的既有行为不变
+    assert(type(abs(1 / 2)) == fraction, "abs of a fraction stays fraction")
+    assert(str(abs(-1 / 2)) == "1/2", "fraction absolute value")
+    assert(type(abs(10 ^ 30)) == int, "abs of a big integer stays int")
+    assert(abs(-2.5) == 2.5, "abs of a float stays float")
+    assert(type(abs(-2.5)) == float, "and its type is float")
+    assert(abs(3 + 4i) == 5.0, "complex modulus is still 5")
+}
+test_abs_preserves_numeric_type()
+
 test_complex() = {
     c1 = 3 + 4i
     c2 = 1 - 2i

@@ -173,8 +173,12 @@ test_negative_imaginary_power()
 
 test_integ_trig_product() = {
     x = sym("x")
-    // 积分内部会碰到 i^(-1)，曾经因此栈溢出
-    assert(str(cas.integ(sin(x) * cos(x), x)) == "-1/2 * cos(x)^2", "integ sin*cos")
+    // 积分内部会碰到 i^(-1)，曾经因此栈溢出。
+    // 期望形式随 exp 规范形改动：现在给出 -1/4*cos(2x)（与旧的 -1/2*cos(x)^2
+    // 相差常数 1/4，两者都是合法原函数——导数都回验为 cos(x)*sin(x)）。
+    assert(str(cas.integ(sin(x) * cos(x), x)) == "-1/4 * cos(2 * x)", "integ sin*cos")
+    assert(str(cas.simplify(cas.diff(cas.integ(sin(x) * cos(x), x), x))) == "cos(x) * sin(x)",
+           "integ sin*cos derivative round-trips")
     assert(str(cas.integ(x ^ 2, x)) == "1/3 * x^3", "integ x^2")
 }
 test_integ_trig_product()
@@ -437,7 +441,7 @@ test_downstream_returns_canonical_form() = {
     assert(str(cas.diff(exp(x) / x, x)) == "exp(x) * (x - 1) * x^(-2)", "diff(exp(x)/x)")
     assert(str(cas.integ(x * log(x), x)) == "x^2 * (1/2 * log(x) - 1/4)", "integ(x*log(x))")
     assert(str(cas.integ(x * exp(x), x)) == "exp(x) * (x - 1)", "integ(x*exp(x))")
-    assert(str(cas.integ(cos(x) * sin(x), x)) == "-1/2 * cos(x)^2", "integ(cos(x)*sin(x))")
+    assert(str(cas.integ(cos(x) * sin(x), x)) == "-1/4 * cos(2 * x)", "integ(cos(x)*sin(x))")
     assert(str(cas.integ(1 / (x ^ 2 - 1), x)) == "-1/2 * log(x + 1) + 1/2 * log(x - 1)", "integ(1/(x^2-1))")
 
     // 不变量本体：simplify(f(e)) 必须等于 f(e)

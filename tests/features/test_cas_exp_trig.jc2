@@ -93,7 +93,8 @@ test_real_expressions_keep_real_form() = {
     assert(str(cas.simplify(sin(x) ^ 2 + cos(x) ^ 2)) == "1", "pythagorean identity")
     assert(str(cas.simplify((x ^ 2 - 1) / (x - 1))) == "x + 1", "cancel common factor")
     assert(str(cas.simplify(x ^ 2 + 2 * x + 1)) == "(x + 1)^2", "poly still factors as before")
-    assert(str(cas.simplify(exp(x) * exp(-x))) == "exp(0)", "real exp product unchanged")
+    // exp 的乘积合并现在会把 exp(0) 折成 1（此前停在 exp(0)，simplify 不幂等）
+    assert(str(cas.simplify(exp(x) * exp(-x))) == "1", "real exp product collapses to 1")
 }
 test_real_expressions_keep_real_form()
 

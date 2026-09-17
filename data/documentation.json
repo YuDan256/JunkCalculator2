@@ -519,7 +519,7 @@
       "    sqrtf(x)            Square root (forced float/complex result)",
       "    cbrtf(x)            Cube root (forced float/complex result)",
       "    rootf(x, y)         y-th root of x (forced float/complex result)",
-      "    exp(x)              e^x",
+      "    exp(x)              e^x   (e is the constant exp(1); e^x normalizes to exp(x))",
       "    log(x) / ln(x)      Natural logarithm  log(−1) → πi",
       "    log(base, x)        Custom-base logarithm",
       "    pow(x, y)           Same as x^y",
@@ -7241,7 +7241,7 @@
     },
     "e": {
       "signature": "cas.e()",
-      "desc": "Returns the symbolic constant e (stays exact, unlike the floating-point e()).",
+      "desc": "Returns the symbolic constant e, which is exp(1) (normalized on simplification; stays exact, unlike the floating-point e()).",
       "examples": [
         "import cas; cas.e() * cas.e()"
       ]

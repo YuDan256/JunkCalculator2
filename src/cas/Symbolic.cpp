@@ -4057,6 +4057,19 @@ namespace jc {
             // 递归化简内层 + 身份吸收法则
             SymNode* newNode = expr.ptr;
         switch (expr.ptr->getType()) {
+        case SymType::CONST: {
+            // ★ 规范形：e → exp(1)。
+            //   与 e^u → exp(u) 是同一条规则在 u == 1 处的取值；只归一幂底不够
+            //   （独立出现的 e 仍是 e，于是 e*x、e+e 里留着第二种写法）。
+            //   展开必须非递归：makeFunc 若再走 simplifyCore，会遇到底为 e 的幂
+            //   再展开成 exp(1)…… 这里直接构造 SymFunc 并内化，只做一次替换。
+            auto c = static_cast<SymConst*>(expr.ptr);
+            if (c->id == SymConstId::E) {
+                newNode = SymExpr(new SymFunc("exp", std::vector<SymNode*>{
+                    SymExpr(BigInt(1)).ptr })).ptr;
+            }
+            break;
+        }
         case SymType::ADD: {
             SymExpr res(BigInt(0));
             for (auto& arg : static_cast<SymAdd*>(expr.ptr)->args)
@@ -4076,28 +4089,28 @@ namespace jc {
             SymExpr base = simplifyCore(SymExpr(pow->base));
             SymExpr exp = simplifyCore(SymExpr(pow->exp));
 
-            // ★ 规范形：e^u → exp(u)（u 为任何非数值形式，含 e^pi、e^e）。
-            //   e^x 是 POW(CONST e, x)，exp(x) 是 FUNC("exp", x) —— 同一数学量的
-            //   两种节点，此前全流程不通约：simplify(e^x - exp(x)) 不化简、diff 结果
+            // ★ 规范形：exp(z)^u → exp(z·u)（u 为任何非零指数）。
+            //   e^x 是 POW(CONST e, x)、exp(x) 是 FUNC("exp", x)，同一数学量的两种
+            //   节点，此前全流程不通约：simplify(e^x - exp(x)) 不化简、diff 结果
             //   各是各的，下游 exp 合并规则（MUL 分支的 expCount）也认不出 e^x，
             //   于是 integrate 的塔里留下 exp(log(e)*x) 这种未化简的扩张。
             //   归一后两者是同一棵树，所有下游自动一致。
             //
-            //   归一范围为何含符号常量指数（e^pi）：e^pi 与 exp(pi) 是同一数学量，
-            //   留两种写法只会让通约问题在别处重现。exp(pi)/exp(e) 实测都保持符号，
-            //   不会引入浮点化。
+            //   本条同时也是 e → exp(1) 能成立的前提：e 在节点分派层已归一成
+            //   exp(1)，e^2 到这里是 exp(1)^2；没有这条就会停在 exp(1)^2
+            //   这种引擎无法继续化简的形状。反过来，若在这里先判"底是 CONST e"
+            //   就太晚了——底早就不是 e 了（这正是上一版漏掉 e^x 的原因）。
             //
-            //   为何排除数值指数（e^2）：exp() 在 VM 侧遇数值参数会当场数值化
-            //   （exp(2) → 7.38906），归一会让 e^2 丢掉精确形式。
-            //   e^2 是普通数值幂，其"规范形是否该写成 exp(2)"是独立问题；
-            //   本次不改变 e^2 的既有行为。
-            if (base.ptr->getType() == SymType::CONST &&
-                static_cast<SymConst*>(base.ptr)->id == SymConstId::E &&
-                exp.ptr->getType() != SymType::NUM) {
-                // 指数已在上面递归化简过，但 makeFunc 不化简，这里再走一次，
-                // 避免产出 exp(x - x) 这类未化简的指数。
-                newNode = simplifyCore(SymExpr::makeFunc("exp", std::vector<SymNode*>{exp.ptr})).ptr;
-                break;
+            //   数值与符号指数都适用：exp(1)^2 → exp(2)、exp(x)^2 → exp(2x)、
+            //   exp(1)^x → exp(x)。数学上是 (e^a)^b = e^(ab)，与既有的
+            //   exp(a)*exp(b) → exp(a+b) 同族。
+            if (base.ptr->getType() == SymType::FUNC && !exp.isZero()) {
+                auto bf = static_cast<SymFunc*>(base.ptr);
+                if (bf->name == "exp" && bf->args.size() == 1) {
+                    SymExpr mu = simplifyCore(SymExpr(bf->args[0]) * exp);
+                    newNode = simplifyCore(SymExpr(new SymFunc("exp", std::vector<SymNode*>{mu.ptr}))).ptr;
+                    break;
+                }
             }
 
             // 代数数降幂 (Algebraic Number Power Reduction)
@@ -4168,6 +4181,13 @@ namespace jc {
             if (nArgs.size() == 1) {
                 SymExpr inner(nArgs[0]);
                 
+                if (func->name == "exp") {
+                    // 精确特殊值：exp(0) = 1。与 sin(0)/cos(0)/log(1) 同类，
+                    // 在符号层内判定，不经过浮点。
+                    // （exp(x-x) 此前已能给出 1，但 exp(x)*exp(-x) 合出来的 exp(0)
+                    //   会停在这里没人折，两处口径不一致。）
+                    if (inner.isZero()) return SymExpr(BigInt(1));
+                }
                 if (func->name == "log") {
                     if (inner.isOne()) return SymExpr(BigInt(0));
                     if (inner.ptr->getType() == SymType::CONST &&
@@ -4458,6 +4478,19 @@ namespace jc {
             break;
         }
         default: break;
+        }
+
+        // ★ exp(0) = 1：在所有分支之后兜底。
+        //   FUNC 分支已能处理直接构造的 exp(0)，但乘积/商合并是在更深处重建
+        //   exp(合并后的指数) 的 —— exp(x)*exp(-x) 就绕过了那里，停在 exp(0)，
+        //   于是 exp(x-x) 给 1、exp(x)*exp(-x) 给 exp(0)，同一恒等式两种结果。
+        //   这是精确恒等式，代价只是每个节点一次类型判断。
+        if (newNode && newNode->getType() == SymType::FUNC) {
+            auto fn = static_cast<SymFunc*>(newNode);
+            if (fn->name == "exp" && fn->args.size() == 1 &&
+                SymExpr(fn->args[0]).isZero()) {
+                newNode = SymExpr(BigInt(1)).ptr;
+            }
         }
 
         SymExpr current(newNode);
@@ -5901,6 +5934,20 @@ namespace jc {
         };
 
         SymExpr result = compute();
+
+        // ★ 出口规范化：exp(0) → 1。
+        //   simplifyCore 内部已有同样的兜底，但 simplify 在它之后还会跑 trigsimp
+        //   与多重宇宙候选（contract 等），而 exp 的乘积/商合并正是在 contract 里
+        //   重建 exp(合并后的指数) 的 —— exp(x)*exp(-x) 就绕过了前面的兜底，
+        //   停在 exp(0)，于是 simplify 不幂等（再化简一次才给 1）。
+        //   统一放到出口，保证 simplify 的返回值是稳定形。
+        if (depth == 1 && result.ptr && result.ptr->getType() == SymType::FUNC) {
+            auto fn = static_cast<SymFunc*>(result.ptr);
+            if (fn->name == "exp" && fn->args.size() == 1 && SymExpr(fn->args[0]).isZero()) {
+                result = SymExpr(BigInt(1));
+            }
+        }
+
         cache[sig] = result;
         return result;
     }

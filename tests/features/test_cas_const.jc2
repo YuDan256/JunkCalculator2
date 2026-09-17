@@ -181,12 +181,32 @@ test_exp_powers_are_canonicalized() = {
 
     // 符号常量指数也归一（e^pi 与 exp(pi) 是同一量，留两种写法会让问题在别处重现）
     assert(str(cas.simplify(cas.e() ^ cas.pi())) == "exp(pi)", "e^pi normalizes too")
-    assert(str(cas.simplify(cas.e() ^ cas.e())) == "exp(e)", "and e^e")
+    // e 本身也归一成 exp(1)，所以 e^e = exp(1)^exp(1) = exp(exp(1))
+    assert(str(cas.simplify(cas.e() ^ cas.e())) == "exp(exp(1))", "and e^e")
 
-    // 数值指数保持精确形式，不被浮点化
-    assert(str(cas.simplify(cas.e() ^ 2)) == "e^2", "e^2 keeps its exact form")
-    assert(str(cas.simplify(cas.e() ^ 1)) == "e", "e^1 stays e")
+    // 数值指数经 exp 幂合并归一（不是浮点化，仍是精确的符号值）
+    assert(str(cas.simplify(cas.e() ^ 2)) == "exp(2)", "e^2 normalizes to exp(2)")
+    assert(str(cas.simplify(cas.e() ^ 1)) == "exp(1)", "e^1 normalizes to exp(1)")
     assert(cas.e() ^ 0 == 1, "e^0 is 1")
+
+    // ① e 本身（独立出现，不只是幂底）也归一成 exp(1)
+    assert(str(cas.simplify(cas.e())) == "exp(1)", "bare e normalizes to exp(1)")
+    assert(str(cas.simplify(cas.e() * x)) == "exp(1) * x", "e as a factor normalizes too")
+    // 常量本身仍是 e（归一发生在化简时）
+    assert(str(cas.e()) == "e", "cas.e() itself still prints as e")
+
+    // ② exp(z)^u → exp(z·u)：e → exp(1) 能成立的前提
+    assert(str(cas.simplify(exp(x) ^ 2)) == "exp(2 * x)", "exp(x)^2 merges to exp(2x)")
+    assert(str(cas.simplify(exp(x) ^ 3)) == "exp(3 * x)", "exp(x)^3 merges to exp(3x)")
+    assert(str(cas.simplify(cas.e() * cas.e())) == "exp(2)", "e*e merges to exp(2)")
+    // 这一条曾因幂合并缺失而停在 exp(1)^2
+    assert(str(cas.simplify(exp(sym(1)) ^ 2)) == "exp(2)", "exp(1)^2 merges to exp(2)")
+    assert(str(cas.simplify(exp(2 * x) / exp(x))) == "exp(x)", "exp quotient merges")
+
+    // ③ exp(0) → 1：曾停在 exp(0) 让 simplify 不幂等
+    assert(cas.simplify(exp(x) * exp(-x)) == 1, "exp(x)*exp(-x) = 1")
+    assert(cas.simplify(cas.e() ^ x / cas.e() ^ x) == 1, "e^x/e^x = 1")
+    assert(cas.simplify(cas.simplify(exp(x) * exp(-x))) == 1, "and it is idempotent")
 
     // 特殊值规则仍然精确（符号层内判定，不受归一影响）
     assert(cas.simplify(sin(cas.pi())) == 0, "sin(pi) = 0")

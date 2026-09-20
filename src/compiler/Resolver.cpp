@@ -342,11 +342,21 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     }
     // ★ rest 参数
     if (!expr->restName.empty() && expr->restName != "_") {
+        // ★ 必须与位置参数段同口径做重复检查。此前只 declareVariable 不校验，
+        //   于是 f(x, ...x) 静默通过且 rest 覆盖位置参数：f(1,2,3) 返回 @[2,3]
+        //   而不是 1 —— 不报错的错误语义。
+        if (scopes.back().lexicalDecls.count(expr->restName)) {
+            JC2_THROW(SyntaxError, "Parameter '" + expr->restName + "' has already been declared.");
+        }
         declareVariable(expr->restName, VarScope::Local, false, true);
     }
     // ★ 仅关键字参数
     for (size_t j = 0; j < expr->kwargParams.size(); ++j) {
         if (expr->kwargParams[j].lexeme != "_") {
+            // ★ 同上：仅关键字段此前也没有重复检查，跨分区同名（f(x; x)）被放行。
+            if (scopes.back().lexicalDecls.count(expr->kwargParams[j].lexeme)) {
+                JC2_THROW(SyntaxError, "Parameter '" + expr->kwargParams[j].lexeme + "' has already been declared.");
+            }
             VarScope scope = (j < expr->kwargIsRef.size() && expr->kwargIsRef[j]) ? VarScope::RefParam : VarScope::Local;
             declareVariable(expr->kwargParams[j].lexeme, scope, j < expr->kwargIsConst.size() && expr->kwargIsConst[j], true);
             if (j < expr->kwargDefaultExprs.size() && expr->kwargDefaultExprs[j]) resolve(expr->kwargDefaultExprs[j].get());
@@ -354,6 +364,11 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     }
     // ★ kwargs 参数
     if (!expr->kwargsName.empty() && expr->kwargsName != "_") {
+        // ★ 同上：kwargs 名此前也无重复检查。f(x; ...x) 会让 kwargs 字典在函数体内
+        //   遮蔽同名形参（f(1) 返回 {} 而不是 1），同样是静默的错误语义。
+        if (scopes.back().lexicalDecls.count(expr->kwargsName)) {
+            JC2_THROW(SyntaxError, "Parameter '" + expr->kwargsName + "' has already been declared.");
+        }
         declareVariable(expr->kwargsName, VarScope::Local, false, true);
     }
     resolve(expr->body.get());

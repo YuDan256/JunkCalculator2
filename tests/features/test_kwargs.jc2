@@ -7,6 +7,47 @@ test_basic_kwargs() = {
 }
 test_basic_kwargs()
 
+test_duplicate_parameter_names_are_rejected() = {
+    // ★ 回归：形参重复检查此前只覆盖"位置参数段"，rest / 仅关键字 / kwargs
+    //   三段都漏了，于是跨分区同名被放行，且不是无害的——它静默产生错误语义：
+    //     f(x, ...x) = x     → f(1,2,3) 返回 @[2,3]（rest 覆盖位置参数）
+    //     f(x; ...x) = x     → f(1) 返回 {}（kwargs 字典遮蔽位置参数）
+    //   现在四段同口径，一律 SyntaxError。
+    throws(f) = { try { f(); return false } catch (e) { return true } }
+    assert(throws(() => eval("f(x, x) = x")), "positional duplicate rejected")
+    assert(throws(() => eval("f(x; x) = x")), "positional vs keyword-only duplicate rejected")
+    assert(throws(() => eval("f(x; x = 1) = x")), "positional vs kwarg-with-default rejected")
+    assert(throws(() => eval("f(x, y; x) = x")), "cross-partition duplicate rejected")
+    assert(throws(() => eval("f(x; y, x) = x")), "keyword-only duplicate rejected")
+    assert(throws(() => eval("f(x, ...x) = x")), "rest shadowing a positional rejected")
+    assert(throws(() => eval("f(x; ...x) = x")), "kwargs shadowing a positional rejected")
+    assert(throws(() => eval("f(...x; x) = x")), "keyword-only shadowing rest rejected")
+    assert(throws(() => eval("f(x; y, ...x) = x")), "kwargs shadowing duplicate rejected")
+}
+test_duplicate_parameter_names_are_rejected()
+
+test_legal_parameter_shapes_still_work() = {
+    // 反面：合法的形参组合不得被误伤
+    legal = @[
+        "f(x, y) = x",
+        "f(x; y) = x",
+        "f(x, ...rest) = x",
+        "f(x; y, z = 1) = y",
+        "f(x, ...rest; y, ...kw) = y",
+        "f(a, b = 2, ...rest) = a",
+        "f(_; _) = 1",
+        "f(x; ...kw) = kw",
+    ]
+    for (src in legal) {
+        try {
+            eval(src)
+        } catch (e) {
+            assert(false, f"legal parameter shape rejected: {src} -> {e}")
+        }
+    }
+}
+test_legal_parameter_shapes_still_work()
+
 test_kwargs_with_defaults() = {
     f(a, b=2, c=3) = a * 100 + b * 10 + c
     assert(f(1) == 123, "Defaults failed")

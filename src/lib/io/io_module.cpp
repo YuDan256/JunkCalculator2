@@ -11,6 +11,32 @@
 #include <windows.h>
 #endif
 
+// =================================================================
+// 文件系统错误详情
+// =================================================================
+// 为什么不用 ec.message()：它是 OS 提供的**本地化**文本（中文 Windows 给
+// "目录不是空的。"，英文系统给 "The directory is not empty."），随系统语言
+// 漂移、测试无法稳定断言，且与模块本身的英文文案语言不一致。
+// 改用**与语言无关的数字码** ec.value()，再配一条 JC2 自己写的固定英文文案。
+// 码值取自 Windows 系统错误码（本模块依赖 <windows.h>，FFI 亦仅 Windows x64）；
+// 表外的码只给数字，不猜含义。
+static std::string fs_error_detail(const std::error_code& ec) {
+    if (!ec) return "";
+    std::string detail = " [system:" + std::to_string(ec.value()) + "]";
+    switch (ec.value()) {
+#ifdef _WIN32
+    case ERROR_FILE_NOT_FOUND:      detail += " file not found";                              break;
+    case ERROR_PATH_NOT_FOUND:      detail += " path not found";                              break;
+    case ERROR_ACCESS_DENIED:       detail += " access denied (file in use or read-only)";    break;
+    case ERROR_DIR_NOT_EMPTY:       detail += " directory not empty (use recursive=true)";    break;
+    case ERROR_ALREADY_EXISTS:      detail += " already exists";                              break;
+    case ERROR_DIRECTORY:           detail += " not a directory";                             break;
+#endif
+    default: break;   // 表外码只保留数字
+    }
+    return detail;
+}
+
 static std::string decode_to_utf8(const std::string& raw, const std::string& enc) {
     if (raw.empty()) return "";
     std::string lower_enc = enc;
@@ -532,7 +558,7 @@ JC2_ValueHandle io_copy(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string dst = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::copy(to_path(src), to_path(dst), std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot copy '" + src + "' to '" + dst + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot copy '" + src + "' to '" + dst + "'." + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -541,7 +567,7 @@ JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
     auto st = std::filesystem::status(to_path(path), ec);
-    if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "'.");
+    if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "'." + fs_error_detail(ec));
     
     jc2::Dict d;
     d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
@@ -562,16 +588,26 @@ JC2_ValueHandle io_mkdir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     std::error_code ec;
     if (recursive) std::filesystem::create_directories(to_path(path), ec);
     else std::filesystem::create_directory(to_path(path), ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot create directory '" + path + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot create directory '" + path + "'." + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
 JC2_ValueHandle io_remove(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1) jc2::throw_error(jc2::ErrorType::TypeError, "io.remove expects a path.");
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
+    bool recursive = false;
+    if (argc >= 2) recursive = jc2::Value(argv[1]).truthy();
     std::error_code ec;
-    std::filesystem::remove(to_path(path), ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot remove '" + path + "'.");
+    if (recursive) {
+        // 契约与 mkdir(path, [recursive]) 对称。
+        // remove_all 对**不存在的路径**返回 0 且不置 ec，故"静默成功"语义与
+        // 非递归路径一致（实测，非推断）。
+        std::filesystem::remove_all(to_path(path), ec);
+    } else {
+        // 保持原契约：只删文件或**空**目录（非空目录 std::filesystem::remove 返回 false）
+        std::filesystem::remove(to_path(path), ec);
+    }
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot remove '" + path + "'." + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -581,7 +617,7 @@ JC2_ValueHandle io_rename(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
     std::string new_p = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::rename(to_path(old_p), to_path(new_p), ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot rename '" + old_p + "' to '" + new_p + "'.");
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot rename '" + old_p + "' to '" + new_p + "'." + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -628,7 +664,16 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     ctx->stream.open(to_path(path), ios_mode);
     if (!ctx->stream.is_open()) {
         delete ctx;
-        jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'.");
+        // ifstream/fstream::open 不暴露 error_code，改用等价判定取原因：
+        // 不存在 / 是目录 / 其余（多半是权限或占用）。
+        std::error_code ec;
+        std::string detail;
+        if (!std::filesystem::exists(to_path(path), ec)) {
+            detail = ec ? fs_error_detail(ec) : " [system:2] file not found";
+        } else if (std::filesystem::is_directory(to_path(path), ec)) {
+            detail = " is a directory, not a file";
+        }
+        jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'." + detail);
     }
     ctx->is_open = true;
 
@@ -663,7 +708,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("writeFile", io_writeFile, 2, 3, {"path", "content", "encoding"});
     mod.register_function("stat", io_stat, 1, 1, {"path"});
     mod.register_function("mkdir", io_mkdir, 1, 2, {"path", "recursive"});
-    mod.register_function("remove", io_remove, 1, 1, {"path"});
+    mod.register_function("remove", io_remove, 1, 2, {"path", "recursive"});
     mod.register_function("rename", io_rename, 2, 2, {"old_path", "new_path"});
     mod.register_function("copy", io_copy, 2, 2, {"src", "dst"});
     mod.register_function("exists", io_exists, 1, 1, {"path"});
@@ -711,7 +756,7 @@ int jc2_init(jc2::Module& mod) {
         "  ──────────────────────\n"
         "    io.stat(path)                 Returns a dict with file metadata (size, is_dir, is_file).\n"
         "    io.mkdir(path, [recursive])   Creates a directory. Set recursive=true to create parent dirs.\n"
-        "    io.remove(path)               Deletes a file or empty directory.\n"
+        "    io.remove(path, [recursive]) Deletes a file or directory. Set recursive=true to delete a non-empty directory.\n"
         "    io.rename(old, new)           Renames or moves a file/directory.\n"
         "    io.copy(src, dst)             Copies a file.\n"
         "    io.exists(path)               Returns true if the path exists.\n"
@@ -731,7 +776,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("io.writeCSV", "io.writeCSV(path, data, [delim], [encoding])", "Writes a matrix or list to a CSV file.", "io.writeCSV(\"out.csv\", mat)");
     mod.register_function_help("io.stat", "io.stat(path)", "Returns a dictionary with file metadata.", "info = io.stat(\"data.txt\")");
     mod.register_function_help("io.mkdir", "io.mkdir(path, [recursive])", "Creates a directory.", "io.mkdir(\"new_folder\")");
-    mod.register_function_help("io.remove", "io.remove(path)", "Deletes a file or empty directory.", "io.remove(\"old.txt\")");
+    mod.register_function_help("io.remove", "io.remove(path, [recursive])", "Deletes a file or directory. Set recursive=true to delete a non-empty directory.", "io.remove(\"old.txt\")");
     mod.register_function_help("io.rename", "io.rename(old_path, new_path)", "Renames or moves a file or directory.", "io.rename(\"a.txt\", \"b.txt\")");
     mod.register_function_help("io.copy", "io.copy(src, dst)", "Copies a file to a new destination.", "io.copy(\"a.txt\", \"b.txt\")");
     mod.register_function_help("io.exists", "io.exists(path)", "Returns true if the file or directory exists.", "io.exists(\"data.txt\")");

@@ -143,6 +143,7 @@ test_io_exceptions() = {
         assert(false, "Should throw IO Error for non-existent file")
     } catch (e) {
         assert("Cannot open" in e.message, "Wrong error message thrown for missing file")
+        assert("[system:2]" in e.message, "Missing file error should carry the OS error code")
     }
     
     try {
@@ -150,6 +151,7 @@ test_io_exceptions() = {
         assert(false, "Should throw IO Error for stat on missing path")
     } catch (e) {
         assert("Cannot stat" in e.message, "Wrong error message thrown for stat")
+        assert("[system:" in e.message, "stat error should carry the OS error code")
     }
 }
 test_io_exceptions()
@@ -199,3 +201,31 @@ test_io_encoding() = {
     f_bom_in.close()
 }
 test_io_encoding()
+
+// 7. 测试 io.remove 的 recursive 参数 (Recursive removal)
+test_io_remove_recursive() = {
+    dir_name = "test_io_recursive_dir"
+    defer if (io.exists(dir_name)) io.remove(dir_name, true)
+
+    io.mkdir(dir_name + "/sub", true)
+    io.writeFile(dir_name + "/top.txt", "top")
+    io.writeFile(dir_name + "/sub/deep.txt", "deep")
+
+    // 非递归：目录非空，必须报错并给出可断言的系统错误码
+    try {
+        io.remove(dir_name)
+        assert(false, "io.remove should fail on a non-empty directory without recursive")
+    } catch (e) {
+        assert("[system:145]" in e.message, "Non-empty directory error should carry code 145")
+    }
+    assert(io.exists(dir_name), "Failed io.remove must leave the directory in place")
+
+    // 递归：连子目录一起删掉
+    io.remove(dir_name, true)
+    assert(!io.exists(dir_name), "io.remove(recursive=true) failed to delete a non-empty directory")
+
+    // 对不存在的路径，两种模式都静默成功（与原契约一致）
+    io.remove(dir_name)
+    io.remove(dir_name, true)
+}
+test_io_remove_recursive()

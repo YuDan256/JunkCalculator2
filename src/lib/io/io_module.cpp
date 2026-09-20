@@ -20,9 +20,10 @@
 // 改用**与语言无关的数字码** ec.value()，再配一条 JC2 自己写的固定英文文案。
 // 码值取自 Windows 系统错误码（本模块依赖 <windows.h>，FFI 亦仅 Windows x64）；
 // 表外的码只给数字，不猜含义。
+// 返回值不带前导空格：拼接方负责 ": " 分隔（"Cannot open 'x': [system:2] file not found"）。
 static std::string fs_error_detail(const std::error_code& ec) {
     if (!ec) return "";
-    std::string detail = " [system:" + std::to_string(ec.value()) + "]";
+    std::string detail = "[system:" + std::to_string(ec.value()) + "]";
     switch (ec.value()) {
 #ifdef _WIN32
     case ERROR_FILE_NOT_FOUND:      detail += " file not found";                              break;
@@ -558,7 +559,7 @@ JC2_ValueHandle io_copy(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string dst = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::copy(to_path(src), to_path(dst), std::filesystem::copy_options::overwrite_existing, ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot copy '" + src + "' to '" + dst + "'." + fs_error_detail(ec));
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot copy '" + src + "' to '" + dst + "': " + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -567,7 +568,7 @@ JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     std::string path = jc2::Env::resolve_path(jc2::Value(argv[0]).as_string());
     std::error_code ec;
     auto st = std::filesystem::status(to_path(path), ec);
-    if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "'." + fs_error_detail(ec));
+    if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "': " + fs_error_detail(ec));
     
     jc2::Dict d;
     d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
@@ -588,7 +589,7 @@ JC2_ValueHandle io_mkdir(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     std::error_code ec;
     if (recursive) std::filesystem::create_directories(to_path(path), ec);
     else std::filesystem::create_directory(to_path(path), ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot create directory '" + path + "'." + fs_error_detail(ec));
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot create directory '" + path + "': " + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -607,7 +608,7 @@ JC2_ValueHandle io_remove(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
         // 保持原契约：只删文件或**空**目录（非空目录 std::filesystem::remove 返回 false）
         std::filesystem::remove(to_path(path), ec);
     }
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot remove '" + path + "'." + fs_error_detail(ec));
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot remove '" + path + "': " + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -617,7 +618,7 @@ JC2_ValueHandle io_rename(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
     std::string new_p = jc2::Env::resolve_path(jc2::Value(argv[1]).as_string());
     std::error_code ec;
     std::filesystem::rename(to_path(old_p), to_path(new_p), ec);
-    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot rename '" + old_p + "' to '" + new_p + "'." + fs_error_detail(ec));
+    if (ec) jc2::throw_error(jc2::ErrorType::IOError, "Cannot rename '" + old_p + "' to '" + new_p + "': " + fs_error_detail(ec));
     return jc2::Value::none().get_handle();
 }
 
@@ -666,14 +667,16 @@ JC2_ValueHandle io_open(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
         delete ctx;
         // ifstream/fstream::open 不暴露 error_code，改用等价判定取原因：
         // 不存在 / 是目录 / 其余（多半是权限或占用）。
+        // is_directory 分支不编造 error code —— 实情就是"能打开目录但不该打开"，
+        // 并未取到系统码。
         std::error_code ec;
         std::string detail;
         if (!std::filesystem::exists(to_path(path), ec)) {
-            detail = ec ? fs_error_detail(ec) : " [system:2] file not found";
+            detail = ec ? fs_error_detail(ec) : "[system:2] file not found";
         } else if (std::filesystem::is_directory(to_path(path), ec)) {
-            detail = " is a directory, not a file";
+            detail = "not a file, but a directory";
         }
-        jc2::throw_error(jc2::ErrorType::IOError, "Cannot open file '" + path + "'." + detail);
+        jc2::throw_error(jc2::ErrorType::IOError, "Cannot open '" + path + "'" + (detail.empty() ? "." : ": " + detail));
     }
     ctx->is_open = true;
 

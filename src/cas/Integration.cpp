@@ -1,4 +1,5 @@
 #include "Integration.h"
+#include "SymEval.h"
 #include "SymRules.h"
 #include "Factorization.h"
 #include "Groebner.h"
@@ -1262,6 +1263,55 @@ namespace jc {
         // Step 6 - 复指数转回三角函数 (Exp to Trig)
         SymExpr trigRes = expToTrig(res);
         return simplify(trigRes);
+    }
+
+    // =================================================================
+    // 原函数自检：残差恒零 → Valid；否则取复数测试点数值判定
+    // =================================================================
+    AntiderivCheck checkAntiderivative(const SymExpr& f, const SymExpr& F, const std::string& var) {
+        if (!f.ptr || !F.ptr) return AntiderivCheck::Invalid;
+
+        SymExpr residual = simplify(diff(F, var) - f);
+        if (residual.isZero()) return AntiderivCheck::Valid;
+
+        std::set<std::string> vars;
+        collectAllVars(residual.ptr, vars);
+
+        // 复数测试点：避开实数域的定义域陷阱（log(-x)、sqrt(-x)）；
+        // 模长取小，防止高次幂放大浮点误差。
+        static const std::vector<Complex> kTestVals = {
+            Complex(0.271828, 0.314159),
+            Complex(0.141421, -0.173205),
+            Complex(-0.223606, 0.264575),
+            Complex(0.331662, 0.316227),
+            Complex(-0.123456, -0.654321)
+        };
+
+        int valid_tests = 0;
+        int pass_count = 0;
+        for (const auto& tv : kTestVals) {
+            SymExpr subbed = residual;
+            for (const auto& v : vars) {
+                if (v != "i" && v != "I" && v != "PI" && v != "E") {
+                    subbed = subs(subbed, v, SymExpr(tv));
+                }
+            }
+            try {
+                // 先让 evalFloat 把能折叠的常量折叠掉（含复数 sqrt 等），
+                // 否则 evalUniversal 可能直接返回符号值，令该点作废。
+                SymExpr folded = evalFloat(subbed);
+                Value val = evalUniversal(folded.ptr, {});
+                if (val.isSymbolic()) continue; // 数值化不彻底，跳过该测试点
+                valid_tests++;
+                double err = val.isComplex() ? val.asComplex().modulus() : std::abs(val.asFloat());
+                if (err < 1e-4) pass_count++;
+            } catch (const EngineInterruptError&) {
+                throw;
+            } catch (...) {}
+        }
+
+        if (valid_tests == 0) return AntiderivCheck::Unknown;
+        return (pass_count == valid_tests) ? AntiderivCheck::Valid : AntiderivCheck::Invalid;
     }
 
     // =================================================================
@@ -3391,6 +3441,15 @@ namespace jc {
                 if (strat.score <= 0) continue;
                 if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "-> Routing to: " << strat.name << " (Score: " << strat.score << ")" << std::endl;
                 if (auto res = strat.execute()) {
+                    // ★ 原函数自检：换元类策略（广义/根式/三角）都要靠纯语法回代还原变量，
+                    //   内层若给出复对数形式的原函数，回代后 √(负数) 的开方分支选择会让
+                    //   结果整体翻号（实测 integ(p^2/sqrt(1-p^2)) 的导数为 -f）。
+                    //   只在【有确凿反证】时跳过本策略；Unknown（测试点求不出数值）保持原行为，
+                    //   否则会误杀本来正确但化简残差非零的解（如 sin(p)^3、1/sin(p)）。
+                    if (checkAntiderivative(e, *res, var) == AntiderivCheck::Invalid) {
+                        if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- " << strat.name << " rejected by self-check" << std::endl;
+                        continue;
+                    }
                     return res;
                 }
             }

@@ -5767,42 +5767,36 @@ void BuiltinRegistry::registerCAS() {
         return Value(jc::limit(args[0].asSymbolic(), getVarName(args[1], "limit"), valExpr, dir));
     }, {"expr", "var", "val", "dir"});
 
-    regModule(cas_ns, "verifyInteg", { 2 }, [getVarName, doEvalf](const std::vector<Value>& args) -> Value {
-        SymExpr expr = args[0].asSymbolic();
-        std::string var = getVarName(args[1], "verifyInteg");
-        SymExpr integral = jc::integrate(expr, var);
-        SymExpr derivative = jc::diff(integral, var);
-        SymExpr diff_expr = jc::simplify(derivative - expr);
-        
-        if (diff_expr.isZero()) return Value(true);
+    // ── 原函数残差的复数测试点检查：返回 (可求值点数, 通过数) ──
+    // verifyInteg 与 integ 出口自检共用，避免两套判据。
+    // 复数测试点可避开实数域的定义域陷阱（log(-x)、sqrt(-x)）；模长取小以免高次幂放大误差。
+    auto residualCheckCounts = [doEvalf](const SymExpr& residualIn) -> std::pair<int, int> {
+        SymExpr residual = jc::simplify(residualIn);
+        if (residual.isZero()) return { 1, 1 };   // 残差恒零：等价于"全部通过"
 
         std::set<std::string> vars;
-        jc::collectAllVars(diff_expr.ptr, vars);
-        
-        // 使用复数测试点，完美避开实数域的定义域陷阱 (如 log(-x), sqrt(-x))
-        // 选择模长较小的测试点，防止高次幂导致浮点误差放大
-        std::vector<Complex> test_vals = {
+        jc::collectAllVars(residual.ptr, vars);
+
+        static const std::vector<Complex> test_vals = {
             Complex(0.271828, 0.314159),
             Complex(0.141421, -0.173205),
             Complex(-0.223606, 0.264575),
             Complex(0.331662, 0.316227),
             Complex(-0.123456, -0.654321)
         };
-        
-        int pass_count = 0;
-        int valid_tests = 0;
 
+        int valid_tests = 0;
+        int pass_count = 0;
         for (const auto& tv : test_vals) {
-            SymExpr subbed = diff_expr;
+            SymExpr subbed = residual;
             for (const auto& v : vars) {
                 if (v != "i" && v != "I" && v != "PI" && v != "E") {
                     subbed = jc::subs(subbed, v, SymExpr(tv));
                 }
             }
-            
             try {
                 Value res = doEvalf(subbed);
-                if (res.isSymbolic()) continue; // 如果 evalf 没能完全化简为数值，则跳过该测试点
+                if (res.isSymbolic()) continue; // 数值化不彻底，跳过该测试点
                 valid_tests++;
                 double err = res.isComplex() ? res.asComplex().modulus() : std::abs(res.asFloat());
                 if (err < 1e-4) pass_count++;
@@ -5810,9 +5804,22 @@ void BuiltinRegistry::registerCAS() {
                 throw;
             } catch (...) {}
         }
-        
-        if (valid_tests > 0 && pass_count == valid_tests) return Value(true);
-        return Value(false);
+        return { valid_tests, pass_count };
+    };
+
+    // 是否存在确凿反证：至少一个可求值的测试点上残差不可忽略。
+    // 只在 true 时拒绝，因此"一个点都求不出"不会误杀本来正确的解。
+    auto antiderivativeInvalid = [residualCheckCounts](const SymExpr& f, const SymExpr& F, const std::string& var) -> bool {
+        auto counts = residualCheckCounts(jc::diff(F, var) - f);
+        return counts.first > 0 && counts.second < counts.first;
+    };
+
+    regModule(cas_ns, "verifyInteg", { 2 }, [getVarName, doEvalf, residualCheckCounts](const std::vector<Value>& args) -> Value {
+        SymExpr expr = args[0].asSymbolic();
+        std::string var = getVarName(args[1], "verifyInteg");
+        SymExpr integral = jc::integrate(expr, var);
+        auto counts = residualCheckCounts(jc::diff(integral, var) - expr);
+        return Value(counts.first > 0 && counts.second == counts.first);
     }, {"expr", "var"});
 
     regModule(cas_ns, "diff", { 2 }, [getVarName](const std::vector<Value>& args) -> Value {
@@ -5831,7 +5838,7 @@ void BuiltinRegistry::registerCAS() {
         return Value(full_simplify(jc::diff(expr, var)));
         }, {"expr", "var"});
 
-    regModule(cas_ns, "integ", { 2, 4 }, [getVarName](const std::vector<Value>& args) -> Value {
+    regModule(cas_ns, "integ", { 2, 4 }, [getVarName, antiderivativeInvalid](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SYM_MATRIX)) {
             std::string var = getVarName(args[1], "integ");
             if (args.size() == 4) {
@@ -5853,7 +5860,16 @@ void BuiltinRegistry::registerCAS() {
         // 同 diff：出口用 full_simplify 归一成 cas.simplify 的规范形。
         // 实测 integ(x*log(x)) 原本给出 1/2*x^2*log(x) - 1/4*x^2，规范形是
         // x^2*(1/2*log(x) - 1/4) —— 后者把公共因子提了出来，更紧凑。
-        return Value(full_simplify(jc::integrate(expr, var)));
+        SymExpr result = full_simplify(jc::integrate(expr, var));
+        // ★ 出口自检：换元类策略靠纯语法回代还原变量，内层若给出复对数形式的原函数，
+        //   回代后 √(负数) 的开方分支选择可能让结果整体翻号（实测
+        //   integ(p^2/sqrt(1-p^2)) 返回的原函数导数为 -f）。
+        //   推导过程中的策略级自检拦不住的（求值器较弱）由这里兜底：
+        //   宁可不给答案，也不能给错答案。
+        if (antiderivativeInvalid(expr, result, var)) {
+            JC2_THROW(CalculusError, "The generated antiderivative failed verification.");
+        }
+        return Value(result);
         }, {"expr", "var", "a", "b"});
 }
 

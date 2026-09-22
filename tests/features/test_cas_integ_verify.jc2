@@ -1,0 +1,73 @@
+// cas.verifyInteg 作为积分器自检，把已知正确与已知出错的积分钉住。
+//
+// 背景：换元类策略（广义 / 根式 / 三角）靠纯语法回代还原变量。内层若给出
+// 复对数形式的原函数，回代后 √(负数) 的开方分支选择会让结果整体翻号 ——
+// 实测 integ(p^2/sqrt(1-p^2)) 返回的原函数导数为 -f。
+// 现在：推导过程中的策略级自检让后续策略接手；出口再做一次自检，宁可不给答案。
+
+import cas
+
+p = sym("p")
+
+assert_verifies(f) = {
+    assert(cas.verifyInteg(f, p), "cas.verifyInteg must accept: " + str(f))
+}
+
+test_verify_integ_known_good() = {
+    assert_verifies(sqrt(1 - p^2))
+    assert_verifies(1 / sqrt(1 - p^2))
+    assert_verifies(p / sqrt(1 - p^2))
+    assert_verifies(p^3 / sqrt(1 - p^2))
+    assert_verifies(sqrt(1 - p^2) / p^2)
+    assert_verifies(sqrt(p^2 - 1))
+    assert_verifies(p^2 / sqrt(p^2 - 1))
+    assert_verifies(1 / sqrt(p^2 + 1))
+    assert_verifies(sqrt(p^2 + 1))
+    assert_verifies(p^2 / sqrt(p^2 + 1))
+    assert_verifies(p * sqrt(1 - p^2))
+    assert_verifies(1 / (1 - p^2))
+    assert_verifies(1 / (1 + p^2))
+    assert_verifies(p / (1 + p^2))
+    assert_verifies(1 / (p^2 + 2 * p + 5))
+    assert_verifies(p^2 / (1 + p^2))
+    assert_verifies(exp(-p^2))
+    assert_verifies(p * exp(-p^2))
+    assert_verifies(exp(p) * sin(p))
+    assert_verifies(log(p))
+    assert_verifies(p * log(p))
+    assert_verifies(log(p)^2)
+    assert_verifies(sin(p)^2)
+    assert_verifies(cos(p)^2)
+    assert_verifies(sin(p)^3)
+    assert_verifies(tan(p))
+    assert_verifies(1 / sin(p))
+    assert_verifies(1 / (1 + cos(p)))
+    assert_verifies(sin(p) * cos(p))
+    assert_verifies(p * sin(p))
+    assert_verifies(p^2 * sin(p))
+}
+test_verify_integ_known_good()
+
+// 曾返回符号相反原函数的三例：现在必须给出能通过自检的结果
+test_verify_integ_previously_sign_flipped() = {
+    assert_verifies(p^2 / sqrt(1 - p^2))
+    assert_verifies(1 / (p^2 * sqrt(1 - p^2)))
+    assert_verifies(1 / sqrt(p * (1 - p)))
+}
+test_verify_integ_previously_sign_flipped()
+
+// 不变量：cas.integ 要么给出能通过自检的原函数，要么拒绝 —— 绝不返回未通过自检的结果。
+// 这一例目前推导过程拦不住（测试点数值化不彻底），由出口自检兜底。
+// 这样写的好处：将来若真正修好它，本测试仍然成立。
+test_integ_never_returns_unverified_antiderivative() = {
+    f = p^2 * sqrt(1 - p^2)
+    accepted = false
+    try {
+        cas.integ(f, p)
+        accepted = cas.verifyInteg(f, p)
+    } catch (e) {
+        accepted = "failed verification" in e.message
+    }
+    assert(accepted, "cas.integ must either verify its result or refuse to return it")
+}
+test_integ_never_returns_unverified_antiderivative()

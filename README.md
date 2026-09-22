@@ -125,6 +125,7 @@ JC2 standard libraries loaded via `import`:
 - **No vector privileges**: row vectors (1×N) and column vectors (N×1) no longer get special treatment; 1×1 matrices multiply as matrices (explicit downcast via `.item()`).
 - **List vs matrix patterns**: `@[...]` destructures lists, `[...]` destructures matrices — no more ambiguity.
 - **Strict round-trip**: `toList`/`toMatrix` drop the vector-flatten special case, becoming exact inverses.
+- **Construction order**: the literal, `matrix()` and `toMatrix()` fill by rows; indexing, iteration and unpacking stay column-major.
 
 ### Mathematics & Performance
 - **BigInt**: FFT multiplication, Newton-Raphson inverse/sqrt, divide-and-conquer conversion, and shift operators.

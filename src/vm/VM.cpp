@@ -3884,11 +3884,12 @@ VM::VM() {
                 JC2_THROW(RuntimeError, "symmatrix() element count mismatch: "
                     "expected " + std::to_string(total) + ", got " +
                     std::to_string(items.size()) + ".");
+            // items 按行给出；构造收存储序（列优先）
             std::vector<SymExpr> flat;
             flat.reserve(total);
-            for (int i = 0; i < total; ++i) {
-                flat.push_back(items[i].asSymbolic());
-            }
+            for (int col = 0; col < c; ++col)
+                for (int row = 0; row < r; ++row)
+                    flat.push_back(items[row * c + col].asSymbolic());
             return Value(SymMatrix(r, c, flat));
         }, "elements");
 
@@ -3945,24 +3946,28 @@ VM::VM() {
                 if (items[i].isSymbolic()) hasSymbolic = true;
                 else if (items[i].isComplex()) hasComplex = true;
             }
+            // items 按行给出；构造收存储序（列优先）
             if (hasSymbolic) {
                 std::vector<SymExpr> flat;
                 flat.reserve(total);
-                for (int i = 0; i < total; ++i)
-                    flat.push_back(items[i].asSymbolic());
+                for (int col = 0; col < c; ++col)
+                    for (int row = 0; row < r; ++row)
+                        flat.push_back(items[row * c + col].asSymbolic());
                 return Value(SymMatrix(r, c, flat));
             }
             if (hasComplex) {
                 std::vector<Complex> flat;
                 flat.reserve(total);
-                for (int i = 0; i < total; ++i)
-                    flat.push_back(items[i].asComplex());
+                for (int col = 0; col < c; ++col)
+                    for (int row = 0; row < r; ++row)
+                        flat.push_back(items[row * c + col].asComplex());
                 return Value(ComplexMatrix(r, c, flat));
             }
             std::vector<double> flat;
             flat.reserve(total);
-            for (int i = 0; i < total; ++i)
-                flat.push_back(items[i].asFloat());
+            for (int col = 0; col < c; ++col)
+                for (int row = 0; row < r; ++row)
+                    flat.push_back(items[row * c + col].asFloat());
             return Value(RealMatrix(r, c, flat));
         }, "elements");
     }

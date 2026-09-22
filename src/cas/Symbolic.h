@@ -210,6 +210,20 @@ namespace jc {
     // 这是 D3 保守侧的判据：只有明确可证，才允许 sqrt 的偶数幂 / 乘积拆分。
     bool isProvablyNonNegative(const SymExpr& e);
 
+    // 作用域内的"已知非负表达式"事实（表达式级）。
+    // 与变量级标签互补：换元上下文需要的是 "cosθ >= 0" 这类关于**表达式**的结论，
+    // 标签只挂在变量名上，表达不了（这正是 P1 拦不住又不敢全局保守的原因）。
+    // 查询按结构等价（指针身份优先，其次节点 equals；不做代数回退以免开销）。
+    class ScopedNonNegativeExpr {
+    public:
+        explicit ScopedNonNegativeExpr(const SymExpr& e);
+        ~ScopedNonNegativeExpr();
+        ScopedNonNegativeExpr(const ScopedNonNegativeExpr&) = delete;
+        ScopedNonNegativeExpr& operator=(const ScopedNonNegativeExpr&) = delete;
+    private:
+        bool pushed_ = false;
+    };
+
     // 分支守卫是否生效。进入 integrate 期间【挂起】：
     // 换元策略依赖的正是这些重写（例如 p = sinθ 时 √(cos²θ) → cosθ 在该分支上是对的），
     // 拦掉它们会让换元管线里的表达式爆炸（实测 1/(p^2*sqrt(1-p^2)) 从 0.05s 变成挂死）。

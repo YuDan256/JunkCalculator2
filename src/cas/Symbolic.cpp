@@ -5330,15 +5330,41 @@ namespace jc {
     // 推导过程深度：>0 时挂起分支守卫（理由见 Symbolic.h）
     namespace {
         thread_local int g_integrationDepth = 0;
+        thread_local std::vector<SymExpr> g_nonNegExprs;   // 表达式级"已知非负"事实栈
     }
 
+    // 推导过程深度：>0 时挂起分支守卫。
+    // 【实测】加入表达式级事实（P2-0）后，全局启用守卫不再挂死（46.5s，原为 30 分钟级），
+    // 但仍有 2 例原本正确的积分变成拒绝（p^2/sqrt(p^2-1)、1/sqrt(p*(1-p))）且慢 30 倍
+    // （对照：挂起时 34 正确 / 0 错 / 1 拒绝，1.6s）。故挂起暂时保留，
+    // 待事实集补全（见 docs/ideas/branch-aware-simplify.md §12）再取消。
     bool branchGuardsActive() { return g_integrationDepth == 0; }
 
     ScopedIntegrationScope::ScopedIntegrationScope() { ++g_integrationDepth; }
     ScopedIntegrationScope::~ScopedIntegrationScope() { --g_integrationDepth; }
 
+    ScopedNonNegativeExpr::ScopedNonNegativeExpr(const SymExpr& e) {
+        if (!e.ptr) return;
+        g_nonNegExprs.push_back(e);
+        pushed_ = true;
+    }
+
+    ScopedNonNegativeExpr::~ScopedNonNegativeExpr() {
+        if (pushed_) g_nonNegExprs.pop_back();
+    }
+
+    // 表达式级事实查询：指针身份优先，其次节点结构 equals（不做代数回退，避免开销）
+    static bool matchesNonNegativeFact(const SymExpr& e) {
+        for (const auto& f : g_nonNegExprs) {
+            if (f.ptr == e.ptr) return true;
+            if (f.ptr && e.ptr && f.ptr->getType() == e.ptr->getType() && f.ptr->equals(e.ptr)) return true;
+        }
+        return false;
+    }
+
     bool isProvablyNonNegative(const SymExpr& e) {
         if (!e.ptr) return false;
+        if (matchesNonNegativeFact(e)) return true;
         switch (e.ptr->getType()) {
             case SymType::NUM: {
                 const CASVal& v = static_cast<SymNum*>(e.ptr)->value;
@@ -5374,7 +5400,8 @@ namespace jc {
             }
             case SymType::FUNC: {
                 auto f = static_cast<SymFunc*>(e.ptr);
-                return f->name == "exp";                                    // 实参数下 exp > 0
+                // exp > 0；cosh >= 1（实参数下恒正，无需额外事实）
+                return f->name == "exp" || f->name == "cosh";
             }
             default: return false;
         }

@@ -2021,6 +2021,10 @@ namespace jc {
             if (!foundRadical) findRadical(varPart.ptr);
 
             if (foundRadical && radicalN >= 2) {
+                // 本策略把 u 取为 base^(1/n) 的主分支 ⇒ n 为偶数时 u >= 0。
+                // 这是该换元【选定】的分支，声明出来才能让等价于 sqrt(u²) 的重写在有据时可用。
+                std::optional<ScopedAssumption> uNonNegative;
+                if (radicalN % 2 == 0) uNonNegative.emplace(u_var, Assumption::Positive);
                 if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "-> Trying Radical Substitution: u = (" << radicalBase.toString() << ")^(1/" << radicalN << ")" << std::endl;
                 auto invertFunction = [&](SymExpr f, SymExpr target, std::string v) -> std::optional<SymExpr> {
                     try {
@@ -2439,6 +2443,7 @@ namespace jc {
                     
                     SymExpr t = SymExpr::makeVar("_t");
                     SymExpr x_sub, dx_sub, t_back;
+                    SymExpr branchNonNeg;    // 本分支所选换元成立的非负表达式（无则空）
                     bool valid = false;
                     
                     if (A_pos && C_pos) {
@@ -2456,6 +2461,9 @@ namespace jc {
                         SymExpr cos_t(new SymFunc("cos", std::vector<SymNode*>{t.ptr}));
                         x_sub = sqrtCA * sin_t;
                         dx_sub = sqrtCA * cos_t;
+                        // 该换元取 t ∈ [-π/2, π/2]（t_back = asin(...)），其上 cos t >= 0。
+                        // 这是本策略【选定】的分支，声明出来才能让 sqrt(cos²t) → cos t 继续可用。
+                        branchNonNeg = cos_t;
                         SymExpr asin_arg = simplifyCore(SymExpr::makeVar(var) / sqrtCA);
                         t_back = SymExpr::makeFunc("asin", std::vector<SymNode*>{asin_arg.ptr});
                         valid = true;
@@ -2471,6 +2479,13 @@ namespace jc {
                     }
                     
                     if (valid) {
+                        // 声明本换元所选分支的非负事实。subbed 在 _t 下计算，随后 _t 被改名回
+                        // var（见下面的 subs(subbed, "_t", var)），所以两种形式都要声明。
+                        std::optional<ScopedNonNegativeExpr> factT, factVar;
+                        if (branchNonNeg.ptr) {
+                            factT.emplace(branchNonNeg);
+                            factVar.emplace(subs(branchNonNeg, "_t", SymExpr::makeVar(var)));
+                        }
                         SymExpr subbed = simplifyCore(subs(varPart, var, x_sub) * dx_sub);
                         SymExpr subbed_var = subs(subbed, "_t", SymExpr::makeVar(var));
                         

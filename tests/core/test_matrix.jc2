@@ -1,0 +1,67 @@
+// 矩阵构造与转换的顺序契约。
+// 此前 tests/ 对 matrix() / symmatrix() / toMatrix() / toList() 零覆盖。
+//
+// 两个轴要分清：
+//   构造（字面量、matrix()、toMatrix()）按行
+//   索引与遍历（A[i]、迭代、解包）按列
+
+// toMatrix：每个内层列表是一行
+test_toMatrix_inner_list_is_a_row() = {
+    assert(toMatrix(@[@[1, 2], @[3, 4]]) == [1, 2; 3, 4], "inner lists must become rows")
+    assert(toMatrix(@[@[1, 2, 3], @[4, 5, 6]]) == [1, 2, 3; 4, 5, 6], "non-square: inner lists must become rows")
+    assert(toMatrix(@[@[1], @[2], @[3]]) == [1; 2; 3], "single-column nested list")
+    assert(toMatrix(@[@[1, 2, 3]]) == [1, 2, 3], "single-row nested list")
+}
+test_toMatrix_inner_list_is_a_row()
+
+// toList：矩阵变成它的行
+test_toList_emits_rows() = {
+    assert(toList([1, 2, 3; 4, 5, 6]) == @[@[1, 2, 3], @[4, 5, 6]], "toList must emit rows")
+    assert(toList([1, 2; 3, 4]) == @[@[1, 2], @[3, 4]], "square toList must emit rows")
+}
+test_toList_emits_rows()
+
+// toList / toMatrix 互逆
+test_toList_toMatrix_round_trip() = {
+    assert(toMatrix(toList([1, 2, 3; 4, 5, 6])) == [1, 2, 3; 4, 5, 6], "non-square round-trip")
+    assert(toMatrix(toList([1, 2; 3, 4])) == [1, 2; 3, 4], "square round-trip")
+    assert(toMatrix(toList([7; 8; 9])) == [7; 8; 9], "column round-trip")
+    assert(toMatrix(toList([1, 2, 3])) == [1, 2, 3], "row round-trip")
+}
+test_toList_toMatrix_round_trip()
+
+// 复数与符号矩阵同样按行
+test_toMatrix_complex_and_symbolic() = {
+    assert(toMatrix(@[@[1i, 2i], @[3i, 4i]]) == [1i, 2i; 3i, 4i], "complex inner lists must become rows")
+    x = sym("x")
+    assert(toMatrix(@[@[x, 1], @[2, 3]]) == [x, 1; 2, 3], "symbolic inner lists must become rows")
+}
+test_toMatrix_complex_and_symbolic()
+
+// 单下标仍返回列：构造顺序与索引顺序是两个轴
+test_single_index_is_a_column() = {
+    A = [1, 2; 3, 4]
+    assert(A[0] == [1; 3], "A[0] must be the first column")
+    assert(A[1] == [2; 4], "A[1] must be the second column")
+    C = [1, 2, 3; 4, 5, 6]
+    assert(C[2] == [3; 6], "C[2] must be the third column")
+}
+test_single_index_is_a_column()
+
+// 非法输入仍被拒绝
+test_toMatrix_rejects_bad_input() = {
+    try {
+        toMatrix(@[1, 2, 3])
+        assert(false, "toMatrix must reject a flat list")
+    } catch (e) {
+        assert("expects a List of Lists" in e.message, "wrong error for a flat list")
+    }
+
+    try {
+        toMatrix(@[@[1, 2], @[3]])
+        assert(false, "toMatrix must reject ragged rows")
+    } catch (e) {
+        assert("rows must have equal length" in e.message, "wrong error for ragged rows")
+    }
+}
+test_toMatrix_rejects_bad_input()

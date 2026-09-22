@@ -4659,7 +4659,7 @@
     },
     "toList": {
       "signature": "toList(v)",
-      "desc": "Converts an array, matrix, string, or set to a list.",
+      "desc": "Converts an array, matrix, string, or set to a list. A matrix becomes a list of its rows.",
       "examples": [
         "toList([1, 2, 3])"
       ]
@@ -4673,7 +4673,7 @@
     },
     "toMatrix": {
       "signature": "toMatrix(v)",
-      "desc": "Converts a nested list to a matrix.",
+      "desc": "Converts a nested list to a matrix. Each inner list is one row.",
       "examples": [
         "toMatrix(list(list(1, 2), list(3, 4)))"
       ]

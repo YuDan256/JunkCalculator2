@@ -3492,9 +3492,10 @@ void BuiltinRegistry::registerListConversion() {
             grid.push_back(std::move(rowVec));
         }
         if (cols <= 0) return Value(RealMatrix(0, 0));
-        if (allReal) { std::vector<double> flatReal; for (const auto& row : grid) for (const auto& v : row) flatReal.push_back(v.asFloat()); return Value(RealMatrix(rows, cols, flatReal)); }
-        if (allNum) { std::vector<Complex> flatComp; for (const auto& row : grid) for (const auto& v : row) flatComp.push_back(v.asComplex()); return Value(ComplexMatrix(rows, cols, flatComp)); }
-        if (allSym) { std::vector<SymExpr> flatSym; for (const auto& row : grid) for (const auto& v : row) flatSym.push_back(v.asSymbolic()); return Value(SymMatrix(rows, cols, flatSym)); }
+        // grid 按行给出；构造收存储序（列优先），故外层走列、内层走行
+        if (allReal) { std::vector<double> flatReal; for (int j = 0; j < cols; ++j) for (int i = 0; i < rows; ++i) flatReal.push_back(grid[i][j].asFloat()); return Value(RealMatrix(rows, cols, flatReal)); }
+        if (allNum) { std::vector<Complex> flatComp; for (int j = 0; j < cols; ++j) for (int i = 0; i < rows; ++i) flatComp.push_back(grid[i][j].asComplex()); return Value(ComplexMatrix(rows, cols, flatComp)); }
+        if (allSym) { std::vector<SymExpr> flatSym; for (int j = 0; j < cols; ++j) for (int i = 0; i < rows; ++i) flatSym.push_back(grid[i][j].asSymbolic()); return Value(SymMatrix(rows, cols, flatSym)); }
         JC2_THROW(TypeError, "toMatrix() cannot convert mixed types to a matrix.");
         }, {"v"}, "", {}, "", 0, {}, {}, TypeSig::of({ BuiltinType::REALMAT, BuiltinType::COMPLEXMAT, BuiltinType::SYMMAT }));
 

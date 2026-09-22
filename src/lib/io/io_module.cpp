@@ -571,8 +571,8 @@ JC2_ValueHandle io_stat(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (ec || !std::filesystem::exists(st)) jc2::throw_error(jc2::ErrorType::IOError, "Cannot stat path '" + path + "': " + fs_error_detail(ec));
     
     jc2::Dict d;
-    d.set(jc2::Value("is_dir"), jc2::Value(std::filesystem::is_directory(st)));
-    d.set(jc2::Value("is_file"), jc2::Value(std::filesystem::is_regular_file(st)));
+    d.set(jc2::Value("isDir"), jc2::Value(std::filesystem::is_directory(st)));
+    d.set(jc2::Value("isFile"), jc2::Value(std::filesystem::is_regular_file(st)));
     if (std::filesystem::is_regular_file(st)) {
         d.set(jc2::Value("size"), jc2::Value(static_cast<double>(std::filesystem::file_size(to_path(path), ec))));
     } else {
@@ -757,7 +757,7 @@ int jc2_init(jc2::Module& mod) {
         "      }\n\n"
         "  Filesystem Operations\n"
         "  ──────────────────────\n"
-        "    io.stat(path)                 Returns a dict with file metadata (size, is_dir, is_file).\n"
+        "    io.stat(path)                 Returns a dict with file metadata (size, isDir, isFile).\n"
         "    io.mkdir(path, [recursive])   Creates a directory. Set recursive=true to create parent dirs.\n"
         "    io.remove(path, [recursive]) Deletes a file or directory. Set recursive=true to delete a non-empty directory.\n"
         "    io.rename(old, new)           Renames or moves a file/directory.\n"

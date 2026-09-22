@@ -17,8 +17,8 @@ test_io_filesystem() = {
     
     // 获取元数据
     info = io.stat(dir_name)
-    assert(info.is_dir == true, "io.stat is_dir should be true")
-    assert(info.is_file == false, "io.stat is_file should be false")
+    assert(info.isDir == true, "io.stat isDir should be true")
+    assert(info.isFile == false, "io.stat isFile should be false")
     
     // 重命名
     io.rename(dir_name, renamed_dir)

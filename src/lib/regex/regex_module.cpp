@@ -863,7 +863,7 @@ std::shared_ptr<RegexVM> ensureRegex(const jc2::Value& val) {
 
 JC2_ValueHandle global_getcontext(JC2_VMContext, int, JC2_ValueHandle*, void*) {
     jc2::Dict ctx;
-    ctx.set(jc2::Value("max_steps"), jc2::Value(g_max_steps));
+    ctx.set(jc2::Value("maxSteps"), jc2::Value(g_max_steps));
     return ctx.get_handle();
 }
 
@@ -871,7 +871,7 @@ JC2_ValueHandle global_setcontext(JC2_VMContext, int argc, JC2_ValueHandle* argv
     if (argc > 0) {
         int steps = static_cast<int>(jc2::Value(argv[0]).as_float());
         if (steps < -1) {
-            jc2::throw_error(jc2::ErrorType::ValueError, "max_steps cannot be less than -1.");
+            jc2::throw_error(jc2::ErrorType::ValueError, "maxSteps cannot be less than -1.");
         }
         g_max_steps = steps;
     }
@@ -1069,7 +1069,7 @@ int jc2_init(jc2::Module& mod) {
         "    r.split(\"A 1, B 2\")            // Splits by match\n\n"
         "  Global Functional API (via namespace)\n"
         "  ──────────────────────\n"
-        "    regex.getcontext()            Returns a dict with current context settings (max_steps).\n"
+        "    regex.getcontext()            Returns a dict with current context settings (maxSteps).\n"
         "    regex.setcontext(steps)       Sets the global step limit for backreference backtracking (-1 for no limit).\n"
         "    regex.compile(pat)            Returns a Regex object.\n"
         "    regex.test(pat, text)         Returns true if pattern matches anywhere, else false.\n"

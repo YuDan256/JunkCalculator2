@@ -1320,6 +1320,10 @@ namespace jc {
     SymExpr integrate(const SymExpr& expr, const std::string& var, int start_depth) {
         if (!expr.ptr) return expr;
 
+        // 推导期间挂起分支守卫：换元策略依赖那些重写，拦掉会让管线里的表达式爆炸
+        // （理由与实测见 Symbolic.h 的 branchGuardsActive 说明）
+        ScopedIntegrationScope integrationScope;
+
         SymExpr x = SymExpr::makeVar(var);
 
         // 从规则库获取静态积分规则

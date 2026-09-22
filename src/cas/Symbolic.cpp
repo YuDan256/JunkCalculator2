@@ -1461,6 +1461,26 @@ namespace jc {
     // ==========================================
     // operator^（乘方 → 委托 Value 常数折叠）
     // ==========================================
+
+    // 指数是否为精确整数（分支守卫用）：整数次幂对任意底成立，
+    // 非整数次幂才有分支问题。evenOut 回传是否为偶数。
+    static bool isExactIntegerExponent(const SymExpr& b, bool* evenOut = nullptr) {
+        if (!b.ptr || b.ptr->getType() != SymType::NUM) return false;
+        auto [isInt, n] = extractExactInt(static_cast<SymNum*>(b.ptr)->value);
+        if (!isInt) return false;
+        if (evenOut) *evenOut = (n % 2 == 0);
+        return true;
+    }
+
+    // 乘积的每个因子是否都可证非负（分支守卫用）
+    static bool allFactorsProvablyNonNegative(const SymExpr& mulExpr) {
+        if (!mulExpr.ptr || mulExpr.ptr->getType() != SymType::MUL) return false;
+        for (auto& factor : static_cast<SymMul*>(mulExpr.ptr)->args) {
+            if (!isProvablyNonNegative(SymExpr(factor))) return false;
+        }
+        return true;
+    }
+
     SymExpr operator^(const SymExpr& a, const SymExpr& b) {
         // ★ 递归护栏：分解 p^(m/n) 时会递归求 p^(q) 与 p^(r/n)，随后用 operator* 重新合并，
         //   而乘法对同底幂会相加指数，可能又得到原来的 m/n（例如 2^(3/2) → 2^1 * 2^(1/2)
@@ -1767,14 +1787,31 @@ namespace jc {
         }
 
         // 幂的幂法则: (a^m)^n = a^(m*n)
+        // ★ 分支守卫：这条只在不会改变分支时才成立。
+        //   n 为整数时对任意 a≠0 成立；否则要求 a 可证非负 ——
+        //   (x^2)^(1/2) 在 x<0 时是 |x|，不是 x（simplifyCore 会把 sqrt(z) 变成
+        //   z^(1/2)，所以 sqrt(x^2) 就是走这一条被化成 x 的）。
         if (a.ptr->getType() == SymType::POW) {
             auto powNode = static_cast<SymPow*>(a.ptr);
+            SymExpr base(powNode->base);
             SymExpr newExp = SymExpr(powNode->exp) * b;
-            return SymExpr(powNode->base) ^ newExp;
+            bool evenNewExp = false;
+            bool allowed = isExactIntegerExponent(b)                       // n 为整数
+                || isProvablyNonNegative(base)                             // 底可证非负
+                || (isExactIntegerExponent(simplifyCore(newExp), &evenNewExp) && evenNewExp);
+                // 新指数为偶整数时 a^(mn) = (a^(mn/2))^2 >= 0，与左侧同值，
+                // 于是 sqrt(x^4) = x^2 仍可化简，而 sqrt(x^2) 不会变成 x。
+            if (allowed || !branchGuardsActive()) {
+                return base ^ newExp;
+            }
         }
 
         // 乘积分配律: (a*b*c)^n = a^n * b^n * c^n
-        if (a.ptr->getType() == SymType::MUL && b.ptr->getType() == SymType::NUM) {
+        // ★ 分支守卫：n 为整数时对任意因子成立；否则要求每个因子可证非负 ——
+        //   (-1*p^2)^(1/2) 拆成 (-1)^(1/2)*(p^2)^(1/2) = i*p 正是分支穿越的来源
+        //   （即 sqrt(-p^2) → p*i）。
+        if (a.ptr->getType() == SymType::MUL && b.ptr->getType() == SymType::NUM
+            && (isExactIntegerExponent(b) || allFactorsProvablyNonNegative(a) || !branchGuardsActive())) {
             auto mulNode = static_cast<SymMul*>(a.ptr);
             SymExpr result(BigInt(1));
             for (auto& factor : mulNode->args)
@@ -5227,6 +5264,122 @@ namespace jc {
 // 仅处理 NUM, POW(偶数幂), MUL(逐因子开根) 三类结构
 // 返回 {是否成功, 平方根表达式}
 // =================================================================
+    // =================================================================
+    // 符号假设环境（分支感知化简的前提）—— 设计与理由见 Symbolic.h 的说明
+    // =================================================================
+    namespace {
+        thread_local std::map<std::string, Assumption> g_assumeEnv;
+    }
+
+    namespace SymAssume {
+        const char* tagName(Assumption a) {
+            switch (a) {
+                case Assumption::Positive: return "positive";
+                case Assumption::Negative: return "negative";
+                case Assumption::Real:     return "real";
+                case Assumption::Nonzero:  return "nonzero";
+            }
+            return "";
+        }
+
+        bool parseTag(const std::string& tag, Assumption& out) {
+            if (tag == "positive") { out = Assumption::Positive; return true; }
+            if (tag == "negative") { out = Assumption::Negative; return true; }
+            if (tag == "real")     { out = Assumption::Real;     return true; }
+            if (tag == "nonzero")  { out = Assumption::Nonzero;  return true; }
+            return false;
+        }
+
+        bool set(const std::string& var, Assumption a) {
+            if (var.empty()) return false;
+            g_assumeEnv[var] = a;
+            return true;
+        }
+
+        bool clear(const std::string& var) { return g_assumeEnv.erase(var) > 0; }
+
+        void clearAll() { g_assumeEnv.clear(); }
+
+        std::vector<std::pair<std::string, Assumption>> list() {
+            return std::vector<std::pair<std::string, Assumption>>(g_assumeEnv.begin(), g_assumeEnv.end());
+        }
+
+        bool holds(const std::string& var, Assumption a) {
+            auto it = g_assumeEnv.find(var);
+            if (it == g_assumeEnv.end()) return false;
+            if (it->second == a) return true;
+            // positive / negative 蕴含 real 与 nonzero
+            if (a == Assumption::Real || a == Assumption::Nonzero)
+                return it->second == Assumption::Positive || it->second == Assumption::Negative;
+            return false;
+        }
+    }
+
+    ScopedAssumption::ScopedAssumption(const std::string& var, Assumption a) : var_(var) {
+        auto it = g_assumeEnv.find(var_);
+        if (it != g_assumeEnv.end()) { had_ = true; prev_ = it->second; }
+        if (!var_.empty()) g_assumeEnv[var_] = a;
+    }
+
+    ScopedAssumption::~ScopedAssumption() {
+        if (var_.empty()) return;
+        if (had_) g_assumeEnv[var_] = prev_;
+        else g_assumeEnv.erase(var_);
+    }
+
+    // 推导过程深度：>0 时挂起分支守卫（理由见 Symbolic.h）
+    namespace {
+        thread_local int g_integrationDepth = 0;
+    }
+
+    bool branchGuardsActive() { return g_integrationDepth == 0; }
+
+    ScopedIntegrationScope::ScopedIntegrationScope() { ++g_integrationDepth; }
+    ScopedIntegrationScope::~ScopedIntegrationScope() { --g_integrationDepth; }
+
+    bool isProvablyNonNegative(const SymExpr& e) {
+        if (!e.ptr) return false;
+        switch (e.ptr->getType()) {
+            case SymType::NUM: {
+                const CASVal& v = static_cast<SymNum*>(e.ptr)->value;
+                if (std::holds_alternative<int32_t>(v)) return std::get<int32_t>(v) >= 0;
+                if (std::holds_alternative<double>(v)) return std::get<double>(v) >= 0.0;
+                if (std::holds_alternative<BigInt>(v)) return !std::get<BigInt>(v).isNegative();
+                const Fraction& f = std::get<Fraction>(v);
+                return !f.getNumRef().isNegative() && !f.getDenRef().isNegative();
+            }
+            case SymType::CONST:
+                // pi / e 为正；虚数单位 i 不是实数，不可比较
+                return static_cast<SymConst*>(e.ptr)->id != SymConstId::I;
+            case SymType::VAR:
+                return SymAssume::holds(static_cast<SymVar*>(e.ptr)->name, Assumption::Positive);
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(e.ptr);
+                if (!p->exp || p->exp->getType() != SymType::NUM) return false;
+                auto [isInt, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
+                if (!isInt) return false;
+                if (n % 2 == 0) return true;                                 // 偶次幂：(z^(n/2))^2 >= 0
+                if (n > 0) return isProvablyNonNegative(SymExpr(p->base));    // 正奇次幂：符号同底
+                return false;                                               // 负指数：符号未知
+            }
+            case SymType::MUL: {
+                for (auto& a : static_cast<SymMul*>(e.ptr)->args)
+                    if (!isProvablyNonNegative(SymExpr(a))) return false;
+                return true;                                                // 非负因子之积非负
+            }
+            case SymType::ADD: {
+                for (auto& a : static_cast<SymAdd*>(e.ptr)->args)
+                    if (!isProvablyNonNegative(SymExpr(a))) return false;
+                return true;                                                // 非负项之和非负
+            }
+            case SymType::FUNC: {
+                auto f = static_cast<SymFunc*>(e.ptr);
+                return f->name == "exp";                                    // 实参数下 exp > 0
+            }
+            default: return false;
+        }
+    }
+
     std::pair<bool, SymExpr> trySquareRoot(const SymExpr& expr, bool allowPartial) {
         if (!expr.ptr) return { false, expr };
 
@@ -5277,15 +5430,28 @@ namespace jc {
             if (p->exp->getType() == SymType::NUM) {
                 auto [isInt, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
                 if (isInt && n > 0 && n % 2 == 0) {
-                    return { true, SymExpr(p->base) ^ SymExpr(BigInt(n / 2)) };
+                    // sqrt(z^(2k)) = z^k 只在 z^k >= 0 时成立（实域）。
+                    //   k 为偶数：z^k = (z^(k/2))^2 恒非负 —— 可以重写。
+                    //   k 为奇数：z^k 与 z 同号，要求 z 可证非负。
+                    // 证不出就不重写：sqrt(x^2) 变成 x 在 x<0 时是错的（正确值是 |x|）。
+                    int64_t k = n / 2;
+                    if (k % 2 == 0 || isProvablyNonNegative(SymExpr(p->base))) {
+                        return { true, SymExpr(p->base) ^ SymExpr(BigInt(k)) };
+                    }
                 }
             }
             return { false, expr };
         }
 
         // 情况 4：乘积，逐因子开根（全部成功才算成功）
+        // sqrt(a*b) = sqrt(a)*sqrt(b) 只在各因子都非负时成立，否则会改变分支：
+        // sqrt(-1 * p^2) 被拆成 sqrt(-1)*sqrt(p^2) = i*p —— 正是分支穿越的来源。
+        // 证不出各因子非负就不拆。
         if (expr.ptr->getType() == SymType::MUL) {
             auto mul = static_cast<SymMul*>(expr.ptr);
+            for (auto& arg : mul->args) {
+                if (!isProvablyNonNegative(SymExpr(arg))) return { false, expr };
+            }
             SymExpr result(BigInt(1));
             for (auto& arg : mul->args) {
                 auto [ok, sqrtArg] = trySquareRoot(SymExpr(arg), allowPartial);

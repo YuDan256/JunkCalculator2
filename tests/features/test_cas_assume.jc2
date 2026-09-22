@@ -1,0 +1,109 @@
+// 符号假设环境与分支守卫。
+//
+// 背景：sqrt(z) 在 simplifyCore 里先变成 z^(1/2)，于是
+//   sqrt(x^2) = (x^2)^(1/2) 会走"幂的幂法则"变成 x —— x<0 时这是错的（|x| 才对）；
+//   sqrt(-p^2) = (-p^2)^(1/2) 会走"乘积分配律"拆成 i*p —— 这是分支穿越的来源。
+// 现在这两条规则在【用户侧化简】下要求可证成立：底可证非负、或新指数为偶整数。
+// 推导过程（integrate 内部）暂时挂起守卫，理由见 Symbolic.h 的 branchGuardsActive。
+//
+// 注意：假设环境是【全局】的（与 SymConfig 一致），所以每个用例都要自己收尾清理，
+// 否则会污染后续测试文件。
+
+import cas
+
+x = sym("x")
+y = sym("y")
+p = sym("p")
+
+clearAssumptions() = {
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "assumptions must start empty")
+}
+
+test_assume_default_is_empty() = {
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "no assumptions by default")
+}
+test_assume_default_is_empty()
+
+test_assume_set_query_clear() = {
+    clearAssumptions()
+    cas.assume(x, "positive")
+    cas.assume(y, "nonzero")
+    a = cas.assumptions()
+    assert(len(a) == 2, "two assumptions expected")
+    assert(a["x"] == "positive", "x must be positive")
+    assert(a["y"] == "nonzero", "y must be nonzero")
+
+    cas.assume(x)                       // 只清 x
+    a = cas.assumptions()
+    assert(len(a) == 1 && a["y"] == "nonzero", "clearing one variable must keep the other")
+
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "clearAssumptions must empty the environment")
+}
+test_assume_set_query_clear()
+
+test_assume_accepts_string_and_all_tags() = {
+    clearAssumptions()
+    cas.assume("x", "positive")         // 字符串形式同样接受
+    assert(cas.assumptions()["x"] == "positive", "string variable form must work")
+    for (t in @["positive", "negative", "real", "nonzero"]) {
+        cas.assume(y, t)
+        assert(cas.assumptions()["y"] == t, "tag must round-trip: " + t)
+    }
+    cas.clearAssumptions()
+}
+test_assume_accepts_string_and_all_tags()
+
+test_assume_rejects_bad_input() = {
+    clearAssumptions()
+    try {
+        cas.assume(x, "bogus")
+        assert(false, "unknown tag must be rejected")
+    } catch (e) {
+        assert("unknown tag" in e.message, "wrong error for unknown tag")
+    }
+    try {
+        cas.assume(x, 1)
+        assert(false, "non-string tag must be rejected")
+    } catch (e) {
+        assert("tag string" in e.message, "wrong error for non-string tag")
+    }
+    cas.clearAssumptions()
+}
+test_assume_rejects_bad_input()
+
+// 保守侧：没有假设时不做分支不安全的开方重写
+test_sqrt_of_square_is_conservative() = {
+    clearAssumptions()
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "sqrt(x^2) must not become x without an assumption")
+    assert(str(cas.simplify(sqrt(x^2 * y^2))) != "x * y", "sqrt(x^2*y^2) must not become x*y")
+    assert(str(cas.simplify(sqrt(-p^2))) != "p * i", "sqrt(-p^2) must not become p*i")
+    // 不受影响的仍要化简
+    assert(str(cas.simplify(sqrt(x^4))) == "x^2", "sqrt(x^4) is x^2 for every real x")
+    assert(str(cas.simplify(sqrt(8))) == "2 * sqrt(2)", "numeric square factors still extract")
+    assert(str(cas.simplify(sqrt(2) * sqrt(2))) == "2", "numeric radicals still combine")
+}
+test_sqrt_of_square_is_conservative()
+
+// 有假设时按假设化简
+test_positive_assumption_enables_rewrite() = {
+    clearAssumptions()
+    cas.assume(x, "positive")
+    assert(str(cas.simplify(sqrt(x^2))) == "x", "positive x makes sqrt(x^2) collapse to x")
+    cas.clearAssumptions()
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "clearing the assumption restores the conservative form")
+}
+test_positive_assumption_enables_rewrite()
+
+// negative / real 不足以支撑这条重写，不得误判
+test_insufficient_assumptions_do_not_enable_rewrite() = {
+    clearAssumptions()
+    cas.assume(x, "negative")
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "negative x must not enable sqrt(x^2) -> x")
+    cas.assume(x, "real")
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "real x alone must not enable sqrt(x^2) -> x")
+    cas.clearAssumptions()
+}
+test_insufficient_assumptions_do_not_enable_rewrite()

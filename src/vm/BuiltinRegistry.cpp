@@ -5871,6 +5871,43 @@ void BuiltinRegistry::registerCAS() {
         }
         return Value(result);
         }, {"expr", "var", "a", "b"});
+
+    // ── 符号假设：分支感知化简的前提 ──
+    // 假设按变量名存在独立的 thread_local 环境里（不挂节点，理由见 Symbolic.h）。
+    // 作用域全局，与 SymConfig 一致；必须能显式清空，否则陈旧假设会污染后续计算。
+    regModule(cas_ns, "assume", { 1, 2 }, [getVarName](const std::vector<Value>& args) -> Value {
+        std::string var = getVarName(args[0], "assume");
+        if (args.size() == 1) {           // 只给变量：清除该变量的假设
+            jc::SymAssume::clear(var);
+            return Value::none();
+        }
+        if (!args[1].isString()) {
+            JC2_THROW(TypeError, "assume() expects a tag string.");
+        }
+        jc::Assumption a;
+        std::string tag = args[1].asString();
+        if (!jc::SymAssume::parseTag(tag, a)) {
+            JC2_THROW(ValueError, "assume() unknown tag '" + tag + "'. Expected positive, negative, real, or nonzero.");
+        }
+        jc::SymAssume::set(var, a);
+        return Value::none();
+    }, {"var", "tag"});
+
+    regModule(cas_ns, "assumptions", { 0 }, [](const std::vector<Value>&) -> Value {
+        ObjDict* d = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(d);
+        for (const auto& kv : SymAssume::list()) {
+            Value key(kv.first);
+            d->keyMap[key] = d->elements.size();
+            d->elements.push_back({key, Value(std::string(SymAssume::tagName(kv.second)))});
+        }
+        return Value(d);
+    }, {});
+
+    regModule(cas_ns, "clearAssumptions", { 0 }, [](const std::vector<Value>&) -> Value {
+        jc::SymAssume::clearAll();
+        return Value::none();
+    }, {});
 }
 
 } // namespace jc

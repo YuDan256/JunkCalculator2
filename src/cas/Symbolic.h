@@ -183,6 +183,62 @@ namespace jc {
     };
 
 
+    // ==========================================
+    // 符号假设环境（分支感知化简的前提）
+    // ==========================================
+    // 假设【不】挂在节点上。SymVar 只有一个 name，且节点在全局 intern 池里按
+    // hashValue + equals 去重 —— 同名变量全局只有一个节点。把假设挂上去，会让
+    // assume(p, "positive") 之后的 p 与池中已有的 p 不再是同一个节点，
+    // equals / hashValue / 指针快路径全线受影响。
+    // 因此假设放在独立的 thread_local 环境里，按变量名查（与 g_symPool 同惯例）。
+    //
+    // 域假定：本 CAS 面向实域（唯一的复数是显式常量 i），所以"偶次幂恒非负"
+    // 这类判据直接采用 real 语义。real 标签保留在词汇表里供将来使用。
+    enum class Assumption { Positive, Negative, Real, Nonzero };
+
+    namespace SymAssume {
+        bool set(const std::string& var, Assumption a);
+        bool clear(const std::string& var);
+        void clearAll();
+        std::vector<std::pair<std::string, Assumption>> list();
+        bool holds(const std::string& var, Assumption a);
+        const char* tagName(Assumption a);
+        bool parseTag(const std::string& tag, Assumption& out);
+    }
+
+    // 表达式是否可证非负（>= 0）。【未知即 false】——
+    // 这是 D3 保守侧的判据：只有明确可证，才允许 sqrt 的偶数幂 / 乘积拆分。
+    bool isProvablyNonNegative(const SymExpr& e);
+
+    // 分支守卫是否生效。进入 integrate 期间【挂起】：
+    // 换元策略依赖的正是这些重写（例如 p = sinθ 时 √(cos²θ) → cosθ 在该分支上是对的），
+    // 拦掉它们会让换元管线里的表达式爆炸（实测 1/(p^2*sqrt(1-p^2)) 从 0.05s 变成挂死）。
+    // 要既正确又不爆，需要【表达式级】分支事实（"cosθ >= 0"），而当前词汇表只有变量级
+    // 标签，故推导过程沿用既有快速路径，由原函数自检兜底。
+    bool branchGuardsActive();
+
+    // 推导过程的作用域标记（RAII），配合 branchGuardsActive()
+    class ScopedIntegrationScope {
+    public:
+        ScopedIntegrationScope();
+        ~ScopedIntegrationScope();
+        ScopedIntegrationScope(const ScopedIntegrationScope&) = delete;
+        ScopedIntegrationScope& operator=(const ScopedIntegrationScope&) = delete;
+    };
+
+    // 作用域化的临时事实：构造时压入，析构时还原原值（换元边界用）。
+    class ScopedAssumption {
+    public:
+        ScopedAssumption(const std::string& var, Assumption a);
+        ~ScopedAssumption();
+        ScopedAssumption(const ScopedAssumption&) = delete;
+        ScopedAssumption& operator=(const ScopedAssumption&) = delete;
+    private:
+        std::string var_;
+        bool had_ = false;
+        Assumption prev_ = Assumption::Positive;
+    };
+
     // ★ 必须在类外提供全局声明，否则某些编译器无法在普通查找中找到这些运算符
     SymExpr operator+(const SymExpr& a, const SymExpr& b);
     SymExpr operator-(const SymExpr& a, const SymExpr& b);

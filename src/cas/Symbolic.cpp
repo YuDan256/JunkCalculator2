@@ -40,6 +40,56 @@ namespace jc {
         return h;
     }
 
+    // 数值比较的归一化：能无损落到 double 的表示按 double 比，其余按精确表示比。
+    // 分支顺序必须与 hashCASValForValue 一致，否则"相等 ⇒ 等哈希"失守。
+    static bool casValToDouble(const CASVal& v, double& out) {
+        if (std::holds_alternative<int32_t>(v)) { out = static_cast<double>(std::get<int32_t>(v)); return true; }
+        if (std::holds_alternative<double>(v)) {
+            out = std::get<double>(v);
+            return std::isfinite(out);
+        }
+        if (std::holds_alternative<BigInt>(v)) {
+            const BigInt& bi = std::get<BigInt>(v);
+            try {
+                int64_t i64 = bi.toInt64();
+                if (i64 >= -9007199254740992LL && i64 <= 9007199254740992LL) {
+                    out = static_cast<double>(i64);
+                    return true;
+                }
+            } catch (...) {}
+            return false;
+        }
+        const Fraction& fr = std::get<Fraction>(v);
+        if (fr.getDenRef() == BigInt(1)) return casValToDouble(CASVal(fr.getNumRef()), out);
+        try {
+            double d = fr.toFloat();
+            if (std::isfinite(d) && Fraction::fromFloat(d) == fr) { out = d; return true; }
+        } catch (...) {}
+        return false;
+    }
+
+    static std::optional<Fraction> casValToFraction(const CASVal& v) {
+        if (std::holds_alternative<Fraction>(v)) return std::get<Fraction>(v);
+        if (std::holds_alternative<BigInt>(v)) return Fraction(std::get<BigInt>(v), BigInt(1));
+        if (std::holds_alternative<int32_t>(v)) return Fraction(BigInt(std::get<int32_t>(v)), BigInt(1));
+        return std::nullopt;
+    }
+
+    // 两个 CASVal 是否表示同一个数。
+    // 不引入有损相等：0.1（double）与 1/10（Fraction）不等，因为 0.1 的 double 值不是 1/10。
+    static bool casValNumberEqual(const CASVal& a, const CASVal& b) {
+        if (a.index() == b.index()) return a == b;
+        double da = 0.0, db = 0.0;
+        if (casValToDouble(a, da) && casValToDouble(b, db)) return da == db;
+        const auto fa = casValToFraction(a);
+        const auto fb = casValToFraction(b);
+        if (fa && fb) return *fa == *fb;
+        return false;
+    }
+
+    // 节点身份哈希：按表示打标签（int32 / double / BigInt / Fraction 分开）。
+    // 节点身份是严格的（SymNum::equals 也严格），两者必须同规则；
+    // 语言层的数值等值走 symEquivalent 的数值短路，与本函数无关。
     static uint64_t hashCASVal(const CASVal& v) {
         return std::visit([](auto&& arg) -> uint64_t {
             using T = std::decay_t<decltype(arg)>;
@@ -2913,6 +2963,14 @@ namespace jc {
     bool symEquivalent(const SymExpr& a, const SymExpr& b) {
         if (a.ptr == b.ptr) return true;
         if (!a.ptr || !b.ptr) return false;
+        // 数值短路：同一个数的不同表示（int32 1 与 double 1.0、Fraction 5/2 与 double 2.5）
+        // 在比较层等价。节点身份仍按表示区分，所以 intern 不会把两种表示塌成一个节点——
+        // 否则先插入的那个表示会胜出，整数会被浮点污染（实测 sqrt(-1) 曾变成
+        // 6.12323e-17 + i、sin^2+cos^2 曾从 1 变成 1.0）。
+        if (a.ptr->getType() == SymType::NUM && b.ptr->getType() == SymType::NUM) {
+            return casValNumberEqual(static_cast<const SymNum*>(a.ptr)->value,
+                                     static_cast<const SymNum*>(b.ptr)->value);
+        }
         if (a.ptr->getType() == b.ptr->getType()) {
             if (a.ptr->equals(b.ptr)) return true;
         }

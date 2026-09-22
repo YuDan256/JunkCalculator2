@@ -1,0 +1,103 @@
+// 数值等值的跨表示语义。
+//
+// 规则：同一个数无论用 int / float / Fraction / 复数 / 符号表示都相等，
+// 但比较是精确的，不引入有损相等（0.1 的 double 值不是 1/10）。
+// 不变量：相等 ⇒ 等哈希（dict / set 的地基）。
+
+// 原生数值：跨表示、精确
+test_native_numeric_equality_is_exact() = {
+    assert(1 == 1.0, "int 1 must equal float 1.0")
+    assert(frac(5, 2) == 2.5, "5/2 must equal its exactly representable float")
+    assert(frac(1, 2) == 0.5, "1/2 must equal 0.5")
+    assert(1 == 1 + 0i, "real 1 must equal the complex with zero imaginary part")
+    assert(!(frac(1, 10) == 0.1), "1/10 must not equal 0.1")
+    assert(!(0.1 + 0.2 == 0.3), "float arithmetic stays inexact")
+}
+test_native_numeric_equality_is_exact()
+
+// 符号数值：与原生同一套精确规则
+test_symbolic_numeric_equality_is_exact() = {
+    assert(sym(1) == 1, "symbolic 1 must equal int 1")
+    assert(sym(1) == 1.0, "symbolic 1 must equal float 1.0")
+    assert(sym(1.0) == 1, "symbolic 1.0 must equal int 1")
+    assert(sym(1) == sym(1.0), "symbolic 1 must equal symbolic 1.0")
+    assert(sym(2.0) == 2, "symbolic 2.0 must equal int 2")
+    assert(sym(2.5) == 2.5, "symbolic 2.5 must equal float 2.5")
+    assert(sym(2.5) == frac(5, 2), "symbolic 2.5 must equal 5/2")
+    assert(sym(frac(1, 2)) == 0.5, "symbolic 1/2 must equal 0.5")
+}
+test_symbolic_numeric_equality_is_exact()
+
+// 无损边界：不可精确表示的值不得被判相等
+test_symbolic_numeric_inequality_is_lossless() = {
+    assert(!(sym(0.1) == frac(1, 10)), "0.1 must not equal 1/10")
+    assert(!(sym(frac(1, 10)) == 0.1), "1/10 must not equal 0.1")
+    assert(!(sym(1) == 1i), "1 must not equal i")
+    assert(!(sym(1) == 2), "1 must not equal 2")
+}
+test_symbolic_numeric_inequality_is_lossless()
+
+// 复数与符号
+test_symbolic_complex_equality() = {
+    assert((1 + 0i) == sym(1), "complex with zero imaginary part must equal symbolic 1")
+    assert(sym(1) == (1 + 0i), "symmetric direction")
+    assert(1i == sym(1i), "symbolic i must equal complex i")
+    assert(!(sym(1) == 1i), "1 must not equal i")
+}
+test_symbolic_complex_equality()
+
+// 相等 ⇒ 等哈希
+test_equality_implies_equal_hash() = {
+    assert(hash(sym(1)) == hash(1), "sym(1) and 1")
+    assert(hash(sym(1)) == hash(1.0), "sym(1) and 1.0")
+    assert(hash(sym(2.5)) == hash(2.5), "sym(2.5) and 2.5")
+    assert(hash(sym(2.5)) == hash(frac(5, 2)), "sym(2.5) and 5/2")
+    assert(hash(sym(frac(1, 2))) == hash(0.5), "sym(1/2) and 0.5")
+    assert(hash(1) == hash(1.0), "1 and 1.0")
+
+    d = dict()
+    d[sym(1)] = "a"
+    d[1.0] = "b"
+    assert(len(d) == 1, "sym(1) and 1.0 must be the same dict key")
+
+    e = dict()
+    e[frac(1, 10)] = "a"
+    e[0.1] = "b"
+    assert(len(e) == 2, "1/10 and 0.1 must be different dict keys")
+}
+test_equality_implies_equal_hash()
+
+// 矩阵：实数 / 复数 / 符号两两可比
+test_matrix_cross_representation_equality() = {
+    A = matrix(2, 2, 1, 2, 3, 4)
+    C = matrix(2, 2, 1 + 0i, 2, 3, 4)
+    S = symmatrix(2, 2, 1, 2, 3, 4)
+
+    assert(A == C, "real must equal complex with zero imaginary parts")
+    assert(C == A, "symmetric direction")
+    assert(A == S, "real must equal symbolic")
+    assert(S == A, "symmetric direction")
+    assert(C == S, "complex must equal symbolic (transitivity through A)")
+
+    assert(hash(A) == hash(C), "equal matrices must hash equal (real/complex)")
+    assert(hash(A) == hash(S), "equal matrices must hash equal (real/symbolic)")
+    assert(hash(C) == hash(S), "equal matrices must hash equal (complex/symbolic)")
+
+    d = dict()
+    d[A] = "a"
+    d[C] = "b"
+    d[S] = "c"
+    assert(len(d) == 1, "equal matrices must be the same dict key")
+}
+test_matrix_cross_representation_equality()
+
+test_matrix_cross_representation_inequality() = {
+    A = matrix(2, 2, 1, 2, 3, 4)
+    assert(!(A == matrix(2, 2, 1i, 2, 3, 4)), "real 1 must not equal imaginary i")
+    assert(!(A == matrix(1, 2, 1, 2)), "different shape must not be equal")
+    assert(!(A == matrix(2, 2, 1, 2, 3, 5)), "different value must not be equal")
+
+    x = sym("x")
+    assert(!(symmatrix(2, 2, x, 1, 2, 3) == matrix(2, 2, 1, 1, 2, 3)), "a symbolic variable is not a number")
+}
+test_matrix_cross_representation_inequality()

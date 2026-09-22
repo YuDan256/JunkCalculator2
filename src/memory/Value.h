@@ -2241,6 +2241,47 @@ namespace jc {
         }
     }
 
+    // ── 跨表示矩阵：实数 / 复数 / 符号三种矩阵在语言层是同一个类型（matrix 的类型
+    //    联合），跨表示等值需要逐元素按标量规则比较，故统一取元素为 Value。──
+    inline bool isMatrixObjType(ObjType t) {
+        return t == ObjType::REAL_MATRIX || t == ObjType::COMPLEX_MATRIX || t == ObjType::SYM_MATRIX;
+    }
+
+    inline bool matrixDimsOf(Obj* m, int& rows, int& cols) {
+        switch (m->type) {
+            case ObjType::REAL_MATRIX:    { const auto& a = static_cast<ObjRealMatrix*>(m)->mat;    rows = a.getRows(); cols = a.getCols(); return true; }
+            case ObjType::COMPLEX_MATRIX: { const auto& a = static_cast<ObjComplexMatrix*>(m)->mat; rows = a.getRows(); cols = a.getCols(); return true; }
+            case ObjType::SYM_MATRIX:     { const auto& a = static_cast<ObjSymMatrix*>(m)->mat;     rows = a.getRows(); cols = a.getCols(); return true; }
+            default: return false;
+        }
+    }
+
+    inline Value matrixElementValue(Obj* m, int i, int j) {
+        switch (m->type) {
+            case ObjType::REAL_MATRIX:    return Value(static_cast<ObjRealMatrix*>(m)->mat(i, j));
+            case ObjType::COMPLEX_MATRIX: return Value(static_cast<ObjComplexMatrix*>(m)->mat(i, j));
+            case ObjType::SYM_MATRIX:     return Value(static_cast<ObjSymMatrix*>(m)->mat(i, j));
+            default: return Value::none();
+        }
+    }
+
+    // 跨表示矩阵等值：同形状 + 逐元素按 Value 的标量规则比。
+    // 标量 1 == 1+0i、符号 1 == 1.0，故虚部全为 0 的复数矩阵、以及符号矩阵
+    // 都能与等值的实数矩阵相等。
+    inline bool crossTypeMatrixEquals(Obj* lobj, Obj* robj) {
+        int lr = 0, lc = 0, rr = 0, rc = 0;
+        if (!matrixDimsOf(lobj, lr, lc) || !matrixDimsOf(robj, rr, rc)) return false;
+        if (lr != rr || lc != rc) return false;
+        for (int i = 0; i < lr; ++i)
+            for (int j = 0; j < lc; ++j)
+                if (!Value::equals(matrixElementValue(lobj, i, j), matrixElementValue(robj, i, j))) return false;
+        return true;
+    }
+
+    // 三种矩阵共用同一个 seed：跨表示相等要求"相等 ⇒ 等哈希"，
+    // 按类型分 seed 会让等值的实数/复数/符号矩阵哈希不同。
+    inline constexpr size_t kMatrixHashSeed = 0x4A7C2E9B5D3F8160ULL;
+
     inline bool Value::equals(const Value& lhs, const Value& rhs) {
         if (lhs.as_bits == rhs.as_bits) return true;
 
@@ -2277,11 +2318,18 @@ namespace jc {
         //   上面那个"同类型才比较"的开关走不到，曾直接判 false —— 于是
         //   `cas.i()^2 == -1` 为假（打印却是 -1）。这里把原生一侧提升为符号树再比，
         //   复用 SymExpr::operator== 的结构/代数等价判定。
-        if (lhs.isSymbolic() && (rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION))) {
+        if (lhs.isSymbolic() && (rhs.isNumber() || rhs.isBigInt() || rhs.isObjType(ObjType::FRACTION) || rhs.isComplex())) {
             return static_cast<ObjSym*>(lhs.asObj())->sym == rhs.asSymbolic();
         }
-        if (rhs.isSymbolic() && (lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION))) {
+        if (rhs.isSymbolic() && (lhs.isNumber() || lhs.isBigInt() || lhs.isObjType(ObjType::FRACTION) || lhs.isComplex())) {
             return lhs.asSymbolic() == static_cast<ObjSym*>(rhs.asObj())->sym;
+        }
+
+        // ★ 跨表示矩阵等值：实数 / 复数 / 符号两两可比（同类型走下面原有的分支）
+        if (lhs.isObj() && rhs.isObj()
+            && isMatrixObjType(lhs.asObj()->type) && isMatrixObjType(rhs.asObj()->type)
+            && lhs.asObj()->type != rhs.asObj()->type) {
+            return crossTypeMatrixEquals(lhs.asObj(), rhs.asObj());
         }
 
         if (lhs.isObj() && rhs.isObj() && lhs.asObj()->type == rhs.asObj()->type) {
@@ -3150,7 +3198,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (om->has_cached_hash) return om->cached_hash;
             auto raw = om->mat.rawData();
             size_t sz = raw.size();
-            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x2E6A8F1D4C3B7950ULL;
+            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ kMatrixHashSeed;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
                 double d = raw[idx]; if (d == 0.0) d = 0.0;
                 size_t h = sipHash24Double(d) + 0x9e3779b9 + idx;
@@ -3165,7 +3213,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (om->has_cached_hash) return om->cached_hash;
             auto raw = om->mat.rawData();
             size_t sz = raw.size();
-            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x4D7A1F8E2B5C6039ULL;
+            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ kMatrixHashSeed;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
                 double r = raw[idx].real; if (r == 0.0) r = 0.0;
                 double i = raw[idx].imag; if (i == 0.0) i = 0.0;
@@ -3182,9 +3230,15 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (om->has_cached_hash) return om->cached_hash;
             auto raw = om->mat.rawData();
             size_t sz = raw.size();
-            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x9A2B3C4D5E6F7081ULL;
+            size_t seed = sipHash24(&sz, sizeof(size_t)) ^ kMatrixHashSeed;
             for (size_t idx = 0; idx < raw.size(); ++idx) {
-                size_t h = sipHash24String(raw[idx].toString()) + 0x9e3779b9 + idx;
+                // 符号元素按数值哈希（与标量 SYMBOLIC 分支同规则），不能按 toString()——
+                // 否则符号矩阵与等值的实数矩阵哈希不同，破坏"相等 ⇒ 等哈希"。
+                const SymExpr& se = raw[idx];
+                size_t h = (se.ptr && se.ptr->getType() == SymType::NUM)
+                    ? hashCASValForValue(static_cast<SymNum*>(se.ptr)->value)
+                    : sipHash24String(se.toString());
+                h += 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
             om->cached_hash = seed;

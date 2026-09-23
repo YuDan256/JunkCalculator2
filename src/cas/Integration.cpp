@@ -3503,8 +3503,14 @@ namespace jc {
                     //   结果整体翻号（实测 integ(p^2/sqrt(1-p^2)) 的导数为 -f）。
                     //   只在【有确凿反证】时跳过本策略；Unknown（测试点求不出数值）保持原行为，
                     //   否则会误杀本来正确但化简残差非零的解（如 sin(p)^3、1/sin(p)）。
-                    if (checkAntiderivative(e, *res, var) == AntiderivCheck::Invalid) {
-                        if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- " << strat.name << " rejected by self-check" << std::endl;
+                    AntiderivCheck verdict = checkAntiderivative(e, *res, var);
+                    // 【B5 实验】最外层把 Unknown 也视为"不可采信"：内部判据用 evalUniversal（无函数
+                    // 求值器），对 acosh/sqrt 这类残差一个测试点都算不出来；出口判据用 collapseSymFuncs
+                    // 能算，于是出现"内部放行、出口拒绝"（实测 p^2*sqrt(1-p^2)）。最外层放行后
+                    // 出口必然再判一次，故这里跳过多半只是把"抛错"换成"继续搜索"。
+                    bool unverifiableTop = (verdict == AntiderivCheck::Unknown && current_depth == start_depth);
+                    if (verdict == AntiderivCheck::Invalid || unverifiableTop) {
+                        if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- " << strat.name << " rejected by self-check" << (unverifiableTop ? " (unverifiable)" : "") << std::endl;
                         continue;
                     }
                     return res;

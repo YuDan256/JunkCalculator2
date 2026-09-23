@@ -427,11 +427,56 @@ F        = (1/8*acosh(sqrt(-p^2+1)) + 1/64*exp(-4*acosh(...)) - 1/64*exp(4*acosh
 - **"取消挂起"（§14）与"收窄挂起"（本节）均判为否证**；
   `branchGuardsActive()` / `ScopedIntegrationScope` 保持推导期整段挂起，不再重启 P2。
 - 新问题独立记录（不属于本方案）：内部每策略自检的数值化能力弱于出口自检
-  （`evalFloat` + `evalUniversal` vs `doEvalf`），且 `Unknown` 从宽。
+  （`evalFloat` + `evalUniversal` vs `doEvalf`），且 `Unknown` 从宽；已单独修复，见 §16。
 
 ### 实验纪律
 
 B4 改动与诊断打印均已 `git restore` 回退。回退后 `git status` 干净，
 `e2e_scan` 34 正确 / 0 错 / 1 拒绝（拒绝 `p^2*sqrt(1-p^2)`），
 三套测试 47/47、47/47、18/18。
+
+---
+
+## 16. B5 落地记录：最外层不采信自检的 `Unknown`
+
+### 交付
+
+| 项 | 内容 |
+|---|---|
+| 改动 | `Integration.cpp` 路由循环一处：`verdict == Unknown && current_depth == start_depth` 时 `continue`（**内层从宽策略原样保留**）；debug 轨迹加 `(unverifiable)` 标记 |
+| 测试 | `tests/features/test_cas_integ_verify.jc2` 新增 `test_verify_integ_circular_branch_takes_over`（回退源码后该测试 `[FAIL]`，已反向验证） |
+| 守卫 | **一行未动**，`ScopedIntegrationScope` 仍整段挂起 |
+
+### 机制
+
+内部自检 `checkAntiderivative` 走 `evalUniversal`（**无函数求值器**），对
+`acosh(...)`、`sqrt(p^4-p^2)` 这类残差 5 个测试点一个都算不出 ⇒ `valid_tests = 0`
+⇒ `Unknown`；旧逻辑只在 `Invalid` 时跳过 ⇒ 放行。出口自检走 `collapseSymFuncs`
+（`BuiltinRegistry.cpp:5459`）能算 ⇒ 残差非零 ⇒ 拒绝。
+
+最外层跳过不可采信的候选后，搜索继续 → Trig(650) 圆分支 → `1/8*asin(p) - 1/32*sin(4*asin(p))` → 出口通过。
+
+### 实测
+
+| 指标 | 改动前 | B5 |
+|---|---|---|
+| 35 例扫描 | 34 正确 / 0 错 / 1 拒绝 | **35 正确 / 0 错 / 0 拒绝** |
+| 扫描墙钟 | ~1.8s | 1.96s |
+| `p^2*sqrt(1-p^2)` | 抛错 | 0.176s，`1/8*asin(p) - 1/32*sin(4*asin(p))`（守卫生效时 6.6s） |
+| `1/sqrt(p*(1-p))` | 0.303s | 0.522s |
+| >0.3s 的用例 | 1 例 | 2 例（0.595s、0.567s） |
+| 语料 109 例 | — | **0 差异** |
+| 三套测试 | 47/47、47/47、18/18 | 47/47、47/47、18/18 |
+
+### 风险（实测未出现）
+
+跳过"内部算不出数值但可能正确"的候选，理论上可把"正确"变成"拒绝" ——
+`Integration.cpp:3504` 的注释正是当年从宽的理由（`sin(p)^3`、`1/sin(p)`）。
+实测 35 例扫描与 109 例语料均未出现，那两类用例仍正确。内层行为未变，
+风险面只在最外层。
+
+### 与 P2 的关系
+
+本节修的是 §15 记下的**独立**问题（两处自检数值化能力不一致 + `Unknown` 从宽），
+不是"取消挂起"，也不是分支守卫的收益。
 

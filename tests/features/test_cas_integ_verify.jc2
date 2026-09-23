@@ -57,7 +57,8 @@ test_verify_integ_previously_sign_flipped() = {
 test_verify_integ_previously_sign_flipped()
 
 // 不变量：cas.integ 要么给出能通过自检的原函数，要么拒绝 —— 绝不返回未通过自检的结果。
-// 这一例目前推导过程拦不住（测试点数值化不彻底），由出口自检兜底。
+// 这一例曾由出口自检兜底：推导期自检用 evalUniversal（无函数求值器）算不出残差数值，
+// 判 Unknown 后被放行，占住了 p^2*sqrt(1-p^2) 的位置。B5 后最外层不再采信 Unknown。
 // 这样写的好处：将来若真正修好它，本测试仍然成立。
 test_integ_never_returns_unverified_antiderivative() = {
     f = p^2 * sqrt(1 - p^2)
@@ -71,3 +72,10 @@ test_integ_never_returns_unverified_antiderivative() = {
     assert(accepted, "cas.integ must either verify its result or refuse to return it")
 }
 test_integ_never_returns_unverified_antiderivative()
+
+// B5 回归：最外层把自检的 Unknown 视为"不可采信"后，根式换元那条注入 i 的候选不再占位，
+// 圆分支三角换元接手给出可通过自检的实形式结果（1/8*asin(p) - 1/32*sin(4*asin(p))）。
+test_verify_integ_circular_branch_takes_over() = {
+    assert_verifies(p^2 * sqrt(1 - p^2))
+}
+test_verify_integ_circular_branch_takes_over()

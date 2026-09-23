@@ -2693,18 +2693,34 @@ namespace jc {
 
                 if (inner.ptr->getType() == SymType::MUL) {
                     auto mul = static_cast<SymMul*>(inner.ptr);
-                    SymExpr sum(BigInt(0));
-                    for (auto& factor : mul->args) {
-                        SymExpr subLog(new SymFunc(func->name, std::vector<SymNode*>{ factor }));
-                        sum = sum + expand_internal(subLog, maxPowTerms, distributeNonIntPow); // 传递
+                    // ★ 分支守卫（P3）：log(∏aᵢ) → Σlog(aᵢ) 需要每个 aᵢ > 0。
+                    //   这是简化的主站点：expand 候选项由它产生，契约/化简再挑形式
+                    //   （实测 a=b=-1：log(1)=0 vs log(-1)+log(-1)=2πi）。
+                    bool allPositive = !branchGuardsActive();
+                    if (!allPositive) {
+                        allPositive = true;
+                        for (auto& factor : mul->args) {
+                            if (!isProvablyPositive(SymExpr(factor))) { allPositive = false; break; }
+                        }
                     }
-                    return sum;
+                    if (allPositive) {
+                        SymExpr sum(BigInt(0));
+                        for (auto& factor : mul->args) {
+                            SymExpr subLog(new SymFunc(func->name, std::vector<SymNode*>{ factor }));
+                            sum = sum + expand_internal(subLog, maxPowTerms, distributeNonIntPow); // 传递
+                        }
+                        return sum;
+                    }
                 }
 
                 if (inner.ptr->getType() == SymType::POW) {
                     auto powN = static_cast<SymPow*>(inner.ptr);
-                    SymExpr logA(new SymFunc(func->name, std::vector<SymNode*>{ powN->base }));
-                    return expand_internal(SymExpr(powN->exp) * logA, maxPowTerms, distributeNonIntPow); // 传递
+                    // ★ 分支守卫（P3）：log(a^b) → b·log(a) 只在 a > 0 时成立
+                    //   （实测 a=-2, b=2：log(4)=1.386 vs 2·log(-2)=1.386+6.283i）。
+                    if (!branchGuardsActive() || isProvablyPositive(SymExpr(powN->base))) {
+                        SymExpr logA(new SymFunc(func->name, std::vector<SymNode*>{ powN->base }));
+                        return expand_internal(SymExpr(powN->exp) * logA, maxPowTerms, distributeNonIntPow); // 传递
+                    }
                 }
             }
                 return SymExpr::makeFunc(func->name, std::move(expArgs));
@@ -3865,6 +3881,9 @@ namespace jc {
             SymExpr logInside(BigInt(1));
             SymExpr otherTerms(BigInt(0));
             int logCount = 0;
+            // ★ 分支守卫（P3）：Σ cᵢ·log(aᵢ) → log(∏aᵢ^{cᵢ}) 需要每个 aᵢ > 0
+            //   （实测 a=b=-1：log(-1)+log(-1)=2πi vs log(1)=0）。
+            bool allLogArgsPositive = true;
 
             for (auto& arg : add->args) {
                 SymExpr term = contract(SymExpr(arg));
@@ -3902,6 +3921,7 @@ namespace jc {
                 if (logNode) {
                     logCount++;
                     SymExpr inside(logNode->args[0]);
+                    if (!isProvablyPositive(inside)) allLogArgsPositive = false;
                     // c * log(x) = log(x^c)，所以乘入 inside^coeff
                     logInside = logInside * (inside ^ coeff);
                 }
@@ -3910,7 +3930,7 @@ namespace jc {
                 }
             }
 
-            if (logCount > 1) {
+            if (logCount > 1 && (allLogArgsPositive || !branchGuardsActive())) {
                 SymExpr combinedLog(new SymFunc(
                     "log",
                     std::vector<SymNode*>{logInside.ptr}));
@@ -4302,11 +4322,24 @@ namespace jc {
                         SymExpr baseLog(new SymFunc("log", std::vector<SymNode*>{powNode->base}));
                         SymExpr simpBaseLog = simplifyCore(baseLog);
                         if (simpBaseLog.ptr != baseLog.ptr) {
-                            return simplifyCore(SymExpr(powNode->exp) * simpBaseLog);
+                            // ★ 分支守卫（P3）：log(a^b) → b·log(a) 只在 a > 0 时成立。
+                            //   a < 0 时左侧取主分支实值，右侧多出 bπi 的虚部
+                            //   （实测 a=-2, b=2：log(4)=1.386 vs 2·log(-2)=1.386+6.283i）。
+                            if (!branchGuardsActive() || isProvablyPositive(SymExpr(powNode->base))) {
+                                return simplifyCore(SymExpr(powNode->exp) * simpBaseLog);
+                            }
                         }
                     }
                     if (inner.ptr->getType() == SymType::MUL) {
                         auto mul = static_cast<SymMul*>(inner.ptr);
+                        // ★ 分支守卫（P3）：log(∏aᵢ) → Σlog(aᵢ) 需要每个 aᵢ > 0
+                        //   （实测 a=b=-1：log(1)=0 vs log(-1)+log(-1)=2πi）。
+                        bool allPositive = true;
+                        if (branchGuardsActive()) {
+                            for (auto& arg : mul->args) {
+                                if (!isProvablyPositive(SymExpr(arg))) { allPositive = false; break; }
+                            }
+                        }
                         SymExpr res(BigInt(0));
                         bool simplified = false;
                         for (auto& arg : mul->args) {
@@ -4315,7 +4348,7 @@ namespace jc {
                             if (simpPart.ptr != partLog.ptr) simplified = true;
                             res = res + simpPart;
                         }
-                        if (simplified) return res;
+                        if (simplified && allPositive) return res;
                     }
                 }
                 
@@ -5401,6 +5434,60 @@ namespace jc {
             case SymType::FUNC: {
                 auto f = static_cast<SymFunc*>(e.ptr);
                 // exp > 0；cosh >= 1（实参数下恒正，无需额外事实）
+                return f->name == "exp" || f->name == "cosh";
+            }
+            default: return false;
+        }
+    }
+
+    // 表达式是否可证【严格为正】（> 0）。【未知即 false】——
+    // 与 isProvablyNonNegative 分开：偶次幂只有 >= 0，而 log(a^b) → b·log(a) 需要 a > 0
+    // （a = 0 时右侧无定义，a < 0 时右侧多出 bπi 的虚部）。
+    // 实域语义与 isProvablyNonNegative 一致（见 Symbolic.h 开头对 real 语义的说明）。
+    bool isProvablyPositive(const SymExpr& e) {
+        if (!e.ptr) return false;
+        switch (e.ptr->getType()) {
+            case SymType::NUM: {
+                const CASVal& v = static_cast<SymNum*>(e.ptr)->value;
+                if (std::holds_alternative<int32_t>(v)) return std::get<int32_t>(v) > 0;
+                if (std::holds_alternative<double>(v)) return std::get<double>(v) > 0.0;
+                if (std::holds_alternative<BigInt>(v)) {
+                    const BigInt& b = std::get<BigInt>(v);
+                    return !b.isNegative() && !b.isZero();
+                }
+                const Fraction& f = std::get<Fraction>(v);
+                if (f.getNumRef().isZero()) return false;
+                return f.getNumRef().isNegative() == f.getDenRef().isNegative();
+            }
+            case SymType::CONST:
+                // pi / e 为正；虚数单位 i 不是实数，谈不上正
+                return static_cast<SymConst*>(e.ptr)->id != SymConstId::I;
+            case SymType::VAR:
+                return SymAssume::holds(static_cast<SymVar*>(e.ptr)->name, Assumption::Positive);
+            case SymType::POW: {
+                auto p = static_cast<SymPow*>(e.ptr);
+                if (!p->exp || p->exp->getType() != SymType::NUM) return false;
+                auto [isInt, n] = extractExactInt(static_cast<SymNum*>(p->exp)->value);
+                if (!isInt) return false;                       // 非整数指数：底的正性正是待证项
+                (void)n;
+                return isProvablyPositive(SymExpr(p->base));    // 底正 ⇒ 任意整数次幂为正
+            }
+            case SymType::MUL: {
+                for (auto& a : static_cast<SymMul*>(e.ptr)->args)
+                    if (!isProvablyPositive(SymExpr(a))) return false;
+                return true;                                    // 正因子之积为正
+            }
+            case SymType::ADD: {
+                bool anyPositive = false;
+                for (auto& a : static_cast<SymAdd*>(e.ptr)->args) {
+                    if (isProvablyPositive(SymExpr(a))) { anyPositive = true; continue; }
+                    if (!isProvablyNonNegative(SymExpr(a))) return false;
+                }
+                return anyPositive;                             // 非负项之和，且至少一项为正
+            }
+            case SymType::FUNC: {
+                auto f = static_cast<SymFunc*>(e.ptr);
+                // 与 isProvablyNonNegative 同口径：exp > 0、cosh >= 1（实参数）
                 return f->name == "exp" || f->name == "cosh";
             }
             default: return false;

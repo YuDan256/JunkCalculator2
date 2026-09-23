@@ -1,0 +1,59 @@
+// log 族分支守卫（P3）。
+//
+// 背景：log(a^b) → b·log(a) 与 log(∏aᵢ) → Σlog(aᵢ) 只在所有参数 > 0 时成立。
+// 实测（本 CAS 的 log 走主分支复值）：
+//   a = -2, b = 2：log((-2)^2) = 1.38629，而 2*log(-2) = 1.38629 + 6.28319*i
+//   a = b = -1  ：log(1)       = 0     ，而 log(-1)+log(-1) = 6.28319*i
+// 现在这两条在【用户侧化简】下要求参数可证为正（isProvablyPositive）；
+// 推导期（integrate 内部）挂起守卫，理由见 Symbolic.h 的 branchGuardsActive。
+// log(exp z) → z 按实域语义保留（D-P3-2=a），不加守卫。
+//
+// 注意：假设环境是【全局】的，每个用例自己收尾清理，否则会污染后续测试文件。
+
+import cas
+
+x = sym("x")
+y = sym("y")
+EE = cas.e()
+
+// 保守侧：没有前提时不做分支不安全的 log 重写
+test_log_power_is_conservative() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x^2))) == "log(x^2)", "log(x^2) must not become 2*log(x) without a premise")
+    assert(str(cas.simplify(log(x^3))) == "log(x^3)", "log(x^3) must not become 3*log(x) without a premise")
+    assert(str(cas.simplify(log(sqrt(x)))) == "log(sqrt(x))", "log(sqrt(x)) must not split without a premise")
+    assert(str(cas.simplify(log(2*x))) == "log(2 * x)", "log(2*x) must not split without a premise on x")
+    cas.clearAssumptions()
+}
+test_log_power_is_conservative()
+
+test_log_product_is_conservative() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x*y) - log(x) - log(y))) == "log(x * y) - log(x) - log(y)", "log(x*y) - log(x) - log(y) is not identically zero")
+    assert(str(cas.simplify(log(x*y) - log(x))) == "log(x * y) - log(x)", "log(x*y) - log(x) must not collapse to log(y)")
+    cas.clearAssumptions()
+}
+test_log_product_is_conservative()
+
+// 有前提时按前提化简
+test_positive_premise_enables_log_rewrite() = {
+    cas.clearAssumptions()
+    cas.assume(x, "positive")
+    assert(str(cas.simplify(log(x^2))) == "2 * log(x)", "positive x makes log(x^2) collapse")
+    cas.assume(y, "positive")
+    assert(str(cas.simplify(log(x*y) - log(x) - log(y))) == "0", "both positive makes the log difference vanish")
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x^2))) == "log(x^2)", "clearing the assumption restores the conservative form")
+}
+test_positive_premise_enables_log_rewrite()
+
+// 与前提无关的恒等式不收紧
+test_unconditional_log_identities_kept() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(exp(log(x)))) == "x", "exp(log(x)) is x for x != 0")
+    assert(str(cas.simplify(log(exp(x)))) == "x", "log(exp(x)) stays the real-domain identity")
+    assert(str(cas.simplify(log(1))) == "0.0", "log(1) is 0")
+    assert(str(cas.simplify(log(EE))) == "1", "log(e) is 1")
+    cas.clearAssumptions()
+}
+test_unconditional_log_identities_kept()

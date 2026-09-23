@@ -210,6 +210,11 @@ namespace jc {
     // 这是 D3 保守侧的判据：只有明确可证，才允许 sqrt 的偶数幂 / 乘积拆分。
     bool isProvablyNonNegative(const SymExpr& e);
 
+    // 表达式是否可证【严格为正】（> 0）。【未知即 false】——
+    // 与上者分开：偶次幂只有 >= 0，不能用于 log 族重写（log(a^b) → b·log(a) 需 a > 0，
+    // a = 0 时右侧无定义）。用于 P3 的 log 守卫，前提与 isProvablyNonNegative 同口径。
+    bool isProvablyPositive(const SymExpr& e);
+
     // 作用域内的"已知非负表达式"事实（表达式级）。
     // 与变量级标签互补：换元上下文需要的是 "cosθ >= 0" 这类关于**表达式**的结论，
     // 标签只挂在变量名上，表达不了（这正是 P1 拦不住又不敢全局保守的原因）。

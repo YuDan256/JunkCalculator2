@@ -317,6 +317,25 @@ namespace helpers {
                 return true;
             }
         }
+        // ★ 字符串：按 code point 迭代，元素是长度 1 的字符串。
+        //   与 for-in / spreadPositional / charAt 同一套语义（非 ASCII 用 utf8::substring 切）。
+        //   放在这里让所有依赖 iterateIterable 的内建（map/filter/reduce/any/all/countIf/
+        //   groupBy/indexOf/count/join…）一次性获得字符串支持。
+        if (iterable.isString()) {
+            ObjString* objStr = iterable.asObjString();
+            const std::string& str = objStr->str;
+            if (objStr->isAscii) {
+                for (char ch : str) {
+                    if (!callback(Value(std::string(1, ch)))) break;
+                }
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t ci = 0; ci < len; ++ci) {
+                    if (!callback(Value(utf8::substring(str, ci, 1, false)))) break;
+                }
+            }
+            return true;
+        }
         return false;
     }
 

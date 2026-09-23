@@ -3450,6 +3450,9 @@ void BuiltinRegistry::registerListConversion() {
 
     reg("toArray", { 1 }, [this](const std::vector<Value>& args) -> Value {
         Value arg = args[0];
+        // 字符串不走迭代路径：本函数做数值数组化，字符→数字没有既定语义。
+        // （iterateIterable 现在认识字符串，不显式挡住就会改成 asFloat 抛错，错误信息退化。）
+        if (arg.isString()) JC2_THROW(TypeError, "expects a List or Iterable.");
         std::vector<double> flat;
         if (helpers::iterateIterable(arg, [&](const Value& nextVal) {
             flat.push_back(nextVal.asFloat());
@@ -4005,6 +4008,29 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!callableAcceptsArgCount(f, 1)) JC2_THROW(RuntimeError, "filter() requires a single-parameter function.");
 
         Value iterable = argList;
+        // ★ 字符串：过滤结果仍是字符串（与 reverse 一致的字符串语义）。
+        //   必须放在通用迭代路径之前 —— 否则会被 iterateIterable 的 list 结果抢先。
+        if (iterable.isString()) {
+            ObjString* objStr = iterable.asObjString();
+            const std::string& str = objStr->str;
+            std::string kept;
+            if (objStr->isAscii) {
+                for (char ch : str) {
+                    Value cv(std::string(1, ch));
+                    GcValueGuard cvGuard(cv);
+                    if (safeCallValue(f, { cv }).truthy()) kept.push_back(ch);
+                }
+            } else {
+                size_t len = objStr->charLength;
+                for (size_t ci = 0; ci < len; ++ci) {
+                    std::string cs = utf8::substring(str, ci, 1, false);
+                    Value cv(cs);
+                    GcValueGuard cvGuard(cv);
+                    if (safeCallValue(f, { cv }).truthy()) kept += cs;
+                }
+            }
+            return Value(kept);
+        }
         if (iterable.isObjType(ObjType::SET)) {
             ObjSet* setResult = GcHeap::get().allocate<ObjSet>();
             GcObjGuard setGuard(setResult);
@@ -4233,6 +4259,26 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto sortCore = [this](const Value& argList, const Value& cmp) -> Value {
         Value arg = argList;
+        // ★ 字符串：排序后仍返回字符串（与 reverse 一致）。
+        //   摊成字符 list（GcObjGuard 护住全部元素）复用既有 list 排序，再拼回字符串。
+        if (arg.isString()) {
+            ObjList* chars = GcHeap::get().allocate<ObjList>();
+            GcObjGuard charsGuard(chars);
+            helpers::iterateIterable(arg, [&](const Value& ch) { chars->vec.push_back(ch); return true; });
+            if (!cmp.isNone()) {
+                if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sort() comparator must be a 2-parameter function.");
+                std::stable_sort(chars->vec.begin(), chars->vec.end(), [&](const Value& a, const Value& b) {
+                    return safeCallValue(cmp, { a, b }).truthy();
+                });
+            } else {
+                std::stable_sort(chars->vec.begin(), chars->vec.end(), [](const Value& a, const Value& b) {
+                    return helpers::checkLess(a, b);
+                });
+            }
+            std::string out;
+            for (const auto& v : chars->vec) out += v.asString();
+            return Value(out);
+        }
         if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);

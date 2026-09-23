@@ -6367,7 +6367,7 @@
   "list_methods": {
     "join": {
       "signature": "v.join(delim)",
-      "desc": "Joins elements of a list or array into a single string, separated by 'delim'.",
+      "desc": "Joins elements of a list, array, or string into a single string, separated by 'delim'.",
       "examples": [
         "@[1, 2, 3].join(\"-\")"
       ]
@@ -6412,7 +6412,7 @@
     },
     "sort": {
       "signature": "v.sort([cmp])",
-      "desc": "Stably sorts a list or array using natural ordering. Optionally accepts a custom comparator function.",
+      "desc": "Stably sorts a list, array, or string using natural ordering. Optionally accepts a custom comparator function.",
       "examples": [
         "@[3, 1, 2].sort()"
       ]

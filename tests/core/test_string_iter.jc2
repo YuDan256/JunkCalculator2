@@ -1,0 +1,60 @@
+// 字符串的迭代与高阶方法。
+//
+// 背景：字符串迭代语义在语言里早已确立（for-in、s[i]、charAt、enumerate、reverse、
+// f(*s) 都按 UTF-8 code point，元素是长度 1 的字符串），但 map / filter / reduce /
+// any / all / countIf / groupBy / indexOf / count / join 在 stringProto 上注册了却没有
+// 字符串分支，调用必然抛 TypeError。helpers::iterateIterable 补上字符串分支后一次全通。
+// 返回类型：map → list；filter / sort → string（与已有的 reverse 一致）。
+
+test_string_iterates_by_code_point() = {
+    u = "中文a"
+    assert(len(u) == 3, "len counts code points")
+    assert(u[0] == "中", "indexing is code-point based")
+    assert(u.charAt(1) == "文", "charAt is code-point based")
+    assert(u.reverse() == "a文中", "reverse is code-point based")
+    seen = ""
+    for (c in u) { seen = seen + c }
+    assert(seen == u, "for-in walks code points")
+}
+test_string_iterates_by_code_point()
+
+test_string_higher_order_methods() = {
+    s = "cab"
+    assert(str(s.map((c) => c + "!")) == '@["c!", "a!", "b!"]', "map returns a list")
+    assert(s.filter((c) => c != "a") == "cb", "filter returns a string")
+    assert(s.reduce((acc, c) => acc + c, "") == "cab", "reduce folds over characters")
+    assert(s.any((c) => c == "a"), "any sees characters")
+    assert(s.all((c) => c != "z"), "all sees characters")
+    assert(s.countIf((c) => c == "a") == 1, "countIf counts characters")
+    assert(s.sort() == "abc", "sort returns a string")
+    assert(str(s.groupBy((c) => c)) == '{"c": @["c"], "a": @["a"], "b": @["b"]}', "groupBy keys on characters")
+}
+test_string_higher_order_methods()
+
+test_string_search_methods() = {
+    s = "cab"
+    assert(s.indexOf("a") == 1, "indexOf finds a character")
+    assert(s.indexOf("z") == -1, "indexOf returns -1 when absent")
+    assert(s.count("a") == 1, "count counts characters")
+    assert(s.join("-") == "c-a-b", "join uses characters as elements")
+}
+test_string_search_methods()
+
+test_string_methods_handle_utf8() = {
+    u = "中文a"
+    assert(str(u.map((c) => c)) == '@["中", "文", "a"]', "map splits by code point")
+    assert(u.filter((c) => c != "文") == "中a", "filter keeps code points")
+    assert(u.sort() == "a中文", "sort compares code points")
+    assert(u.count("中") == 1, "count works on non-ASCII")
+    assert(u.join("|") == "中|文|a", "join works on non-ASCII")
+}
+test_string_methods_handle_utf8()
+
+test_string_methods_handle_empty() = {
+    assert(str("".map((c) => c)) == "@[]", "map of an empty string is an empty list")
+    assert("".filter((c) => true) == "", "filter of an empty string is empty")
+    assert("".sort() == "", "sort of an empty string is empty")
+    assert("".join("-") == "", "join of an empty string is empty")
+    assert("".reduce((acc, c) => acc + c, "S") == "S", "reduce of an empty string returns the init value")
+}
+test_string_methods_handle_empty()

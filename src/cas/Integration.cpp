@@ -2444,6 +2444,7 @@ namespace jc {
                     SymExpr t = SymExpr::makeVar("_t");
                     SymExpr x_sub, dx_sub, t_back;
                     SymExpr branchNonNeg;    // 本分支所选换元成立的非负表达式（无则空）
+                    bool circularBranch = false;   // 是否走圆换元（p = sin t），用 circularSimp
                     bool valid = false;
                     
                     if (A_pos && C_pos) {
@@ -2464,6 +2465,7 @@ namespace jc {
                         // 该换元取 t ∈ [-π/2, π/2]（t_back = asin(...)），其上 cos t >= 0。
                         // 这是本策略【选定】的分支，声明出来才能让 sqrt(cos²t) → cos t 继续可用。
                         branchNonNeg = cos_t;
+                        circularBranch = true;
                         SymExpr asin_arg = simplifyCore(SymExpr::makeVar(var) / sqrtCA);
                         t_back = SymExpr::makeFunc("asin", std::vector<SymNode*>{asin_arg.ptr});
                         valid = true;
@@ -2473,6 +2475,8 @@ namespace jc {
                         SymExpr sinh_t(new SymFunc("sinh", std::vector<SymNode*>{t.ptr}));
                         x_sub = sqrtCA * cosh_t;
                         dx_sub = sqrtCA * sinh_t;
+                        // 该换元取 t >= 0（t_back = acosh(...)），其上 sinh t >= 0
+                        branchNonNeg = sinh_t;
                         SymExpr acosh_arg = simplifyCore(SymExpr::makeVar(var) / sqrtCA);
                         t_back = SymExpr::makeFunc("acosh", std::vector<SymNode*>{acosh_arg.ptr});
                         valid = true;
@@ -2514,7 +2518,41 @@ namespace jc {
                             return simplifyCore(res);
                         };
                         
+                        // 圆分支的对应物：双曲分支一直靠 applyRule 显式消根式，圆分支却没有，
+                        // 过去是通用化简器（不 sound）在顶。这里补上，且【只放行 cos 侧】：
+                        // 本换元取 t ∈ [-π/2, π/2] ⇒ cos t >= 0 成立（所以 √(cos²t) = cos t 可放行），
+                        // 而 sin t 在该区间符号不定（√(1-cos²t) = |sin t| ≠ sin t，【不放行】）。
+                        auto circularSimp = [&](const SymExpr& e) -> SymExpr {
+                            SymExpr _x = SymExpr::makeVar("_x");
+                            SymExpr _c = SymExpr::makeVar("_c");
+                            auto cfn = [](const std::string& name, const SymExpr& arg) {
+                                return SymExpr::makeFunc(name, std::vector<SymNode*>{arg.ptr});
+                            };
+                            SymExpr sin_x = cfn("sin", _x);
+                            SymExpr cos_x = cfn("cos", _x);
+                            SymExpr sin2 = sin_x ^ SymExpr(BigInt(2));
+                            SymExpr cos2 = cos_x ^ SymExpr(BigInt(2));
+
+                            SymExpr res = e;
+                            // 平方关系（恒等式，与分支无关）
+                            res = applyRule(res, sin2 + cos2, SymExpr(BigInt(1)));
+                            res = applyRule(res, SymExpr(BigInt(1)) - sin2, cos2);
+                            res = applyRule(res, SymExpr(BigInt(1)) - cos2, sin2);
+                            res = applyRule(res, _c * sin2 + _c * cos2, _c);
+                            res = applyRule(res, _c - _c * sin2, _c * cos2);
+                            res = applyRule(res, _c - _c * cos2, _c * sin2);
+
+                            // 根式关系（只放行 cos 侧，见上方说明）
+                            res = applyRule(res, (SymExpr(BigInt(1)) - sin2) ^ SymExpr(Fraction(1, 2)), cos_x);
+                            res = applyRule(res, cos2 ^ SymExpr(Fraction(1, 2)), cos_x);
+                            res = applyRule(res, (_c - _c * sin2) ^ SymExpr(Fraction(1, 2)), (_c ^ SymExpr(Fraction(1, 2))) * cos_x);
+                            res = applyRule(res, (_c * cos2) ^ SymExpr(Fraction(1, 2)), (_c ^ SymExpr(Fraction(1, 2))) * cos_x);
+
+                            return simplifyCore(res);
+                        };
+
                         subbed_var = hyperbolicSimp(subbed_var);
+                        if (circularBranch) subbed_var = circularSimp(subbed_var);
                         
                         if (auto int_var = doInteg(trigsimp(subbed_var), current_depth + 1)) {
                             if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "<- Trig Substitution Success" << std::endl;

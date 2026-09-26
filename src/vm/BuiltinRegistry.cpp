@@ -2117,7 +2117,9 @@ void BuiltinRegistry::registerSystemUtils() {
         // ★ 始终采用激进模式：先清掉 ANS 避免它充当隐形保护伞
         VM::activeVM->setGlobal("ANS", Value::none());
 
-        int freed = GcHeap::get().collectGarbage();
+        // 收敛到不动点：一趟 sweep 收不干净（refCount 滞后 + finalize 两阶段），
+        // 与 REPL 的 /gc 共用同一策略，避免两套口径。
+        int freed = collectGarbageToFixedPoint();
 
         return Value::fromInt32(freed);
         }, {});

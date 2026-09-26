@@ -1273,7 +1273,7 @@ int main(int argc, char* argv[]) {
             if (input == "/gc") {
                 jc::SymExpr::cleanupPool();
                 if (jc::VM::activeVM) jc::VM::activeVM->setGlobal("ANS", jc::Value::none());
-                int freed = jc::GcHeap::get().collectGarbage();
+                int freed = jc::collectGarbageToFixedPoint();
                 std::cout << "Garbage collected: " << freed << " object(s) freed.\n";
                 continue;
             }

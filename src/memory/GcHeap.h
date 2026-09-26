@@ -264,5 +264,23 @@ namespace jc {
         GcValueGuard& operator=(const GcValueGuard&) = delete;
     };
 
+    // 收敛到不动点：一趟 sweep 回收不完全 ——
+    //   ① 非容器对象按 refCount 保命（保护未加 GcValueGuard 的 C++ 局部 Value），而垃圾容器
+    //      是在 sweep 末尾才 clearTotal() 断开子引用，子对象的 refCount 到那时才归零，
+    //      只能在下一趟回收；
+    //   ② 带 finalize() 的实例两阶段回收（先 mark 保命、sweep 之后才执行 finalizer），
+    //      而 finalizer 体本身会分配新对象。
+    // 入口（REPL 的 /gc 与脚本的 sys.gc()）循环到某一趟 0 回收为止；上限 3 趟，
+    // 避免 finalizer 持续制造新垃圾时无界循环。GcHeap 本体的算法不变。
+    inline int collectGarbageToFixedPoint(int maxPasses = 3) {
+        int total = 0;
+        for (int i = 0; i < maxPasses; ++i) {
+            int freed = GcHeap::get().collectGarbage();
+            total += freed;
+            if (freed == 0) break;
+        }
+        return total;
+    }
+
 } // namespace jc
 #endif // JC2_GCHEAP_H

@@ -17,7 +17,7 @@
       "    /set <switch> on | off Unified switch: jit debug ir hir mc disasm profile color none silent",
       "    /jit on | off          Alias for /set jit (JIT compilation)",
       "    /debug on | off        Alias for /set debug (global step-debugger)",
-      "    /gc                    Force a Mark-and-Sweep garbage collection cycle",
+      "    /gc                    Force a Mark-and-Sweep garbage collection",
       "    /gcinfo                Show current Garbage Collector tracking status",
       "",
       "  Workspace & Scripts",
@@ -1614,7 +1614,7 @@
       "      /set <switch> on | off  Unified switch: jit debug ir hir mc disasm profile color none silent",
       "      /jit on | off           Alias for /set jit (JIT compilation)",
       "      /debug on | off         Alias for /set debug (global step-debugger)",
-      "      /gc                     Force a Mark-and-Sweep garbage collection cycle",
+      "      /gc                     Force a Mark-and-Sweep garbage collection",
       "      /gcinfo                 Show current Garbage Collector tracking status",
       "",
       "  Interactive Debugger & Profiler",
@@ -6785,7 +6785,7 @@
   "sys_methods": {
     "gc": {
       "signature": "sys.gc()",
-      "desc": "Forces a Garbage Collection cycle (clears 'ANS' first). Returns the number of freed objects.",
+      "desc": "Forces a Garbage Collection (clears 'ANS' first). Returns the number of freed objects.",
       "examples": [
         "import sys; sys.gc()"
       ]

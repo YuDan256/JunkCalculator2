@@ -1,0 +1,35 @@
+// 原型方法的尾部可选形参必须按 uninit 补位（此前直接读 args[i] 越界 → UB）：
+// substr(2) 曾返回空串、slice(1) 曾返回空列表、enumerate() 曾取到垃圾起始值。
+// 多 arity 的全局 native（ones/zeros/round…）靠 args.size() 区分重载，不能被补位影响。
+
+test_optional_args_padded_string() = {
+    assert("abcdef".substr(2) == "cdef", "substr(start) must return the tail")
+    assert("abcdef".substr(2, 3) == "cde", "substr(start, length)")
+    assert("abcdef".substr(-2) == "ef", "substr accepts a negative start")
+    assert("abcdef".find("c") == 2, "find(sub)")
+    assert("abcabc".find("b", 2) == 4, "find(sub, pos)")
+    assert("abcabc".find("z") == -1, "find returns -1 when absent")
+}
+test_optional_args_padded_string()
+
+test_optional_args_padded_containers() = {
+    L = @[1, 2, 3, 4]
+    assert(L.slice(1) == @[2, 3, 4], "slice(start)")
+    assert(L.slice(1, 3) == @[2, 3], "slice(start, end)")
+    assert(L.slice(-2) == @[3, 4], "slice accepts a negative start")
+    assert(str("ab".enumerate()) == '@[@[0, "a"], @[1, "b"]]', "enumerate() starts at 0")
+    assert(str("ab".enumerate(5)) == '@[@[5, "a"], @[6, "b"]]', "enumerate(start)")
+    assert(@[1, 2, 3].reduce((a, b) => a + b) == 6, "reduce(f) without init")
+    assert(@[1, 2, 3].reduce((a, b) => a + b, 10) == 16, "reduce(f, init)")
+    assert(@[3, 1, 2].sort() == @[1, 2, 3], "sort() without comparator")
+    assert(@[3, 1, 2].sort((a, b) => a > b) == @[3, 2, 1], "sort(cmp)")
+}
+test_optional_args_padded_containers()
+
+test_multi_arity_globals_keep_args_size_dispatch() = {
+    assert(ones(2).rows() == 2 && ones(2).cols() == 2, "ones(n) is n by n")
+    assert(ones(1, 3).rows() == 1 && ones(1, 3).cols() == 3, "ones(r, c)")
+    assert(zeros(2).rows() == 2, "zeros(n)")
+    assert(round(1.2345, 2) == 1.23, "round(x, digits)")
+}
+test_multi_arity_globals_keep_args_size_dispatch()

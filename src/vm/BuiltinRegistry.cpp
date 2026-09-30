@@ -328,6 +328,7 @@ void BuiltinRegistry::regMethod(ObjClass* proto, const std::string& name, std::v
     closure->kwargsName = std::move(kwargsName);
     closure->setKwargDefaultsFromCount(kwargDefaultCount);
     closure->kwargDefaultValueTexts = std::move(kwargDefaultValueTexts);
+    closure->padOptionals = true;   // 原型方法：未传的尾部可选形参按 uninit 补位
     for (int i = 0; i < defaultCount; ++i) {
         closure->defaultValues.push_back(Value::uninit());
     }
@@ -2832,7 +2833,7 @@ void BuiltinRegistry::registerArrayFunctions() {
             if (start < 0) start = n + start;
             start = std::max(0, std::min(start, n));
             end = n;
-            if (args.size() == 2) {
+            if (!args[1].isUninit()) {
                 end = static_cast<int>(std::round(args[1].asFloat()));
                 if (end < 0) end = n + end;
                 end = std::max(0, std::min(end, n));
@@ -3112,7 +3113,7 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto charPolyFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        std::string var = args.size() > 0 ? (args[0].isString() ? args[0].asString() : args[0].toString()) : "_lambda";
+        std::string var = !args[0].isUninit() ? (args[0].isString() ? args[0].asString() : args[0].toString()) : "_lambda";
         if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.charPoly(var));
         return Value(self.asSymMatrix().charPoly(var));
     };
@@ -3579,6 +3580,7 @@ void BuiltinRegistry::registerListConversion() {
         if (!proto) return;
         auto closure = GcHeap::get().allocate<ObjClosure>(paramNames, std::vector<bool>(paramNames.size(), false), name, nullptr);
         closure->nativeFn = std::make_any<NativeCallable>(fn);
+        closure->padOptionals = true;   // 原型方法：可选形参按 uninit 补位（见 ObjClosure::padOptionalArgs）
         for (int i = 0; i < defaultCount; ++i) {
             closure->defaultValues.push_back(Value::uninit());
         }
@@ -3587,7 +3589,7 @@ void BuiltinRegistry::registerListConversion() {
 
     auto enumerateFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        int start = args.size() == 1 ? static_cast<int>(std::round(args[0].asFloat())) : 0;
+        int start = !args[0].isUninit() ? static_cast<int>(std::round(args[0].asFloat())) : 0;
         ObjList* result = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(result);
         
@@ -4155,7 +4157,7 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto reduceFn = [reduceCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        Value initVal = args.size() == 2 ? args[1] : Value::none();
+        Value initVal = !args[1].isUninit() ? args[1] : Value::none();
         return reduceCore(self, args[0], initVal);
     };
     regMethod(VM::activeVM->listProto, "reduce", {"f", "init"}, reduceFn, 1);
@@ -4318,7 +4320,7 @@ void BuiltinRegistry::registerHigherOrder() {
 
     auto sortFn = [sortCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        Value cmp = args.size() == 1 ? args[0] : Value::none();
+        Value cmp = !args[0].isUninit() ? args[0] : Value::none();
         return sortCore(self, cmp);
     };
     regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn, 1);
@@ -4430,7 +4432,7 @@ void BuiltinRegistry::registerHigherOrder() {
     };
     auto dictReduceFn = [dictReduceCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        Value initVal = args.size() == 2 ? args[1] : Value::none();
+        Value initVal = !args[1].isUninit() ? args[1] : Value::none();
         return dictReduceCore(self, args[0], initVal);
     };
     regMethod(VM::activeVM->dictProto, "reduce", {"f", "init"}, dictReduceFn, 1);

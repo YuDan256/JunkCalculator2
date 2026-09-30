@@ -2013,6 +2013,7 @@ namespace jc {
         std::vector<std::string> kwargDefaultValueTexts; // ★ 仅关键字默认值文本（与 kwargHasDefault 的 true 对齐）
         bool isTokenMacro = false; // ★ 新增：标记是否为 Token 宏
         bool is_local = false; // ★ 新增：标记是否为私有方法
+        bool padOptionals = false; // ★ regMethod 注册的原型方法：调用前把未传的尾部可选形参补成 uninit
 
         Value boundSelf;
         Value boundClass;
@@ -2026,6 +2027,16 @@ namespace jc {
         int maxArgs() const { 
             int count = static_cast<int>(paramNames.size());
             return count;
+        }
+
+        // ★ 补齐未传的尾部可选形参：native 用 args[i].isUninit() 判定"该参数没传"
+        //   （defaultValues 由 regMethod 的 defaultCount 写入）。不补则调用方读 args[i]
+        //   会越界（UB）——实测 substr(2) 返回空串、find(sub) 侥幸正确。
+        //   只对 regMethod 注册的原型方法生效（padOptionals）：reg()/regModule() 的多 arity
+        //   native（ones/zeros/cas.integ…）靠 args.size() 区分重载，补位会改变判定。
+        void padOptionalArgs(std::vector<Value>& args) const {
+            if (!padOptionals || defaultValues.empty()) return;
+            while (args.size() < paramNames.size()) args.push_back(Value::uninit());
         }
         bool acceptsArgCount(int n) const { return n >= minArgs() && (!restName.empty() || n <= maxArgs()); }
         bool hasRef() const { for (bool b : isRef) if (b) return true; return false; }

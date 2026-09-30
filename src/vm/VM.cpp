@@ -1491,6 +1491,9 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 }
             }
 
+            // 注意：普通全局 native 的 args 不补位 —— reg() 的多 arity native（ones/zeros/
+            // randmat/seq…）用 args.size() 区分重载，补位会改变判定。只有原型方法
+            // （regMethod）声明了固定可选形参，在方法调用路径里补（见 padOptionalArgs）。
             helpers::nativeSelfStack.push_back(closure->boundSelf);
             helpers::nativeClassStack.push_back(closure->boundClass);
             pendingCallRefs.clear();
@@ -1637,6 +1640,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                             std::to_string(totalArgc) + ".");
                     }
                 }
+                initMethod->padOptionalArgs(args);
+
                 helpers::nativeSelfStack.push_back(Value(instance));
                 helpers::nativeClassStack.push_back(Value(cls));
                 pendingCallRefs.clear();
@@ -1777,6 +1782,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                         args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
                     }
                 }
+
+                method->padOptionalArgs(args);
 
                 helpers::nativeSelfStack.push_back(callee);
                 helpers::nativeClassStack.push_back(Value(owningClass));
@@ -2508,6 +2515,8 @@ invoke_method:
             }
         }
 
+        method->padOptionalArgs(args);
+
         helpers::nativeSelfStack.push_back(obj);
         helpers::nativeClassStack.push_back(owningClass ? Value(owningClass) : Value::none());
         pendingCallRefs.clear();
@@ -2672,6 +2681,8 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
                     std::to_string(totalArgc) + ".");
             }
         }
+
+        method->padOptionalArgs(args);
 
         helpers::nativeSelfStack.push_back(Value(inst));
         helpers::nativeClassStack.push_back(Value(owningClass));

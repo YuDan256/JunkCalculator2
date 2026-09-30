@@ -74,3 +74,16 @@ test_typed_errors() = {
     assert(caught, "components() requires an undirected graph")
 }
 test_typed_errors()
+
+test_internal_pair_normalizer_is_private() = {
+    r = discrete.Relation(@{1, 2}, @[@[1, 2]])
+    caught = false
+    try {
+        r._mp(1, 2)
+    } catch (e) {
+        caught = "Cannot invoke method" in e.message
+    }
+    assert(caught, "_mp is private to Relation")
+    assert(r(1, 2), "public membership check still works")
+}
+test_internal_pair_normalizer_is_private()

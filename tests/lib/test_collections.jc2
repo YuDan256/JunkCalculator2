@@ -94,3 +94,33 @@ test_empty_structure_errors_are_typed() = {
     assert(caught, "empty Queue dequeue raises a typed IndexError")
 }
 test_empty_structure_errors_are_typed()
+
+test_internals_are_not_exported() = {
+    assert(!("TreeNode" in collections), "TreeNode is an internal node type")
+
+    caught = false
+    try {
+        x = collections.TreeNode
+    } catch (e) {
+        caught = "not found" in e.message
+    }
+    assert(caught, "touching the internal node type must fail")
+
+    // 内部实现方法标了 local：外部拿不到
+    caught = false
+    try {
+        collections.PriorityQueue()._siftUp(0)
+    } catch (e) {
+        caught = "Cannot invoke method" in e.message
+    }
+    assert(caught, "_siftUp is private")
+
+    caught = false
+    try {
+        collections.BST()._inorderTraversal(none, @[])
+    } catch (e) {
+        caught = "Cannot invoke method" in e.message
+    }
+    assert(caught, "_inorderTraversal is private")
+}
+test_internals_are_not_exported()

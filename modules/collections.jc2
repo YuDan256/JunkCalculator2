@@ -175,7 +175,7 @@ class PriorityQueue {
     isEmpty() -> bool = return self.data.len() == 0
     size() -> int     = return self.data.len()
 
-    _siftUp(idx: int | float) = {
+    local _siftUp(idx: int | float) = {
         idx = round(idx)
         while (idx > 0) {
             parent = idiv(idx - 1, 2)
@@ -188,7 +188,7 @@ class PriorityQueue {
         }
     }
     
-    _siftDown(idx: int | float) = {
+    local _siftDown(idx: int | float) = {
         idx = round(idx)
         n = self.data.len()
         while (true) {
@@ -212,7 +212,7 @@ class PriorityQueue {
 
 // ─── TreeNode & Binary Search Tree (BST) ──────────────────────
 
-class TreeNode {
+local class TreeNode {
     init(val: any) = {
         self.val = val
         self.left = none
@@ -236,7 +236,7 @@ class BST {
         return self
     }
     
-    _insertNode(node: TreeNode, val: any) = {
+    local _insertNode(node: TreeNode, val: any) = {
         if (val < node.val) {
             if (node.left == none) { node.left = TreeNode(val); self._size += 1 } 
             else { self._insertNode(node.left, val) }
@@ -264,7 +264,7 @@ class BST {
         return result
     }
     
-    _inorderTraversal(node: any, res: list) = {
+    local _inorderTraversal(node: any, res: list) = {
         if (node != none) {
             self._inorderTraversal(node.left, res)
             res.push(node.val)

@@ -23,9 +23,9 @@ class HttpResponse {
     __str__() -> string = return f"<HttpResponse [{self.status}] body_len={self.body.len()}>"
 }
 
-// ─── Internal Parsers ─────────────────────────────────────────
+// ─── Internal Parsers (local: 不导出) ──────────────────────────
 
-namespace _Http {
+local namespace _Http {
     parse_url(url_str: string) -> dict = {
         u = url_str
         if (u.startsWith("https://")) {

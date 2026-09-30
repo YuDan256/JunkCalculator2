@@ -180,7 +180,7 @@ class Relation {
         }
     }
 
-    _mp(a: any, b: any) -> any = return copy(@[a, b], true)
+    local _mp(a: any, b: any) -> any = return copy(@[a, b], true)
 
     // ── Public Facing API (Safe CRUD) ──
 

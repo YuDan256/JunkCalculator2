@@ -58,3 +58,28 @@ test_anonymous_namespace_and_self_ref() = {
     assert(Factory.dynamic_field == 100, "Self-reference mutation failed")
 }
 test_anonymous_namespace_and_self_ref()
+
+// 命名空间字段未命中 → 兜底到同名全局内建函数时，接收者不得占实参位。
+// 回归：cas.sin(10) 曾调用 sin(<namespace cas>, 10) → args[0].asFloat() 抛
+// "Expected a real number."；只有该全局名被物化后（先写过 sin(10)）才碰巧走对分支。
+import cas
+
+test_namespace_falls_back_to_global_builtin() = {
+    assert(cas.sin(10) == sin(10), "cas.sin(10) must match the global sin(10)")
+    assert(cas.cbrt(27) == 3, "cas.cbrt(27) must be 3")
+    assert(cas.asinh(0) == 0, "cas.asinh(0) must be 0")
+    assert(cas.trunc(2.7) == 2, "cas.trunc(2.7) must be 2")
+    assert(cas.abs(-3) == 3, "cas.abs(-3) must be 3")
+}
+test_namespace_falls_back_to_global_builtin()
+
+test_namespace_builtin_fallback_keeps_arity_check() = {
+    caught = false
+    try {
+        cas.sin()
+    } catch (e) {
+        caught = "expects 1 arguments" in e.message
+    }
+    assert(caught, "the fallback still enforces arity")
+}
+test_namespace_builtin_fallback_keeps_arity_check()

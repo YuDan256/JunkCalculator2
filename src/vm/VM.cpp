@@ -2365,16 +2365,10 @@ invoke_method:
 
         auto nIt = nativeBuiltins.find(methodName);
         if (nIt != nativeBuiltins.end()) {
-            if (kwArgc > 0) {
-                Value closureVal = getBuiltinClosure(methodName);
-                Value recv = obj;
-                registers[currentFrame->registerBase + a] = closureVal;
-                execCall(a, argc, kwArgc, a, isTailCall, recv);
-                return;
-            } else {
+            // 显式实参的 arity 预检（错误信息与旧路径一致；关键字实参交给闭包自身检查）
+            if (kwArgc == 0) {
                 auto ait = builtinArity.find(methodName);
-                int totalArgs = argc;
-                if (ait != builtinArity.end() && !ait->second.empty() && ait->second.find(totalArgs) == ait->second.end()) {
+                if (ait != builtinArity.end() && !ait->second.empty() && ait->second.find(argc) == ait->second.end()) {
                     std::string expected;
                     for (auto aIt = ait->second.begin(); aIt != ait->second.end(); ++aIt) {
                         if (aIt != ait->second.begin()) expected += " or ";
@@ -2382,19 +2376,17 @@ invoke_method:
                     }
                     JC2_THROW(RuntimeError, "Function '" + methodName + "' expects " + expected + " arguments, got " + std::to_string(argc) + ".");
                 }
+            }
 
-                std::vector<Value> argsVec;
-                argsVec.reserve(totalArgs);
-                argsVec.push_back(obj);
-                for (int i = 0; i < argc; ++i) {
-                    argsVec.push_back(registers[currentFrame->registerBase + a + 1 + i]);
-                }
-                pendingCallRefs.clear();
-                
-                ic.cachedGlobalSlot = -4;
-                ic.cachedNativeFn = std::make_any<NativeCallable>(nIt->second);
-                
-                registers[currentFrame->registerBase + a] = nIt->second(argsVec);
+            // ★ 接收者进隐藏 self 通道，不占实参位（与上面「已物化全局」和「关键字实参」两条分支一致）。
+            //   旧代码在这里把接收者 push 成第 0 个实参，于是 `cas.sin(10)`（cas 无 sin 字段，
+            //   落到本兜底）会调用 sin(<namespace cas>, 10) → args[0].asFloat() 抛
+            //   "Expected a real number."；而 arity 预检只数显式实参，两处口径本就矛盾。
+            {
+                Value closureVal = getBuiltinClosure(methodName);
+                Value recv = obj;
+                registers[currentFrame->registerBase + a] = closureVal;
+                execCall(a, argc, kwArgc, a, isTailCall, recv);
                 return;
             }
         }

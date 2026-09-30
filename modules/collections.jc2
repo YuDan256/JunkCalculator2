@@ -17,12 +17,12 @@ class Stack {
     }
     
     pop() = {
-        if (self.isEmpty()) throw "IndexError: pop from empty Stack"
+        if (self.isEmpty()) throw Exception("IndexError", "pop from empty Stack")
         return self.data.pop()
     }
     
     peek() = {
-        if (self.isEmpty()) throw "IndexError: peek from empty Stack"
+        if (self.isEmpty()) throw Exception("IndexError", "peek from empty Stack")
         return self.data[-1]
     }
     
@@ -45,12 +45,12 @@ class Queue {
     }
     
     dequeue() = {
-        if (self.isEmpty()) throw "IndexError: dequeue from empty Queue"
+        if (self.isEmpty()) throw Exception("IndexError", "dequeue from empty Queue")
         return self.data.shift()
     }
     
     peek() = {
-        if (self.isEmpty()) throw "IndexError: peek from empty Queue"
+        if (self.isEmpty()) throw Exception("IndexError", "peek from empty Queue")
         return self.data[0]
     }
     
@@ -71,12 +71,12 @@ class Deque {
     pushLeft(item: any)  = { self.data.prepend(item); return self }
     
     popRight() = {
-        if (self.isEmpty()) throw "IndexError: popRight from empty Deque"
+        if (self.isEmpty()) throw Exception("IndexError", "popRight from empty Deque")
         return self.data.pop()
     }
     
     popLeft() = {
-        if (self.isEmpty()) throw "IndexError: popLeft from empty Deque"
+        if (self.isEmpty()) throw Exception("IndexError", "popLeft from empty Deque")
         return self.data.shift()
     }
     
@@ -90,19 +90,19 @@ class Deque {
 
 class DefaultDict {
     init(defaultFactory: function) = {
-        self.data = dict()
+        self.data = {}
         self.factory = defaultFactory
     }
     
     __getitem__(key: any) = {
-        if (!self.data.hasKey(key)) {
+        if (!(key in self.data)) {
             self.data[key] = self.factory()
         }
         return self.data[key]
     }
     
     __setitem__(key: any, val: any) = { self.data[key] = val }
-    __contains__(key: any) -> bool  = return self.data.hasKey(key)
+    __contains__(key: any) -> bool  = return (key in self.data)
     
     keys() -> list   = return self.data.keys()
     values() -> list = return self.data.values()
@@ -113,23 +113,23 @@ class DefaultDict {
 
 class Counter {
     init(iterable: any = none) = {
-        self.data = dict()
+        self.data = {}
         if (iterable != none) self.update(iterable)
     }
     
     update(iterable: any) = {
         for (item in iterable) {
-            if (self.data.hasKey(item)) { self.data[item] += 1 } 
+            if ((item in self.data)) { self.data[item] += 1 } 
             else { self.data[item] = 1 }
         }
         return self
     }
     
     get(key: any) -> int = {
-        return self.data.hasKey(key) ? self.data[key] : 0
+        return (key in self.data) ? self.data[key] : 0
     }
     
-    mostCommon(n: int | double = 1) -> list = {
+    mostCommon(n: int | float = 1) -> list = {
         n = round(n)
         L = @[]
         for (@[k, v] in self.data) L.push(@[k, v])
@@ -155,7 +155,7 @@ class PriorityQueue {
     
     pop() = {
         n = self.data.len()
-        if (n == 0) throw "IndexError: pop from empty PriorityQueue"
+        if (n == 0) throw Exception("IndexError", "pop from empty PriorityQueue")
         
         result = self.data[0]
         last = self.data.pop()
@@ -168,14 +168,14 @@ class PriorityQueue {
     }
     
     peek() = {
-        if (self.isEmpty()) throw "IndexError: peek from empty PriorityQueue"
+        if (self.isEmpty()) throw Exception("IndexError", "peek from empty PriorityQueue")
         return self.data[0]
     }
     
     isEmpty() -> bool = return self.data.len() == 0
     size() -> int     = return self.data.len()
 
-    _siftUp(idx: int | double) = {
+    _siftUp(idx: int | float) = {
         idx = round(idx)
         while (idx > 0) {
             parent = idiv(idx - 1, 2)
@@ -188,7 +188,7 @@ class PriorityQueue {
         }
     }
     
-    _siftDown(idx: int | double) = {
+    _siftDown(idx: int | float) = {
         idx = round(idx)
         n = self.data.len()
         while (true) {
@@ -300,7 +300,7 @@ try {
   Hash Structures
   ──────────────────────
     DefaultDict(factory)      Dict that generates default values for missing keys.
-                              Usage: d = DefaultDict(() => list())
+                              Usage: d = DefaultDict(() => @[])
 
     Counter(iterable)         Frequency map for counting occurrences.
                               Methods: update(iter), get(key), mostCommon(n)
@@ -314,4 +314,4 @@ try {
     BST()                     Binary Search Tree. (Ignores duplicates).
                               Methods: insert(x), contains(x), size(), inorder()
 )DOC")
-} catch (_) {}
+}

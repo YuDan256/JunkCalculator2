@@ -8,7 +8,7 @@ const local import socket
 // ─── Socket Object (Client) ───────────────────────────────────
 
 class TcpSocket {
-    init(host: string, port: int | double) = {
+    init(host: string, port: int | float) = {
         self.host = host
         self.port = round(port)
         self.sock = none
@@ -27,14 +27,14 @@ class TcpSocket {
     }
 
     send(text: string) -> TcpSocket = {
-        if (self.sock is none) throw "Network Error: Socket is not connected!"
+        if (self.sock is none) throw Exception("NetworkError", "Socket is not connected!")
         self.sock.send(text)
         return self
     }
 
-    recv(max_bytes: int | double = 4096) -> string = {
+    recv(max_bytes: int | float = 4096) -> string = {
         max_bytes = round(max_bytes)
-        if (self.sock is none) throw "Network Error: Socket is not connected!"
+        if (self.sock is none) throw Exception("NetworkError", "Socket is not connected!")
         return self.sock.recv(max_bytes)
     }
 
@@ -44,7 +44,7 @@ class TcpSocket {
 // ─── Server Object (Daemon) ───────────────────────────────────
 
 class TcpServer {
-    init(host: string, port: int | double) = {
+    init(host: string, port: int | float) = {
         self.host = host
         self.port = round(port)
         self.sock = none
@@ -56,7 +56,7 @@ class TcpServer {
     }
 
     accept() -> TcpSocket = {
-        if (self.sock is none) throw "Network Error: TCP Server is not bound to a port!"
+        if (self.sock is none) throw Exception("NetworkError", "TCP Server is not bound to a port!")
         native_client = self.sock.accept()
         
         client = TcpSocket(self.host, self.port)
@@ -111,4 +111,4 @@ try {
         Blocks and waits until data is received. Returns an EMPTY STRING ("") 
         if the remote server closed the connection.
 )DOC")
-} catch (_) {}
+}

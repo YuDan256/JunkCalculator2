@@ -43,12 +43,15 @@ class GameEngine {
                 ev = self.win.pollEvent()
                 if (ev is none) break
                 
-                if (ev.type == "keydown")   self.onKeyDown(ev.key)
-                if (ev.type == "keyup")     self.onKeyUp(ev.key)
-                if (ev.type == "mousedown") self.onMouseDown(ev.x, ev.y, int(ev.button))
-                if (ev.type == "mouseup")   self.onMouseUp(ev.x, ev.y, int(ev.button))
-                if (ev.type == "mousemove") self.onMouseMove(ev.x, ev.y)
-                if (ev.type == "close")     self.quit()
+                match(ev.type) {
+                    "keydown"   => self.onKeyDown(ev.key)
+                    "keyup"     => self.onKeyUp(ev.key)
+                    "mousedown" => self.onMouseDown(ev.x, ev.y, int(ev.button))
+                    "mouseup"   => self.onMouseUp(ev.x, ev.y, int(ev.button))
+                    "mousemove" => self.onMouseMove(ev.x, ev.y)
+                    "close"     => self.quit()
+                    _           => none
+                }
             }
 
             current_time = sys.clock()
@@ -120,4 +123,4 @@ try {
     self.setBackground(color)  Sets the auto-clear background color.
     self.quit()                Safely terminates the game loop.
 )DOC")
-} catch (_) {}
+}

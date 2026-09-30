@@ -1,0 +1,76 @@
+// discrete 标准库冒烟：组合数学 / 命题逻辑 / 关系 / 图 / 真值表 + 类型化错误。
+
+import discrete
+
+test_permutations_and_combinations() = {
+    assert(str(discrete.permutations(@[1, 2])) == "@[@[1, 2], @[2, 1]]", "permutations of 2")
+    assert(discrete.permutations(@[1, 2, 3]).len() == 6, "permutations of 3")
+    assert(str(discrete.combinations(@[1, 2, 3], 2)) == "@[@[1, 2], @[1, 3], @[2, 3]]", "combinations")
+    assert(discrete.combinations(@[1, 2], 0) == @[@[]], "k = 0 yields the empty pick")
+}
+test_permutations_and_combinations()
+
+test_propositional_logic() = {
+    p = discrete.Var("p")
+    q = discrete.Var("q")
+    andpq = p & q
+    assert(str(andpq) == "(p & q)", "expression printing")
+    assert(andpq.vars() == @{"p", "q"}, "vars() collects symbols")
+    assert(andpq.eval({"p": 1, "q": 1}) == 1, "eval true case")
+    assert(andpq.eval({"p": 1, "q": 0}) == 0, "eval false case")
+    assert((p | (-p)).isTautology(), "p | !p is a tautology")
+    assert((p & (-p)).isContradiction(), "p & !p is a contradiction")
+    assert((p | q).table().len() == 4, "table() enumerates 2^n rows")
+}
+test_propositional_logic()
+
+test_relation() = {
+    r = discrete.Relation(@{1, 2, 3}, @[@[1, 2], @[2, 3]])
+    assert(str(r) == "Relation(|S|=3, |R|=2)", "relation __str__")
+    assert(!r.isReflexive(), "not reflexive")
+    assert(!r.isTransitive(), "not transitive as given")
+    assert(str(r.transitiveClosure()) == "Relation(|S|=3, |R|=3)", "transitive closure grows")
+    assert(r(1, 2), "call syntax tests membership")
+    assert(!r.hasPair(2, 1), "missing pair")
+}
+test_relation()
+
+test_graph() = {
+    g = discrete.Graph()
+    g.addVertex("a")
+    g.addVertex("b")
+    g.addEdge("a", "b", 5)
+    assert(g.hasVertex("a") && !g.hasVertex("c"), "vertex membership")
+    assert(g.hasEdge("a", "b") && !g.hasEdge("b", "a"), "directed edge")
+    assert(g.getWeight("a", "b") == 5, "edge weight")
+    assert(g.topSort() == @["a", "b"], "topological order")
+    assert(g.vertices() == @["a", "b"], "vertices()")
+}
+test_graph()
+
+test_truth_table() = {
+    tt = discrete.truthTable(2, (a, b) => a & b)
+    assert(tt.len() == 4, "4 rows for 2 variables")
+    assert(tt[3]["output"] == 1 && tt[0]["output"] == 0, "conjunction column")
+    assert(tt[3]["inputs"] == @[1, 1], "input column")
+}
+test_truth_table()
+
+test_typed_errors() = {
+    caught = false
+    try {
+        discrete.Relation(@{1, 2}, @[@[1, 2]]).equivalenceClasses()
+    } catch (e) {
+        caught = e.type == "RelationError"
+    }
+    assert(caught, "equivalenceClasses requires an equivalence relation")
+
+    caught = false
+    try {
+        discrete.Graph(true).components()
+    } catch (e) {
+        caught = e.type == "GraphError"
+    }
+    assert(caught, "components() requires an undirected graph")
+}
+test_typed_errors()

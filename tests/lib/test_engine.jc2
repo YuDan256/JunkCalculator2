@@ -1,0 +1,38 @@
+// engine 标准库冒烟：不打开窗口（不调用 super.init），只验证导入、继承与事件回调分派。
+
+import engine
+
+class ProbeEngine extends engine.GameEngine {
+    init() = {
+        self.running = true   // 不调 super.init，避免创建原生窗口
+        self.log = @[]
+    }
+    update(dt)     = { self.log.push("update") }
+    draw(im)       = { self.log.push("draw") }
+    onKeyDown(key) = { self.log.push("key:" + key) }
+    onKeyUp(key)   = { self.log.push("keyup:" + key) }
+    onMouseDown(x, y, btn) = { self.log.push("down:" + str(btn)) }
+    onMouseUp(x, y, btn)   = { self.log.push("up:" + str(btn)) }
+    onMouseMove(x, y)      = { self.log.push("move") }
+}
+
+test_engine_subclass_dispatches() = {
+    g = ProbeEngine()
+    assert(g.running, "subclass init ran")
+    g.update(0.016)
+    g.draw(none)
+    g.onKeyDown("W")
+    g.onKeyUp("W")
+    g.onMouseDown(1, 2, 0)
+    g.onMouseUp(1, 2, 1)
+    g.onMouseMove(3, 4)
+    assert(g.log == @["update", "draw", "key:W", "keyup:W", "down:0", "up:1", "move"], "virtual callbacks are overridable")
+}
+test_engine_subclass_dispatches()
+
+test_engine_quit_flag() = {
+    g = ProbeEngine()
+    g.quit()
+    assert(!g.running, "quit() clears the running flag")
+}
+test_engine_quit_flag()

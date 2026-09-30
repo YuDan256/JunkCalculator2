@@ -1,0 +1,96 @@
+// collections 标准库冒烟：线性结构 / 哈希结构 / 堆 / 树 + 空结构错误类型。
+
+import collections
+
+test_stack() = {
+    s = collections.Stack()
+    s.push(1)
+    s.push(2)
+    assert(s.size() == 2 && !s.isEmpty(), "stack size/empty")
+    assert(s.peek() == 2, "stack peek")
+    assert(s.pop() == 2 && s.pop() == 1, "stack is LIFO")
+    assert(s.isEmpty(), "stack empties after pops")
+}
+test_stack()
+
+test_queue() = {
+    q = collections.Queue()
+    q.enqueue("a")
+    q.enqueue("b")
+    assert(q.peek() == "a", "queue peek")
+    assert(q.dequeue() == "a" && q.dequeue() == "b", "queue is FIFO")
+    assert(q.isEmpty(), "queue empties after dequeues")
+}
+test_queue()
+
+test_deque() = {
+    d = collections.Deque()
+    d.pushLeft(1)
+    d.pushRight(2)
+    assert(d.popLeft() == 1 && d.popRight() == 2, "deque pops both ends")
+    assert(d.isEmpty(), "deque empties")
+}
+test_deque()
+
+test_counter() = {
+    c = collections.Counter(@["a", "b", "a", "c", "a"])
+    assert(c.get("a") == 3, "counter counts")
+    assert(c.get("z") == 0, "missing key yields 0")
+    top = c.mostCommon(2)
+    assert(top[0][0] == "a" && top[0][1] == 3, "mostCommon is sorted desc")
+}
+test_counter()
+
+test_priority_queue() = {
+    pq = collections.PriorityQueue()
+    for (v in @[3, 1, 4, 1, 5]) { pq.push(v) }
+    out = ""
+    while (!pq.isEmpty()) { out += str(pq.pop()) }
+    assert(out == "11345", "min-heap pops ascending")
+
+    maxpq = collections.PriorityQueue((a, b) => a > b)
+    for (v in @[3, 1, 4]) { maxpq.push(v) }
+    mo = ""
+    while (!maxpq.isEmpty()) { mo += str(maxpq.pop()) }
+    assert(mo == "431", "custom comparator inverts heap")
+}
+test_priority_queue()
+
+test_bst() = {
+    bst = collections.BST()
+    for (v in @[5, 3, 8, 1, 4]) { bst.insert(v) }
+    assert(bst.contains(4), "bst finds inserted")
+    assert(!bst.contains(9), "bst rejects missing")
+    assert(bst.size() == 5, "bst size counts inserts")
+    assert(bst.inorder() == @[1, 3, 4, 5, 8], "inorder is sorted")
+}
+test_bst()
+
+test_default_dict() = {
+    dd = collections.DefaultDict(() => @[])
+    dd["x"].push(7)
+    assert(dd["x"] == @[7], "factory fills missing key")
+    assert("x" in dd, "__contains__ works")
+    assert(dd.keys() == @["x"], "keys()")
+    assert(dd.values() == @[@[7]], "values()")
+}
+test_default_dict()
+
+test_empty_structure_errors_are_typed() = {
+    caught = false
+    try {
+        collections.Stack().pop()
+    } catch (e) {
+        caught = e.type == "IndexError" && e.message == "pop from empty Stack"
+    }
+    assert(caught, "empty Stack pop raises a typed IndexError")
+
+    caught = false
+    try {
+        collections.Queue().dequeue()
+    } catch (e) {
+        caught = e.type == "IndexError" && e.message == "dequeue from empty Queue"
+    }
+    assert(caught, "empty Queue dequeue raises a typed IndexError")
+}
+test_empty_structure_errors_are_typed()

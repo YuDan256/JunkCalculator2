@@ -1,0 +1,50 @@
+// net 标准库冒烟（全区离线）：对象构造、端口取整、未连接/未绑定的类型化错误。
+
+import net
+
+test_socket_construction() = {
+    s = net.TcpSocket("127.0.0.1", 9)
+    assert(s.host == "127.0.0.1" && s.port == 9, "host/port stored")
+    assert(s.sock is none, "not connected yet")
+    assert(str(s) == "<TcpSocket host=\"127.0.0.1\" port=9 connected=false>", "__str__ reports state")
+}
+test_socket_construction()
+
+test_port_is_rounded() = {
+    s = net.TcpSocket("127.0.0.1", 8080.6)
+    assert(s.port == 8081, "port is rounded to int")
+}
+test_port_is_rounded()
+
+test_unconnected_socket_errors() = {
+    s = net.TcpSocket("127.0.0.1", 9)
+    caught = false
+    try {
+        s.send("x")
+    } catch (e) {
+        caught = e.type == "NetworkError" && e.message == "Socket is not connected!"
+    }
+    assert(caught, "send before connect raises NetworkError")
+
+    caught = false
+    try {
+        s.recv(4)
+    } catch (e) {
+        caught = e.type == "NetworkError" && e.message == "Socket is not connected!"
+    }
+    assert(caught, "recv before connect raises NetworkError")
+}
+test_unconnected_socket_errors()
+
+test_unbound_server_errors() = {
+    srv = net.TcpServer("127.0.0.1", 8080)
+    caught = false
+    try {
+        srv.accept()
+    } catch (e) {
+        caught = e.type == "NetworkError" && e.message == "TCP Server is not bound to a port!"
+    }
+    assert(caught, "accept before bind raises NetworkError")
+    srv.close()
+}
+test_unbound_server_errors()

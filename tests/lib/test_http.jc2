@@ -1,0 +1,49 @@
+// http 标准库冒烟（全区离线）：URL/响应解析、HttpResponse 与 json()、类型化错误。
+// 真实 httpGet 需要网络，不在测试里调用。
+
+import http
+
+test_parse_url() = {
+    u = http._Http.parse_url("http://example.com:8080/a/b?c=1")
+    assert(u["host"] == "example.com", "host parsed")
+    assert(u["port"] == 8080, "explicit port parsed")
+    assert(u["path"] == "/a/b?c=1", "path + query parsed")
+
+    d = http._Http.parse_url("http://host/path")
+    assert(d["port"] == 80, "default port 80")
+    assert(d["path"] == "/path", "path without port")
+
+    p = http._Http.parse_url("http://plain")
+    assert(p["host"] == "plain" && p["path"] == "/", "bare host defaults path to /")
+}
+test_parse_url()
+
+test_parse_response() = {
+    res = http._Http.parse_response("HTTP/1.1 404 Not Found\r\nX-A: 1\r\nX-B: two\r\n\r\nhello-body")
+    assert(res.status == 404, "status line parsed")
+    assert(res.headers["X-A"] == "1" && res.headers["X-B"] == "two", "header values parsed")
+    assert(res.body == "hello-body", "body split at CRLFCRLF")
+    assert(str(res) == "<HttpResponse [404] body_len=10>", "HttpResponse __str__")
+
+    bad = http._Http.parse_response("no-header-separator")
+    assert(bad.status == 0, "headerless stream yields a 0-status response")
+}
+test_parse_response()
+
+test_http_response_json() = {
+    res = http.HttpResponse(200, {"Content-Type": "application/json"}, "{\"k\": 1}", "raw")
+    assert(res.status == 200, "status kept")
+    assert(res.json()["k"] == 1, "json() delegates to the json module")
+}
+test_http_response_json()
+
+test_https_is_rejected_with_a_typed_error() = {
+    caught = false
+    try {
+        http._Http.parse_url("https://secure.example.com/x")
+    } catch (e) {
+        caught = e.type == "HttpError"
+    }
+    assert(caught, "https is rejected as a typed HttpError")
+}
+test_https_is_rejected_with_a_typed_error()

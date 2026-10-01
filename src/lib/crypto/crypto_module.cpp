@@ -18,6 +18,9 @@
 #include "../../crypto/Sha256.h"
 #include "../../crypto/TrustStore.h"
 #include "../../crypto/X25519.h"
+#include "../../crypto/Curve.h"
+#include "../../crypto/Sha256.h"
+#include "../../crypto/Sha512.h"
 #include "../../crypto/X509.h"
 
 #include <cstdint>
@@ -99,12 +102,79 @@ static void requireArity(int argc, int want, const char* name) {
 
 // ─── 哈希与 KDF ───────────────────────────────────────────────
 
+static bool curveFromName(const std::string& name, jc2::crypto::EcCurve& out) {
+    if (name == "P-256" || name == "p256" || name == "p-256") { out = jc2::crypto::EcCurve::P256; return true; }
+    if (name == "P-384" || name == "p384" || name == "p-384") { out = jc2::crypto::EcCurve::P384; return true; }
+    if (name == "P-521" || name == "p521" || name == "p-521") { out = jc2::crypto::EcCurve::P521; return true; }
+    return false;
+}
+
+static jc2::crypto::EcCurve requireCurve(const jc2::Value& v) {
+    if (!v.is_string()) {
+        jc2::throw_error(jc2::ErrorType::TypeError, "curve must be a string such as \"P-256\".");
+    }
+    jc2::crypto::EcCurve c = jc2::crypto::EcCurve::P256;
+    if (!curveFromName(v.as_string(), c)) {
+        throwCryptoError("unsupported curve '" + v.as_string() + "' (expected P-256, P-384 or P-521).");
+    }
+    return c;
+}
+
 static JC2_ValueHandle crypto_sha256(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     requireArity(argc, 1, "sha256");
     const std::vector<uint8_t> msg = hexDecode(jc2::Value(argv[0]), "msg");
     uint8_t digest[32];
     jc2::crypto::sha256(msg.data(), msg.size(), digest);
     return jc2::Value(hexEncode(digest, sizeof(digest))).get_handle();
+}
+
+static JC2_ValueHandle crypto_sha384(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 1, "sha384");
+    const std::vector<uint8_t> msg = hexDecode(jc2::Value(argv[0]), "msg");
+    uint8_t digest[48];
+    jc2::crypto::sha384(msg.data(), msg.size(), digest);
+    return jc2::Value(hexEncode(digest, sizeof(digest))).get_handle();
+}
+
+static JC2_ValueHandle crypto_sha512(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 1, "sha512");
+    const std::vector<uint8_t> msg = hexDecode(jc2::Value(argv[0]), "msg");
+    uint8_t digest[64];
+    jc2::crypto::sha512(msg.data(), msg.size(), digest);
+    return jc2::Value(hexEncode(digest, sizeof(digest))).get_handle();
+}
+
+// 通用 ECDSA 验签（r/s 分开给，方便直接喂 NIST 向量）
+static JC2_ValueHandle crypto_ecdsaVerifyRS(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 6, "ecdsaVerifyRS");
+    const jc2::crypto::EcCurve curve = requireCurve(jc2::Value(argv[0]));
+    const std::vector<uint8_t> pub = hexDecode(jc2::Value(argv[1]), "public");
+    const std::string hashName = jc2::Value(argv[2]).as_string();
+    const std::vector<uint8_t> message = hexDecode(jc2::Value(argv[3]), "message");
+    const jc2::crypto::Bytes r = hexDecode(jc2::Value(argv[4]), "r");
+    const jc2::crypto::Bytes ss = hexDecode(jc2::Value(argv[5]), "s");
+
+    const jc2::crypto::EcGroup& g = jc2::crypto::ecGroup(curve);
+    jc2::crypto::EcPoint point;
+    if (!jc2::crypto::ecDecodePoint(g, pub.data(), pub.size(), point)) {
+        return jc2::Value(false).get_handle();
+    }
+
+    uint8_t digest[64];
+    size_t digestLen = 0;
+    if (hashName == "sha256") {
+        jc2::crypto::sha256(message.data(), message.size(), digest);
+        digestLen = 32;
+    } else if (hashName == "sha384") {
+        jc2::crypto::sha384(message.data(), message.size(), digest);
+        digestLen = 48;
+    } else if (hashName == "sha512") {
+        jc2::crypto::sha512(message.data(), message.size(), digest);
+        digestLen = 64;
+    } else {
+        throwCryptoError("unsupported hash '" + hashName + "' (expected sha256, sha384 or sha512).");
+    }
+    return jc2::Value(jc2::crypto::ecEcdsaVerify(g, point, digest, digestLen, r, ss)).get_handle();
 }
 
 static JC2_ValueHandle crypto_hmacSha256(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
@@ -225,6 +295,70 @@ static JC2_ValueHandle crypto_x25519Base(JC2_VMContext, int argc, JC2_ValueHandl
 
 // ─── 公钥算法与证书（P1）─────────────────────────────────────
 
+// 通用 ECDH：返回共享点 X 坐标（按曲线定长）的十六进制
+static JC2_ValueHandle crypto_ecEcdh(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 3, "ecEcdh");
+    const jc2::crypto::EcCurve curve = requireCurve(jc2::Value(argv[0]));
+    const std::vector<uint8_t> priv = hexDecode(jc2::Value(argv[1]), "private");
+    const std::vector<uint8_t> peer = hexDecode(jc2::Value(argv[2]), "point");
+    const jc2::crypto::EcGroup& g = jc2::crypto::ecGroup(curve);
+    jc2::crypto::Bytes shared;
+    if (!jc2::crypto::ecEcdh(g, priv, peer.data(), peer.size(), shared)) {
+        throwCryptoError(std::string("ecEcdh failed (invalid private key or peer point for ") + g.name + ").");
+    }
+    return jc2::Value(hexEncode(shared.data(), shared.size())).get_handle();
+}
+
+// 通用基点乘法：返回未压缩点（0x04||X||Y）的十六进制
+static JC2_ValueHandle crypto_ecBasePointMul(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 2, "ecBasePointMul");
+    const jc2::crypto::EcCurve curve = requireCurve(jc2::Value(argv[0]));
+    const std::vector<uint8_t> priv = hexDecode(jc2::Value(argv[1]), "private");
+    const jc2::crypto::EcGroup& g = jc2::crypto::ecGroup(curve);
+    jc2::crypto::Bytes point;
+    if (!jc2::crypto::ecBasePointMul(g, priv, point)) {
+        throwCryptoError(std::string("ecBasePointMul failed for ") + g.name + ".");
+    }
+    return jc2::Value(hexEncode(point.data(), point.size())).get_handle();
+}
+
+// 通用 ECDSA 验签：curve + 公钥点 + 摘要名 + 消息 + DER 签名
+static JC2_ValueHandle crypto_ecdsaVerify(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 5, "ecdsaVerify");
+    const jc2::crypto::EcCurve curve = requireCurve(jc2::Value(argv[0]));
+    const std::vector<uint8_t> pub = hexDecode(jc2::Value(argv[1]), "public");
+    const std::string hashName = jc2::Value(argv[2]).as_string();
+    const std::vector<uint8_t> message = hexDecode(jc2::Value(argv[3]), "message");
+    const std::vector<uint8_t> signature = hexDecode(jc2::Value(argv[4]), "signature");
+
+    const jc2::crypto::EcGroup& g = jc2::crypto::ecGroup(curve);
+    jc2::crypto::EcPoint point;
+    if (!jc2::crypto::ecDecodePoint(g, pub.data(), pub.size(), point)) {
+        return jc2::Value(false).get_handle();   // 点不在曲线上 → 判为验签失败
+    }
+
+    uint8_t digest[64];
+    size_t digestLen = 0;
+    if (hashName == "sha256") {
+        jc2::crypto::sha256(message.data(), message.size(), digest);
+        digestLen = 32;
+    } else if (hashName == "sha384") {
+        jc2::crypto::sha384(message.data(), message.size(), digest);
+        digestLen = 48;
+    } else if (hashName == "sha512") {
+        jc2::crypto::sha512(message.data(), message.size(), digest);
+        digestLen = 64;
+    } else {
+        throwCryptoError("unsupported hash '" + hashName + "' (expected sha256, sha384 or sha512).");
+    }
+
+    jc2::crypto::Bytes r, ss;
+    if (!jc2::crypto::ecEcdsaSignatureFromDer(signature, r, ss)) {
+        return jc2::Value(false).get_handle();
+    }
+    return jc2::Value(jc2::crypto::ecEcdsaVerify(g, point, digest, digestLen, r, ss)).get_handle();
+}
+
 static JC2_ValueHandle crypto_p256Ecdh(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     requireArity(argc, 2, "p256Ecdh");
     const std::vector<uint8_t> priv = requireLength(hexDecode(jc2::Value(argv[0]), "private"), 32, "private");
@@ -290,9 +424,15 @@ static JC2_ValueHandle crypto_x509Parse(JC2_VMContext, int argc, JC2_ValueHandle
     out.set(jc2::Value("notAfter"), jc2::BigInt(std::to_string(cert.notAfter)));
     out.set(jc2::Value("isCa"), jc2::Value(cert.isCa));
     out.set(jc2::Value("pathLen"), jc2::Value(static_cast<int32_t>(cert.pathLen)));
-    const char* keyType = cert.keyType == jc2::crypto::X509Certificate::KeyType::Rsa      ? "rsa"
-                          : cert.keyType == jc2::crypto::X509Certificate::KeyType::EcP256 ? "ec-p256"
-                                                                                        : "unknown";
+    const char* keyType = "unknown";
+    switch (cert.keyType) {
+        case jc2::crypto::X509Certificate::KeyType::Rsa: keyType = "rsa"; break;
+        case jc2::crypto::X509Certificate::KeyType::EcP256: keyType = "ec-p256"; break;
+        case jc2::crypto::X509Certificate::KeyType::EcP384: keyType = "ec-p384"; break;
+        case jc2::crypto::X509Certificate::KeyType::EcP521: keyType = "ec-p521"; break;
+        case jc2::crypto::X509Certificate::KeyType::None:
+        default: keyType = "unknown"; break;
+    }
     out.set(jc2::Value("keyType"), jc2::Value(keyType));
     out.set(jc2::Value("rsaBits"), jc2::Value(static_cast<int32_t>(cert.rsaBits)));
     out.set(jc2::Value("sigAlg"), jc2::Value(cert.sigAlgOid));
@@ -376,12 +516,19 @@ int jc2_init(jc2::Module& mod) {
 
     // 约定：二进制一律十六进制字符串
     mod.register_function("sha256", crypto_sha256, 1, 1, {"msg"});
+    mod.register_function("sha384", crypto_sha384, 1, 1, {"msg"});
+    mod.register_function("sha512", crypto_sha512, 1, 1, {"msg"});
+    mod.register_function("ecdsaVerifyRS", crypto_ecdsaVerifyRS, 6, 6,
+                          {"curve", "public", "hash", "message", "r", "s"});
     mod.register_function("hmacSha256", crypto_hmacSha256, 2, 2, {"key", "msg"});
     mod.register_function("hkdfExtract", crypto_hkdfExtract, 2, 2, {"salt", "ikm"});
     mod.register_function("hkdfExpand", crypto_hkdfExpand, 3, 3, {"prk", "info", "length"});
     mod.register_function("hkdfExpandLabel", crypto_hkdfExpandLabel, 4, 4, {"secret", "label", "context", "length"});
     mod.register_function("aesGcmSeal", crypto_aesGcmSeal, 4, 4, {"key", "iv", "aad", "pt"});
     mod.register_function("aesGcmOpen", crypto_aesGcmOpen, 5, 5, {"key", "iv", "aad", "ct", "tag"});
+    mod.register_function("ecEcdh", crypto_ecEcdh, 3, 3, {"curve", "private", "point"});
+    mod.register_function("ecBasePointMul", crypto_ecBasePointMul, 2, 2, {"curve", "private"});
+    mod.register_function("ecdsaVerify", crypto_ecdsaVerify, 5, 5, {"curve", "public", "hash", "message", "signature"});
     mod.register_function("x25519", crypto_x25519, 2, 2, {"scalar", "point"});
     mod.register_function("x25519Base", crypto_x25519Base, 1, 1, {"scalar"});
     mod.register_function("p256Ecdh", crypto_p256Ecdh, 2, 2, {"private", "point"});
@@ -409,6 +556,16 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("crypto.rsaVerifyPss", "crypto.rsaVerifyPss(n, e, hash, signature, saltLen)", "RSASSA-PSS with SHA-256/MGF1-SHA-256; returns a bool.", "");
     mod.register_function_help("crypto.hostnameMatch", "crypto.hostnameMatch(pattern, host)", "RFC 6125 dNSName matching (wildcards only in the leftmost label).", "");
     mod.register_function_help("crypto.x509Parse", "crypto.x509Parse(der)", "Parses a DER certificate into a dict (subject/issuer/san/validity/keyType).", "");
+    mod.register_function_help("crypto.ecEcdh", "crypto.ecEcdh(curve, private, point)",
+        "ECDH on P-256/P-384/P-521; returns the shared X coordinate as hex.", "crypto.ecEcdh(\"P-384\", priv, peer)");
+    mod.register_function_help("crypto.ecBasePointMul", "crypto.ecBasePointMul(curve, private)",
+        "Multiplies the curve generator by a scalar; returns the uncompressed point as hex.", "");
+    mod.register_function_help("crypto.sha384", "crypto.sha384(hex)", "SHA-384 of the hex-encoded bytes.", "");
+    mod.register_function_help("crypto.sha512", "crypto.sha512(hex)", "SHA-512 of the hex-encoded bytes.", "");
+    mod.register_function_help("crypto.ecdsaVerifyRS", "crypto.ecdsaVerifyRS(curve, public, hash, message, r, s)",
+        "Like ecdsaVerify but with r/s instead of a DER signature (NIST vector friendly).", "");
+    mod.register_function_help("crypto.ecdsaVerify", "crypto.ecdsaVerify(curve, public, hash, message, signature)",
+        "Verifies a DER ECDSA signature over message with sha256/sha384/sha512.", "");
     mod.register_function_help("crypto.x509Verify", "crypto.x509Verify(leaf, intermediates, roots, hostname, time)", "Verifies a certificate chain at the given Unix time; returns {ok, reason, chainLength, detail}.", "");
     mod.register_function_help("crypto.systemRoots", "crypto.systemRoots()", "Returns the system trust store (Windows ROOT) as a list of DER certificates in hex.", "");
     mod.register_function_help("crypto.randomBytes", "crypto.randomBytes(length)", "Cryptographically secure random bytes (system CSPRNG) as hex.", "");

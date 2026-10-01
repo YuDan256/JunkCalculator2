@@ -3,7 +3,9 @@
 #include "Hostname.h"
 #include "P256.h"
 #include "Rsa.h"
+#include "Curve.h"
 #include "Sha256.h"
+#include "Sha512.h"
 
 #include <cstring>
 
@@ -14,11 +16,17 @@ namespace {
 
 const char* kOidRsaEncryption = "1.2.840.113549.1.1.1";
 const char* kOidSha256Rsa = "1.2.840.113549.1.1.11";
+const char* kOidSha384Rsa = "1.2.840.113549.1.1.12";
+const char* kOidSha512Rsa = "1.2.840.113549.1.1.13";
 const char* kOidRsassaPss = "1.2.840.113549.1.1.10";
 const char* kOidEcPublicKey = "1.2.840.10045.2.1";
 const char* kOidPrime256v1 = "1.2.840.10045.3.1.7";
 const char* kOidEcdsaSha256 = "1.2.840.10045.4.3.2";
+const char* kOidEcdsaSha384 = "1.2.840.10045.4.3.3";
+const char* kOidEcdsaSha512 = "1.2.840.10045.4.3.4";
 const char* kOidSha256 = "2.16.840.1.101.3.4.2.1";
+const char* kOidSha384 = "2.16.840.1.101.3.4.2.2";
+const char* kOidSha512 = "2.16.840.1.101.3.4.2.3";
 const char* kOidMgf1 = "1.2.840.113549.1.1.8";
 const char* kOidBasicConstraints = "2.5.29.19";
 const char* kOidKeyUsage = "2.5.29.15";
@@ -129,6 +137,8 @@ bool extensionCallback(const std::string& oid, bool critical, const uint8_t* val
 // ─── 公钥 ─────────────────────────────────────────────────────
 
 bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert, X509ParseIssue& issue) {
+    EcCurve curve = EcCurve::P256;
+
     // p 指向 SubjectPublicKeyInfo 的**内容**：AlgorithmIdentifier SEQUENCE + BIT STRING
     DerReader s(p, n);
     const uint8_t* alg = nullptr;
@@ -140,14 +150,15 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
     size_t oidLen = 0;
     if (!a.readExpected(DER_OID, oid, oidLen)) return false;
     const std::string algOid = derOidToString(oid, oidLen);
+    const bool isEc = (algOid == kOidEcPublicKey);
 
-    if (algOid == kOidEcPublicKey) {
-        // 参数必须是 prime256v1（在 BIT STRING 之前读）
+    if (isEc) {
+        // 命名曲线参数（在 BIT STRING 之前读）
         const uint8_t* params = nullptr;
         size_t paramsLen = 0;
         if (!a.readExpected(DER_OID, params, paramsLen)) return false;
-        if (derOidToString(params, paramsLen) != kOidPrime256v1) {
-            issue = X509ParseIssue::UnsupportedCurve;   // 例如 P-384 / P-521
+        if (!ecCurveFromOid(derOidToString(params, paramsLen), curve)) {
+            issue = X509ParseIssue::UnsupportedCurve;   // 认识的格式、不认识的曲线
             return false;
         }
     }
@@ -178,13 +189,18 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
         return true;
     }
 
-    if (algOid == kOidEcPublicKey) {
-        // 曲线已在上面限定为 prime256v1；这里再确认点格式与曲线方程
-        if (keyLen != 65 || key[0] != 0x04) return false;
+    if (isEc) {
+        // 点必须是未压缩格式（0x04||X||Y），长度按曲线定，且必须落在曲线上
+        const EcGroup& g = ecGroup(curve);
+        EcPoint pt;
+        if (!ecDecodePoint(g, key, keyLen, pt)) return false;
         cert.ecPoint.assign(key, key + keyLen);
-        P256Point pt;
-        if (!p256DecodePoint(cert.ecPoint.data(), cert.ecPoint.size(), pt)) return false;
-        cert.keyType = X509Certificate::KeyType::EcP256;
+        switch (curve) {
+            case EcCurve::P384: cert.keyType = X509Certificate::KeyType::EcP384; break;
+            case EcCurve::P521: cert.keyType = X509Certificate::KeyType::EcP521; break;
+            case EcCurve::P256:
+            default: cert.keyType = X509Certificate::KeyType::EcP256; break;
+        }
         return true;
     }
 
@@ -194,10 +210,19 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
 // ─── PSS 参数 ─────────────────────────────────────────────────
 
 // 解析 RSASSA-PSS-params，取出 hash 与 saltLength（只支持 SHA-256 / MGF1-SHA-256）。
-bool parsePssParams(const uint8_t* p, size_t n, size_t& saltLenOut, bool& hashIsSha256, bool& mgfIsSha256) {
+RsaHash hashFromOid(const std::string& oid, bool& known) {
+    known = true;
+    if (oid == "2.16.840.1.101.3.4.2.1") return RsaHash::Sha256;
+    if (oid == "2.16.840.1.101.3.4.2.2") return RsaHash::Sha384;
+    if (oid == "2.16.840.1.101.3.4.2.3") return RsaHash::Sha512;
+    known = false;
+    return RsaHash::Sha256;
+}
+
+bool parsePssParams(const uint8_t* p, size_t n, size_t& saltLenOut, RsaHash& hashOut, RsaHash& mgfHashOut) {
     saltLenOut = 20;   // RFC 4055 默认值
-    hashIsSha256 = false;
-    mgfIsSha256 = false;
+    hashOut = RsaHash::Sha256;
+    mgfHashOut = RsaHash::Sha256;
     if (n == 0) return true;   // 全默认（SHA-1 系）→ 调用方会判为不支持
 
     DerReader r(p, n);
@@ -220,7 +245,9 @@ bool parsePssParams(const uint8_t* p, size_t n, size_t& saltLenOut, bool& hashIs
             const uint8_t* oid = nullptr;
             size_t oidLen = 0;
             if (!hs.readExpected(DER_OID, oid, oidLen)) return false;
-            hashIsSha256 = (derOidToString(oid, oidLen) == kOidSha256);
+            bool known = false;
+            hashOut = hashFromOid(derOidToString(oid, oidLen), known);
+            if (!known) return false;
         } else if (tag == 0xA1) {   // [1] maskGenAlgorithm
             DerReader m(item, itemLen);
             const uint8_t* mseq = nullptr;
@@ -238,7 +265,9 @@ bool parsePssParams(const uint8_t* p, size_t n, size_t& saltLenOut, bool& hashIs
             const uint8_t* innerOid = nullptr;
             size_t innerOidLen = 0;
             if (!is.readExpected(DER_OID, innerOid, innerOidLen)) return false;
-            mgfIsSha256 = (derOidToString(innerOid, innerOidLen) == kOidSha256);
+            bool known = false;
+            mgfHashOut = hashFromOid(derOidToString(innerOid, innerOidLen), known);
+            if (!known) return false;
         } else if (tag == 0xA2) {   // [2] saltLength
             DerReader sl(item, itemLen);
             const uint8_t* i = nullptr;
@@ -255,31 +284,58 @@ bool parsePssParams(const uint8_t* p, size_t n, size_t& saltLenOut, bool& hashIs
 // ─── 验签 ─────────────────────────────────────────────────────
 
 bool verifyOneSignature(const X509Certificate& cert, const X509Certificate& issuer, std::string& detail) {
-    uint8_t digest[32];
-    sha256(cert.tbs.data(), cert.tbs.size(), digest);
-
     const std::string& alg = cert.sigAlgOid;
-    if (alg == kOidSha256Rsa) {
+
+    // 1) 先按签名算法 OID（PSS 则按它自己的参数）确定摘要
+    RsaHash hash = RsaHash::Sha256;
+    bool isPkcs1 = false;
+    bool isPss = false;
+    bool isEcdsa = false;
+    if (alg == kOidSha256Rsa || alg == kOidSha384Rsa || alg == kOidSha512Rsa) {
+        hash = (alg == kOidSha384Rsa) ? RsaHash::Sha384 : (alg == kOidSha512Rsa ? RsaHash::Sha512 : RsaHash::Sha256);
+        isPkcs1 = true;
+    } else if (alg == kOidRsassaPss) {
+        hash = cert.pssHash;
+        isPss = true;
+    } else if (alg == kOidEcdsaSha256 || alg == kOidEcdsaSha384 || alg == kOidEcdsaSha512) {
+        hash = (alg == kOidEcdsaSha384) ? RsaHash::Sha384 : (alg == kOidEcdsaSha512 ? RsaHash::Sha512 : RsaHash::Sha256);
+        isEcdsa = true;
+    } else {
+        detail = "unsupported signature algorithm: " + alg;
+        return false;
+    }
+
+    uint8_t digest[64];
+    switch (hash) {
+        case RsaHash::Sha384: sha384(cert.tbs.data(), cert.tbs.size(), digest); break;
+        case RsaHash::Sha512: sha512(cert.tbs.data(), cert.tbs.size(), digest); break;
+        case RsaHash::Sha256:
+        default: sha256(cert.tbs.data(), cert.tbs.size(), digest); break;
+    }
+
+    if (isPkcs1) {
         if (issuer.keyType != X509Certificate::KeyType::Rsa) {
             detail = "issuer key is not RSA";
             return false;
         }
-        return rsaVerifyPkcs1Sha256(issuer.rsaN, issuer.rsaE, digest, cert.signature);
+        return rsaVerifyPkcs1(issuer.rsaN, issuer.rsaE, digest, cert.signature, hash);
     }
-    if (alg == kOidRsassaPss) {
+    if (isPss) {
         if (issuer.keyType != X509Certificate::KeyType::Rsa) {
             detail = "issuer key is not RSA";
             return false;
         }
-        if (!cert.pssHashSha256 || !cert.pssMgfSha256) {
-            detail = "only RSASSA-PSS with SHA-256/MGF1-SHA-256 is supported";
+        if (cert.pssMgf != cert.pssHash) {
+            detail = "RSASSA-PSS with MGF1 hash different from the message hash is not supported";
             return false;
         }
-        return rsaVerifyPssSha256(issuer.rsaN, issuer.rsaE, digest, cert.signature, cert.pssSaltLen);
+        return rsaVerifyPss(issuer.rsaN, issuer.rsaE, digest, cert.signature, cert.pssSaltLen, hash);
     }
-    if (alg == kOidEcdsaSha256) {
-        if (issuer.keyType != X509Certificate::KeyType::EcP256) {
-            detail = "issuer key is not P-256";
+    if (isEcdsa) {
+        if (issuer.keyType != X509Certificate::KeyType::EcP256 &&
+            issuer.keyType != X509Certificate::KeyType::EcP384 &&
+            issuer.keyType != X509Certificate::KeyType::EcP521) {
+            detail = "issuer key is not an EC key";
             return false;
         }
         // signature 是 DER SEQUENCE { r INTEGER, s INTEGER }
@@ -304,12 +360,16 @@ bool verifyOneSignature(const X509Certificate& cert, const X509Certificate& issu
             detail = "malformed ECDSA signature";
             return false;
         }
-        P256Point pub;
-        if (!p256DecodePoint(issuer.ecPoint.data(), issuer.ecPoint.size(), pub)) {
-            detail = "issuer P-256 key is not on the curve";
+        const EcCurve curve = (issuer.keyType == X509Certificate::KeyType::EcP384) ? EcCurve::P384
+                             : (issuer.keyType == X509Certificate::KeyType::EcP521) ? EcCurve::P521
+                                                                                    : EcCurve::P256;
+        const EcGroup& g = ecGroup(curve);
+        EcPoint pub;
+        if (!ecDecodePoint(g, issuer.ecPoint.data(), issuer.ecPoint.size(), pub)) {
+            detail = std::string("issuer ") + g.name + " key is not on the curve";
             return false;
         }
-        return p256EcdsaVerify(pub, digest, rBytes, sBytes);
+        return ecEcdsaVerify(g, pub, digest, rsaHashLength(hash), rBytes, sBytes);
     }
 
     detail = "unsupported signature algorithm: " + alg;
@@ -359,7 +419,7 @@ bool x509Parse(const Bytes& der, X509Certificate& out, X509ParseIssue* issueOut)
                 const uint8_t* params = nullptr;
                 size_t paramsLen = 0;
                 if (!a.readExpected(DER_SEQUENCE, params, paramsLen)) return false;
-                if (!parsePssParams(params, paramsLen, out.pssSaltLen, out.pssHashSha256, out.pssMgfSha256)) {
+                if (!parsePssParams(params, paramsLen, out.pssSaltLen, out.pssHash, out.pssMgf)) {
                     return false;
                 }
             }

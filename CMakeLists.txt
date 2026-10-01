@@ -144,6 +144,8 @@ set_target_properties(regex PROPERTIES PREFIX "") # Output regex.dll instead of 
 # ★ Cryptography primitives (static lib: P0 层，crypto 模块与后续 tls 模块共用)
 set(JC2_CRYPTO_SOURCES
     "src/crypto/Sha256.cpp"
+    "src/crypto/Sha512.cpp"
+    "src/crypto/Curve.cpp"
     "src/crypto/Hmac.cpp"
     "src/crypto/Hkdf.cpp"
     "src/crypto/AesGcm.cpp"

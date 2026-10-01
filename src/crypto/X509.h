@@ -2,6 +2,7 @@
 #pragma once
 
 #include "BytesUtil.h"
+#include "Rsa.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -30,18 +31,18 @@ struct X509Certificate {
     bool hasKeyUsage = false;
     std::vector<std::string> sanDns;
 
-    enum class KeyType { None, Rsa, EcP256 };
+    enum class KeyType { None, Rsa, EcP256, EcP384, EcP521 };
     KeyType keyType = KeyType::None;
     Bytes rsaN;
     Bytes rsaE;
-    Bytes ecPoint;                // 65 字节未压缩点
+    Bytes ecPoint;                // 未压缩点 0x04||X||Y（P-256 65、P-384 97、P-521 133 字节）
     size_t rsaBits = 0;
 
     Bytes signature;              // signatureValue 的 BIT STRING 内容（已去掉未使用位数）
     // RSASSA-PSS 参数（仅当 sigAlgOid 是 PSS 时有意义）
     size_t pssSaltLen = 20;
-    bool pssHashSha256 = false;
-    bool pssMgfSha256 = false;
+    RsaHash pssHash = RsaHash::Sha256;
+    RsaHash pssMgf = RsaHash::Sha256;
 };
 
 // 解析失败的原因（用于把"实现了但没支持的算法"与"DER 坏了"分开报告）

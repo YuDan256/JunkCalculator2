@@ -37,7 +37,7 @@ test_client_hello_structure() = {
     assert(hello.contains("00021301"), "offers TLS_AES_128_GCM_SHA256")
     assert(hello.contains("00000010000e00000b6578616d706c652e636f6d"), "server_name extension with example.com")
     assert(hello.contains("000a00060004001d0017"), "supported_groups = x25519, secp256r1")
-    assert(hello.contains("000d00080006080404010403"), "signature_algorithms = rsa_pss_rsae_sha256, rsa_pkcs1_sha256, ecdsa_secp256r1_sha256")
+    assert(hello.contains("000d00140012040305030603080408050806040105010601"), "signature_algorithms: ECDSA P-256/384/521 + RSA-PSS/PKCS1")
     assert(hello.contains("002b0003020304"), "supported_versions = TLS 1.3")
     assert(hello.contains("0010000b000908687474702f312e31"), "ALPN = http/1.1")
     assert(hello.contains("0033006b0069"), "key_share with two client shares")

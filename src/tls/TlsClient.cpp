@@ -5,10 +5,12 @@
 #include "../crypto/Der.h"
 #include "../crypto/Hkdf.h"
 #include "../crypto/Hmac.h"
+#include "../crypto/Curve.h"
 #include "../crypto/P256.h"
 #include "../crypto/Random.h"
 #include "../crypto/Rsa.h"
 #include "../crypto/Sha256.h"
+#include "../crypto/Sha512.h"
 #include "../crypto/TrustStore.h"
 #include "../crypto/X25519.h"
 #include "../crypto/X509.h"
@@ -39,9 +41,15 @@ constexpr uint16_t kCipherAes128GcmSha256 = 0x1301;
 constexpr uint16_t kGroupX25519 = 0x001d;
 constexpr uint16_t kGroupSecp256r1 = 0x0017;
 
-constexpr uint16_t kSigRsaPssRsaeSha256 = 0x0804;
 constexpr uint16_t kSigRsaPkcs1Sha256 = 0x0401;
+constexpr uint16_t kSigRsaPkcs1Sha384 = 0x0501;
+constexpr uint16_t kSigRsaPkcs1Sha512 = 0x0601;
 constexpr uint16_t kSigEcdsaP256Sha256 = 0x0403;
+constexpr uint16_t kSigEcdsaP384Sha384 = 0x0503;
+constexpr uint16_t kSigEcdsaP521Sha512 = 0x0603;
+constexpr uint16_t kSigRsaPssRsaeSha256 = 0x0804;
+constexpr uint16_t kSigRsaPssRsaeSha384 = 0x0805;
+constexpr uint16_t kSigRsaPssRsaeSha512 = 0x0806;
 
 constexpr size_t kMaxCiphertext = 16384 + 256;
 
@@ -292,10 +300,16 @@ void TlsClient::buildClientHello() {
 
     {   // signature_algorithms (0x000d)
         Bytes e;
-        put16(e, 6);
-        put16(e, kSigRsaPssRsaeSha256);
-        put16(e, kSigRsaPkcs1Sha256);
+        put16(e, 18);
         put16(e, kSigEcdsaP256Sha256);
+        put16(e, kSigEcdsaP384Sha384);
+        put16(e, kSigEcdsaP521Sha512);
+        put16(e, kSigRsaPssRsaeSha256);
+        put16(e, kSigRsaPssRsaeSha384);
+        put16(e, kSigRsaPssRsaeSha512);
+        put16(e, kSigRsaPkcs1Sha256);
+        put16(e, kSigRsaPkcs1Sha384);
+        put16(e, kSigRsaPkcs1Sha512);
         put16(ext, 0x000d);
         putBlock16(ext, e);
     }
@@ -663,8 +677,20 @@ void TlsClient::onCertificateVerify(const Bytes& msg) {
     input.insert(input.end(), kCtx, kCtx + sizeof(kCtx) - 1);
     input.push_back(0x00);
     putBytes(input, th);
-    uint8_t digest[32];
-    sha256(input.data(), input.size(), digest);
+    // 摘要由签名方案决定（SHA-256 / 384 / 512）
+    RsaHash hash = RsaHash::Sha256;
+    if (scheme == kSigRsaPssRsaeSha384 || scheme == kSigRsaPkcs1Sha384 || scheme == kSigEcdsaP384Sha384) {
+        hash = RsaHash::Sha384;
+    } else if (scheme == kSigRsaPssRsaeSha512 || scheme == kSigRsaPkcs1Sha512 || scheme == kSigEcdsaP521Sha512) {
+        hash = RsaHash::Sha512;
+    }
+    uint8_t digest[64];
+    switch (hash) {
+        case RsaHash::Sha384: sha384(input.data(), input.size(), digest); break;
+        case RsaHash::Sha512: sha512(input.data(), input.size(), digest); break;
+        case RsaHash::Sha256:
+        default: sha256(input.data(), input.size(), digest); break;
+    }
 
     X509Certificate leaf;
     if (!x509Parse(leafCert_, leaf)) {
@@ -673,32 +699,26 @@ void TlsClient::onCertificateVerify(const Bytes& msg) {
     }
 
     bool ok = false;
-    if (scheme == kSigRsaPssRsaeSha256) {
+    if (scheme == kSigRsaPssRsaeSha256 || scheme == kSigRsaPssRsaeSha384 || scheme == kSigRsaPssRsaeSha512) {
         ok = leaf.keyType == X509Certificate::KeyType::Rsa &&
-             rsaVerifyPssSha256(leaf.rsaN, leaf.rsaE, digest, sig, 32);
-    } else if (scheme == kSigRsaPkcs1Sha256) {
+             rsaVerifyPss(leaf.rsaN, leaf.rsaE, digest, sig, rsaHashLength(hash), hash);
+    } else if (scheme == kSigRsaPkcs1Sha256 || scheme == kSigRsaPkcs1Sha384 || scheme == kSigRsaPkcs1Sha512) {
         ok = leaf.keyType == X509Certificate::KeyType::Rsa &&
-             rsaVerifyPkcs1Sha256(leaf.rsaN, leaf.rsaE, digest, sig);
-    } else if (scheme == kSigEcdsaP256Sha256) {
-        if (leaf.keyType == X509Certificate::KeyType::EcP256) {
-            P256Point pub;
-            if (p256DecodePoint(leaf.ecPoint.data(), leaf.ecPoint.size(), pub)) {
-                DerReader dr(sig.data(), sig.size());
-                const uint8_t* seq = nullptr;
-                size_t seqLen = 0;
-                if (dr.readExpected(DER_SEQUENCE, seq, seqLen)) {
-                    DerReader ds(seq, seqLen);
-                    const uint8_t* rp = nullptr;
-                    size_t rLen = 0;
-                    const uint8_t* sp = nullptr;
-                    size_t sLen = 0;
-                    if (ds.readExpected(DER_INTEGER, rp, rLen) && ds.readExpected(DER_INTEGER, sp, sLen)) {
-                        Bytes rb, sb;
-                        if (derIntegerToBytes(rp, rLen, rb) && derIntegerToBytes(sp, sLen, sb)) {
-                            ok = p256EcdsaVerify(pub, digest, rb, sb);
-                        }
-                    }
-                }
+             rsaVerifyPkcs1(leaf.rsaN, leaf.rsaE, digest, sig, hash);
+    } else if (scheme == kSigEcdsaP256Sha256 || scheme == kSigEcdsaP384Sha384 || scheme == kSigEcdsaP521Sha512) {
+        const EcCurve want = (scheme == kSigEcdsaP384Sha384) ? EcCurve::P384
+                             : (scheme == kSigEcdsaP521Sha512) ? EcCurve::P521
+                                                               : EcCurve::P256;
+        const X509Certificate::KeyType wantKey = (want == EcCurve::P384) ? X509Certificate::KeyType::EcP384
+                                                 : (want == EcCurve::P521) ? X509Certificate::KeyType::EcP521
+                                                                           : X509Certificate::KeyType::EcP256;
+        if (leaf.keyType == wantKey) {
+            const EcGroup& g = ecGroup(want);
+            EcPoint pub;
+            Bytes rb, sb;
+            if (ecDecodePoint(g, leaf.ecPoint.data(), leaf.ecPoint.size(), pub) &&
+                ecEcdsaSignatureFromDer(sig, rb, sb)) {
+                ok = ecEcdsaVerify(g, pub, digest, rsaHashLength(hash), rb, sb);
             }
         }
     } else {

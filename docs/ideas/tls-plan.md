@@ -1,6 +1,6 @@
 # 设计文档：自写 TLS 1.3 客户端与 https 支持（未实施）
 
-> **状态：设计稿，已定稿待实施，未排期。** 2026-10-01 定稿。
+> **状态：P0 已实施（2026-10-01，见 §14），P1 起待实施。** 2026-10-01 定稿。
 > **性质：内部设计记录**，不是用户侧帮助。这里**故意**写设计理由与被否方案，
 > 与 `data/documentation.json`（只写契约）的规则不同，勿混。
 > 起因：`http.httpGet` 只支持明文 HTTP，`https://` 被直接拒绝（见 §1）。
@@ -175,8 +175,8 @@ Finished 的 HMAC、`close_notify` 与 alert 映射、`select` + `SO_RCVTIMEO` �
 
 | 期 | 可测验收 |
 |---|---|
-| P0 | SHA-256：FIPS 180-4 向量 + 长度边界（0/55/56/63/64/65/1MB）；HMAC：RFC 4231 全 7 组；HKDF：RFC 5869 A.1–A.3；AES-GCM：NIST CAVP 15 组 + 空明文/空 AAD + **tag 篡改必须失败**；X25519：RFC 7748 §5.2 两组 + 迭代 1/1000 次；P-256：NIST CAVP ECDH 向量 + RFC 6979 ECDSA 验签向量 |
-| P1 | 20 条链（10 正 / 10 负：过期、主机名不匹配、缺中间证书、`CA:FALSE` 签发、pathLen 超限、自签不在信任库、签名被篡改、DER 截断），其中含 ECDSA 签发与 RSA/ECDSA 混合链；DER 解析器对截断/超长输入不越界（配 ≤10⁶ 次随机模糊） |
+| P0 | SHA-256：FIPS 180-4 向量 + 长度边界（0/55/56/63/64/65/1MB）；HMAC：RFC 4231 全 7 组；HKDF：RFC 5869 A.1–A.3；AES-GCM：NIST CAVP 15 组 + 空明文/空 AAD + **tag 篡改必须失败**；X25519：RFC 7748 §5.2 两组 + 迭代 1/1000 次 |
+| P1 | 20 条链（10 正 / 10 负：过期、主机名不匹配、缺中间证书、`CA:FALSE` 签发、pathLen 超限、自签不在信任库、签名被篡改、DER 截断），其中含 ECDSA 签发与 RSA/ECDSA 混合链；P-256：NIST CAVP ECDH 向量 + RFC 6979 ECDSA 验签向量；DER 解析器对截断/超长输入不越界（配 ≤10⁶ 次随机模糊） |
 | P2 | 录制回放 6 组：RSA 链 / ECDSA 链 / **HRR（必须明确失败）** / 会话中 alert / 跨记录分片 / 多记录合并；每组断言"派生密钥 + Finished 校验结果"；另加 3 个真实站点（手动步骤，不进 CI） |
 | P3 | `tests/modules/test_tls.jc2` 离线端到端；`httpGet("https://…")` 手动验证 |
 | P4 | chunked / gzip / 重定向的脚本单测（本地夹具，不联网） |
@@ -191,7 +191,7 @@ P1/P2 的夹具放 `data/crypto_vectors/`（证书链用真实站点抓取并去
 
 | 期 | 内容 | 行数估 | 工时估 |
 |---|---|---|---|
-| P0 | SHA-256 / HMAC / HKDF / AES-128-GCM / X25519 + 向量测试 | ~2.0k | 2–4 天 |
+| P0 ✅ | SHA-256 / HMAC / HKDF / AES-128-GCM / X25519 + 向量测试（见 §14，实际约 1.25k 行） | ~2.0k | 2–4 天 |
 | P1 | DER / X.509 / 链校验 / 主机名 / RSA / **P-256 + ECDSA** / 信任库 | ~2.8k | 5–8 天 |
 | P2 | TLS 1.3 握手 + 记录层 + 回放测试（不含 HRR） | ~1.8k | 4–7 天 |
 | P3 | `tls` 模块 + `net.TlsSocket` + http 接线 | ~0.5k | 1–2 天 |
@@ -296,5 +296,47 @@ load_default_certs() 在 win32 上遍历系统证书存储（enum_certificates�
    好处：多一层保险与互操作参照；代价：两条路径行为需保持一致。
 2. TLS 1.2 是否最终要做（现实里仍有少量 1.2-only 服务器）：若做，估 +1.5–3k 行 / +3–6 天。
 3. AES-NI 优化与 ChaCha20 套件是否补（分别约 250 / 400 行）。
-4. `crypto` 模块（D6）的公开面如何写进 `data/documentation.json`：先只公开
-   `sha256/hmac/hkdf/aesgcm/x25519/p256`，还是同时给 `bytes` 风格的十六进制便捷接口。
+4. ~~`crypto` 模块（D6）的公开面~~ **已定（P0 实施时）**：二进制一律十六进制字符串，
+   进出同格式；公开 `sha256 / hmacSha256 / hkdfExtract / hkdfExpand / hkdfExpandLabel /
+   aesGcmSeal / aesGcmOpen / x25519 / x25519Base`，帮助文本写在模块内（原生模块的惯例，
+   `data/documentation.json` 只收录 `sys/math/cas/random`）。
+
+---
+
+## 14. P0 实施记录（2026-10-01）
+
+**落地文件**
+
+| 文件 | 内容 |
+|---|---|
+| `src/crypto/ConstTime.h` | 常数时间比较 `ctEqual` 与清零 `ctZero` |
+| `src/crypto/Sha256.{h,cpp}` | 增量 SHA-256，final 就地填充（不重入 update） |
+| `src/crypto/Hmac.{h,cpp}` | HMAC-SHA256（RFC 2104，长密钥先压缩） |
+| `src/crypto/Hkdf.{h,cpp}` | HKDF-Extract / Expand + TLS 1.3 HKDF-Expand-Label |
+| `src/crypto/AesGcm.{h,cpp}` | AES-128-GCM（正向分组 + GHASH + CTR；非 96 位 IV 按 SP 800-38D 推导 J0） |
+| `src/crypto/X25519.{h,cpp}` | 5×51 位肢体 Montgomery 阶梯（MSVC 无 `__int128`，用 `_umul128`） |
+| `src/lib/crypto/crypto_module.cpp` | 原生模块：hex 进 hex 出，`CryptoError` 表达失败 |
+| `tests/modules/test_crypto.jc2` | 官方向量 + 负例 |
+
+**构建**：新增静态库 `jc2_crypto`（`/W4 /WX /utf-8`），`crypto` 模块链接它并进 `JC2_LIBS`；
+符号收集器同样链接它（收集器直接 `#include` 模块源码），产物 `lib/crypto.json` 已生成。
+
+**验收（全部通过，三套测试 56/56、56/56、18/18）**
+
+- SHA-256：FIPS 180-4 四组 + 10 个长度边界（55/56/63/64/65/119/120/127/128/1000）
+- HMAC-SHA256：RFC 4231 §4.2–4.8 全 7 组（case 5 的 RFC 印刷值截断到 128 位，断言用完整 256 位）
+- HKDF：RFC 5869 A.1（PRK+OKM）、A.2（长输入）、A.3（空 salt/info），另加 Expand-Label 结构自检
+- AES-128-GCM：NIST CAVP `gcmEncryptExtIV128.rsp` 八组（IV 8/96/1024 位，明文 0/13/16/51 字节，AAD 0/16/20 字节）
+  + 每条向量都断言"篡改 tag / 篡改 AAD / 篡改密文必须抛 CryptoError"
+- X25519：RFC 7748 §5.2 两组 + 迭代测试（1 次与 1000 次）+ §6.1 的 DH 双方公钥与共享密钥
+  + 低阶点（全零输出）必须报错
+- 参数校验：奇数长度 hex、非 hex 字符、AES 密钥长度、非字符串实参（TypeError）
+
+**反向验证**：X25519 的 a24 配对写错、以及把 GCM 的 tag 校验旁路，都会让测试变红。
+后者还先暴露出测试自身的一个缺陷 —— 篡改 tag 时只保留了 31 个 hex 字符，被长度校验
+"抢先"拦下（断言通过但理由错误）；已改为翻转最后一个 nibble，保持 32 字符。
+
+**与估算的差异**：P0 实际约 1.25k 行（原估 ~2.0k）。GHASH 用逐位实现（未做 4 位表），
+1 MB 载荷约需 6.5 万次 128 轮循环；当前只服务握手与 HTTP 客户端，够用，AES-NI/查表优化
+留待需要时再做（见 §13.3）。
+

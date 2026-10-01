@@ -143,21 +143,21 @@ set_target_properties(regex PROPERTIES PREFIX "") # Output regex.dll instead of 
 
 # ★ Cryptography primitives (static lib: P0 层，crypto 模块与后续 tls 模块共用)
 set(JC2_CRYPTO_SOURCES
-    "src/crypto/Sha256.cpp"
-    "src/crypto/Sha512.cpp"
-    "src/crypto/Curve.cpp"
-    "src/crypto/Hmac.cpp"
-    "src/crypto/Hkdf.cpp"
-    "src/crypto/AesGcm.cpp"
-    "src/crypto/X25519.cpp"
-    "src/crypto/BigNum.cpp"
-    "src/crypto/Der.cpp"
-    "src/crypto/P256.cpp"
-    "src/crypto/Rsa.cpp"
-    "src/crypto/Hostname.cpp"
-    "src/crypto/X509.cpp"
-    "src/crypto/Random.cpp"
-    "src/crypto/TrustStore.cpp"
+    "src/lib/internal/crypto/hash/Sha256.cpp"
+    "src/lib/internal/crypto/hash/Sha512.cpp"
+    "src/lib/internal/crypto/pubkey/Curve.cpp"
+    "src/lib/internal/crypto/hash/Hmac.cpp"
+    "src/lib/internal/crypto/hash/Hkdf.cpp"
+    "src/lib/internal/crypto/cipher/AesGcm.cpp"
+    "src/lib/internal/crypto/pubkey/X25519.cpp"
+    "src/lib/internal/crypto/pubkey/BigNum.cpp"
+    "src/lib/internal/crypto/pki/Der.cpp"
+    "src/lib/internal/crypto/pubkey/P256.cpp"
+    "src/lib/internal/crypto/pubkey/Rsa.cpp"
+    "src/lib/internal/crypto/pki/Hostname.cpp"
+    "src/lib/internal/crypto/pki/X509.cpp"
+    "src/lib/internal/crypto/util/Random.cpp"
+    "src/lib/internal/crypto/pki/TrustStore.cpp"
 )
 add_library(jc2_crypto STATIC ${JC2_CRYPTO_SOURCES})
 target_include_directories(jc2_crypto PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -169,8 +169,10 @@ if(MSVC)
     target_compile_options(jc2_crypto PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
 endif()
 
+# 注意：src/lib/internal/ 是引擎内部支撑代码（密码学/网络栈），**不是**原生模块，
+# 不进下面的 foreach(mod IN ITEMS ...) 列表，只编进 jc2_crypto / jc2_tls 静态库。
 # ★ TLS 1.3 client（静态库：tls 模块与后续 http 接线共用）
-add_library(jc2_tls STATIC "src/tls/TlsClient.cpp" "src/net/TcpStream.cpp")
+add_library(jc2_tls STATIC "src/lib/internal/net/tls/TlsClient.cpp" "src/lib/internal/net/TcpStream.cpp")
 target_include_directories(jc2_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(jc2_tls PUBLIC jc2_crypto)
 if(WIN32)

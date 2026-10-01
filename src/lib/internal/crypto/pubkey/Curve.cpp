@@ -1,6 +1,6 @@
 #include "Curve.h"
 
-#include "Der.h"
+#include "../pki/Der.h"
 
 #include <cstring>
 

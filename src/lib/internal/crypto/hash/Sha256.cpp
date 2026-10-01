@@ -1,5 +1,5 @@
 #include "Sha256.h"
-#include "ConstTime.h"
+#include "../util/ConstTime.h"
 
 #include <cstring>
 

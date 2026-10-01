@@ -9,7 +9,7 @@
 #pragma once
 
 #include "BigNum.h"
-#include "BytesUtil.h"
+#include "../util/BytesUtil.h"
 
 #include <cstddef>
 #include <cstdint>

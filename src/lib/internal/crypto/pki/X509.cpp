@@ -1,11 +1,11 @@
 #include "X509.h"
 #include "Der.h"
 #include "Hostname.h"
-#include "P256.h"
-#include "Rsa.h"
-#include "Curve.h"
-#include "Sha256.h"
-#include "Sha512.h"
+#include "../pubkey/P256.h"
+#include "../pubkey/Rsa.h"
+#include "../pubkey/Curve.h"
+#include "../hash/Sha256.h"
+#include "../hash/Sha512.h"
 
 #include <cstring>
 

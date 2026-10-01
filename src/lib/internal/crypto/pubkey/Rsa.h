@@ -2,7 +2,7 @@
 // 只做"验签"方向：模幂用 BigInt::modPow，公钥指数通常很小。
 #pragma once
 
-#include "BytesUtil.h"
+#include "../util/BytesUtil.h"
 
 #include <cstddef>
 #include <cstdint>

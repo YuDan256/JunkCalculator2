@@ -1,9 +1,9 @@
 #include "Rsa.h"
 
 #include "BigNum.h"
-#include "ConstTime.h"
-#include "Sha256.h"
-#include "Sha512.h"
+#include "../util/ConstTime.h"
+#include "../hash/Sha256.h"
+#include "../hash/Sha512.h"
 
 #include <cstring>
 #include <vector>

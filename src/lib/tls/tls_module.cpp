@@ -14,9 +14,9 @@
 
 #include "../jc2_extension_cpp.h"
 
-#include "../../crypto/BytesUtil.h"
-#include "../../net/TcpStream.h"
-#include "../../tls/TlsClient.h"
+#include "../internal/crypto/util/BytesUtil.h"
+#include "../internal/net/TcpStream.h"
+#include "../internal/net/tls/TlsClient.h"
 
 #include <cstdint>
 #include <string>

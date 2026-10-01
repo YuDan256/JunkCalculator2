@@ -3,7 +3,7 @@
 // 生产接线见 P3（modules/net.jc2 的 TlsSocket + modules/http.jc2）。
 #pragma once
 
-#include "../crypto/BytesUtil.h"
+#include "../../crypto/util/BytesUtil.h"
 
 #include <cstddef>
 #include <cstdint>

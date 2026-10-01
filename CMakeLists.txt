@@ -141,6 +141,26 @@ add_library(regex SHARED "src/lib/regex/regex_module.cpp")
 target_include_directories(regex PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 set_target_properties(regex PROPERTIES PREFIX "") # Output regex.dll instead of libregex.dll
 
+# ★ Cryptography primitives (static lib: P0 层，crypto 模块与后续 tls 模块共用)
+set(JC2_CRYPTO_SOURCES
+    "src/crypto/Sha256.cpp"
+    "src/crypto/Hmac.cpp"
+    "src/crypto/Hkdf.cpp"
+    "src/crypto/AesGcm.cpp"
+    "src/crypto/X25519.cpp"
+)
+add_library(jc2_crypto STATIC ${JC2_CRYPTO_SOURCES})
+target_include_directories(jc2_crypto PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+    target_compile_options(jc2_crypto PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+endif()
+
+# ★ Build Crypto Module as a standalone DLL（把原语暴露给脚本，供向量测试）
+add_library(crypto SHARED "src/lib/crypto/crypto_module.cpp")
+target_include_directories(crypto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(crypto PRIVATE jc2_crypto)
+set_target_properties(crypto PROPERTIES PREFIX "") # Output crypto.dll instead of libcrypto.dll
+
 # ★ Symbol collector: 离线收集每个 dll 模块符号 → sidecar json（不 LoadLibrary）
 function(add_symbol_collector mod)
     add_executable(collect_${mod} "src/lib/collect_main.cpp" "src/lib/collect_api.cpp")
@@ -164,9 +184,12 @@ function(add_symbol_collector mod)
         COMMENT "Collecting symbols: ${mod}.json")
 endfunction()
 
-foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex)
+foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto)
     add_symbol_collector(${mod})
 endforeach()
+
+# 符号收集器直接 include 模块源码，因此也要能链接到原语静态库
+target_link_libraries(collect_crypto PRIVATE jc2_crypto)
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
@@ -177,7 +200,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

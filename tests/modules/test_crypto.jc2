@@ -1,0 +1,258 @@
+// crypto 原语向量测试。
+// 来源：FIPS 180-4（SHA-256）、RFC 4231（HMAC-SHA256）、RFC 5869（HKDF）、
+//       NIST CAVP gcmtestvectors（AES-128-GCM）、RFC 7748（X25519）。
+// 约定：所有二进制输入输出都是十六进制字符串。
+
+import crypto
+
+// 工具：把单位十六进制串重复 n 次（构造向量里的重复字节串）。
+_hexRep(unit: string, n: int) = {
+    s = ""
+    for (i in range(n)) { s += unit }
+    return s
+}
+
+// ─── SHA-256（FIPS 180-4）─────────────────────────────────────
+
+test_sha256_fips_vectors() = {
+    assert(crypto.sha256("") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855", "SHA-256 of the empty message")
+    assert(crypto.sha256("616263") == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of \"abc\"")
+    assert(crypto.sha256("6162636462636465636465666465666765666768666768696768696a68696a6b696a6b6c6a6b6c6d6b6c6d6e6c6d6e6f6d6e6f706e6f7071")
+        == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1", "448-bit message")
+    assert(crypto.sha256("61626364656667686263646566676869636465666768696a6465666768696a6b65666768696a6b6c666768696a6b6c6d6768696a6b6c6d6e68696a6b6c6d6e6f696a6b6c6d6e6f706a6b6c6d6e6f70716b6c6d6e6f7071726c6d6e6f707172736d6e6f70717273746e6f707172737475")
+        == "cf5b16a778af8380036ce59e7b0492370b249b11e8f07a51afac45037afee9d1", "896-bit message")
+}
+test_sha256_fips_vectors()
+
+test_sha256_length_boundaries() = {
+    // 55/56 与 63/64/65 是填充边界（0x80 与长度域跨越分组）
+    assert(crypto.sha256(_hexRep("61", 55)) == "9f4390f8d30c2dd92ec9f095b65e2b9ae9b0a925a5258e241c9f1e910f734318", "55 bytes")
+    assert(crypto.sha256(_hexRep("61", 56)) == "b35439a4ac6f0948b6d6f9e3c6af0f5f590ce20f1bde7090ef7970686ec6738a", "56 bytes")
+    assert(crypto.sha256(_hexRep("61", 63)) == "7d3e74a05d7db15bce4ad9ec0658ea98e3f06eeecf16b4c6fff2da457ddc2f34", "63 bytes")
+    assert(crypto.sha256(_hexRep("61", 64)) == "ffe054fe7ae0cb6dc65c3af9b61d5209f439851db43d0ba5997337df154668eb", "64 bytes")
+    assert(crypto.sha256(_hexRep("61", 65)) == "635361c48bb9eab14198e76ea8ab7f1a41685d6ad62aa9146d301d4f17eb0ae0", "65 bytes")
+    assert(crypto.sha256(_hexRep("61", 119)) == "31eba51c313a5c08226adf18d4a359cfdfd8d2e816b13f4af952f7ea6584dcfb", "119 bytes")
+    assert(crypto.sha256(_hexRep("61", 120)) == "2f3d335432c70b580af0e8e1b3674a7c020d683aa5f73aaaedfdc55af904c21c", "120 bytes")
+    assert(crypto.sha256(_hexRep("61", 127)) == "c57e9278af78fa3cab38667bef4ce29d783787a2f731d4e12200270f0c32320a", "127 bytes")
+    assert(crypto.sha256(_hexRep("61", 128)) == "6836cf13bac400e9105071cd6af47084dfacad4e5e302c94bfed24e013afb73e", "128 bytes")
+    assert(crypto.sha256(_hexRep("61", 1000)) == "41edece42d63e8d9bf515a9ba6932e1c20cbc9f5a5d134645adb5db1b9737ea3", "1000 bytes")
+}
+test_sha256_length_boundaries()
+
+// ─── HMAC-SHA256（RFC 4231 第 4.2–4.8 节全部 7 组）──────────────
+
+test_hmac_sha256_rfc4231() = {
+    assert(crypto.hmacSha256(_hexRep("0b", 20), "4869205468657265")
+        == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7", "RFC 4231 case 1")
+    assert(crypto.hmacSha256("4a656665", "7768617420646f2079612077616e7420666f72206e6f7468696e673f")
+        == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", "RFC 4231 case 2 (key \"Jefe\")")
+    assert(crypto.hmacSha256(_hexRep("aa", 20), _hexRep("dd", 50))
+        == "773ea91e36800e46854db8ebd09181a72959098b3ef8c122d9635514ced565fe", "RFC 4231 case 3")
+    assert(crypto.hmacSha256("0102030405060708090a0b0c0d0e0f10111213141516171819", _hexRep("cd", 50))
+        == "82558a389a443c0ea4cc819899f2083a85f0faa3e578f8077a2e3ff46729665b", "RFC 4231 case 4 (25-byte key)")
+    // RFC 4231 对 case 5 只印前 128 位；这里断言完整 256 位
+    assert(crypto.hmacSha256(_hexRep("0c", 20), "546573742057697468205472756e636174696f6e")
+        == "a3b6167473100ee06e0c796c2955552bfa6f7c0a6a8aef8b93f860aab0cd20c5", "RFC 4231 case 5 (truncated form printed in the RFC)")
+    assert(crypto.hmacSha256(_hexRep("aa", 131), "54657374205573696e67204c6172676572205468616e20426c6f636b2d53697a65204b6579202d2048617368204b6579204669727374")
+        == "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54", "RFC 4231 case 6 (key > block size)")
+    assert(crypto.hmacSha256(_hexRep("aa", 131), "5468697320697320612074657374207573696e672061206c6172676572207468616e20626c6f636b2d73697a65206b657920616e642061206c6172676572207468616e20626c6f636b2d73697a6520646174612e20546865206b6579206e6565647320746f20626520686173686564206265666f7265206265696e6720757365642062792074686520484d414320616c676f726974686d2e")
+        == "9b09ffa71b942fcb27635fbcd5b0e944bfdc63644f0713938a7f51535c3a35e2", "RFC 4231 case 7 (key and data > block size)")
+}
+test_hmac_sha256_rfc4231()
+
+// ─── HKDF（RFC 5869 附录 A.1–A.3）─────────────────────────────
+
+test_hkdf_rfc5869() = {
+    // A.1 基本
+    prk1 = crypto.hkdfExtract("000102030405060708090a0b0c", _hexRep("0b", 22))
+    assert(prk1 == "077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5", "A.1 PRK")
+    assert(crypto.hkdfExpand(prk1, "f0f1f2f3f4f5f6f7f8f9", 42)
+        == "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865", "A.1 OKM")
+
+    // A.2 长输入
+    prk2 = crypto.hkdfExtract(
+        "606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeaf",
+        "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f")
+    assert(prk2 == "06a6b88c5853361a06104c9ceb35b45cef760014904671014a193f40c15fc244", "A.2 PRK")
+    assert(crypto.hkdfExpand(prk2,
+        "b0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff", 82)
+        == "b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71cc30c58179ec3e87c14c01d5c1f3434f1d87", "A.2 OKM")
+
+    // A.3 空 salt 与空 info
+    prk3 = crypto.hkdfExtract("", _hexRep("0b", 22))
+    assert(prk3 == "19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04", "A.3 PRK (empty salt)")
+    assert(crypto.hkdfExpand(prk3, "", 42) == "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8", "A.3 OKM (empty info)")
+}
+test_hkdf_rfc5869()
+
+test_hkdf_expand_label() = {
+    // TLS 1.3 的标签前缀 "tls13 "：labeled 输出必须与手工拼 info 后的 expand 一致
+    secret = _hexRep("0b", 32)
+    context = "01020304"
+    labeled = crypto.hkdfExpandLabel(secret, "test label", context, 32)
+    // info = length(2) || labelLen(1) || "tls13 test label" || ctxLen(1) || context
+    labelHex = "746c7331332074657374206c6162656c"   // "tls13 test label"
+    info = "0020" + "10" + labelHex + "04" + context
+    assert(labeled == crypto.hkdfExpand(secret, info, 32), "HKDF-Expand-Label layout")
+
+    caught = false
+    try {
+        crypto.hkdfExpand(secret, "", 0)
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "length must be positive")
+}
+test_hkdf_expand_label()
+
+// ─── AES-128-GCM（NIST CAVP gcmtestvectors.zip, gcmEncryptExtIV128.rsp）──
+
+// 单条 GCM 向量：加密结果、解密还原、以及三种篡改都必须失败
+_gcm(key: string, iv: string, aad: string, pt: string, ct: string, tag: string) = {
+    sealed = crypto.aesGcmSeal(key, iv, aad, pt)
+    assert(sealed["ct"] == ct, "GCM ciphertext mismatch")
+    assert(sealed["tag"] == tag, "GCM tag mismatch")
+    assert(crypto.aesGcmOpen(key, iv, aad, ct, tag) == pt, "GCM round trip")
+
+    // 篡改 tag 的最后一个 nibble（长度必须保持 32 个 hex 字符，否则会被长度校验先拦下）
+    badTag = tag.substr(0, 31) + ((tag.substr(31, 1) == "0") ? "1" : "0")
+    caught = false
+    try {
+        crypto.aesGcmOpen(key, iv, aad, ct, badTag)
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "tampered tag must be rejected")
+
+    // 篡改 AAD
+    caught = false
+    try {
+        crypto.aesGcmOpen(key, iv, aad + "00", ct, tag)
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "tampered AAD must be rejected")
+
+    // 篡改密文（非空时才可能）
+    if (ct.len() > 0) {
+        badCt = ((ct.substr(0, 1) == "0") ? "1" : "0") + ct.substr(1)
+        caught = false
+        try {
+            crypto.aesGcmOpen(key, iv, aad, badCt, tag)
+        } catch (e) {
+            caught = e.type == "CryptoError"
+        }
+        assert(caught, "tampered ciphertext must be rejected")
+    }
+}
+
+test_aes_gcm_nist_vectors() = {
+    // IV 12 字节（96 位，TLS 用法）
+    _gcm("11754cd72aec309bf52f7687212e8957", "3c819d9a9bed087615030b65", "", "", "", "250327c674aaf477aef2675748cf6971")
+    _gcm("7fddb57453c241d03efbed3ac44e371c", "ee283a3fc75575e33efd4887", "", "d5de42b461646c255c87bd2962d3b9a2",
+         "2ccda4a5415cb91e135c2a0f78c9b2fd", "b36d1df9b9d5e596f83e8b7f52971cb3")
+    _gcm("c939cc13397c1d37de6ae0e1cb7c423c", "b3d8cc017cbb89b39e0f67e2", "24825602bd12a984e0092d3e448eda5f",
+         "c3b3c41f113a31b73d9a5cd432103069", "93fe7d9e9bfd10348a5606e5cafa7354", "0032a1dc85f1c9786925a2e71d8272dd")
+    _gcm("d4a22488f8dd1d5c6c19a7d6ca17964c", "f3d5837f22ac1a0425e0d1d5",
+         "f1c5d424b83f96c6ad8cb28ca0d20e475e023b5a", "7b43016a16896497fb457be6d2a54122",
+         "c2bd67eef5e95cac27e3b06e3031d0a8", "f23eacf9d1cdf8737726c58648826e9c")
+    _gcm("b61553bb854895b929751cd0c5f80384", "8863f999ae64e55d0bbd7457", "d914b5f2d1b08ce53ea59cb310587245",
+         "9b1b113217d0c4ea7943cf123c69c6ad2e3c97368c51c9754145d155dde1ee8640c8cafff17a5c9737d26a137eee4bf369096d",
+         "acfab4632b8a25805112f13d85e082bc89dc49bd92164fa8a2dad242c3a1b2f2696f2fdff579025f3f146ea97da3e47dc34b65",
+         "5d9b5f4a9868c1c69cbd6fd851f01340")
+    // IV 1 字节与 13 字节明文：非 96 位 IV 走 GHASH 推导 J0 的路径
+    _gcm("1672c3537afa82004c6b8a46f6f0d026", "05", "", "", "", "8e2ad721f9455f74d8b53d3141f27e8e")
+    _gcm("82a0f8f40ca814a2f09e2ae733a584d1", "9e", "", "a08b16565d3092abfac4374d84",
+         "a2ae9041f9c5e738e5250e32c9", "062c67c023745657b8063f8450ebedb3")
+    // IV 128 字节（多块 GHASH）
+    _gcm("71eebc49c8fb773b2224eaff3ad68714",
+         "07e961e67784011f72faafd95b0eb64089c8de15ad685ec57e63d56e679d3e202b18b75fcbbec3185ffc41653bc2ac4ae6ae8be8c85636f353a9d19a86100d0bd035cc6bdefcab4318ac7b1a08b819427ad8f6abc782466c6ebd4d6a0dd76e78389b0a2a66506bb85f038ffc1da220c24f3817c7b2d02c5e8fc5e7e3be5074bc",
+         "", "705da82292143d2c949dc4ba014f6396", "032363cf0828a03553478bec0f51f372", "c681b2c568feaa21900bc44b86aeb946")
+}
+test_aes_gcm_nist_vectors()
+
+// ─── X25519（RFC 7748）────────────────────────────────────────
+
+test_x25519_rfc7748() = {
+    assert(crypto.x25519("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4",
+                         "e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c")
+        == "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552", "RFC 7748 §5.2 vector 1")
+
+    assert(crypto.x25519("4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d",
+                         "e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493")
+        == "95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957", "RFC 7748 §5.2 vector 2")
+
+    // 迭代测试：k = u = 09 00 ... 00
+    k = "09" + _hexRep("00", 31)
+    u = k
+    for (i in range(1000)) {
+        out = crypto.x25519(k, u)
+        u = k
+        k = out
+        if (i == 0) {
+            assert(k == "422c8e7a6227d7bca1350b3e2bb7279f7897b87bb6854b783c60e80311ae3079", "RFC 7748 iteration 1")
+        }
+    }
+    assert(k == "684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51", "RFC 7748 iteration 1000")
+}
+test_x25519_rfc7748()
+
+test_x25519_diffie_hellman() = {
+    // RFC 7748 §6.1：双方各自私钥 → 公钥 → 共享密钥
+    a = "77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a"
+    b = "5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb"
+    pubA = crypto.x25519Base(a)
+    pubB = crypto.x25519Base(b)
+    assert(pubA == "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a", "Alice public key")
+    assert(pubB == "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f", "Bob public key")
+    shared = crypto.x25519(a, pubB)
+    assert(shared == "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742", "shared secret")
+    assert(shared == crypto.x25519(b, pubA), "both sides agree")
+
+    // 低阶点（全零输出）必须报错，不能静默返回全零
+    caught = false
+    try {
+        crypto.x25519(a, _hexRep("00", 32))
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "low-order point must raise CryptoError")
+}
+test_x25519_diffie_hellman()
+
+// ─── 参数校验 ─────────────────────────────────────────────────
+
+test_argument_validation() = {
+    caught = false
+    try {
+        crypto.sha256("abc")
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "odd-length hex must be rejected")
+
+    caught = false
+    try {
+        crypto.sha256("zz")
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "non-hex characters must be rejected")
+
+    caught = false
+    try {
+        crypto.aesGcmSeal("0011", "000000000000000000000000", "", "")
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "AES-128 key must be 16 bytes")
+
+    caught = false
+    try {
+        crypto.sha256(123)
+    } catch (e) {
+        caught = e.type == "TypeError"
+    }
+    assert(caught, "non-string argument must be a TypeError")
+}
+test_argument_validation()

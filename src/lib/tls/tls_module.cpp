@@ -71,6 +71,7 @@ static jc2::Value makeClient(jc2::tls::TlsConfig cfg) {
 struct SocketWrapper {
     jc2::net::TcpStream stream;
     jc2::tls::TlsClient client;
+    jc2::crypto::Bytes pending;      // 上次 recv 多读出来、但超过调用方 max_bytes 的部分
     int timeoutMs = 30000;
     explicit SocketWrapper(jc2::tls::TlsConfig cfg) : client(std::move(cfg)) {}
 };
@@ -209,14 +210,24 @@ METHOD(recv) {
     }
     if (maxBytes <= 0) maxBytes = 16384;
 
-    // 一直读到有应用数据为止：期间可能只收到 NewSessionTicket 之类的握手记录。
-    // 返回空串表示对端关闭（close_notify 或 TCP 关闭）。
-    jc2::crypto::Bytes data = w->client.takeApplicationData();
-    while (data.empty()) {
-        if (!pumpIn(*w)) break;
+    // 先把上次多读出来的部分交出去
+    jc2::crypto::Bytes data;
+    if (!w->pending.empty()) {
+        data.swap(w->pending);
+    } else {
+        // 一直读到有应用数据为止：期间可能只收到 NewSessionTicket 之类的握手记录。
+        // 返回空串表示对端关闭（close_notify 或 TCP 关闭）。
         data = w->client.takeApplicationData();
+        while (data.empty()) {
+            if (!pumpIn(*w)) break;
+            data = w->client.takeApplicationData();
+        }
     }
-    if (static_cast<int>(data.size()) > maxBytes) data.resize(static_cast<size_t>(maxBytes));
+    if (static_cast<int>(data.size()) > maxBytes) {
+        // 超出的部分必须留着，不能丢（否则调用方按 max_bytes 循环读时会静默截断）
+        w->pending.assign(data.begin() + maxBytes, data.end());
+        data.resize(static_cast<size_t>(maxBytes));
+    }
     return jc2::Value(std::string(reinterpret_cast<const char*>(data.data()), data.size())).get_handle();
 }
 

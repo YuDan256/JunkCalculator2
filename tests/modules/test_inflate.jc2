@@ -1,0 +1,619 @@
+// inflate 模块向量测试 + 确定性变异 fuzz。
+//
+// 向量来源：data/codec_vectors/vectors.json，由 data/codec_vectors/generate.py
+// 用 CPython 自带的 zlib（RFC 1950/1951/1952 的参考实现）现场生成 —— 解压侧是
+// JC2 自己手写的容器层 + src/utils/deflate/Deflate.cpp 的裸 DEFLATE 解码器，
+// 两套独立实现互为对拍。
+//
+// 正例逐字节比对（小输入直接比 hex，大输入比长度 + sha256）；
+// 负例必须抛 InflateError。
+//
+// 已知取舍（测试只钉行为，不假装覆盖）：
+//   - gzip 的 FHCRC 字段会被正确跳过，但头 CRC 值本身不重算校验，所以篡改
+//     FHCRC 不会被发现（参考实现在这一点上更严）；本文件不带这条用例；
+//   - 多成员 gzip 只解第一个成员（有专门的向量钉住这个行为）；
+//   - 流结束后不允许有多余尾随字节（比参考实现严格：zlib 会忽略尾随数据）；
+
+import inflate
+import crypto
+import io
+import json
+import sys
+
+_nibbles = "0123456789abcdef"
+
+// ─── 工具（helper 必须先定义）─────────────────────────────────
+
+_hexByte(v: int) -> string = return _nibbles.substr(idiv(v, 16), 1) + _nibbles.substr(v % 16, 1)
+
+// 确定性 LCG：st 是单元素列表，充当可变单元
+_next(st: any) -> int = {
+    st[0] = (st[0] * 31 + 7) % 1000003
+    return st[0]
+}
+
+// 大向量摘要一律走这个小 helper。
+//
+// 为什么不让 crypto.sha256(...) 直接出现在断言里：把"对一个 200KB 十六进制串做
+// sha256，再与期望值比较"这**一个表达式**内联进函数体时，当前 JIT
+// （`jc2 --jit test tests`：61 个测试文件共用一个进程、JIT 状态一路累积，
+// 再跑这个文件时）会在编译期访问违例（0xC0000005）直接崩掉整个测试进程。
+// 同样的调用放进一个有名字的小函数里就完全正常（连跑多次 61/61），而且实测
+// JIT 与解释器给出的摘要与 CPython hashlib 完全一致 —— 崩溃发生在编译期，
+// 不涉及算错。换行/换写法只是绕开这个 JIT 代码形态，断言强度没有降低。
+_shaOf(hexData: string) -> string = return crypto.sha256(hexData)
+
+_loadVectors() -> any = return json.parse(io.readFile("data/codec_vectors/vectors.json"))
+
+// v["kind"] 是 positive/negative，v["container"] 才是 deflate/zlib/gzip；
+// 空串表示"不筛选"。
+_vectors(all: any, wantKind: string, wantContainer: string) -> any = {
+    out = @[]
+    for (v in all["vectors"]) {
+        if (wantKind != "" && v["kind"] != wantKind) continue
+        if (wantContainer != "" && v["container"] != wantContainer) continue
+        out.push(v)
+    }
+    return out
+}
+
+// 按容器把十六进制流喂给对应的解压入口（负例也走这里，顺带覆盖"错容器"的路径）
+_decode(container: string, payload: string) -> string = {
+    if (container == "gzip") return inflate.gunzip(payload)
+    if (container == "zlib") return inflate.unzlib(payload)
+    if (container == "deflate") return inflate.inflate(payload)
+    assert(false, "unknown container in the vector file: " + container)
+    return ""
+}
+
+// 把第 pos 个十六进制字符换掉（0..15 里换一个别的值），用来篡改指定字节
+_flipHexAt(h: string, pos: int) -> string = {
+    cur = h.substr(pos, 1)
+    return h.substr(0, pos) + ((cur == "0") ? "1" : "0") + h.substr(pos + 1)
+}
+
+// 小端十六进制字段 → 大端写法（用于把 gzip 尾部的 CRC32 字段变成可比较的形式）
+_le32ToBe(h: string) -> string = return h.substr(6, 2) + h.substr(4, 2) + h.substr(2, 2) + h.substr(0, 2)
+
+// 正例统一校验：解压结果必须与"原始数据"逐字节相同。
+//   - 小输入（向量文件里留了 data_hex）直接比 hex；
+//   - 大输入比长度 + sha256（crypto 模块提供，不用自己实现哈希）。
+_positiveMatches(v: any, decodedHex: string) -> bool = {
+    if (v.hasKey("data_hex")) return decodedHex == v["data_hex"]
+    if (decodedHex.len() != 2 * v["data_len"]) return false
+    if (v["data_len"] == 0) return true
+    return _shaOf(decodedHex) == v["data_sha256"]
+}
+
+// 负例统一校验：必须抛 InflateError，且不允许是别的异常类型。
+_expectError(label: string, container: string, payload: string) = {
+    kind = ""
+    try {
+        _decode(container, payload)
+        kind = "no error"
+    } catch (e) {
+        kind = e.type
+    }
+    assert(kind == "InflateError", "[" + label + "] expected InflateError, got " + kind)
+}
+
+// ─── crc32 已知向量 ──────────────────────────────────────────
+
+test_crc32_known_vectors() = {
+    assert(inflate.crc32("") == "00000000", "CRC-32 of the empty string")
+    assert(inflate.crc32("61") == "e8b7be43", "CRC-32 of \"a\"")
+    assert(inflate.crc32("616263") == "352441c2", "CRC-32 of \"abc\"")
+    assert(inflate.crc32("313233343536373839") == "cbf43926", "CRC-32 of \"123456789\" (the standard check value)")
+    assert(inflate.crc32("6161616161616161616161616161616161616161616161616161616161616161")
+        == "cab11777", "CRC-32 of 32 x 0x61")
+    assert(inflate.crc32("61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161")
+        == "89b46555", "CRC-32 of 64 x 0x61")
+    assert(inflate.crc32("AB") == inflate.crc32("ab"), "CRC-32 accepts uppercase hex input")
+}
+test_crc32_known_vectors()
+
+test_crc32_rejects_bad_arguments() = {
+    caught = false
+    try {
+        inflate.crc32("abc")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "odd-length hex must raise InflateError")
+
+    caught = false
+    try {
+        inflate.crc32("zz")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "non-hex characters must raise InflateError")
+
+    caught = false
+    try {
+        inflate.crc32(123)
+    } catch (e) {
+        caught = e.type == "TypeError"
+    }
+    assert(caught, "a non-string argument must be a TypeError")
+}
+test_crc32_rejects_bad_arguments()
+
+// ─── 正例：container × level × 输入集 ────────────────────────
+
+test_positive_vectors_roundtrip() = {
+    all = _loadVectors()
+    positives = _vectors(all, "positive", "")
+    assert(positives.len() >= 60, "the positive vector set must not shrink")
+
+    seen = {}
+    for (v in positives) {
+        container = v["container"]
+        decoded = _decode(container, v["payload"])
+        assert(_positiveMatches(v, decoded),
+               "[" + v["name"] + "] decompressed bytes differ from the original")
+        if (seen.hasKey(container)) {
+            seen[container] = seen[container] + 1
+        } else {
+            seen[container] = 1
+        }
+    }
+    assert(seen.hasKey("deflate") && seen["deflate"] > 0, "deflate vectors ran")
+    assert(seen.hasKey("zlib") && seen["zlib"] > 0, "zlib vectors ran")
+    assert(seen.hasKey("gzip") && seen["gzip"] > 0, "gzip vectors ran")
+}
+test_positive_vectors_roundtrip()
+
+test_raw_deflate_reference_stream() = {
+    // CPython: zlib.compress(b"abc", 6)[2:-4] = 4b4c4a0600；纯裸流也能独立喂进来，
+    // 这条不依赖向量文件，用来挡住"向量文件整体读空但断言仍成立"的假绿。
+    assert(inflate.inflate("4b4c4a0600") == "616263", "raw DEFLATE stream of \"abc\"")
+    assert(inflate.unzlib("789c4b4c4a0600024d0127") == "616263", "zlib stream of \"abc\"")
+    assert(inflate.gunzip("1f8b080000000000000a4b4c4a0600c241243503000000") == "616263", "gzip stream of \"abc\"")
+    // btype=1 的空流（BFINAL=1, BTYPE=01, EOB）
+    assert(inflate.inflate("0300") == "", "a fixed-Huffman empty stream decodes to nothing")
+    // btype=0 的 stored 块（手写编码器会产出这种块）
+    assert(inflate.inflate("011000efff6a6332206465666c61746520636f7265") == "6a6332206465666c61746520636f7265",
+           "a stored block payload decodes to its raw bytes")
+}
+test_raw_deflate_reference_stream()
+
+test_gzip_trailer_crc32_matches_module() = {
+    // gzip 尾部结构（RFC 1952 §2.3.1）：最后 8 字节 = CRC32(4, 小端) + ISIZE(4, 小端)。
+    // 所以 CRC32 字段是倒数第 8..5 字节，即 hex 里的 len-16 .. len-9。
+    // 把它翻成大端后必须等于 inflate.crc32(解压结果) —— 这同时钉住了 gzipDecode
+    // 的校验（不相等它会直接失败）与 crc32 的实现。
+    all = _loadVectors()
+    checked = 0
+    for (v in _vectors(all, "positive", "gzip")) {
+        decoded = _decode("gzip", v["payload"])
+        payload = v["payload"]
+        storedLe = payload.substr(payload.len() - 16, 8)
+        assert(inflate.crc32(decoded) == _le32ToBe(storedLe),
+               "[" + v["name"] + "] the gzip trailer CRC32 must equal inflate.crc32 of the output")
+        checked += 1
+    }
+    assert(checked >= 25, "expected >=25 gzip positives, got " + str(checked))
+}
+test_gzip_trailer_crc32_matches_module()
+
+test_zlib_trailer_is_verified() = {
+    // zlib 没有 crc32 之外可直接读回的公开算法入口，这里用"篡改尾部必须失败"
+    // 的反证来钉住 Adler-32 真的被校验了：把每条正例的尾部 4 字节（校验和，
+    // 大端）各改一位，解压必须报 InflateError。
+    all = _loadVectors()
+    checked = 0
+    for (v in _vectors(all, "positive", "zlib")) {
+        payload = v["payload"]
+        assert(payload.len() >= 8, "[" + v["name"] + "] a zlib stream is at least 4 bytes long")
+        for (delta in @[2, 4, 6, 8]) {
+            _expectError("adler tampered at -" + str(delta) + " in " + v["name"], "zlib",
+                         _flipHexAt(payload, payload.len() - delta))
+        }
+        checked += 1
+    }
+    assert(checked >= 20, "expected >=20 zlib positives, got " + str(checked))
+}
+test_zlib_trailer_is_verified()
+
+test_gzip_trailer_is_verified() = {
+    // 同理：篡改 gzip 尾部（CRC32 的 4 个字节 + ISIZE 的 4 个字节）以及尾部
+    // 追加垃圾，都必须失败。
+    //
+    // 例外（已知取舍，不是漏检）：**空载荷**的 gzip 成员其尾部 8 字节全是 0，
+    // 追加一个 0x00 恰好构成另一个合法的空成员（"多成员拼接"），此时只解第一个
+    // 成员的结果与原文完全一致。所以空载荷向量不加这条断言。
+    all = _loadVectors()
+    checked = 0
+    skipped = 0
+    for (v in _vectors(all, "positive", "gzip")) {
+        payload = v["payload"]
+        assert(payload.len() >= 24, "[" + v["name"] + "] a gzip stream has a 10-byte header and 8-byte trailer")
+        // 尾部 8 字节 = CRC32(4) + ISIZE(4)：从 -1 数到 -16
+        for (delta in @[1, 5, 9, 13, 16]) {
+            _expectError("trailer tampered at -" + str(delta) + " in " + v["name"], "gzip",
+                         _flipHexAt(payload, payload.len() - delta))
+        }
+        if (v["data_len"] == 0) {
+            skipped += 1
+        } else {
+            _expectError("trailing junk in " + v["name"], "gzip", payload + "00")
+            _expectError("trailing junk in " + v["name"], "gzip", payload + "deadbeef")
+        }
+        checked += 1
+    }
+    assert(checked >= 25, "expected >=25 gzip positives, got " + str(checked))
+    assert(skipped <= 4, "only the empty-payload vectors may skip the trailing-junk check")
+}
+test_gzip_trailer_is_verified()
+
+test_large_vectors_and_boundaries() = {
+    all = _loadVectors()
+    found = 0
+    for (v in all["vectors"]) {
+        if (v["name"] == "same_100k_gzip_l9") {
+            // 100KB 全同字节：压缩后极小，解压后必须完整（高压缩比路径）
+            assert(v["compressed_len"] < 200, "the 100KB same-byte vector should be tiny")
+            decoded = inflate.gunzip(v["payload"])
+            assert(decoded.len() == 204800, "100KB -> 204800 hex chars")
+            assert(_shaOf(decoded) == v["data_sha256"], "100KB same-byte content")
+            found += 1
+        }
+        if (v["name"] == "mixed_100k_deflate_l6") {
+            assert(inflate.inflate(v["payload"]).len() == 204800, "100KB raw DEFLATE round-trip")
+            found += 1
+        }
+        if (v["name"] == "empty_gzip_l9" || v["name"] == "empty_zlib_l9" || v["name"] == "empty_deflate_l9") {
+            assert(_decode(v["container"], v["payload"]) == "", "[" + v["name"] + "] empty input round-trips")
+            found += 1
+        }
+    }
+    assert(found >= 5, "expected the empty/high-ratio vectors, found " + str(found))
+}
+test_large_vectors_and_boundaries()
+
+test_gzip_two_members_first_member_only() = {
+    // RFC 1952 §2.2 允许把多个成员拼在一起。zlib 的 decompress() 只解第一个成员，
+    // 本模块同样只解第一个成员（并校验它自己的 CRC32/ISIZE）—— 这是**已知取舍**，
+    // 这里用一条向量把行为钉死，而不是让它随实现漂移。
+    all = _loadVectors()
+    for (v in all["vectors"]) {
+        if (v["name"] != "gz_two_members_first_only") continue
+        assert(inflate.gunzip(v["payload"]) == "616263", "only the first member is decoded")
+        return
+    }
+    assert(false, "missing the two-member gzip vector")
+}
+test_gzip_two_members_first_member_only()
+
+// ─── gzip 头 FLG 位覆盖 ──────────────────────────────────────
+
+test_gzip_header_flags() = {
+    all = _loadVectors()
+    expect = @["gz_flag_ftext", "gz_flag_fhcrc", "gz_flag_fextra", "gz_flag_fname",
+               "gz_flag_fcomment", "gz_flag_all"]
+    original = "677a69702068656164657220666c616773"   // "gzip header flags"
+    for (name in expect) {
+        found = false
+        for (v in all["vectors"]) {
+            if (v["name"] != name) continue
+            found = true
+            assert(v["container"] == "gzip", "[" + name + "] must be a gzip vector")
+            assert(inflate.gunzip(v["payload"]) == original,
+                   "[" + name + "] every documented FLG bit must be skipped correctly")
+        }
+        assert(found, "missing gzip flag vector: " + name)
+    }
+}
+test_gzip_header_flags()
+
+// ─── 负例：截断 / 校验和 / 尾部垃圾 / 坏头 / 错容器 ──────────
+
+test_negative_vectors_raise_inflate_error() = {
+    all = _loadVectors()
+    negatives = _vectors(all, "negative", "")
+    assert(negatives.len() >= 20, "the negative vector set must not shrink")
+
+    seen = {}
+    for (v in negatives) {
+        _expectError(v["name"], v["container"], v["payload"])
+        if (seen.hasKey(v["container"])) {
+            seen[v["container"]] = seen[v["container"]] + 1
+        } else {
+            seen[v["container"]] = 1
+        }
+    }
+    assert(seen.hasKey("deflate") && seen["deflate"] > 0, "deflate negatives ran")
+    assert(seen.hasKey("zlib") && seen["zlib"] > 0, "zlib negatives ran")
+    assert(seen.hasKey("gzip") && seen["gzip"] > 0, "gzip negatives ran")
+}
+test_negative_vectors_raise_inflate_error()
+
+test_required_negative_names_exist() = {
+    // 这些名字必须存在且必须失败 —— 它们是"校验和真的被检查了"的证据。
+    required = @["gz_truncated_1", "gz_truncated_5", "gz_crc_flipped", "gz_isize_flipped",
+                 "gz_trailing_garbage", "gz_bad_magic", "gz_bad_cm", "gz_bad_reserved_flag",
+                 "gz_empty", "gz_header_only",
+                 "zl_bad_header_check", "zl_bad_cm", "zl_truncated_1", "zl_truncated_5",
+                 "zl_adler_flipped", "zl_trailing_garbage", "zl_empty", "zl_header_only",
+                 "raw_truncated_1", "deflate_empty"]
+    all = _loadVectors()
+    for (want in required) {
+        found = false
+        for (v in all["vectors"]) {
+            if (v["name"] != want) continue
+            found = true
+            assert(v["kind"] == "negative", "[" + want + "] must be a negative vector")
+            _expectError(want, v["container"], v["payload"])
+        }
+        assert(found, "missing negative vector: " + want)
+    }
+}
+test_required_negative_names_exist()
+
+test_container_mismatch_is_an_error() = {
+    // 容器错配：把 zlib 流喂给 gunzip、把 gzip 流喂给 unzlib、把 gzip 流喂给裸 inflate
+    _expectError("zlib stream through gunzip", "gzip", "789c4b4c4a0600024d0127")
+    _expectError("gzip stream through unzlib", "zlib", "1f8b080000000000000a4b4c4a0600c241243503000000")
+    _expectError("gzip stream through raw inflate", "deflate", "1f8b080000000000000a4b4c4a0600c241243503000000")
+    _expectError("zlib stream through raw inflate", "deflate", "789c4b4c4a0600024d0127")
+    // 反向：裸流套上 zlib 外壳也必须失败（头部校验和不为 0）
+    _expectError("raw stream through unzlib", "zlib", "4b4c4a0600")
+}
+test_container_mismatch_is_an_error()
+
+// ─── 参数校验 ────────────────────────────────────────────────
+
+test_argument_validation() = {
+    caught = false
+    try {
+        inflate.inflate("abc")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "odd-length hex is an InflateError")
+
+    caught = false
+    try {
+        inflate.gunzip("zz")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "non-hex characters are an InflateError")
+
+    caught = false
+    try {
+        inflate.unzlib(42)
+    } catch (e) {
+        caught = e.type == "TypeError"
+    }
+    assert(caught, "a non-string argument is a TypeError")
+
+    // 少传参数属于调用方错误；具体异常类型由运行时的参数个数检查决定，
+    // 这里只要求"必须报错"，不去猜是哪一层拦下来的。
+    caught = false
+    try {
+        inflate.inflate()
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "a missing argument must be rejected")
+
+    // 空的裸 DEFLATE 流：没有任何块，必须报错而不是静默返回空串
+    caught = false
+    try {
+        inflate.inflate("")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "an empty raw stream has no DEFLATE block and must fail")
+
+    // 空的 gzip / zlib 流：连头都不够
+    caught = false
+    try {
+        inflate.gunzip("")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "an empty gzip stream is truncated")
+
+    caught = false
+    try {
+        inflate.unzlib("7801")
+    } catch (e) {
+        caught = e.type == "InflateError"
+    }
+    assert(caught, "a zlib header without body or Adler-32 is truncated")
+}
+test_argument_validation()
+
+// ─── 确定性变异 fuzz ─────────────────────────────────────────
+//
+// 底线：对任意字节序列，解压要么成功、要么抛 InflateError，绝不允许崩溃、
+// 静默返回错数据或抛出别的异常类型。LCG 与 P1 的 fuzz 相同
+// （st[0] = (st[0]*31+7) % 1000003，初值 @[7]），失败可复现。
+
+// 翻一个半字节
+_mutFlip(h: string, st: any) -> string = {
+    pos = _next(st) % h.len()
+    return h.substr(0, pos) + _nibbles.substr(_next(st) % 16, 1) + h.substr(pos + 1)
+}
+
+// 截断到随机偶数长度
+_mutTruncate(h: string, st: any) -> string = {
+    keep = 2 * (_next(st) % (idiv(h.len(), 2) + 1))
+    return h.substr(0, keep)
+}
+
+// 追加 1..8 字节垃圾
+_mutAppend(h: string, st: any) -> string = {
+    n = 1 + _next(st) % 8
+    junk = ""
+    for (i in range(n)) { junk += _hexByte(_next(st) % 256) }
+    return h + junk
+}
+
+// 改写一个整字节
+_mutByte(h: string, st: any) -> string = {
+    pos = 2 * (_next(st) % idiv(h.len(), 2))
+    return h.substr(0, pos) + _hexByte(_next(st) % 256) + h.substr(pos + 2)
+}
+
+// 在随机位置删掉一个字节
+_mutDelete(h: string, st: any) -> string = {
+    if (h.len() < 4) return h
+    pos = 2 * (_next(st) % (idiv(h.len(), 2) - 1))
+    return h.substr(0, pos) + h.substr(pos + 2)
+}
+
+// 整体重复一遍（制造"多成员拼接 / 尾部垃圾"的边界）
+_mutDouble(h: string, st: any) -> string = {
+    assert(_next(st) >= 0, "consume the LCG so the sequence stays in sync")
+    return h + h
+}
+
+_mutate(h: string, st: any) -> string = {
+    if (h.len() < 2) return h
+    kind = _next(st) % 6
+    if (kind == 0) return _mutFlip(h, st)
+    if (kind == 1) return _mutTruncate(h, st)
+    if (kind == 2) return _mutAppend(h, st)
+    if (kind == 3) return _mutByte(h, st)
+    if (kind == 4) return _mutDelete(h, st)
+    return _mutDouble(h, st)
+}
+
+// 跑一轮：try 里**只放模块调用**（assert 自己抛的是 RuntimeError，放在 try 里会把
+// "断言失败"伪装成"模块抛了意外异常"，那样 fuzz 就废了）。成功后再在 try 外面
+// 单独检查内容形状。
+//
+// 内容不变式（"静默乱解"防线）：如果这一轮的输入是**原流 + 追加字节**，那解压
+// 结果必须与原文逐字节相同 —— 尾部垃圾绝不允许污染解出来的数据。
+_fuzzRound(container: string, originalHex: string, originalDecoded: string,
+           mutated: string, label: string) -> string = {
+    outcome = ""
+    decoded = ""
+    try {
+        decoded = _decode(container, mutated)
+        outcome = "ok"
+    } catch (e) {
+        outcome = e.type
+    }
+    assert(outcome == "ok" || outcome == "InflateError",
+           "[" + label + "] mutated bytes produced " + outcome + " instead of ok/InflateError")
+    if (outcome == "ok") {
+        assert(decoded.len() % 2 == 0, "[" + label + "] decoded hex must have an even length")
+        if (mutated.len() > originalHex.len() &&
+            mutated.substr(0, originalHex.len()) == originalHex) {
+            assert(decoded == originalDecoded,
+                   "[" + label + "] appended bytes must not change the decompressed data")
+        }
+    }
+    return outcome
+}
+
+// 给 fuzz 用的基流（从向量文件里取，保证是真的合法流）
+_fuzzBase(all: any, name: string) -> string = {
+    for (v in all["vectors"]) {
+        if (v["name"] == name) return v["payload"]
+    }
+    assert(false, "missing fuzz base vector: " + name)
+    return ""
+}
+
+_fuzzOneContainer(name: string, container: string, rounds: int) = {
+    all = _loadVectors()
+    st = @[7]
+    base = _fuzzBase(all, name)
+    assert(base.len() > 100, "the fuzz base stream must be a real compressed stream")
+    baseDecoded = _decode(container, base)
+    assert(baseDecoded.len() >= 2000, "the fuzz base must decode to something substantial")
+
+    ok = 0
+    rejected = 0
+    for (roundIdx in range(rounds)) {
+        outcome = _fuzzRound(container, base, baseDecoded, _mutate(base, st),
+                             container + "#" + str(roundIdx))
+        if (outcome == "ok") { ok += 1 } else { rejected += 1 }
+    }
+    assert(ok + rejected == rounds, "every round has exactly one outcome")
+    assert(rejected > 0, "mutations must actually produce rejections (otherwise the fuzz is toothless)")
+}
+
+test_fuzz_raw_deflate() = _fuzzOneContainer("mixed_100k_deflate_l6", "deflate", 250)
+test_fuzz_raw_deflate()
+
+test_fuzz_zlib() = _fuzzOneContainer("mixed_100k_zlib_l6", "zlib", 250)
+test_fuzz_zlib()
+
+test_fuzz_gzip() = _fuzzOneContainer("mixed_100k_gzip_l6", "gzip", 250)
+test_fuzz_gzip()
+
+test_fuzz_mixed_containers() = {
+    // 400 轮混合 fuzz：三种容器 × 六个基流随机组合。允许"变异后依然解压成功"
+    // （截断到块边界、追加尾部垃圾等），但绝不允许崩溃或抛 InflateError 之外的异常。
+    all = _loadVectors()
+    st = @[7]
+    names = @["mixed_100k_deflate_l6", "mixed_100k_zlib_l6", "mixed_100k_gzip_l6",
+              "same_100k_gzip_l9", "rand_1k_gzip_l9", "one_byte_zlib_l6"]
+    bases = @[]
+    for (n in names) {
+        found = false
+        for (v in all["vectors"]) {
+            if (v["name"] != n) continue
+            bases.push(v)
+            found = true
+        }
+        assert(found, "missing mixed-fuzz base: " + n)
+    }
+    assert(bases.len() == 6, "expected 6 fuzz base vectors, got " + str(bases.len()))
+
+    ok = 0
+    rejected = 0
+    for (roundIdx in range(400)) {
+        v = bases[_next(st) % bases.len()]
+        outcome = _fuzzRound(v["container"], v["payload"], _decode(v["container"], v["payload"]),
+                             _mutate(v["payload"], st), "mixed#" + str(roundIdx))
+        if (outcome == "ok") { ok += 1 } else { rejected += 1 }
+    }
+    assert(ok + rejected == 400, "mixed fuzz ran all 400 rounds")
+    assert(rejected > 0, "mixed fuzz must produce rejections too")
+    assert(ok > 0, "mixed fuzz must also accept some mutations (otherwise it proves nothing)")
+}
+test_fuzz_mixed_containers()
+
+// ─── 100KB gunzip 计时（脚本内计时，结果作为返回值）──────────
+
+test_large_gunzip_roundtrip() -> any = {
+    all = _loadVectors()
+    payload = ""
+    want = ""
+    compressedLen = 0
+    for (v in all["vectors"]) {
+        if (v["name"] == "mixed_100k_gzip_l6") {
+            payload = v["payload"]
+            want = v["data_sha256"]
+            compressedLen = v["compressed_len"]
+        }
+    }
+    assert(payload != "", "the 100KB gzip vector must exist")
+    assert(compressedLen > 100, "the 100KB gzip stream must be a real compressed stream")
+
+    inner = 20
+    t0 = sys.clock()
+    decoded = inflate.gunzip(payload)
+    first = sys.clock() - t0
+    assert(_shaOf(decoded) == want, "100KB gunzip content")
+    assert(first >= 0, "sys.clock() must be usable for timing")
+    assert(decoded.len() == 204800, "100KB gunzip size")
+
+    // 重复 inner 次取平均，避免单次计时被调度噪声主导
+    t1 = sys.clock()
+    for (i in range(inner)) {
+        decoded = inflate.gunzip(payload)
+    }
+    total = sys.clock() - t1
+    assert(decoded.len() == 204800, "repeated gunzip still returns the right size")
+    return @[first, total, total / inner]
+}
+gunzip_timing = test_large_gunzip_roundtrip()

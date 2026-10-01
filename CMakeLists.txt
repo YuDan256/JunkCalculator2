@@ -171,6 +171,20 @@ endif()
 
 # 注意：src/lib/internal/ 是引擎内部支撑代码（密码学/网络栈），**不是**原生模块，
 # 不进下面的 foreach(mod IN ITEMS ...) 列表，只编进 jc2_crypto / jc2_tls 静态库。
+# ★ Codec primitives (static lib: P0 层，inflate 模块与后续压缩容器共用)
+# 裸 DEFLATE 复用 src/utils/deflate/Deflate.cpp（不重写解压器），
+# 这一层只做 gzip/zlib 容器外壳 + 校验和。
+set(JC2_CODEC_SOURCES
+    "src/lib/internal/codec/Gzip.cpp"
+    "src/lib/internal/codec/Hex.cpp"
+    "src/utils/deflate/Deflate.cpp"
+)
+add_library(jc2_codec STATIC ${JC2_CODEC_SOURCES})
+target_include_directories(jc2_codec PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(MSVC)
+    target_compile_options(jc2_codec PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+endif()
+
 # ★ TLS 1.3 client（静态库：tls 模块与后续 http 接线共用）
 add_library(jc2_tls STATIC "src/lib/internal/net/tls/TlsClient.cpp" "src/lib/internal/net/TcpStream.cpp")
 target_include_directories(jc2_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -192,6 +206,12 @@ add_library(crypto SHARED "src/lib/crypto/crypto_module.cpp")
 target_include_directories(crypto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(crypto PRIVATE jc2_crypto)
 set_target_properties(crypto PROPERTIES PREFIX "") # Output crypto.dll instead of libcrypto.dll
+
+# ★ Build Inflate Module as a standalone DLL（gzip/zlib/raw DEFLATE 解压）
+add_library(inflate SHARED "src/lib/inflate/inflate_module.cpp")
+target_include_directories(inflate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(inflate PRIVATE jc2_codec)
+set_target_properties(inflate PROPERTIES PREFIX "") # Output inflate.dll instead of libinflate.dll
 
 # ★ Symbol collector: 离线收集每个 dll 模块符号 → sidecar json（不 LoadLibrary）
 function(add_symbol_collector mod)
@@ -216,13 +236,14 @@ function(add_symbol_collector mod)
         COMMENT "Collecting symbols: ${mod}.json")
 endfunction()
 
-foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto tls)
+foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto tls inflate)
     add_symbol_collector(${mod})
 endforeach()
 
 # 符号收集器直接 include 模块源码，因此也要能链接到原语静态库
 target_link_libraries(collect_crypto PRIVATE jc2_crypto)
 target_link_libraries(collect_tls PRIVATE jc2_tls)
+target_link_libraries(collect_inflate PRIVATE jc2_codec)
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
@@ -233,7 +254,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto tls)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto tls inflate)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

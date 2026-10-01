@@ -167,6 +167,19 @@ if(MSVC)
     target_compile_options(jc2_crypto PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
 endif()
 
+# ★ TLS 1.3 client（静态库：tls 模块与后续 http 接线共用）
+add_library(jc2_tls STATIC "src/tls/TlsClient.cpp")
+target_include_directories(jc2_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(jc2_tls PUBLIC jc2_crypto)
+if(MSVC)
+    target_compile_options(jc2_tls PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
+endif()
+
+# ★ Build TLS Module as a standalone DLL
+add_library(tls SHARED "src/lib/tls/tls_module.cpp")
+target_include_directories(tls PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(tls PRIVATE jc2_tls)
+set_target_properties(tls PROPERTIES PREFIX "") # Output tls.dll instead of libtls.dll
 # ★ Build Crypto Module as a standalone DLL（把原语暴露给脚本，供向量测试）
 add_library(crypto SHARED "src/lib/crypto/crypto_module.cpp")
 target_include_directories(crypto PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -196,12 +209,13 @@ function(add_symbol_collector mod)
         COMMENT "Collecting symbols: ${mod}.json")
 endfunction()
 
-foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto)
+foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto tls)
     add_symbol_collector(${mod})
 endforeach()
 
 # 符号收集器直接 include 模块源码，因此也要能链接到原语静态库
 target_link_libraries(collect_crypto PRIVATE jc2_crypto)
+target_link_libraries(collect_tls PRIVATE jc2_tls)
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
@@ -212,7 +226,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto tls)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

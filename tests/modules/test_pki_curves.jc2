@@ -1,0 +1,185 @@
+// P-384/P-521 曲线、SHA-384/512 与 SHA-384/512 证书链的官方向量测试。
+//
+// 夹具（逐字节抄自官方来源，出处与自校验见各自 notes / manifest.md）：
+//   data/crypto_vectors/pki/sha2_vectors.json         FIPS 180-4 的 SHA-384/512（含 111/112/127/128/129 边界）
+//   data/crypto_vectors/pki/ecdsa_p384_p521.json      NIST CAVP SigVer 的 P-384/SHA-384 与 P-521/SHA-512，
+//                                                     外加 CAVP ECDH 的 P-384/P-521 各 2 组
+//   data/crypto_vectors/pki/*.der                     4 条链：纯 P-384、P-521 中间+P-384 叶、
+//                                                     SHA-384 RSA、SHA-512 RSA
+//
+// 证书有效期统一 2020-01-01→2035-01-01，校验时刻固定 1717200000（2024-06-01T00:00:00Z）。
+
+import crypto
+import bytes
+import json
+import io
+
+_pki() = return json.parse(io.readFile("data/crypto_vectors/pki/ecdsa_p384_p521.json"))
+_sha2() = return json.parse(io.readFile("data/crypto_vectors/pki/sha2_vectors.json"))
+_der(name: string) -> string = return bytes.readFile("data/crypto_vectors/pki/" + name).toHex()
+
+// ─── SHA-384 / SHA-512 ────────────────────────────────────────
+
+test_sha384_and_sha512_vectors() = {
+    fx = _sha2()
+    s384 = fx["sha384"]
+    assert(s384.len() == 9, "expected 9 SHA-384 vectors, got " + str(s384.len()))
+    for (v in s384) {
+        assert(crypto.sha384(v["msg_hex"]) == v["digest_hex"],
+               "SHA-384 mismatch on " + v["name"] + " (" + str(v["msg_len"]) + " bytes)")
+    }
+    s512 = fx["sha512"]
+    assert(s512.len() == 9, "expected 9 SHA-512 vectors, got " + str(s512.len()))
+    for (v in s512) {
+        assert(crypto.sha512(v["msg_hex"]) == v["digest_hex"],
+               "SHA-512 mismatch on " + v["name"] + " (" + str(v["msg_len"]) + " bytes)")
+    }
+    // 长度边界确实覆盖到了（SHA-512 的块是 128 字节，边界与 SHA-256 不同）
+    lens = @[]
+    for (v in s512) { lens.push(v["msg_len"]) }
+    for (want in @[111, 112, 127, 128, 129]) {
+        assert(want in lens, "SHA-512 boundary length " + str(want) + " must be covered")
+    }
+}
+test_sha384_and_sha512_vectors()
+
+// ─── ECDSA P-384/SHA-384 与 P-521/SHA-512（CAVP SigVer）───────
+
+_ecdsaCases(key: string, curve: string, hashName: string) = {
+    fx = _pki()
+    list = fx[key]
+    ok = 0
+    bad = 0
+    for (v in list) {
+        pub = "04" + v["qx"] + v["qy"]
+        got = crypto.ecdsaVerifyRS(curve, pub, hashName, v["msg_hex"],
+                                   v["r_padded"], v["s_padded"])
+        if (v["result"] == "P") {
+            assert(got, "expected a valid signature: " + str(v))
+            ok += 1
+        } else {
+            assert(!got, "expected a rejected signature: " + str(v))
+            bad += 1
+        }
+    }
+    return {"ok": ok, "bad": bad}
+}
+
+test_ecdsa_p384_sha384_vectors() = {
+    r = _ecdsaCases("p384_sha384", "P-384", "sha384")
+    assert(r["ok"] == 3 && r["bad"] == 2, "P-384/SHA-384: 3 valid + 2 invalid, got " + str(r))
+    // 补充的那条有效向量（来自 CAVP SigGen，构造上必然有效）
+    extra = _pki()["p384_sha384_extra_valid"]
+    v = extra[0]
+    assert(crypto.ecdsaVerifyRS("P-384", "04" + v["qx"] + v["qy"], "sha384", v["msg_hex"],
+                                v["r_padded"], v["s_padded"]),
+           "the extra valid P-384/SHA-384 vector must verify")
+}
+test_ecdsa_p384_sha384_vectors()
+
+test_ecdsa_p521_sha512_vectors() = {
+    r = _ecdsaCases("p521_sha512", "P-521", "sha512")
+    assert(r["ok"] == 3 && r["bad"] == 2, "P-521/SHA-512: 3 valid + 2 invalid, got " + str(r))
+}
+test_ecdsa_p521_sha512_vectors()
+
+// ─── ECDH P-384 / P-521（CAVP KAS ECC CDH）────────────────────
+
+test_ecdh_p384_p521_vectors() = {
+    fx = _pki()
+    for (v in fx["ecdh_p384"]) {
+        peer = "04" + v["peer_x"] + v["peer_y"]
+        assert(crypto.ecEcdh("P-384", v["priv"], peer) == v["shared"], "P-384 ECDH shared secret")
+    }
+    for (v in fx["ecdh_p521"]) {
+        peer = "04" + v["peer_x"] + v["peer_y"]
+        assert(crypto.ecEcdh("P-521", v["priv"], peer) == v["shared"], "P-521 ECDH shared secret")
+    }
+    assert(fx["ecdh_p384"].len() == 2 && fx["ecdh_p521"].len() == 2, "two ECDH vectors per curve")
+}
+test_ecdh_p384_p521_vectors()
+
+// ─── 曲线基本性质：d·G 可复现、坏点被拒 ────────────────────────
+
+test_curve_basics() = {
+    // d = 1 时 d·G 就是基点本身（三条曲线都能自洽）
+    for (spec in @[@["P-256", 65], @["P-384", 97], @["P-521", 133]]) {
+        curve = spec[0]
+        g = crypto.ecBasePointMul(curve, "01")
+        assert(g.len() == 2 * spec[1], curve + " point length")
+        assert(g.substr(0, 2) == "04", curve + " uncompressed point prefix")
+        // d·G 重复计算必须一致
+        assert(crypto.ecBasePointMul(curve, "01") == g, curve + " base point is deterministic")
+        // 不在曲线上的点必须被拒
+        bad = "04" + "01" + g.substr(4)
+        caught = false
+        try {
+            crypto.ecEcdh(curve, "01", bad)
+        } catch (e) {
+            caught = true
+        }
+        assert(caught, curve + " must reject off-curve points")
+    }
+    // 不认识的曲线名必须报类型化错误
+    caught = false
+    try {
+        crypto.ecBasePointMul("P-123", "01")
+    } catch (e) {
+        caught = e.type == "CryptoError" && "unsupported curve" in e.message
+    }
+    assert(caught, "unknown curve names are rejected")
+}
+test_curve_basics()
+
+// ─── 四条链的证书校验（P-384 / P-521 / RSA-SHA384 / RSA-SHA512）──
+
+_verifyChain(prefix: string, host: string) = {
+    leaf = _der(prefix + "_leaf.der")
+    inter = _der(prefix + "_inter.der")
+    root = _der(prefix + "_root.der")
+    return crypto.x509Verify(leaf, @[inter], @[root], host, 1717200000)
+}
+
+test_chain_p384() = {
+    r = _verifyChain("p384", "p384.example.com")
+    assert(r["ok"], "pure P-384 chain must verify: " + r["reason"] + " " + r["detail"])
+    assert(r["chainLength"] == 3, "leaf + intermediate + root")
+    info = crypto.x509Parse(_der("p384_leaf.der"))
+    assert(info["keyType"] == "ec-p384", "leaf key type: " + info["keyType"])
+    assert(info["sigAlg"] == "1.2.840.10045.4.3.3", "signed with ecdsa-with-SHA384")
+
+    // 主机名不匹配
+    r2 = _verifyChain("p384", "wrong.example.com")
+    assert(!r2["ok"] && r2["reason"] == "hostname-mismatch", "hostname check: " + r2["reason"])
+    // 没有中间证书 → 找不到信任锚
+    r3 = crypto.x509Verify(_der("p384_leaf.der"), @[], @[_der("p384_root.der")], "p384.example.com", 1717200000)
+    assert(!r3["ok"] && r3["reason"] == "no-trust-anchor", "missing intermediate: " + r3["reason"])
+}
+test_chain_p384()
+
+test_chain_p521_with_p384_leaf() = {
+    // 中间是 P-521、叶子是 P-384，两种曲线在一条链里混用
+    r = _verifyChain("p521", "p521.example.com")
+    assert(r["ok"], "P-521 intermediate chain must verify: " + r["reason"] + " " + r["detail"])
+    assert(crypto.x509Parse(_der("p521_inter.der"))["keyType"] == "ec-p521", "intermediate is P-521")
+    assert(crypto.x509Parse(_der("p521_leaf.der"))["keyType"] == "ec-p384", "leaf is P-384")
+
+    // 用 P-384 的曲线去解 P-521 的点必须失败（曲线与密钥长度绑定）
+    r2 = crypto.x509Verify(_der("p521_leaf.der"), @[_der("p384_inter.der")], @[_der("p521_root.der")],
+                           "p521.example.com", 1717200000)
+    assert(!r2["ok"], "a mismatched intermediate must not build a chain")
+}
+test_chain_p521_with_p384_leaf()
+
+test_chains_rsa_sha384_and_sha512() = {
+    for (spec in @[@["rsa384", "rsa384.example.com", "1.2.840.113549.1.1.12"],
+                   @["rsa512", "rsa512.example.com", "1.2.840.113549.1.1.13"]]) {
+        prefix = spec[0]
+        r = _verifyChain(prefix, spec[1])
+        assert(r["ok"], prefix + " chain must verify: " + r["reason"] + " " + r["detail"])
+        info = crypto.x509Parse(_der(prefix + "_leaf.der"))
+        assert(info["keyType"] == "rsa" && info["rsaBits"] == 2048, prefix + " leaf is RSA-2048")
+        assert(info["sigAlg"] == spec[2], prefix + " signature algorithm: " + info["sigAlg"])
+    }
+}
+test_chains_rsa_sha384_and_sha512()

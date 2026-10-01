@@ -256,6 +256,23 @@ METHOD(tell) { GET_SELF; return jc2::Value(static_cast<double>(pos)).get_handle(
 METHOD(isEnd) { GET_SELF; return jc2::Value(pos >= buf.size()).get_handle(); }
 
 // --- Chainable Writers ---
+METHOD(truncate) {
+    GET_SELF;
+    const double wantD = jc2::Value(argv[1]).as_float();
+    if (wantD < 0) throwBytesError("Truncate length must be non-negative.");
+    const size_t want = static_cast<size_t>(wantD);
+    if (want > buf.size()) throwBytesError("Truncate out of bounds.");
+    // 根缓冲（不是 view）时把底层 vector 一起缩掉；view 只缩自己，不动父缓冲
+    if (ctx->shared_data && ctx->view_data == ctx->shared_data->data() &&
+        ctx->view_size == ctx->shared_data->size()) {
+        ctx->shared_data->resize(want);
+        ctx->view_data = ctx->shared_data->data();
+    }
+    ctx->view_size = want;
+    if (ctx->pos > want) ctx->pos = want;   // 游标夹到新长度
+    return argv[0];                          // 可链式：b.truncate(n).save(p)
+}
+
 METHOD(writeStr) {
     GET_SELF;
     std::string s = jc2::Value(argv[1]).as_string();
@@ -392,6 +409,7 @@ int jc2_init(jc2::Module& mod) {
 
     g_bytesClass->bind_method("writeFile", bytes_writeFile, 1, 1, {"path"});
     g_bytesClass->bind_method("save", bytes_writeFile, 1, 1, {"path"});
+    g_bytesClass->bind_method("truncate", bytes_truncate, 1, 1, {"len"});
     g_bytesClass->bind_method("set", bytes_set, 3, 3, {"offset", "val", "type"});
     g_bytesClass->bind_method("write_arr", bytes_write_arr, 3, 3, {"offset", "arr", "type"});
     g_bytesClass->bind_method("get", bytes_get, 2, 3, {"offset", "type", "len"});
@@ -507,6 +525,9 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("bytes.Bytes", "bytes.Bytes(size)", "Allocates a zeroed byte buffer of the specified size.", "bytes.Bytes(1024)");
     mod.register_function_help("bytes.alloc", "bytes.alloc(size)", "Alias for bytes.Bytes.", "bytes.alloc(1024)");
     mod.register_function_help("bytes.pack", "bytes.pack(array)", "Creates a byte buffer from an array of 8-bit integers.", "bytes.pack([255, 0, 128])");
+    mod.register_function_help("bytes.Bytes.truncate", "b.truncate(n)",
+        "Shrinks the buffer to n bytes (cursor is clamped); save/writeFile write len() bytes, not the cursor position.",
+        "b = bytes.alloc(1024); b.writeStr(\"abc\"); b.truncate(3).save(\"out.bin\")  // 3 bytes, not 1024");
     mod.register_function_help("bytes.readFile", "bytes.readFile(path)", "Reads an entire file into a byte buffer.", "bytes.readFile(\"data.bin\")");
     mod.register_function_help("bytes.save", "buf.save(path)", "Writes a byte buffer to a file.", "buf.save(\"out.bin\")");
     mod.register_function_help("bytes.set", "buf.set(offset, val, type)", "Writes a value into the buffer at the specified offset.", "buf.set(0, 255, \"u8\")");

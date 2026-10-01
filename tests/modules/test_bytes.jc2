@@ -79,3 +79,85 @@ test_bytes_view() = {
     }
 }
 test_bytes_view()
+
+// ─── truncate：按已写长度写出（save 写的是 len()，不是游标）──────────
+
+test_truncate_saves_only_the_used_prefix() = {
+    dir = "D:\\Temp\\jc2_truncate\\"
+    const local import io
+    const local import bytes
+    io.mkdir(dir, true)
+
+    b = bytes.alloc(16)
+    b.writeStr("abc")
+    assert(b.len() == 16, "allocated size before truncate")
+    assert(round(b.tell()) == 3, "cursor after writing 3 bytes")
+
+    b.truncate(3)
+    assert(b.len() == 3, "size after truncate")
+    b.save(dir + "one.bin")
+    saved = bytes.fromFile(dir + "one.bin")
+    assert(saved.len() == 3, "save writes len() bytes, got " + str(saved.len()))
+    assert(saved.toHex() == "616263", "saved bytes are exactly the written prefix")
+
+    // 链式写法：truncate 返回自身
+    c = bytes.alloc(8)
+    c.writeU8(1)
+    c.writeU8(2)
+    c.truncate(2).save(dir + "two.bin")
+    two = bytes.fromFile(dir + "two.bin")
+    assert(two.len() == 2 && two.toHex() == "0102", "chained truncate+save")
+}
+
+test_truncate_bounds_and_cursor() = {
+    const local import bytes
+
+    b = bytes.alloc(8)
+    caught = false
+    try {
+        b.truncate(9)
+    } catch (e) {
+        caught = e.type == "BytesError"
+    }
+    assert(caught, "truncating beyond the current length must fail")
+
+    caught = false
+    try {
+        b.truncate(-1)
+    } catch (e) {
+        caught = e.type == "BytesError"
+    }
+    assert(caught, "negative truncate length must fail")
+
+    // 游标会被夹到新长度，之后写入越界
+    d = bytes.alloc(8)
+    d.seek(6)
+    d.truncate(4)
+    assert(d.len() == 4, "size after truncate")
+    assert(round(d.tell()) == 4, "cursor clamped to the new length")
+    assert(d.isEnd(), "cursor is at the end after clamping")
+    caught = false
+    try {
+        d.writeU8(9)
+    } catch (e) {
+        caught = e.type == "BytesError"
+    }
+    assert(caught, "writing past the truncated length must fail")
+
+    // 缩容后原数据保留（前 2 字节还在）
+    e = bytes.alloc(8)
+    e.writeStr("xy")
+    e.truncate(2)
+    assert(e.toHex() == "7879", "kept prefix after truncate")
+
+    // view 只缩自己，不影响父缓冲
+    f = bytes.alloc(8)
+    f.writeStr("abcdefgh")
+    v = f.view(2, 4)
+    v.truncate(2)
+    assert(v.len() == 2, "view size after truncate")
+    assert(f.len() == 8, "parent buffer keeps its size")
+    assert(f.toHex() == "6162636465666768", "parent contents untouched")
+}
+test_truncate_saves_only_the_used_prefix()
+test_truncate_bounds_and_cursor()

@@ -1,0 +1,100 @@
+// 回归：GC 跑过之后，脚本类仍必须能实例化、访问成员、调用方法、继承。
+//
+// 曾经的缺陷：mark 阶段走 ObjClass 时只 mark 了 static 域（properties），漏掉了
+// 实例成员模板表（members）。方法闭包（含 init）唯一的所有者就是 members，而类
+// 本身的 refCount 恒为 0、CLASS 又属于 sweep 里的"容器"（不按 refCount 兜底），
+// 于是类对象存活、方法却被当垃圾回收 —— T(v) 再实例化时报
+//   TypeError: Expected a type object for type assertion.
+// 或（内存被覆写后走另一条分支）TypeError: Class takes no arguments directly.
+//
+// 触发方式：显式 sys.gc() 一次即可稳定复现（不需要把分配量顶到引擎阈值）；
+// 额外再用一次小规模分配循环踩自动 GC 路径。
+
+import sys
+
+// 前置定义：继承用的父类必须在子类之前
+class Base {
+    init(tag: string) = { self.tag = tag }
+    describe() = { return "Base:" + self.tag }
+    bump(n: int) = { return n + 1 }
+}
+
+class Derived extends Base {
+    init(tag: string, extra: int) = {
+        self.tag = tag
+        self.extra = extra
+    }
+    describe() = { return "Derived:" + self.tag + "/" + str(self.extra) }
+    total() = { return self.extra + self.bump(self.extra) }
+    static kind() = "derived-class"
+}
+
+// 触发 GC；分配量刻意压到很小，不依赖引擎阈值
+_nudge_gc() = {
+    junk = @[]
+    for (i in range(200)) { junk.push(str(i)) }
+    sys.gc()
+    return junk.len()
+}
+
+test_class_survives_explicit_gc() = {
+    d1 = Derived("a", 10)
+    assert(d1.describe() == "Derived:a/10", "before gc: " + d1.describe())
+
+    sys.gc()
+
+    // 老实例：属性 / 方法 / 继承来的方法都要照常
+    assert(d1.tag == "a", "instance field survives gc")
+    assert(d1.describe() == "Derived:a/10", "override method survives gc")
+    assert(d1.bump(4) == 5, "inherited method survives gc")
+    assert(d1.total() == 21, "method calling another method survives gc")
+    assert(isinstance(d1, Derived) && isinstance(d1, Base), "class identity survives gc")
+    assert(Derived.kind() == "derived-class", "static member survives gc")
+    assert(str(Derived) == "<class Derived>", "class object survives gc")
+}
+
+test_class_can_be_instantiated_after_gc() = {
+    b1 = Base("keepalive")
+    assert(b1.describe() == "Base:keepalive", "first instantiation works")
+
+    _nudge_gc()
+    sys.gc()
+
+    // 缺陷的核心症状：GC 之后 init 闭包已死，这里会抛 TypeError
+    d2 = Derived("b", 20)
+    assert(d2.describe() == "Derived:b/20", "instantiation after gc: " + d2.describe())
+    assert(d2.total() == 41, "method after gc: " + str(d2.total()))
+    assert(d2.extra == 20, "field written by init after gc")
+
+    // 参数类型断言（init(tag: string)）必须仍然拿到活的类型对象
+    b2 = Base("c")
+    assert(b2.describe() == "Base:c", "typed init after gc")
+}
+
+test_class_survives_automatic_gc_during_allocation() = {
+    d3 = Derived("d", 30)
+    assert(d3.describe() == "Derived:d/30", "before allocation loop")
+
+    // 小规模分配：只为了踩一次自动 GC 路径，不依赖具体阈值
+    _nudge_gc()
+
+    d4 = Derived("e", 40)
+    assert(d4.describe() == "Derived:e/40", "instantiation after allocation loop")
+    assert(d3.describe() == "Derived:d/30", "the older instance is still intact")
+    assert(d3.total() == 61 && d4.total() == 81, "both instances keep working methods")
+}
+
+test_repeated_gc_does_not_eat_class_members() = {
+    for (round in range(5)) {
+        sys.gc()
+        obj = Derived("r" + str(round), round)
+        assert(obj.describe() == "Derived:r" + str(round) + "/" + str(round),
+               "round " + str(round) + ": " + obj.describe())
+        assert(obj.total() == round * 2 + 1, "round " + str(round) + " total")
+    }
+}
+
+test_class_survives_explicit_gc()
+test_class_can_be_instantiated_after_gc()
+test_class_survives_automatic_gc_during_allocation()
+test_repeated_gc_does_not_eat_class_members()

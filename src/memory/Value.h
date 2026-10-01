@@ -3414,6 +3414,10 @@ inline void GcHeap::markObj(Obj* obj) {
             auto cls = static_cast<ObjClass*>(obj);
             markObj(cls->parent);
             for (auto& [k, prop] : cls->properties) markValue(prop.val);
+            // ★ 实例成员模板表必须一起走：方法闭包（含 init）唯一的所有者就是这张表，
+            //   不 mark 就会在类本身存活时把方法当垃圾回收掉 —— 类的 refCount 恒为 0，
+            //   而 CLASS 属于"容器"，sweep 里不会用 refCount 兜底。
+            for (auto& [k, prop] : cls->members) markValue(prop.val);
             break;
         }
         case ObjType::INSTANCE: {

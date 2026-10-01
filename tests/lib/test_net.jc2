@@ -48,3 +48,15 @@ test_unbound_server_errors() = {
     srv.close()
 }
 test_unbound_server_errors()
+
+test_tls_socket_reports_connection_failure() = {
+    // TlsSocket 构造时会拨号并握手；端口 1 上没人监听，必须报类型化错误（离线可测）
+    caught = false
+    try {
+        s = net.TlsSocket("127.0.0.1", 1)
+    } catch (e) {
+        caught = e.type == "TlsError"
+    }
+    assert(caught, "TlsSocket to a closed port raises TlsError")
+}
+test_tls_socket_reports_connection_failure()

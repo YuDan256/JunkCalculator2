@@ -72,6 +72,37 @@ class TcpServer {
     }
 }
 
+// ─── TLS 1.3 套接字（thin wrapper over the native tls module）───
+
+const local import tls
+
+class TlsSocket {
+    init(host: string, port: int | float, options: any = none) = {
+        self.host = host
+        self.port = round(port)
+        opts = options is none ? {"serverName": host, "verifyChain": true} : options
+        self.sock = tls.connect(host, self.port, opts)
+    }
+
+    send(text: string) -> int = return self.sock.send(text)
+
+    recv(max_bytes: int | float = 4096) -> string = return self.sock.recv(max_bytes)
+
+    close() = {
+        if (self.sock is none) return none
+        self.sock.close()
+        self.sock = none
+        return none
+    }
+
+    // 服务器叶子证书（DER 的十六进制）
+    certificate() -> string = return self.sock.certificate()
+
+    // 与 TcpSocket 对齐的状态查询
+    isConnected() -> bool = return !(self.sock is none)
+
+    __str__() -> string = return f"<TlsSocket host=\"{self.host}\" port={self.port} connected={self.isConnected()}>"
+}
 // ─── Dynamic Help Registry ────────────────────────────────────
 
 const local import sys
@@ -102,6 +133,17 @@ try {
         client.send("HTTP/1.1 200 OK\r\n\r\nHello from JC2!")
         client.close()               // Hang up to finalize the HTTP transmission
     }
+
+  [3] TLS 1.3 Client Mode (TlsSocket)
+  ──────────────────────
+    s = TlsSocket("example.com", 443)          // dials TCP and performs the handshake
+    s.send("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n")
+    while (true) { chunk = s.recv(4096); if (chunk == "") break; print(chunk) }
+    s.close()                                   // sends close_notify
+
+    The certificate chain is verified against the system trust store by default;
+    pass a third argument to override, e.g. {"serverName": "host", "verifyChain": false}.
+    s.certificate() returns the peer leaf certificate as hex-encoded DER.
 
   Transmission Mechanics
   ──────────────────────

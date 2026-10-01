@@ -32,13 +32,24 @@ test_http_response_json() = {
 }
 test_http_response_json()
 
-test_https_is_rejected_with_a_typed_error() = {
+test_https_is_supported_but_needs_a_reachable_host() = {
+    // https 现在走 TLS 1.3；这里只验证"连不上时报类型化错误"，不依赖网络。
+    // 端口 1 上不会有人监听，连接必然被拒。
     caught = false
     try {
-        http.httpGet("https://secure.example.com/x")
+        http.httpGet("https://127.0.0.1:1/")
     } catch (e) {
-        caught = e.type == "HttpError" && "plain HTTP" in e.message
+        caught = e.type == "TlsError" || e.type == "NetworkError"
     }
-    assert(caught, "https is rejected before any socket work")
+    assert(caught, "an unreachable https host must raise a typed error")
+
+    // 明文 http 走原来的 TCP 路径，同样报类型化错误
+    caught = false
+    try {
+        http.httpGet("http://127.0.0.1:1/")
+    } catch (e) {
+        caught = e.type == "NetworkError"
+    }
+    assert(caught, "an unreachable http host must raise NetworkError")
 }
-test_https_is_rejected_with_a_typed_error()
+test_https_is_supported_but_needs_a_reachable_host()

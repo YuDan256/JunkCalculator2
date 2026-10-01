@@ -1,0 +1,302 @@
+// X.509 / P-256 / RSA 验签测试（P1）。
+//
+// 夹具在 data/crypto_vectors/x509/（生成方式与逐条期望见 manifest.md）。
+// 全部离线、与机器无关：有效期判定统一用固定时间 1717200000（2024-06-01T00:00:00Z）。
+//
+// 向量来源：
+//   - P-256 ECDH：NIST CAVP KAS_ECC_CDH_PrimitiveTest.txt（[P-256] 前 3 组）
+//   - ECDSA P-256/SHA-256：NIST CAVP 186-4ecdsatestvectors SigVer.rsp（3 正 2 负）
+//   - RSA-PSS：本机 openssl 3.2.1 生成（命令见对应测试的注释）
+//   - 证书链：openssl 生成的夹具链（4 正 9 负）
+
+import crypto
+import bytes
+
+NOW = 1717200000
+
+_der(name: string) -> string = return bytes.readFile("data/crypto_vectors/x509/" + name + ".der").toHex()
+
+_derList(names: list) -> list = {
+    out = @[]
+    for (n in names) { out.push(_der(n)) }
+    return out
+}
+
+_verify(leaf: string, chain: list, roots: list, host: any) = {
+    return crypto.x509Verify(_der(leaf), _derList(chain), _derList(roots), host, NOW)
+}
+
+// ─── 主机名匹配（RFC 6125）────────────────────────────────────
+
+test_hostname_matching() = {
+    assert(crypto.hostnameMatch("example.com", "example.com"), "exact match")
+    assert(crypto.hostnameMatch("example.com", "EXAMPLE.COM"), "case insensitive")
+    assert(crypto.hostnameMatch("example.com", "example.com."), "trailing dot ignored")
+    assert(!crypto.hostnameMatch("example.com", "www.example.com"), "no substring match")
+    assert(!crypto.hostnameMatch("example.com", "example.com.evil.test"), "no suffix match")
+
+    assert(crypto.hostnameMatch("*.wild.example.com", "a.wild.example.com"), "wildcard replaces one label")
+    assert(!crypto.hostnameMatch("*.wild.example.com", "wild.example.com"), "wildcard needs a label to replace")
+    assert(!crypto.hostnameMatch("*.wild.example.com", "a.b.wild.example.com"), "wildcard replaces only one label")
+    assert(!crypto.hostnameMatch("*.com", "example.com"), "wildcard must not match a public suffix")
+    assert(!crypto.hostnameMatch("w*.example.com", "www.example.com"), "partial wildcard is not allowed")
+    assert(!crypto.hostnameMatch("", "example.com"), "empty pattern never matches")
+}
+test_hostname_matching()
+
+// ─── P-256 ECDH（NIST CAVP）──────────────────────────────────
+
+test_p256_ecdh_cavp() = {
+    assert(crypto.p256Ecdh("7d7dc5f71eb29ddaf80d6214632eeae03d9058af1fb6d22ed80badb62bc1a534",
+                           "04700c48f77f56584c5cc632ca65640db91b6bacce3a4df6b42ce7cc838833d287db71e509e3fd9b060ddb20ba5c51dcc5948d46fbf640dfe0441782cab85fa4ac")
+        == "46fc62106420ff012e54a434fbdd2d25ccc5852060561e68040dd7778997bd7b", "CAVP P-256 CDH #0")
+    assert(crypto.p256Ecdh("38f65d6dce47676044d58ce5139582d568f64bb16098d179dbab07741dd5caf5",
+                           "04809f04289c64348c01515eb03d5ce7ac1a8cb9498f5caa50197e58d43a86a7aeb29d84e811197f25eba8f5194092cb6ff440e26d4421011372461f579271cda3")
+        == "057d636096cb80b67a8c038c890e887d1adfa4195e9b3ce241c8a778c59cda67", "CAVP P-256 CDH #1")
+    assert(crypto.p256Ecdh("1accfaf1b97712b85a6f54b148985a1bdc4c9bec0bd258cad4b3d603f49f32c8",
+                           "04a2339c12d4a03c33546de533268b4ad667debf458b464d77443636440ee7fec3ef48a3ab26e20220bcda2c1851076839dae88eae962869a497bf73cb66faf536")
+        == "2d457b78b4614132477618a5b077965ec90730a8c81a1c75d6d4ec68005d67ec", "CAVP P-256 CDH #2")
+
+    // 不在曲线上的点必须拒绝
+    caught = false
+    try {
+        crypto.p256Ecdh("7d7dc5f71eb29ddaf80d6214632eeae03d9058af1fb6d22ed80badb62bc1a534",
+                        "04700c48f77f56584c5cc632ca65640db91b6bacce3a4df6b42ce7cc838833d287db71e509e3fd9b060ddb20ba5c51dcc5948d46fbf640dfe0441782cab85fa4ad")
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "a point off the curve must be rejected")
+}
+test_p256_ecdh_cavp()
+
+// ─── ECDSA P-256 / SHA-256（NIST CAVP SigVer）─────────────────
+
+// 消息（hex）→ SHA-256 → 验签
+_ecdsaOk(msgHex: string, pubXY: string, r: string, s: string) -> bool = {
+    return crypto.ecdsaVerifyP256("04" + pubXY, crypto.sha256(msgHex), r, s)
+}
+
+test_ecdsa_p256_cavp() = {
+    // 正例：消息先做 SHA-256，再验签
+    assert(_ecdsaOk("e1130af6a38ccb412a9c8d13e15dbfc9e69a16385af3c3f1e5da954fd5e7c45fd75e2b8c36699228e92840c0562fbf3772f07e17f1add56588dd45f7450e1217ad239922dd9c32695dc71ff2424ca0dec1321aa47064a044b7fe3c2b97d03ce470a592304c5ef21eed9f93da56bb232d1eeb0035f9bf0dfafdcc4606272b20a3",
+        "e424dc61d4bb3cb7ef4344a7f8957a0c5134e16f7a67c074f82e6e12f49abf3c970eed7aa2bc48651545949de1dddaf0127e5965ac85d1243d6f60e7dfaee927",
+        "bf96b99aa49c705c910be33142017c642ff540c76349b9dab72f981fd9347f4f", "17c55095819089c2e03b9cd415abdf12444e323075d98f31920b9e0f57ec871c"),
+        "SigVer P-256/SHA-256 #1")
+    assert(_ecdsaOk("73c5f6a67456ae48209b5f85d1e7de7758bf235300c6ae2bdceb1dcb27a7730fb68c950b7fcada0ecc4661d3578230f225a875e69aaa17f1e71c6be5c831f22663bac63d0c7a9635edb0043ff8c6f26470f02a7bc56556f1437f06dfa27b487a6c4290d8bad38d4879b334e341ba092dde4e4ae694a9c09302e2dbf443581c08",
+        "e0fc6a6f50e1c57475673ee54e3a57f9a49f3328e743bf52f335e3eeaa3d28647f59d689c91e463607d9194d99faf316e25432870816dde63f5d4b373f12f22a",
+        "1d75830cd36f4c9aa181b2c4221e87f176b7f05b7c87824e82e396c88315c407", "cb2acb01dac96efc53a32d4a0d85d0c2e48955214783ecf50a4f0414a319c05a"),
+        "SigVer P-256/SHA-256 #2")
+    assert(_ecdsaOk("60cd64b2cd2be6c33859b94875120361a24085f3765cb8b2bf11e026fa9d8855dbe435acf7882e84f3c7857f96e2baab4d9afe4588e4a82e17a78827bfdb5ddbd1c211fbc2e6d884cddd7cb9d90d5bf4a7311b83f352508033812c776a0e00c003c7e0d628e50736c7512df0acfa9f2320bd102229f46495ae6d0857cc452a84",
+        "2d98ea01f754d34bbc3003df5050200abf445ec728556d7ed7d5c54c55552b6d9b52672742d637a32add056dfd6d8792f2a33c2e69dafabea09b960bc61e230a",
+        "06108e525f845d0155bf60193222b3219c98e3d49424c2fb2a0987f825c17959", "62b5cdd591e5b507e560167ba8f6f7cda74673eb315680cb89ccbc4eec477dce"),
+        "SigVer P-256/SHA-256 #3")
+
+    // 负例（CAVP 标为 Result = F）：签名被改动过，必须验不过
+    assert(!_ecdsaOk("e4796db5f785f207aa30d311693b3702821dff1168fd2e04c0836825aefd850d9aa60326d88cde1a23c7745351392ca2288d632c264f197d05cd424a30336c19fd09bb229654f0222fcb881a4b35c290a093ac159ce13409111ff0358411133c24f5b8e2090d6db6558afc36f06ca1f6ef779785adba68db27a409859fc4c4a0",
+        "87f8f2b218f49845f6f10eec3877136269f5c1a54736dbdf69f89940cad41555e15f369036f49842fac7a86c8a2b0557609776814448b8f5e84aa9f4395205e9",
+        "d19ff48b324915576416097d2544f7cbdf8768b1454ad20e0baac50e211f23b0", "a3e81e59311cdfff2d4784949f7a2cb50ba6c3a91fa54710568e61aca3e847c6"),
+        "SigVer P-256/SHA-256 negative #1 (S changed)")
+    assert(!_ecdsaOk("069a6e6b93dfee6df6ef6997cd80dd2182c36653cef10c655d524585655462d683877f95ecc6d6c81623d8fac4e900ed0019964094e7de91f1481989ae1873004565789cbf5dc56c62aedc63f62f3b894c9c6f7788c8ecaadc9bd0e81ad91b2b3569ea12260e93924fdddd3972af5273198f5efda0746219475017557616170e",
+        "5cf02a00d205bdfee2016f7421807fc38ae69e6b7ccd064ee689fc1a94a9f7d2ec530ce3cc5c9d1af463f264d685afe2b4db4b5828d7e61b748930f3ce622a85",
+        "dc23d130c6117fb5751201455e99f36f59aba1a6a21cf2d0e7481a97451d6693", "d6ce7708c18dbf35d4f8aa7240922dc6823f2e7058cbc1484fcad1599db5018c"),
+        "SigVer P-256/SHA-256 negative #2 (S changed)")
+
+    // r = 0 必须直接判否
+    assert(!crypto.ecdsaVerifyP256("04e424dc61d4bb3cb7ef4344a7f8957a0c5134e16f7a67c074f82e6e12f49abf3c970eed7aa2bc48651545949de1dddaf0127e5965ac85d1243d6f60e7dfaee927",
+        crypto.sha256("00"), "00", "17c55095819089c2e03b9cd415abdf12444e323075d98f31920b9e0f57ec871c"), "r = 0 must fail")
+    // 不在曲线上的公钥必须判否
+    assert(!crypto.ecdsaVerifyP256("04700c48f77f56584c5cc632ca65640db91b6bacce3a4df6b42ce7cc838833d287db71e509e3fd9b060ddb20ba5c51dcc5948d46fbf640dfe0441782cab85fa4ad",
+        crypto.sha256("00"), "01", "01"), "public key off the curve must fail")
+}
+test_ecdsa_p256_cavp()
+
+// ─── RSA-PSS（openssl 生成的固定向量）─────────────────────────
+// openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out k.pem
+// openssl dgst -sha256 -sign k.pem -sigopt rsa_padding_mode:pss -sigopt rsa_pss_saltlen:32 -out s.bin m.bin
+//   m.bin = "JC2 RSASSA-PSS test vector"
+
+test_rsa_pss_vector() = {
+    n = "bfa20a5593cb138cadd8adda58538f326bf110804625d40cb3fa6da041c5ef915e456d90aeda6542b4d45fabc4e9dcff2f32908d4dfb08e7ee2d6f67609f007fe1f8641fe0288a5492bf32bde4bc99ffce43e14263b477609be7f44b61b791d00c9ac9b334ab22f8df3ea89b031e2aa93db31b5e8ba1013f00eefc56476bae335f2ac72c73e5c8461f4db5db49769d9c9d742ea7fb09c633b45741ffb5b44e3ccddfb83ffac8d5844676bd6b6abaf262e52330b2415e7938947243163144a99ef3369b531407f2a87251ccbfc1873faa5bf4a8bd2c1106a0d2275fa630cd991ad1e454b6cdeab8f6cffde28488639619d5911de6e8e8d1e7688b1ccec4ced5bf"
+    e = "010001"
+    digest = crypto.sha256("4a4332205253415353412d505353207465737420766563746f72")
+    assert(digest == "b04ef2482337e7769a9664302fc091e6bbf0b54eabe4a02d054c8415e38587ee", "message digest")
+    sig = "11ff26b5bb866369fb2593cec59c8b4e2a31b0c6ff6d490e9dc2e81d886900334ee5b806a85949b6142cbddb0be07f8348a9672fa478e7fea47f83c69f0d4a0d6ce31193ac7164c0c7101a7f8ed53717af3401db264bbda33fd98113ccc69a7e97189ac9aa1b723f26181da4ceef809ce408c8bfca8441775cf0a489061a793db734d5d28ef5ca8d377db9b6661c2e07c71c1fe235b145a82738bec80191d85a3e69f2ca72e002c83cb19e0cd2fb7a71fe6b576e4a095c5b09670a072c291a26ea7c5d19968abf6efcc77d4170df66f4cdc8c9c1980f02c61265bd0d26606a6792d88295f40c93530f98fffa86de625a2e3d6d861ee9d9caaca86c4f237a2562"
+
+    assert(crypto.rsaVerifyPss(n, e, digest, sig, 32), "PSS signature must verify")
+    // 篡改签名、错的 saltLen、错的摘要都必须失败
+    assert(!crypto.rsaVerifyPss(n, e, digest, "00" + sig.substr(2), 32), "tampered signature must fail")
+    assert(!crypto.rsaVerifyPss(n, e, digest, sig, 20), "wrong salt length must fail")
+    assert(!crypto.rsaVerifyPss(n, e, crypto.sha256("00"), sig, 32), "wrong digest must fail")
+    // PKCS#1 v1.5 验签不能接受 PSS 签名（反之亦然）
+    assert(!crypto.rsaVerifyPkcs1(n, e, digest, sig), "PSS signature must not verify as PKCS#1 v1.5")
+}
+test_rsa_pss_vector()
+
+// ─── 证书解析 ─────────────────────────────────────────────────
+
+test_x509_parse_fields() = {
+    root = crypto.x509Parse(_der("root_rsa"))
+    assert(root["subject"] == "JC2 Test RSA Root", "root subject CN")
+    assert(root["issuer"] == "JC2 Test RSA Root", "root is self-issued")
+    assert(root["isCa"], "root is a CA")
+    assert(root["keyType"] == "rsa", "root key type")
+    assert(root["rsaBits"] == 2048, "root key size")
+    assert(root["sigAlg"] == "1.2.840.113549.1.1.11", "sha256WithRSAEncryption OID")
+    assert(root["notBefore"] == 1577836800, "root notBefore")
+    assert(root["notAfter"] == 2051222400, "root notAfter")
+
+    leaf = crypto.x509Parse(_der("leaf_rsa"))
+    assert(leaf["subject"] == "example.com", "leaf subject CN")
+    assert(leaf["issuer"] == "JC2 Test RSA Intermediate", "leaf issuer CN")
+    assert(!leaf["isCa"], "leaf is not a CA")
+    assert(leaf["san"] == @["example.com", "www.example.com"], "leaf SAN list")
+
+    ec = crypto.x509Parse(_der("leaf_ec"))
+    assert(ec["keyType"] == "ec-p256", "EC leaf key type")
+    assert(ec["sigAlg"] == "1.2.840.10045.4.3.2", "ecdsa-with-SHA256 OID")
+    assert(ec["san"] == @["ec.example.com"], "EC leaf SAN")
+
+    wild = crypto.x509Parse(_der("leaf_wild"))
+    assert(wild["san"] == @["*.wild.example.com"], "wildcard SAN")
+
+    // pathLen 只在有 basicConstraints 的 CA 上有意义
+    inter = crypto.x509Parse(_der("inter_rsa"))
+    assert(inter["isCa"] && inter["pathLen"] == 0, "intermediate has pathLen 0")
+}
+test_x509_parse_fields()
+
+// ─── 证书链：正向 ─────────────────────────────────────────────
+
+test_chain_positive() = {
+    r = _verify("leaf_rsa", @["inter_rsa"], @["root_rsa"], "example.com")
+    assert(r["ok"], "RSA chain must verify: " + r["reason"])
+    assert(r["chainLength"] == 3, "RSA chain length")
+
+    r = _verify("leaf_ec", @["inter_ec"], @["root_ec"], "ec.example.com")
+    assert(r["ok"], "EC chain must verify: " + r["reason"])
+    assert(r["chainLength"] == 3, "EC chain length")
+
+    r = _verify("leaf_mixed", @["inter_mixed"], @["root_rsa"], "mixed.example.com")
+    assert(r["ok"], "mixed chain (EC leaf, RSA intermediate) must verify: " + r["reason"])
+
+    // 通配符证书：a.wild.example.com 命中，则 wild.example.com 不命中
+    r = _verify("leaf_wild", @["inter_rsa"], @["root_rsa"], "a.wild.example.com")
+    assert(r["ok"], "wildcard SAN must match one label: " + r["reason"])
+    r = _verify("leaf_wild", @["inter_rsa"], @["root_rsa"], "wild.example.com")
+    assert(!r["ok"] && r["reason"] == "hostname-mismatch", "wildcard must not match the bare domain")
+
+    // 主机名大小写不敏感
+    r = _verify("leaf_rsa", @["inter_rsa"], @["root_rsa"], "WWW.EXAMPLE.COM")
+    assert(r["ok"], "hostname matching is case insensitive: " + r["reason"])
+
+    // 不检查主机名时（hostname = none）也应通过
+    r = _verify("leaf_rsa", @["inter_rsa"], @["root_rsa"], none)
+    assert(r["ok"], "chain without hostname check: " + r["reason"])
+}
+test_chain_positive()
+
+// ─── 证书链：负向（9 条）──────────────────────────────────────
+
+test_chain_negative() = {
+    // 过期
+    r = _verify("neg_expired", @["inter_rsa"], @["root_rsa"], "expired.example.com")
+    assert(!r["ok"] && r["reason"] == "expired", "expired leaf")
+    // 尚未生效
+    r = _verify("neg_not_yet_valid", @["inter_rsa"], @["root_rsa"], "notyet.example.com")
+    assert(!r["ok"] && r["reason"] == "not-yet-valid", "not yet valid leaf")
+    // 主机名不匹配
+    r = _verify("neg_wrong_host", @["inter_rsa"], @["root_rsa"], "example.com")
+    assert(!r["ok"] && r["reason"] == "hostname-mismatch", "hostname mismatch")
+    // 签发者不是 CA（CA:FALSE 且 keyUsage 无 keyCertSign）
+    r = _verify("leaf_under_cafalse", @["neg_ca_false"], @["root_rsa"], "under-cafalse.example.com")
+    assert(!r["ok"] && r["reason"] == "issuer-not-ca", "CA:FALSE issuer")
+    // pathLen 违规：pathlen:0 的根下面还有中间 CA
+    r = _verify("neg_pathlen_leaf", @["neg_pathlen_inter"], @["neg_pathlen_root"], "pathlen.example.com")
+    assert(!r["ok"] && r["reason"] == "path-len-exceeded", "path length constraint")
+    // 自签且不在信任库
+    r = _verify("neg_self_signed", @[], @["root_rsa"], "selfsigned.example.com")
+    assert(!r["ok"] && r["reason"] == "no-trust-anchor", "untrusted self-signed leaf")
+    // 链不落到指定信任根
+    r = _verify("neg_wrong_root", @["inter_ec"], @["root_rsa"], "wrongroot.example.com")
+    assert(!r["ok"] && r["reason"] == "no-trust-anchor", "chain for another root")
+    // 签名被改过一个字节
+    r = _verify("neg_tampered_sig", @["inter_rsa"], @["root_rsa"], "example.com")
+    assert(!r["ok"] && r["reason"] == "signature-invalid", "tampered certificate signature")
+    // 缺中间证书
+    r = _verify("leaf_rsa", @[], @["root_rsa"], "example.com")
+    assert(!r["ok"] && r["reason"] == "no-trust-anchor", "missing intermediate")
+}
+test_chain_negative()
+
+// ─── DER 健壮性 ───────────────────────────────────────────────
+
+test_der_robustness() = {
+    // 截断与垃圾数据：必须抛 CryptoError（而不是崩溃或别的异常）
+    for (name in @["neg_truncated", "neg_garbage"]) {
+        caught = false
+        try {
+            crypto.x509Parse(_der(name))
+        } catch (e) {
+            caught = e.type == "CryptoError"
+        }
+        assert(caught, name + " must be rejected with CryptoError")
+    }
+
+    // 有界模糊测试：对合法证书做确定性伪随机单 nibble 翻转，
+    // 每次要么解析成功、要么抛 CryptoError —— 不允许出现其它异常或崩溃。
+    leafHex = _der("leaf_rsa")
+    seed = 7
+    for (i in range(1500)) {
+        seed = (seed * 31 + 7) % 1000003
+        pos = seed % leafHex.len()
+        c = leafHex.substr(pos, 1)
+        flipped = (c == "0") ? "1" : "0"
+        mutated = leafHex.substr(0, pos) + flipped + leafHex.substr(pos + 1)
+        fine = false
+        try {
+            crypto.x509Parse(mutated)
+            fine = true
+        } catch (e) {
+            fine = e.type == "CryptoError"
+        }
+        assert(fine, "fuzz iteration " + str(i) + " at " + str(pos) + " must not raise " + "unexpected errors")
+    }
+
+    // 被改坏的证书也不能通过链校验（签名必须失败）
+    tampered = _der("neg_tampered_sig")
+    r = crypto.x509Verify(tampered, _derList(@["inter_rsa"]), _derList(@["root_rsa"]), "example.com", NOW)
+    assert(!r["ok"], "tampered leaf must not verify")
+}
+test_der_robustness()
+
+// ─── 熵与信任库 ───────────────────────────────────────────────
+
+test_random_bytes() = {
+    a = crypto.randomBytes(32)
+    b = crypto.randomBytes(32)
+    assert(a.len() == 64 && b.len() == 64, "randomBytes returns hex of the requested length")
+    assert(a != b, "two draws must differ")
+    assert(crypto.randomBytes(1).len() == 2, "single byte")
+    caught = false
+    try {
+        crypto.randomBytes(0)
+    } catch (e) {
+        caught = e.type == "CryptoError"
+    }
+    assert(caught, "length must be positive")
+}
+test_random_bytes()
+
+test_system_roots() = {
+    // 内容是机器相关的，只断言接口形状与解析能力；真正的链校验用固定夹具
+    roots = crypto.systemRoots()
+    assert(roots.len() > 0, "the system trust store should not be empty on Windows")
+    parsed = 0
+    limit = (roots.len() < 5) ? roots.len() : 5
+    for (i in range(limit)) {
+        cert = crypto.x509Parse(roots[i])
+        if (cert["keyType"] != "unknown") { parsed += 1 }
+    }
+    assert(parsed > 0, "at least one system root must parse")
+}
+test_system_roots()

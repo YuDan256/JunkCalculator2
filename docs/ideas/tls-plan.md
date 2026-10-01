@@ -1,6 +1,6 @@
 # 设计文档：自写 TLS 1.3 客户端与 https 支持（未实施）
 
-> **状态：P0 / P1 / P2 已实施（2026-10-01，见 §14–§16），P3 起待实施。** 2026-10-01 定稿。
+> **状态：P0–P3 已实施（2026-10-01，见 §14–§17）；真实站点的算法覆盖见 §17.5（待决策）。**
 > **性质：内部设计记录**，不是用户侧帮助。这里**故意**写设计理由与被否方案，
 > 与 `data/documentation.json`（只写契约）的规则不同，勿混。
 > 起因：`http.httpGet` 只支持明文 HTTP，`https://` 被直接拒绝（见 §1）。
@@ -194,7 +194,7 @@ P1/P2 的夹具放 `data/crypto_vectors/`（证书链用真实站点抓取并去
 | P0 ✅ | SHA-256 / HMAC / HKDF / AES-128-GCM / X25519 + 向量测试（见 §14，实际约 1.25k 行） | ~2.0k | 2–4 天 |
 | P1 ✅ | DER / X.509 / 链校验 / 主机名 / RSA / **P-256 + ECDSA** / 信任库（见 §15，实际约 2.2k 行） | ~2.8k | 5–8 天 |
 | P2 | TLS 1.3 握手 + 记录层 + 回放测试（不含 HRR） | ~1.8k | 4–7 天 |
-| P3 | `tls` 模块 + `net.TlsSocket` + http 接线 | ~0.5k | 1–2 天 |
+| P3 ✅ | `tls` 模块 + `net.TlsSocket` + http 接线（见 §17，实际约 0.6k 行） | ~0.5k | 1–2 天 |
 | P4（可选） | chunked / gzip / 重定向 | ~0.3k | 0.5–1 天 |
 | **合计** | | **~7.4k 行** | **12–21 天** |
 
@@ -474,3 +474,61 @@ x509Parse / x509Verify / systemRoots / randomBytes`（约定同 P0：二进制�
 - 只支持单套件 `TLS_AES_128_GCM_SHA256` 与 TLS 1.3；不做会话恢复/PSK/0-RTT/客户端证书
 - 不做 HRR（D9）：服务器坚持要别的组时以 `hrr-not-supported` 明确失败
 - 尚未接真实 socket：P3 才把 `net.TlsSocket` / `http.jc2` 接上，届时做真实站点验证
+
+---
+
+## 17. P3 实施记录（2026-10-01）
+
+**落地文件**
+
+| 文件 | 内容 |
+|---|---|
+| `src/net/TcpStream.{h,cpp}` | 最小阻塞 TCP：getaddrinfo + 非阻塞 connect 配 select 超时（逐地址重试）、带超时的 send/recv、TCP_NODELAY |
+| `src/lib/tls/tls_module.cpp` | `tls.connect(host, port, options)` 与 `tls.Socket`（send/recv/close/connected/certificate） |
+| `modules/net.jc2` | `class TlsSocket`（接口与 `TcpSocket` 对齐，构造即完成握手） |
+| `modules/http.jc2` | `parse_url` 支持 https 并返回 scheme；`httpGet` 按 scheme 分派到 TLS/TCP |
+
+**设计要点**
+
+- **TLS 拥有传输**：`tls.connect` 自己拨号并跑完握手，脚本层不再经手记录字节；
+  这也绕开了 socket 模块 send/recv 走字符串、对二进制记录不安全的限制（计划 §7.3 的落法）。
+- **recv 语义**：一直读到"确实有应用数据"才返回（期间可能只收到 NewSessionTicket），
+  只有对端关闭（close_notify 或 TCP FIN）才返回空串；close() 会先发 close_notify。
+- **明文路径不变**：http:// 仍走 `net.TcpSocket`，`HttpResponse` 公开面完全没动，
+  请求构造与 `_Http.parse_response` 在两条路径上复用。
+
+**真实站点验证（手动步骤，不进套件）**
+
+| 站点 | 结果 |
+|---|---|
+| `https://www.apple.com/` | **完整通过**：链校验（RSA-2048 / SHA-256，系统信任库）+ `httpGet` 返回 status=200、body 64064 字节、22 个响应头 |
+| `example.com` | 握手成功（leaf 为 P-256、CertificateVerify 验签通过）、明文请求与响应正常（HTTP/1.1 200 OK，1037 字节）；**打开链校验则失败**：中间证书是 P-384 |
+| `www.microsoft.com` | 链校验失败：签名算法 `sha384WithRSAEncryption`（1.2.840.113549.1.1.12）未实现 |
+| `github.com` / `www.cloudflare.com` / `www.example.org` | 链校验失败：中间证书为 P-384 |
+| `www.bing.com` / `www.wikipedia.org` / `jspvz.com` | 本机网络不可达（connection reset / timeout），与实现无关 |
+
+**真实站点验证查出并修掉的协议错误**
+
+- **受保护记录的外层类型必须是 `application_data`**（RFC 8446 §5.2）：此前把内层真实类型
+  同时写进外层，Cloudflare 直接回 `fatal alert: decode_error`。RFC 8448 的服务器 flight
+  外层正是 0x17，离线回放（只解不收）掩盖了这一点。
+- 顺带把 X509 解析失败的原因分档（`unsupported-curve` / `unsupported-key` / 真 malformed），
+  否则用户只会看到一句 "malformed-chain"。
+
+### 17.5 待决策：真实站点的算法覆盖
+
+当前实现（D1–D4 的批准范围）只支持 **P-256 / X25519 + SHA-256 家族签名**。实际扫站点时发现：
+
+- **P-384 中间证书**很常见（Cloudflare、Sectigo 等签发的链），
+- **SHA-384 签名**（`sha384WithRSAEncryption`）也常见（DigiCert/Microsoft 系），
+- 两者都超出当前范围 → 这些站点在开启链校验时会以 `unsupported-algorithm` 明确失败（不会误判为通过）。
+
+可选做法：
+
+| 方案 | 内容 | 代价 |
+|---|---|---|
+| A | 维持现状 | 0；仅能校验全 P-256/RSA-SHA-256 的链（如 apple.com ✓） |
+| B | 只加 SHA-384 + P-384 | 约 600 行（SHA-384 + 参数化 P-384 曲线 + 验签接线 + CAVP 向量） |
+| C | 加 SHA-384/512 + P-384/P-521 | 约 900 行，覆盖几乎所有现代链 |
+
+三种做法都不动已批准的 D1–D10 其余部分；B/C 需要先更新 D1/D3/D4 的范围表述。

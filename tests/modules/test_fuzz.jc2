@@ -1,0 +1,215 @@
+// 解析器加固：确定性变异 fuzz（TLS 记录/握手解析 + HTTP 响应解析）。
+//
+// 目标不是"找出所有坏输入"，而是钉死一条底线：**任何字节序列都不能让解析器崩溃、
+// 静默乱解或抛出预期之外的错误**。变异用与 P1 向量 fuzz 相同的确定性 LCG
+// （seed = (seed*31+7) % 1000003），所以失败可复现。
+//
+// 每个用例喂进"录制轨迹 / 录制响应"的变异体：
+//   - TLS：RFC 8448 的 ServerHello、那条 679 字节 flight、应用数据、HRR、明文 alert；
+//   - HTTP：真实抓取的 chunked 响应与手工的多字节分块响应。
+// 断言：
+//   - TLS：feed 不抛异常；状态必须是"明确成功"或"给出具体 reason"，不允许 complete 但 ok=false；
+//   - HTTP：要么正常解析，要么抛 HttpError；绝不允许其它异常类型。
+
+import tls
+import http
+import io
+import json
+
+_nibbles = "0123456789abcdef"
+
+// 确定性 LCG：st 是单元素列表，充当可变单元
+_next(st: any) -> int = {
+    st[0] = (st[0] * 31 + 7) % 1000003
+    return st[0]
+}
+
+_hexByte(v: int) -> string = return _nibbles.substr(idiv(v, 16), 1) + _nibbles.substr(v % 16, 1)
+
+// 十六进制变异：翻半字节 / 截断 / 改记录长度字段 / 改类型字节
+_mutateHex(h: string, st: any) -> string = {
+    if (h.len() < 10) return h
+    half = idiv(h.len(), 2)
+    kind = _next(st) % 4
+
+    if (kind == 0) {
+        pos = 2 * (_next(st) % half) + (_next(st) % 2)
+        return h.substr(0, pos) + _nibbles.substr(_next(st) % 16, 1) + h.substr(pos + 1)
+    }
+    if (kind == 1) {
+        cut = _next(st) % half
+        return h.substr(0, cut * 2)
+    }
+    if (kind == 2) {
+        // 一半轮次给越界长度（>2^14+256），一半给随机小长度；
+        // 注意必须编码成**两个字节**，否则就变成"奇数长度 hex"这种调用方错误了
+        val = _next(st) % 4096
+        if (_next(st) % 2 == 0) val = 65535
+        return h.substr(0, 6) + _hexByte(idiv(val, 256)) + _hexByte(val % 256) + h.substr(10)
+    }
+    pos = 2 * (_next(st) % 5)
+    return h.substr(0, pos) + _hexByte(_next(st) % 256) + h.substr(pos + 2)
+}
+
+// 文本变异：换字符 / 截断 / 插 CRLF
+_mutateText(s: string, st: any) -> string = {
+    if (s.len() < 8) return s
+    kind = _next(st) % 3
+    if (kind == 0) {
+        pos = _next(st) % s.len()
+        pool = "\r\n0zZ;: \t"
+        return s.substr(0, pos) + pool.substr(_next(st) % pool.len(), 1) + s.substr(pos + 1)
+    }
+    if (kind == 1) {
+        return s.substr(0, _next(st) % s.len())
+    }
+    pos = _next(st) % s.len()
+    return s.substr(0, pos) + "\r\n" + s.substr(pos)
+}
+
+// ─── TLS 记录/握手 fuzz ───────────────────────────────────────
+
+_tlsRecords() -> any = {
+    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))
+    simple = fx["simple_1rtt"]
+    return @[
+        simple["server_hello_record"],
+        simple["encrypted_extensions_record"],      // 679 字节：EE+Cert+CV+Finished 封在一条记录里
+        simple["application_data_record"],
+        simple["client_hello_record"],
+        fx["hello_retry_request"]["hrr_record"],
+        fx["compatibility_mode"]["server_ccs_record"],
+        "15030300020228",                            // 明文 fatal handshake_failure
+        "160303000000",                              // 空握手记录
+        "160303ffff00",                              // 长度字段越界
+        ""
+    ]
+}
+
+test_tls_fuzz_never_crashes_or_lies() = {
+    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    records = _tlsRecords()
+    st = @[1]
+    rounds = 0
+
+    for (round in range(600)) {
+        seed_record = records[_next(st) % records.len()]
+        mutated = _mutateHex(seed_record, st)
+
+        c = tls.Client({
+            "serverName": "server",
+            "verifyChain": false,
+            "clientHello": fx["client_hello_handshake"],
+            "x25519Private": fx["client_private_key_x25519"]
+        })
+        c.start()
+
+        threw = none
+        try {
+            c.feed(mutated)
+            c.feed(_mutateHex(seed_record, st))      // 再喂一条，覆盖"失败之后继续喂"的路径
+        } catch (e) {
+            threw = e
+        }
+        assert(threw is none, "feed must report through status(), never throw")
+
+        status = c.status()
+        assert(status["ok"] || status["reason"] != "ok",
+               "a failed handshake must carry a specific reason")
+        assert(!status["complete"] || status["ok"],
+               "complete=true with ok=false is contradictory")
+        if (status["complete"]) {
+            assert(status["reason"] == "ok", "a completed handshake is ok")
+        }
+        rounds += 1
+    }
+    assert(rounds == 600, "fuzz ran all rounds")
+}
+test_tls_fuzz_never_crashes_or_lies()
+
+test_feed_hex_contract_is_a_caller_error() = {
+    // feed 的参数是十六进制字符串：奇数长度/非十六进制属于**调用方**错误，
+    // 用 TlsError 抛出是契约的一部分（网络字节永远经 unhex 合法化，不受对端影响）。
+    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    for (bad in @["abc", "zz", "16 03"]) {
+        caught = false
+        try {
+            c.feed(bad)
+        } catch (e) {
+            caught = e.type == "TlsError"
+        }
+        assert(caught, "malformed hex \"" + bad + "\" must raise TlsError")
+    }
+    assert(c.status()["ok"], "a rejected argument must not corrupt the session state")
+}
+test_feed_hex_contract_is_a_caller_error()
+
+test_tls_fuzz_after_handshake() = {
+    // 完整握完手之后再喂变异记录：只能被当成"受保护记录解不开"或应用数据，
+    // 不允许把畸形输入当成合法数据静默吞掉后还报 ok。
+    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    st = @[99]
+    for (round in range(200)) {
+        c = tls.Client({
+            "serverName": "server",
+            "verifyChain": false,
+            "clientHello": fx["client_hello_handshake"],
+            "x25519Private": fx["client_private_key_x25519"]
+        })
+        c.start()
+        c.feed(fx["server_hello_record"])
+        c.feed(fx["encrypted_extensions_record"])
+        assert(c.complete(), "baseline handshake completes")
+
+        mutated = _mutateHex(fx["application_data_record"], st)
+        threw = none
+        try {
+            c.feed(mutated)
+            c.data()
+        } catch (e) {
+            threw = e
+        }
+        assert(threw is none, "post-handshake feed must not throw")
+        s = c.status()
+        assert(s["ok"] || s["reason"] != "ok", "explicit state after mutation")
+    }
+}
+test_tls_fuzz_after_handshake()
+
+// ─── HTTP 响应解析 fuzz ───────────────────────────────────────
+
+test_http_parser_fuzz() = {
+    bases = @[
+        io.readFile("data/http_vectors/chunked_example_org.http"),
+        io.readFile("data/http_vectors/chunked_utf8.http"),
+        io.readFile("data/http_vectors/content_length_apple.http")
+    ]
+    st = @[7]
+    parsed = 0
+    rejected = 0
+
+    for (round in range(600)) {
+        base = bases[_next(st) % bases.len()]
+        mutated = _mutateText(base, st)
+
+        outcome = ""
+        try {
+            r = http.httpParseResponse(mutated, "https://example.org/")
+            outcome = "parsed"
+            assert(r.body.len() >= 0, "a parsed response always has a body string")
+            parsed += 1
+        } catch (e) {
+            outcome = e.type
+            rejected += 1
+        }
+        assert(outcome == "parsed" || outcome == "HttpError",
+               "unexpected outcome from mutated bytes: " + outcome)
+    }
+    assert(parsed + rejected == 600, "every round either parsed or was rejected as HttpError")
+    assert(rejected > 0, "mutations must actually produce rejections (otherwise the fuzz is toothless)")
+}
+test_http_parser_fuzz()

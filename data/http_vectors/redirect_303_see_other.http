@@ -1,0 +1,5 @@
+HTTP/1.1 303 See Other
+Location: https://example.org/final
+Content-Length: 0
+Connection: close
+

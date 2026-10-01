@@ -1,0 +1,41 @@
+[
+  {
+    "file": "chunked_utf8.http",
+    "bytes": 86,
+    "sha256": "9c77cf5382347b771c0004419cb85c198bedc9804458b66596e431235d742e8b",
+    "source": "(synthetic)",
+    "status": 200,
+    "ascii_only": false,
+    "note": "手工构造：两个块各装一个多字节字符（é 2 字节、中 3 字节），正文 2 个字符 5 个字节 —— 用来钉死“块长按字节、字符串按码点”这件事",
+    "transfer_encoding_chunked": true,
+    "content_length": null,
+    "expect_body": "é中",
+    "expect_error": null
+  },
+  {
+    "file": "chunked_upper_ext_trailer.http",
+    "bytes": 126,
+    "sha256": "f39cf35c062a6100c6410cc6e6a93b774af51ef14d3f19f31c2c29bca62c5db8",
+    "source": "(synthetic)",
+    "status": 200,
+    "ascii_only": true,
+    "note": "手工构造：大写十六进制块长、块扩展 ;name=value、以及 trailer",
+    "transfer_encoding_chunked": true,
+    "content_length": null,
+    "expect_body": "0123456789abcdefghij",
+    "expect_error": null
+  },
+  {
+    "file": "chunked_zero_then_eof.http",
+    "bytes": 77,
+    "sha256": "e56e09574904c1b7c9a0ef8154122bc797f38010dbfb28ec94b8c464e4a25200",
+    "source": "(synthetic)",
+    "status": 200,
+    "ascii_only": true,
+    "note": "手工构造：0 块后直接结束（没有 trailer 空行）—— 应当宽松接受，正文 abc",
+    "transfer_encoding_chunked": true,
+    "content_length": null,
+    "expect_body": "abc",
+    "expect_error": null
+  }
+]

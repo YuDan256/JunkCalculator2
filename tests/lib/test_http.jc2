@@ -1,8 +1,16 @@
-// http 标准库冒烟（全区离线）：公开面契约、HttpResponse 与 json()、类型化错误。
-// 解析器（local namespace _Http）不导出，因此解析路径只能通过公开面间接覆盖；
-// 真实 httpGet 需要网络，不在测试里调用。
+// http 标准库测试（全区离线）：
+//   - 公开面契约、HttpResponse、json()、类型化错误；
+//   - httpParseResponse：分块解码、Content-Length 截断、无正文状态、三类畸形负载；
+//   - httpPlanRedirect：绝对/相对 Location、跳转去重用的规范化、https→http 降级拒绝；
+//   - TlsSocket 不可达时的类型化错误。
+//
+// 解析用例全部喂**录制下来的真实响应字节**（data/http_vectors/，出处见 manifest.json），
+// 不依赖网络。内部命名空间 _Http 不导出，测试只走公开面。
 
 import http
+import io
+
+_fixture(name: string) -> string = return io.readFile("data/http_vectors/" + name)
 
 test_internals_are_not_exported() = {
     assert(!("_Http" in http), "the internal parser namespace must not be exported")
@@ -23,6 +31,11 @@ test_http_response_construction() = {
     assert(res.headers["Content-Type"] == "text/plain", "headers kept")
     assert(res.body == "body" && res.raw == "raw", "body/raw kept")
     assert(str(res) == "<HttpResponse [200] body_len=4>", "HttpResponse __str__")
+    assert(res.redirects.len() == 0, "redirects default to an empty list")
+
+    tagged = http.HttpResponse(200, {}, "b", "r", "https://x.example/", @["https://y.example/"])
+    assert(tagged.url == "https://x.example/", "url is kept")
+    assert(tagged.redirects.len() == 1, "redirect chain is kept")
 }
 test_http_response_construction()
 
@@ -32,9 +45,125 @@ test_http_response_json() = {
 }
 test_http_response_json()
 
-test_https_is_supported_but_needs_a_reachable_host() = {
-    // https 现在走 TLS 1.3；这里只验证"连不上时报类型化错误"，不依赖网络。
-    // 端口 1 上不会有人监听，连接必然被拒。
+// ─── 分块解码 ─────────────────────────────────────────────────
+
+test_chunked_body_is_reassembled() = {
+    // 真实抓取的 https://example.org/（chunked、无 Content-Encoding）
+    raw = _fixture("chunked_example_org.http")
+    res = http.httpParseResponse(raw, "https://example.org/")
+
+    assert(res.status == 200, "status parsed")
+    assert(!res.body.contains("2c9\r\n"), "the chunk-size framing must be gone")
+    assert(res.body.startsWith("<!doctype html>"), "body starts with the real payload: " + res.body.substr(0, 24))
+    assert(res.body.len() == 713, "reassembled body length (bytes == chars here): " + str(res.body.len()))
+    assert(res.raw == raw, "raw keeps the original bytes")
+}
+test_chunked_body_is_reassembled()
+
+test_chunked_utf8_counts_bytes_not_codepoints() = {
+    // 块长是**字节**，而 JC2 的 len() 数的是码点：é(2 字节) + 中(3 字节) = 2 个字符 5 个字节。
+    // 把字节数当字符数用的实现会在这里解出乱码。
+    res = http.httpParseResponse(_fixture("chunked_utf8.http"))
+    assert(res.body == "é中", "multi-byte payload decoded exactly")
+    assert(res.body.len() == 2, "2 code points")
+    assert(!res.body.contains("é中") == false, "sanity")
+}
+test_chunked_utf8_counts_bytes_not_codepoints()
+
+test_chunked_uppercase_extension_and_trailer() = {
+    res = http.httpParseResponse(_fixture("chunked_upper_ext_trailer.http"))
+    assert(res.body == "0123456789abcdefghij", "uppercase hex, chunk extension and trailer: got " + res.body)
+}
+test_chunked_uppercase_extension_and_trailer()
+
+test_chunked_zero_then_eof_is_accepted() = {
+    res = http.httpParseResponse(_fixture("chunked_zero_then_eof.http"))
+    assert(res.body == "abc", "a 0-chunk with no trailer section still ends the body")
+}
+test_chunked_zero_then_eof_is_accepted()
+
+// ─── Content-Length 与无正文状态 ──────────────────────────────
+
+test_content_length_is_honoured() = {
+    // 真实抓取 https://www.apple.com/，正文截到 2000 字节并把 CL 改写成 2000
+    res = http.httpParseResponse(_fixture("content_length_apple.http"))
+    assert(res.status == 200, "status parsed")
+    assert(res.body.len() == 2000, "body cut exactly at Content-Length: " + str(res.body.len()))
+    assert(!res.body.contains("HTTP/1.1"), "headers are not part of the body")
+}
+test_content_length_is_honoured()
+
+test_no_body_status_codes() = {
+    res = http.httpParseResponse(_fixture("no_body_204.http"))
+    assert(res.status == 204 && res.body == "", "204 has no body")
+}
+test_no_body_status_codes()
+
+// ─── 畸形负载必须报 HttpError ─────────────────────────────────
+
+test_malformed_payloads_raise_http_error() = {
+    for (name in @["bad_chunk_size.http", "bad_chunk_crlf.http", "truncated_body.http"]) {
+        caught = false
+        try {
+            r = http.httpParseResponse(_fixture(name))
+        } catch (e) {
+            caught = e.type == "HttpError"
+        }
+        assert(caught, name + " must raise HttpError")
+    }
+
+    // 没有头部终止符
+    caught = false
+    try {
+        r = http.httpParseResponse("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n")
+    } catch (e) {
+        caught = e.type == "HttpError" && "terminator" in e.message
+    }
+    assert(caught, "a response without \\r\\n\\r\\n must raise HttpError")
+}
+test_malformed_payloads_raise_http_error()
+
+// ─── 重定向规划 ───────────────────────────────────────────────
+
+test_plan_redirect_absolute_and_relative() = {
+    // 真实抓取：http://www.apple.com/ 的 301（绝对 Location）
+    r301 = http.httpParseResponse(_fixture("redirect_301_absolute.http"), "http://www.apple.com/")
+    next = http.httpPlanRedirect(r301, "http://www.apple.com/")
+    assert(!(next is none), "301 must plan a redirect")
+    assert(next.startsWith("https://"), "absolute Location kept: " + next)
+
+    // 手工夹具：302 + 相对 Location /next/page
+    r302 = http.httpParseResponse(_fixture("redirect_302_relative.http"), "https://example.org/a/b")
+    next2 = http.httpPlanRedirect(r302, "https://example.org/a/b")
+    assert(next2 == "https://example.org:443/next/page", "relative Location resolved against the host: " + next2)
+
+    // 303 也是重定向
+    r303 = http.httpParseResponse(_fixture("redirect_303_see_other.http"), "https://example.org/")
+    assert(http.httpPlanRedirect(r303, "https://example.org/") == "https://example.org/final",
+           "303 Location kept")
+
+    // 200 不是重定向
+    ok = http.httpParseResponse(_fixture("content_length_apple.http"), "https://www.apple.com/")
+    assert(http.httpPlanRedirect(ok, "https://www.apple.com/") is none, "200 plans nothing")
+}
+test_plan_redirect_absolute_and_relative()
+
+test_plan_redirect_refuses_https_downgrade() = {
+    downgrade = http.HttpResponse(301, {"Location": "http://plain.example/x"}, "", "",
+                                  "https://secure.example/")
+    caught = false
+    try {
+        n = http.httpPlanRedirect(downgrade, "https://secure.example/")
+    } catch (e) {
+        caught = e.type == "HttpError" && "down to http" in e.message
+    }
+    assert(caught, "https -> http redirects are refused")
+}
+test_plan_redirect_refuses_https_downgrade()
+
+// ─── 网络面：连不上时必须报类型化错误（离线可测）───────────────
+
+test_unreachable_hosts_raise_typed_errors() = {
     caught = false
     try {
         http.httpGet("https://127.0.0.1:1/")
@@ -43,7 +172,6 @@ test_https_is_supported_but_needs_a_reachable_host() = {
     }
     assert(caught, "an unreachable https host must raise a typed error")
 
-    // 明文 http 走原来的 TCP 路径，同样报类型化错误
     caught = false
     try {
         http.httpGet("http://127.0.0.1:1/")
@@ -51,5 +179,13 @@ test_https_is_supported_but_needs_a_reachable_host() = {
         caught = e.type == "NetworkError"
     }
     assert(caught, "an unreachable http host must raise NetworkError")
+
+    caught = false
+    try {
+        http.httpGet("http:///no-host")
+    } catch (e) {
+        caught = e.type == "HttpError" && "no host" in e.message
+    }
+    assert(caught, "a URL without a host is rejected before any socket work")
 }
-test_https_is_supported_but_needs_a_reachable_host()
+test_unreachable_hosts_raise_typed_errors()

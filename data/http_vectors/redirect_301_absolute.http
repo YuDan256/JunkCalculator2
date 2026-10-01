@@ -1,0 +1,23 @@
+HTTP/1.1 301 Moved Permanently
+Date: Thu, 01 Oct 2026 11:56:33 GMT
+Content-Type: text/html
+Content-Length: 262
+Connection: close
+Location: https://www.apple.com/
+Server: Apple
+x-dice-value: hit
+Server-Timing: cdn-cache; desc=Miss
+set-cookie: geo=CN, path=/; domain=.apple.com
+Server-Timing: request_time=0.000;connection_time=0.001; origin_fb=; upstream_connect_time=
+Via: ens-cache11.cn7585[,0]
+Timing-Allow-Origin: *
+EagleId: 3acddd1f17908557934056851e
+
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML 2.0//EN">
+<html>
+<head><title>301 Moved Permanently</title></head>
+<body>
+<h1>301 Moved Permanently</h1>
+<p>The requested resource has been assigned a new permanent URI.</p>
+<hr/>Powered by Tengine</body>
+</html>

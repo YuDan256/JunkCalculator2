@@ -1,6 +1,6 @@
 # 设计文档：自写 TLS 1.3 客户端与 https 支持（未实施）
 
-> **状态：P0 / P1 已实施（2026-10-01，见 §14、§15），P2 起待实施。** 2026-10-01 定稿。
+> **状态：P0 / P1 / P2 已实施（2026-10-01，见 §14–§16），P3 起待实施。** 2026-10-01 定稿。
 > **性质：内部设计记录**，不是用户侧帮助。这里**故意**写设计理由与被否方案，
 > 与 `data/documentation.json`（只写契约）的规则不同，勿混。
 > 起因：`http.httpGet` 只支持明文 HTTP，`https://` 被直接拒绝（见 §1）。
@@ -413,3 +413,64 @@ x509Parse / x509Verify / systemRoots / randomBytes`（约定同 P0：二进制�
 - RSA-PSS **证书**未进夹具（曲线外场景少），PSS 由独立向量覆盖；链上的 RSA 均为 PKCS#1 v1.5
 - `systemRoots()` 的内容与机器相关，测试只断言接口形状与"至少一个能解析"
 - 签名算法只支持 SHA-256 家族（SHA-1 系一律判为 `unsupported-algorithm`，符合现代取舍）
+
+---
+
+## 16. P2 实施记录（2026-10-01）
+
+**落地文件**
+
+| 文件 | 内容 |
+|---|---|
+| `src/tls/TlsClient.{h,cpp}` | 记录层 + 密钥调度 + 握手状态机 + alert 映射（传输无关） |
+| `src/lib/tls/tls_module.cpp` | 原生模块 `tls` 与 `tls.Client` 类（start/feed/data/status/secrets/certificate） |
+| `tests/modules/test_tls.jc2` | 基于 RFC 8448 的离线回放与负例 |
+| `data/crypto_vectors/tls/rfc8448.json` | RFC 8448 轨迹（逐字节抄录 + 出处 + 五条自校验） |
+
+**关键设计**
+
+- **传输无关**：`start()`/`feed()` 收发的是记录字节的十六进制；socket 只由脚本层负责
+  （P3 的 `net.TlsSocket`）。这样同一套代码既能线上跑，也能离线回放录制轨迹。
+- **确定性注入**：`clientRandom` / `legacySessionId` / `x25519Private` / `p256Private` /
+  `clientHello` 只服务于回放测试（正常连接不设置）；回放时会从注入的 ClientHello 里取回
+  会话 id 与随机数，因此 ServerHello 的 echo 校验依然有效。
+- **首条记录用 0x0301**：RFC 8446 §5.1 允许，也是各家客户端兼容做法；其余记录 0x0303。
+- **两份 key_share**：x25519 + secp256r1 同时给出（D2/D9），HRR 因此明确失败而非静默重试。
+- **链校验可关、CertificateVerify 不可关**：回放自签轨迹时需要跳过"链"这一层，
+  但 CertificateVerify 永远校验 —— 它证明对端持有证书私钥，与信任锚无关。
+
+**验收（全部通过，三套测试 58/58、58/58、18/18）**
+
+- ClientHello 结构：记录头 / 密码套件 / SNI / supported_groups / signature_algorithms /
+  ALPN / 两份 key_share / supported_versions 的字节级断言
+- **回放 RFC 8448 §3**：注入轨迹的 ClientHello 与 x25519 私钥后，ClientHello 记录与轨迹
+  **逐字节相同**；喂入 ServerHello 与那条 679 字节记录后握手完成，且 handshake secret、
+  c hs / s hs、master secret、c ap / s ap、exporter master、**双方 Finished verify_data**
+  逐项等于轨迹值；证书解析出 CN=rsa 的 1024 位 RSA 自签证书（即轨迹所用证书）
+- 应用数据：手工补一条序号 0 的记录后，轨迹的序号 1 记录解出 50 个递增字节（00…31）
+- 分片与合并：逐字节喂、三条记录一次喂、中间插入 ChangeCipherSpec 都必须完成
+- 负例：HelloRetryRequest → `hrr-not-supported`；明文 alert 与用应用密钥手工封的加密 alert
+  → `alert-received` 并映射出 `handshake_failure`；超长记录 → `record-too-large`；
+  打开链校验 → 轨迹自签证书 `certificate-rejected`
+- **反向验证**：把 EncryptedExtensions 从转录里漏掉后，回放测试立刻在 CertificateVerify
+  处变红（签名输入含转录哈希），说明转录相关断言有实际约束力
+
+**实施中查出并修掉的三个真缺陷**
+
+1. **ClientHello 的 server_name 扩展少了 server_shares 列表长度**（结构断言发现）；
+2. **`tls.Client()` 无参构造崩溃**（allocator 收到 argc=0 时读了 argv[0]，加守卫后修好）；
+3. **回放模式跳过 ClientHello 构建导致 ECDHE 私钥为空**，`feed(ServerHello)` 触发空指针读 ——
+   把"随机数与两套密钥"拆成 `prepareKeys()`，两条路径都执行。
+
+**RFC 8448 的两个坑（已写进夹具 notes，避免后人重踩）**
+
+- §3 把 EE + Certificate + CertificateVerify + Finished 封在**同一条** 679 字节记录里
+  （657 + 1 内层类型 + 16 tag = 674 = 长度字段），密文不可分割；
+- 夹具里的应用数据记录是应用密钥下的**序号 1**（序号 0 是 §3 的 NewSessionTicket，未在夹具中），
+  直接按序号 0 解会 GCM 认证失败。
+
+**已知边界**
+
+- 只支持单套件 `TLS_AES_128_GCM_SHA256` 与 TLS 1.3；不做会话恢复/PSK/0-RTT/客户端证书
+- 不做 HRR（D9）：服务器坚持要别的组时以 `hrr-not-supported` 明确失败
+- 尚未接真实 socket：P3 才把 `net.TlsSocket` / `http.jc2` 接上，届时做真实站点验证

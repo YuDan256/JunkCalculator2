@@ -92,7 +92,7 @@ test_tls_fuzz_never_crashes_or_lies() = {
     st = @[1]
     rounds = 0
 
-    for (round in range(600)) {
+    for (roundIdx in range(600)) {
         seed_record = records[_next(st) % records.len()]
         mutated = _mutateHex(seed_record, st)
 
@@ -153,7 +153,7 @@ test_tls_fuzz_after_handshake() = {
     // 不允许把畸形输入当成合法数据静默吞掉后还报 ok。
     fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
     st = @[99]
-    for (round in range(200)) {
+    for (roundIdx in range(200)) {
         c = tls.Client({
             "serverName": "server",
             "verifyChain": false,
@@ -188,11 +188,15 @@ test_http_parser_fuzz() = {
         io.readFile("data/http_vectors/chunked_utf8.http"),
         io.readFile("data/http_vectors/content_length_apple.http")
     ]
+    // 未变异的基线：必须真的解析出 200 + 完整正文（挡住"整体失效但断言仍成立"）
+    baseline = http.httpParseResponse(bases[0], "https://example.org/")
+    assert(baseline.status == 200 && baseline.body.len() == 713,
+           "baseline fixture must parse before fuzzing")
     st = @[7]
     parsed = 0
     rejected = 0
 
-    for (round in range(600)) {
+    for (roundIdx in range(600)) {
         base = bases[_next(st) % bases.len()]
         mutated = _mutateText(base, st)
 
@@ -211,5 +215,8 @@ test_http_parser_fuzz() = {
     }
     assert(parsed + rejected == 600, "every round either parsed or was rejected as HttpError")
     assert(rejected > 0, "mutations must actually produce rejections (otherwise the fuzz is toothless)")
+    // 关键防退化：如果解析器被"全局名字被劫持"之类的问题整体打瘫，
+    // 所有轮次都会以 HttpError 收场 —— 那种"全绿但一轮没解析"的假绿必须被挡住
+    assert(parsed >= 300, "at least half the rounds must really parse; got " + str(parsed))
 }
 test_http_parser_fuzz()

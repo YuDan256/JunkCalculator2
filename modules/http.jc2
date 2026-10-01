@@ -5,13 +5,16 @@
 
 const local import net
 const local import bytes
+// 调用方脚本的顶层绑定会进同一张全局表并覆盖内建（例如顶层 for (round in ...)），
+// 所以模块先把用到的内建绑成自己的私有名，避免被劫持（见设计文档开放项）。
+const local _round = round
 
 // ─── Response Class ───────────────────────────────────────────
 
 class HttpResponse {
     init(status: int | float, headers: dict, body: string, raw: string,
          url: string = "", redirects: any = none) = {
-        self.status = round(status)
+        self.status = _round(status)
         self.headers = headers
         self.body = body
         self.raw = raw
@@ -34,7 +37,7 @@ local namespace _Http {
     utf8_bytes(s: string) -> int = {
         scratch = bytes.alloc(s.len() * 4 + 4)
         scratch.writeStr(s)
-        return round(scratch.tell())
+        return _round(scratch.tell())
     }
 
     // 整个响应放进字节缓冲：正文按字节提取，最后一次性解码成字符串

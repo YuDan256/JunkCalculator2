@@ -1,0 +1,256 @@
+// TLS 1.3 客户端测试（P2）—— 全部离线，基于 RFC 8448 的官方握手轨迹回放。
+//
+// 轨迹来源：data/crypto_vectors/tls/rfc8448.json（逐字节抄自 RFC 8448，含出处与自校验说明）。
+// 回放方式：注入轨迹里的 clientHello / x25519 私钥，让客户端与轨迹"同一个 ClientHello + 同一对
+// 密钥"，从而可以逐项断言：记录层、密钥调度、转录哈希、Finished、CertificateVerify、应用数据。
+//
+// 注意 RFC 8448 §3 把 EncryptedExtensions + Certificate + CertificateVerify + Finished
+// **封在一个 679 字节的记录里**（夹具里四个字段指向同一条记录），所以回放时只需喂这一条。
+
+import tls
+import crypto
+import json
+import io
+
+_fx() = return json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))
+_simple() = return _fx()["simple_1rtt"]
+
+_hexByte(v: int) -> string = {
+    digits = "0123456789abcdef"
+    return digits.substr(idiv(v, 16), 1) + digits.substr(v % 16, 1)
+}
+
+// ─── ClientHello 结构 ─────────────────────────────────────────
+
+test_client_hello_structure() = {
+    c = tls.Client({"serverName": "example.com"})
+    rec = c.start()
+    hello = c.hello()
+
+    assert(hello.substr(0, 2) == "01", "ClientHello handshake type")
+    assert(rec.len() == hello.len() + 10, "record header is 5 bytes in front of the message")
+    assert(rec.substr(0, 10) == "160301" + _hexByte(idiv(idiv(hello.len(), 2), 256)) + _hexByte(idiv(hello.len(), 2) % 256),
+           "record header (ClientHello uses legacy version 0301)")
+
+    // legacy_version 0303 + 32 字节随机 + 空 session id 之后是密码套件
+    assert(hello.substr(8, 4) == "0303", "legacy_version")
+    assert(hello.contains("00021301"), "offers TLS_AES_128_GCM_SHA256")
+    assert(hello.contains("00000010000e00000b6578616d706c652e636f6d"), "server_name extension with example.com")
+    assert(hello.contains("000a00060004001d0017"), "supported_groups = x25519, secp256r1")
+    assert(hello.contains("000d00080006080404010403"), "signature_algorithms = rsa_pss_rsae_sha256, rsa_pkcs1_sha256, ecdsa_secp256r1_sha256")
+    assert(hello.contains("002b0003020304"), "supported_versions = TLS 1.3")
+    assert(hello.contains("0010000b000908687474702f312e31"), "ALPN = http/1.1")
+    assert(hello.contains("0033006b0069"), "key_share with two client shares")
+    assert(hello.contains("001d0020"), "x25519 key share")
+    assert(hello.contains("00170041"), "P-256 key share (kept at 65 bytes)")
+
+    // 会话 id 恰好 32 字节（兼容模式），且两次随机数不同
+    d = tls.Client({"serverName": "example.com"})
+    assert(d.hello() != hello, "each client uses a fresh random")
+    assert(c.complete() == false, "not complete before the handshake")
+    assert(c.data() == "", "no application data yet")
+}
+test_client_hello_structure()
+
+// ─── RFC 8448 §3：完整回放 ────────────────────────────────────
+
+test_replay_rfc8448_simple_handshake() = {
+    fx = _simple()
+    c = tls.Client({
+        "serverName": "server",
+        "verifyChain": false,
+        "clientHello": fx["client_hello_handshake"],
+        "x25519Private": fx["client_private_key_x25519"]
+    })
+
+    assert(c.start() == fx["client_hello_record"], "ClientHello record must match the trace byte for byte")
+
+    // ServerHello
+    assert(c.feed(fx["server_hello_record"]) == "", "nothing to send after ServerHello")
+    st = c.status()
+    assert(st["ok"], "ServerHello must be accepted: " + st["reason"] + " " + st["detail"])
+    assert(!st["complete"], "handshake not complete yet")
+
+    // 服务器这一条记录里同时装着 EE + Certificate + CertificateVerify + Finished
+    out = c.feed(fx["encrypted_extensions_record"])
+    st = c.status()
+    assert(st["ok"] && st["complete"], "handshake must complete: " + st["reason"] + " " + st["detail"])
+    assert(out.len() > 0, "client Finished must be produced")
+
+    // 密钥调度逐项对齐 RFC 8448
+    s = c.secrets()
+    assert(s["handshakeSecret"] == fx["handshake_secret"], "handshake secret")
+    assert(s["clientHandshakeTraffic"] == fx["client_handshake_traffic_secret"], "client handshake traffic secret")
+    assert(s["serverHandshakeTraffic"] == fx["server_handshake_traffic_secret"], "server handshake traffic secret")
+    assert(s["masterSecret"] == fx["master_secret"], "master secret")
+    assert(s["serverFinishedVerify"] == fx["server_finished_verify_data"], "server Finished verify_data")
+    assert(s["clientFinishedVerify"] == fx["client_finished_verify_data"], "client Finished verify_data")
+    assert(s["clientApplicationTraffic0"] == fx["client_application_traffic_secret_0"], "client app traffic secret")
+    assert(s["serverApplicationTraffic0"] == fx["server_application_traffic_secret_0"], "server app traffic secret")
+    assert(s["exporterMaster"] == fx["exporter_master_secret"], "exporter master secret")
+
+    // 证书：解析出来应当就是轨迹里那张自签 ECDSA 证书
+    certHex = c.certificate()
+    assert(certHex.len() > 0, "leaf certificate captured")
+    cert = crypto.x509Parse(certHex)
+    // RFC 8448 §3 用的是一张 1024 位 RSA 自签证书（CN=rsa），不是 ECDSA
+    assert(cert["subject"] == "rsa", "leaf subject CN from the trace")
+    assert(cert["issuer"] == "rsa", "self-issued trace certificate")
+    assert(cert["keyType"] == "rsa" && cert["rsaBits"] == 1024, "trace certificate is 1024-bit RSA")
+}
+test_replay_rfc8448_simple_handshake()
+
+// ─── 应用数据（用 RFC 8448 的服务器应用密钥记录）───────────────
+
+test_replay_application_data() = {
+    fx = _simple()
+    c = tls.Client({
+        "serverName": "server",
+        "verifyChain": false,
+        "clientHello": fx["client_hello_handshake"],
+        "x25519Private": fx["client_private_key_x25519"]
+    })
+    c.start()
+    c.feed(fx["server_hello_record"])
+    c.feed(fx["encrypted_extensions_record"])
+    assert(c.complete(), "handshake completed before app data")
+
+    // 轨迹里的应用数据记录是服务器在应用密钥下的**第 2 条**（序号 1）——序号 0 是 RFC 8448 §3 的
+    // NewSessionTicket，夹具里没有。所以先手工补一条序号 0 的记录（nonce = iv，因为序号为 0）。
+    key = crypto.hkdfExpandLabel(fx["server_application_traffic_secret_0"], "key", "", 16)
+    iv = crypto.hkdfExpandLabel(fx["server_application_traffic_secret_0"], "iv", "", 12)
+    inner = "aa" + "17"                       // 1 字节载荷 + 内层类型 application_data(23)
+    len = idiv(inner.len(), 2) + 16
+    header = "17" + "0303" + _hexByte(idiv(len, 256)) + _hexByte(len % 256)
+    sealed = crypto.aesGcmSeal(key, iv, header, inner)
+    c.feed(header + sealed["ct"] + sealed["tag"])
+    assert(c.data() == "aa", "crafted sequence-0 application data")
+
+    c.feed(fx["application_data_record"])     // 序号 1：RFC 8448 的原始记录
+    body = c.data()
+    assert(body == "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f3031",
+           "the trace's application data payload (50 counting bytes); got " + body)
+    assert(c.data() == "", "data() clears what it returned")
+}
+test_replay_application_data()
+
+// ─── 分片与合并 ───────────────────────────────────────────────
+
+test_fragmented_and_coalesced_records() = {
+    fx = _simple()
+
+    // 1) 逐字节喂（跨记录分片的最小粒度）
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    // 只含握手记录：应用数据记录在轨迹里是应用密钥下的序号 1，需要序号 0 那条
+    // NewSessionTicket（夹具未含），单独在 test_replay_application_data 里覆盖
+    flight = fx["server_hello_record"] + fx["encrypted_extensions_record"]
+    for (i in range(idiv(flight.len(), 2))) {
+        c.feed(flight.substr(2 * i, 2))
+    }
+    st = c.status()
+    assert(st["ok"] && st["complete"], "byte-by-byte feed must work: " + st["reason"] + " " + st["detail"])
+
+    // 2) 三条记录一次性喂进去（多记录合并）
+    d = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    d.start()
+    d.feed(flight)
+    st = d.status()
+    assert(st["ok"] && st["complete"], "coalesced feed must work: " + st["reason"] + " " + st["detail"])
+
+    // 3) 兼容模式的 ChangeCipherSpec 记录必须被忽略
+    e = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    e.start()
+    ccs = _fx()["compatibility_mode"]["server_ccs_record"]
+    e.feed(ccs + fx["server_hello_record"] + ccs + fx["encrypted_extensions_record"])
+    st = e.status()
+    assert(st["ok"] && st["complete"], "ChangeCipherSpec must be ignored: " + st["reason"] + " " + st["detail"])
+}
+test_fragmented_and_coalesced_records()
+
+// ─── 负例：HRR / 明文 alert / 加密 alert / 超大记录 / 链不通过 ──
+
+test_hello_retry_request_is_rejected() = {
+    fx = _simple()
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    out = c.feed(_fx()["hello_retry_request"]["hrr_record"])
+    st = c.status()
+    assert(!st["ok"], "HelloRetryRequest must fail the handshake")
+    assert(st["reason"] == "hrr-not-supported", "expected hrr-not-supported, got " + st["reason"])
+    assert(!st["complete"], "no handshake after HRR")
+    assert(out == "", "nothing to send on failure")
+}
+test_hello_retry_request_is_rejected()
+
+test_plaintext_alert_is_reported() = {
+    fx = _simple()
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    // 15 03 03 00 02 02 28 = fatal handshake_failure（握手完成前是明文）
+    c.feed("15030300020228")
+    st = c.status()
+    assert(st["reason"] == "alert-received", "expected alert-received, got " + st["reason"])
+    assert(st["detail"].contains("handshake_failure"), "alert name must be mapped: " + st["detail"])
+}
+test_plaintext_alert_is_reported()
+
+test_encrypted_alert_after_handshake() = {
+    fx = _simple()
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    c.feed(fx["server_hello_record"])
+    c.feed(fx["encrypted_extensions_record"])
+    assert(c.complete(), "handshake completed")
+
+    // 用服务器应用密钥手工封一条 alert（序号 0，所以 nonce 就是 iv）
+    key = crypto.hkdfExpandLabel(fx["server_application_traffic_secret_0"], "key", "", 16)
+    iv = crypto.hkdfExpandLabel(fx["server_application_traffic_secret_0"], "iv", "", 12)
+    inner = "0228" + "15"          // fatal + handshake_failure，内层类型 alert(21)
+    len = idiv(inner.len(), 2) + 16
+    header = "15" + "0303" + _hexByte(idiv(len, 256)) + _hexByte(len % 256)
+    sealed = crypto.aesGcmSeal(key, iv, header, inner)
+    c.feed(header + sealed["ct"] + sealed["tag"])
+
+    st = c.status()
+    assert(st["reason"] == "alert-received", "encrypted alert must be reported, got " + st["reason"])
+    assert(st["detail"].contains("handshake_failure"), "alert name: " + st["detail"])
+}
+test_encrypted_alert_after_handshake()
+
+test_record_and_chain_negatives() = {
+    fx = _simple()
+
+    // 超过 2^14+256 的记录长度必须直接拒绝
+    c = tls.Client({"serverName": "server", "verifyChain": false,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    c.start()
+    c.feed("160303ffff" + "00")
+    assert(c.status()["reason"] == "record-too-large", "oversized record")
+
+    // 打开链校验后，轨迹里的自签证书必须被拒（它不在系统信任库里）
+    d = tls.Client({"serverName": "server", "verifyChain": true,
+                    "clientHello": fx["client_hello_handshake"],
+                    "x25519Private": fx["client_private_key_x25519"]})
+    d.start()
+    d.feed(fx["server_hello_record"])
+    d.feed(fx["encrypted_extensions_record"])
+    st = d.status()
+    assert(!st["ok"], "self-signed trace certificate must not chain to the system trust store")
+    assert(st["reason"] == "certificate-rejected", "expected certificate-rejected, got " + st["reason"])
+    assert(!d.complete(), "handshake must not complete")
+}
+test_record_and_chain_negatives()

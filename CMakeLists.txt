@@ -148,9 +148,21 @@ set(JC2_CRYPTO_SOURCES
     "src/crypto/Hkdf.cpp"
     "src/crypto/AesGcm.cpp"
     "src/crypto/X25519.cpp"
+    "src/crypto/BigNum.cpp"
+    "src/crypto/Der.cpp"
+    "src/crypto/P256.cpp"
+    "src/crypto/Rsa.cpp"
+    "src/crypto/Hostname.cpp"
+    "src/crypto/X509.cpp"
+    "src/crypto/Random.cpp"
+    "src/crypto/TrustStore.cpp"
 )
 add_library(jc2_crypto STATIC ${JC2_CRYPTO_SOURCES})
 target_include_directories(jc2_crypto PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+if(WIN32)
+    # bcrypt: BCryptGenRandom；crypt32: 枚举系统 ROOT 证书存储
+    target_link_libraries(jc2_crypto PUBLIC bcrypt crypt32)
+endif()
 if(MSVC)
     target_compile_options(jc2_crypto PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
 endif()

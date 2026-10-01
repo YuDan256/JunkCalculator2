@@ -11,8 +11,14 @@
 #include "../../crypto/AesGcm.h"
 #include "../../crypto/Hkdf.h"
 #include "../../crypto/Hmac.h"
+#include "../../crypto/Hostname.h"
+#include "../../crypto/P256.h"
+#include "../../crypto/Random.h"
+#include "../../crypto/Rsa.h"
 #include "../../crypto/Sha256.h"
+#include "../../crypto/TrustStore.h"
 #include "../../crypto/X25519.h"
+#include "../../crypto/X509.h"
 
 #include <cstdint>
 #include <string>
@@ -217,6 +223,149 @@ static JC2_ValueHandle crypto_x25519Base(JC2_VMContext, int argc, JC2_ValueHandl
     return jc2::Value(hexEncode(out, sizeof(out))).get_handle();
 }
 
+// ─── 公钥算法与证书（P1）─────────────────────────────────────
+
+static JC2_ValueHandle crypto_p256Ecdh(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 2, "p256Ecdh");
+    const std::vector<uint8_t> priv = requireLength(hexDecode(jc2::Value(argv[0]), "private"), 32, "private");
+    const std::vector<uint8_t> peer = requireLength(hexDecode(jc2::Value(argv[1]), "point"), 65, "point");
+    uint8_t out[32];
+    if (!jc2::crypto::p256Ecdh(priv, peer.data(), peer.size(), out)) {
+        throwCryptoError("p256Ecdh failed (point not on curve or result at infinity).");
+    }
+    return jc2::Value(hexEncode(out, sizeof(out))).get_handle();
+}
+
+static JC2_ValueHandle crypto_ecdsaVerifyP256(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 4, "ecdsaVerifyP256");
+    const std::vector<uint8_t> pub = requireLength(hexDecode(jc2::Value(argv[0]), "public"), 65, "public");
+    const std::vector<uint8_t> hash = requireLength(hexDecode(jc2::Value(argv[1]), "hash"), 32, "hash");
+    const std::vector<uint8_t> r = hexDecode(jc2::Value(argv[2]), "r");
+    const std::vector<uint8_t> s = hexDecode(jc2::Value(argv[3]), "s");
+    jc2::crypto::P256Point point;
+    if (!jc2::crypto::p256DecodePoint(pub.data(), pub.size(), point)) return jc2::Value(false).get_handle();
+    return jc2::Value(jc2::crypto::p256EcdsaVerify(point, hash.data(), r, s)).get_handle();
+}
+
+static JC2_ValueHandle crypto_rsaVerifyPkcs1(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 4, "rsaVerifyPkcs1");
+    const std::vector<uint8_t> n = hexDecode(jc2::Value(argv[0]), "n");
+    const std::vector<uint8_t> e = hexDecode(jc2::Value(argv[1]), "e");
+    const std::vector<uint8_t> hash = requireLength(hexDecode(jc2::Value(argv[2]), "hash"), 32, "hash");
+    const std::vector<uint8_t> sig = hexDecode(jc2::Value(argv[3]), "signature");
+    return jc2::Value(jc2::crypto::rsaVerifyPkcs1Sha256(n, e, hash.data(), sig)).get_handle();
+}
+
+static JC2_ValueHandle crypto_rsaVerifyPss(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 5, "rsaVerifyPss");
+    const std::vector<uint8_t> n = hexDecode(jc2::Value(argv[0]), "n");
+    const std::vector<uint8_t> e = hexDecode(jc2::Value(argv[1]), "e");
+    const std::vector<uint8_t> hash = requireLength(hexDecode(jc2::Value(argv[2]), "hash"), 32, "hash");
+    const std::vector<uint8_t> sig = hexDecode(jc2::Value(argv[3]), "signature");
+    const int saltLen = requirePositiveInt(jc2::Value(argv[4]), "saltLen", 64);
+    return jc2::Value(jc2::crypto::rsaVerifyPssSha256(n, e, hash.data(), sig, static_cast<size_t>(saltLen)))
+        .get_handle();
+}
+
+static JC2_ValueHandle crypto_hostnameMatch(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 2, "hostnameMatch");
+    if (!jc2::Value(argv[0]).is_string() || !jc2::Value(argv[1]).is_string()) {
+        jc2::throw_error(jc2::ErrorType::TypeError, "hostnameMatch expects two strings.");
+    }
+    const bool ok = jc2::crypto::hostnameMatch(jc2::Value(argv[0]).as_string(), jc2::Value(argv[1]).as_string());
+    return jc2::Value(ok).get_handle();
+}
+
+static JC2_ValueHandle crypto_x509Parse(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 1, "x509Parse");
+    const std::vector<uint8_t> der = hexDecode(jc2::Value(argv[0]), "der");
+    jc2::crypto::X509Certificate cert;
+    if (!jc2::crypto::x509Parse(der, cert)) {
+        throwCryptoError("certificate could not be parsed.");
+    }
+    jc2::Dict out;
+    out.set(jc2::Value("subject"), jc2::Value(cert.subjectCN));
+    out.set(jc2::Value("issuer"), jc2::Value(cert.issuerCN));
+    out.set(jc2::Value("notBefore"), jc2::BigInt(std::to_string(cert.notBefore)));
+    out.set(jc2::Value("notAfter"), jc2::BigInt(std::to_string(cert.notAfter)));
+    out.set(jc2::Value("isCa"), jc2::Value(cert.isCa));
+    out.set(jc2::Value("pathLen"), jc2::Value(static_cast<int32_t>(cert.pathLen)));
+    const char* keyType = cert.keyType == jc2::crypto::X509Certificate::KeyType::Rsa      ? "rsa"
+                          : cert.keyType == jc2::crypto::X509Certificate::KeyType::EcP256 ? "ec-p256"
+                                                                                        : "unknown";
+    out.set(jc2::Value("keyType"), jc2::Value(keyType));
+    out.set(jc2::Value("rsaBits"), jc2::Value(static_cast<int32_t>(cert.rsaBits)));
+    out.set(jc2::Value("sigAlg"), jc2::Value(cert.sigAlgOid));
+    jc2::List sans;
+    for (const auto& name : cert.sanDns) {
+        sans.push_back(jc2::Value(name));
+    }
+    out.set(jc2::Value("san"), sans);
+    return out.get_handle();
+}
+
+// 把 JC2 的十六进制字符串列表转成 DER 列表
+static std::vector<std::vector<uint8_t>> hexListArg(const jc2::Value& v, const char* what) {
+    std::vector<std::vector<uint8_t>> out;
+    if (!v.is_list()) {
+        jc2::throw_error(jc2::ErrorType::TypeError, std::string(what) + " must be a list of hex strings.");
+    }
+    jc2::List list(v.get_handle());
+    const size_t n = list.size();
+    out.reserve(n);
+    for (size_t i = 0; i < n; ++i) {
+        out.push_back(hexDecode(list.get(i), what));
+    }
+    return out;
+}
+
+static JC2_ValueHandle crypto_x509Verify(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 5, "x509Verify");
+    const std::vector<uint8_t> leaf = hexDecode(jc2::Value(argv[0]), "leaf");
+    const auto intermediates = hexListArg(jc2::Value(argv[1]), "intermediates");
+    const auto roots = hexListArg(jc2::Value(argv[2]), "roots");
+    const std::string hostname = jc2::Value(argv[3]).is_none() ? std::string() : jc2::Value(argv[3]).as_string();
+    int64_t now = 0;
+    {
+        const jc2::Value t(argv[4]);
+        if (t.is_bigint()) {
+            now = std::stoll(t.to_string());
+        } else if (t.is_int() || t.is_float()) {
+            now = static_cast<int64_t>(t.as_float());
+        } else {
+            jc2::throw_error(jc2::ErrorType::TypeError, "time must be a number of Unix seconds.");
+        }
+    }
+
+    const auto result = jc2::crypto::x509VerifyChain(leaf, intermediates, roots, hostname, now);
+    jc2::Dict out;
+    out.set(jc2::Value("ok"), jc2::Value(result.ok));
+    out.set(jc2::Value("reason"), jc2::Value(std::string(jc2::crypto::x509FailName(result.reason))));
+    out.set(jc2::Value("chainLength"), jc2::Value(static_cast<int32_t>(result.chainLength)));
+    out.set(jc2::Value("detail"), jc2::Value(result.detail));
+    return out.get_handle();
+}
+
+static JC2_ValueHandle crypto_systemRoots(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    (void)argv;
+    requireArity(argc, 0, "systemRoots");
+    jc2::List out;
+    for (const auto& der : jc2::crypto::systemRootCertificates()) {
+        out.push_back(jc2::Value(hexEncode(der.data(), der.size())));
+    }
+    return out.get_handle();
+}
+
+static JC2_ValueHandle crypto_randomBytes(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    requireArity(argc, 1, "randomBytes");
+    const int n = requirePositiveInt(jc2::Value(argv[0]), "length", 4096);
+    std::vector<uint8_t> buf(static_cast<size_t>(n));
+    if (!jc2::crypto::randomBytes(buf.data(), buf.size())) {
+        throwCryptoError("the system random number generator failed.");
+    }
+    return jc2::Value(hexEncode(buf.data(), buf.size())).get_handle();
+}
+
 // ─── 模块注册 ─────────────────────────────────────────────────
 
 int jc2_init(jc2::Module& mod) {
@@ -235,6 +384,15 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function("aesGcmOpen", crypto_aesGcmOpen, 5, 5, {"key", "iv", "aad", "ct", "tag"});
     mod.register_function("x25519", crypto_x25519, 2, 2, {"scalar", "point"});
     mod.register_function("x25519Base", crypto_x25519Base, 1, 1, {"scalar"});
+    mod.register_function("p256Ecdh", crypto_p256Ecdh, 2, 2, {"private", "point"});
+    mod.register_function("ecdsaVerifyP256", crypto_ecdsaVerifyP256, 4, 4, {"public", "hash", "r", "s"});
+    mod.register_function("rsaVerifyPkcs1", crypto_rsaVerifyPkcs1, 4, 4, {"n", "e", "hash", "signature"});
+    mod.register_function("rsaVerifyPss", crypto_rsaVerifyPss, 5, 5, {"n", "e", "hash", "signature", "saltLen"});
+    mod.register_function("hostnameMatch", crypto_hostnameMatch, 2, 2, {"pattern", "host"});
+    mod.register_function("x509Parse", crypto_x509Parse, 1, 1, {"der"});
+    mod.register_function("x509Verify", crypto_x509Verify, 5, 5, {"leaf", "intermediates", "roots", "hostname", "time"});
+    mod.register_function("systemRoots", crypto_systemRoots, 0, 0);
+    mod.register_function("randomBytes", crypto_randomBytes, 1, 1, {"length"});
 
     mod.register_function_help("crypto.sha256", "crypto.sha256(msg)", "SHA-256 of msg; both are hex strings.", "crypto.sha256(\"616263\")");
     mod.register_function_help("crypto.hmacSha256", "crypto.hmacSha256(key, msg)", "HMAC-SHA256; key and msg are hex strings.", "crypto.hmacSha256(\"4a656665\", \"6869\")");
@@ -245,6 +403,15 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("crypto.aesGcmOpen", "crypto.aesGcmOpen(key, iv, aad, ct, tag)", "AES-128-GCM decryption; raises CryptoError if the tag does not match.", "");
     mod.register_function_help("crypto.x25519", "crypto.x25519(scalar, point)", "X25519 scalar multiplication (RFC 7748); raises CryptoError on an all-zero result.", "");
     mod.register_function_help("crypto.x25519Base", "crypto.x25519Base(scalar)", "X25519 with the standard base point u = 9.", "");
+    mod.register_function_help("crypto.p256Ecdh", "crypto.p256Ecdh(private, point)", "P-256 ECDH; point is the 65-byte uncompressed peer key in hex.", "");
+    mod.register_function_help("crypto.ecdsaVerifyP256", "crypto.ecdsaVerifyP256(public, hash, r, s)", "ECDSA P-256 / SHA-256 signature verification; returns a bool.", "");
+    mod.register_function_help("crypto.rsaVerifyPkcs1", "crypto.rsaVerifyPkcs1(n, e, hash, signature)", "RSA PKCS#1 v1.5 with SHA-256; returns a bool.", "");
+    mod.register_function_help("crypto.rsaVerifyPss", "crypto.rsaVerifyPss(n, e, hash, signature, saltLen)", "RSASSA-PSS with SHA-256/MGF1-SHA-256; returns a bool.", "");
+    mod.register_function_help("crypto.hostnameMatch", "crypto.hostnameMatch(pattern, host)", "RFC 6125 dNSName matching (wildcards only in the leftmost label).", "");
+    mod.register_function_help("crypto.x509Parse", "crypto.x509Parse(der)", "Parses a DER certificate into a dict (subject/issuer/san/validity/keyType).", "");
+    mod.register_function_help("crypto.x509Verify", "crypto.x509Verify(leaf, intermediates, roots, hostname, time)", "Verifies a certificate chain at the given Unix time; returns {ok, reason, chainLength, detail}.", "");
+    mod.register_function_help("crypto.systemRoots", "crypto.systemRoots()", "Returns the system trust store (Windows ROOT) as a list of DER certificates in hex.", "");
+    mod.register_function_help("crypto.randomBytes", "crypto.randomBytes(length)", "Cryptographically secure random bytes (system CSPRNG) as hex.", "");
 
     mod.register_help("crypto",
         "═══ Cryptographic Primitives (Native Module) ═══\n\n"
@@ -264,6 +431,17 @@ int jc2_init(jc2::Module& mod) {
         "  Key exchange\n"
         "    crypto.x25519(scalar, point)              RFC 7748\n"
         "    crypto.x25519Base(scalar)                 u = 9\n"
+        "    crypto.p256Ecdh(private, point)           NIST P-256 ECDH\n\n"
+        "  Public key signatures / certificates\n"
+        "    crypto.ecdsaVerifyP256(public, hash, r, s)      ECDSA P-256 / SHA-256\n"
+        "    crypto.rsaVerifyPkcs1(n, e, hash, signature)    RSA PKCS#1 v1.5 / SHA-256\n"
+        "    crypto.rsaVerifyPss(n, e, hash, signature, saltLen)\n"
+        "    crypto.x509Parse(der)                    Certificate fields as a dict\n"
+        "    crypto.x509Verify(leaf, intermediates, roots, hostname, time)\n"
+        "                                             Chain verification at a given Unix time\n"
+        "    crypto.hostnameMatch(pattern, host)      RFC 6125 dNSName matching\n"
+        "    crypto.systemRoots()                     System trust store (Windows ROOT) as hex DER\n"
+        "    crypto.randomBytes(length)               System CSPRNG\n"
     );
 
     return 0;

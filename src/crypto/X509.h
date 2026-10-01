@@ -44,8 +44,16 @@ struct X509Certificate {
     bool pssMgfSha256 = false;
 };
 
+// 解析失败的原因（用于把"实现了但没支持的算法"与"DER 坏了"分开报告）
+enum class X509ParseIssue {
+    Ok,
+    Malformed,               // DER 结构问题
+    UnsupportedKeyAlgorithm, // 公钥算法不认识（例如 SPKI 里的 id-RSASSA-PSS）
+    UnsupportedCurve,        // EC 曲线不是 prime256v1（例如 P-384/P-521）
+};
+
 // 解析单个证书；失败返回 false（不抛异常、不越界）。
-bool x509Parse(const Bytes& der, X509Certificate& out);
+bool x509Parse(const Bytes& der, X509Certificate& out, X509ParseIssue* issue = nullptr);
 
 enum class X509Fail {
     None,

@@ -128,7 +128,7 @@ bool extensionCallback(const std::string& oid, bool critical, const uint8_t* val
 
 // ─── 公钥 ─────────────────────────────────────────────────────
 
-bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert) {
+bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert, X509ParseIssue& issue) {
     // p 指向 SubjectPublicKeyInfo 的**内容**：AlgorithmIdentifier SEQUENCE + BIT STRING
     DerReader s(p, n);
     const uint8_t* alg = nullptr;
@@ -146,7 +146,10 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
         const uint8_t* params = nullptr;
         size_t paramsLen = 0;
         if (!a.readExpected(DER_OID, params, paramsLen)) return false;
-        if (derOidToString(params, paramsLen) != kOidPrime256v1) return false;
+        if (derOidToString(params, paramsLen) != kOidPrime256v1) {
+            issue = X509ParseIssue::UnsupportedCurve;   // 例如 P-384 / P-521
+            return false;
+        }
     }
 
     const uint8_t* bits = nullptr;
@@ -176,6 +179,7 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
     }
 
     if (algOid == kOidEcPublicKey) {
+        // 曲线已在上面限定为 prime256v1；这里再确认点格式与曲线方程
         if (keyLen != 65 || key[0] != 0x04) return false;
         cert.ecPoint.assign(key, key + keyLen);
         P256Point pt;
@@ -184,6 +188,7 @@ bool parseSubjectPublicKeyInfo(const uint8_t* p, size_t n, X509Certificate& cert
         return true;
     }
 
+    issue = X509ParseIssue::UnsupportedKeyAlgorithm;   // 例如 id-RSASSA-PSS 或非 RSA/EC 公钥
     return false;
 }
 // ─── PSS 参数 ─────────────────────────────────────────────────
@@ -313,9 +318,15 @@ bool verifyOneSignature(const X509Certificate& cert, const X509Certificate& issu
 
 } // namespace
 
-bool x509Parse(const Bytes& der, X509Certificate& out) {
+bool x509Parse(const Bytes& der, X509Certificate& out, X509ParseIssue* issueOut) {
     out = X509Certificate{};
     out.der = der;
+    X509ParseIssue issue = X509ParseIssue::Ok;
+    struct IssueGuard {
+        X509ParseIssue* slot;
+        X509ParseIssue& value;
+        ~IssueGuard() { if (slot) *slot = value; }
+    } guard{issueOut, issue};
 
     DerReader top(der.data(), der.size());
     const uint8_t* certSeq = nullptr;
@@ -425,7 +436,7 @@ bool x509Parse(const Bytes& der, X509Certificate& out) {
     const uint8_t* spki = nullptr;
     size_t spkiLen = 0;
     if (!t.readExpected(DER_SEQUENCE, spki, spkiLen)) return false;
-    if (!parseSubjectPublicKeyInfo(spki, spkiLen, out)) return false;
+    if (!parseSubjectPublicKeyInfo(spki, spkiLen, out, issue)) return false;
 
     // 可选：issuerUniqueID [1] / subjectUniqueID [2] / extensions [3]
     while (!t.atEnd()) {
@@ -497,9 +508,18 @@ X509VerifyResult x509VerifyChain(const Bytes& leafDer, const std::vector<Bytes>&
     pool.reserve(intermediates.size() + roots.size());
     for (const auto& der : intermediates) {
         X509Certificate c;
-        if (!x509Parse(der, c)) {
-            result.reason = X509Fail::MalformedChain;
-            result.detail = "an intermediate certificate could not be parsed";
+        X509ParseIssue issue = X509ParseIssue::Ok;
+        if (!x509Parse(der, c, &issue)) {
+            if (issue == X509ParseIssue::UnsupportedCurve) {
+                result.reason = X509Fail::UnsupportedAlgorithm;
+                result.detail = "an intermediate uses an EC curve other than P-256 (only P-256 is implemented)";
+            } else if (issue == X509ParseIssue::UnsupportedKeyAlgorithm) {
+                result.reason = X509Fail::UnsupportedAlgorithm;
+                result.detail = "an intermediate uses a public key algorithm this build does not implement";
+            } else {
+                result.reason = X509Fail::MalformedChain;
+                result.detail = "an intermediate certificate could not be parsed";
+            }
             return result;
         }
         pool.push_back(std::move(c));

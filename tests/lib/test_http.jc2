@@ -189,3 +189,342 @@ test_unreachable_hosts_raise_typed_errors() = {
     assert(caught, "a URL without a host is rejected before any socket work")
 }
 test_unreachable_hosts_raise_typed_errors()
+
+// ═══════════════════════════════════════════════════════════════
+// 以下为新增（既有断言一条未改）：响应定界 / CL 与 chunked 边界 /
+// gzip+deflate 解码 / 方法-重定向规划 / 坏负载的类型化错误
+//
+// 新增夹具全部由 data/http_vectors/generate_http_vectors.py 生成
+// （manifest_extra.json 里 source=(synthetic)、constructed_for_test=true）。
+// ═══════════════════════════════════════════════════════════════
+
+// gzip / deflate 夹具里被压缩的固定载荷（与生成脚本的 PAYLOAD 逐字符一致）
+_httpPayload() -> string = {
+    s = "JC2 http gzip+chunked ✓ 载荷 中文字符 "
+    for (i in range(12)) { s += "0123456789" }
+    return s
+}
+
+// 字符串 → 小写十六进制（检查二进制正文用；bytes 是懒加载，不动文件头的 import 区）
+_hexOf(s: string) -> string = {
+    const import bytes
+    b = bytes.alloc(s.len() * 4 + 8)
+    b.writeStr(s)
+    n = round(b.tell())
+    b.truncate(n)
+    return b.toHex()
+}
+
+_gunzipHex(hex: string) -> string = {
+    const import inflate
+    return inflate.gunzip(hex)
+}
+
+_unzlibHex(hex: string) -> string = {
+    const import inflate
+    return inflate.unzlib(hex)
+}
+
+// ─── httpPlanRead：四条分支都要落地 ───────────────────────────
+
+test_plan_read_covers_every_branch() = {
+    // 1) none：1xx / 204 / 304，以及 HEAD（哪怕头里有 Content-Length）
+    for (status in @[100, 101, 102, 204, 304]) {
+        p = http.httpPlanRead(status, {"Content-Length": "12"}, "GET")
+        assert(p["mode"] == "none" && p["length"] == 0,
+               "status " + str(status) + " must have no body: " + str(p))
+    }
+    ph = http.httpPlanRead(200, {"Content-Length": "1256"}, "HEAD")
+    assert(ph["mode"] == "none", "HEAD has no body even with Content-Length: " + str(ph))
+    ph2 = http.httpPlanRead(200, {"Content-Length": "1256"}, "head")
+    assert(ph2["mode"] == "none", "the HEAD check is case-insensitive: " + str(ph2))
+
+    // 2) length：恰好 n 字节，length 就是那个 n
+    pl = http.httpPlanRead(200, {"Content-Length": "2000"}, "GET")
+    assert(pl["mode"] == "length" && pl["length"] == 2000,
+           "Content-Length delimits the body: " + str(pl))
+    assert(http.httpPlanRead(200, {"content-length": "7"}, "GET")["length"] == 7,
+           "header field names are case-insensitive")
+
+    // 3) chunked，且优先于 Content-Length（TE 先判）
+    pc = http.httpPlanRead(200, {"Transfer-Encoding": "chunked"}, "GET")
+    assert(pc["mode"] == "chunked", "chunked framing: " + str(pc))
+    pboth = http.httpPlanRead(200, {"Transfer-Encoding": "chunked", "Content-Length": "5"}, "GET")
+    assert(pboth["mode"] == "chunked",
+           "Transfer-Encoding is decided before Content-Length (RFC 9112): " + str(pboth))
+
+    // 4) eof：什么都没有才允许读到对端关闭
+    pe = http.httpPlanRead(200, {}, "GET")
+    assert(pe["mode"] == "eof" && pe["length"] == 0, "no framing at all means read-to-close: " + str(pe))
+
+    // 坏 CL 依然只以 HttpError 出现
+    caught = false
+    try {
+        bad = http.httpPlanRead(200, {"Content-Length": "12a"}, "GET")
+    } catch (e) {
+        caught = e.type == "HttpError"
+    }
+    assert(caught, "a malformed Content-Length raises HttpError")
+}
+test_plan_read_covers_every_branch()
+
+// ─── 定界边界：第一条响应之后紧跟第二条，解析绝不能越界 ────────
+
+test_content_length_stops_exactly_at_the_first_response() = {
+    // 夹具：CL=10 的第一响应之后**紧接着**第二条响应的起始字节（没有 EOF 可用）
+    raw = _fixture("two_responses_cl.http")
+    res = http.httpParseResponse(raw, "https://example.org/")
+
+    plan = http.httpPlanRead(res.status, res.headers, "GET")
+    assert(plan["mode"] == "length", "the first response is Content-Length framed: " + str(plan))
+    assert(plan["length"] == 10, "Content-Length value: " + str(plan["length"]))
+
+    head_end = raw.find("\r\n\r\n", 0) + 4
+    second_at = raw.find("HTTP/1.1 200 OK", 1)
+    assert(second_at > 0, "the fixture really carries a second response after the first")
+    assert(head_end + plan["length"] == second_at,
+           "the body boundary must land exactly on the second response: head_end=" + str(head_end) +
+           " + CL=" + str(plan["length"]) + " vs second_at=" + str(second_at))
+
+    assert(res.body == "0123456789", "exactly the first body was consumed: [" + res.body + "]")
+    assert(!res.body.contains("HTTP/1.1"), "the second response leaked into the body")
+    assert(res.raw == raw, "raw keeps the whole stream as received")
+    assert(raw.substr(second_at) == "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 5\r\n\r\nHELLO",
+           "the second response is still intact in raw")
+}
+test_content_length_stops_exactly_at_the_first_response()
+
+test_chunked_stops_at_the_trailer() = {
+    // 夹具：chunked 第一响应（0 块 + trailer 空行）之后紧跟一个 204
+    raw = _fixture("two_responses_chunked.http")
+    res = http.httpParseResponse(raw, "https://example.org/")
+
+    plan = http.httpPlanRead(res.status, res.headers, "GET")
+    assert(plan["mode"] == "chunked", "chunked framing: " + str(plan))
+    assert(res.body == "hello world", "only the chunked body was consumed: [" + res.body + "]")
+    assert(!res.body.contains("HTTP/1.1"), "the next response leaked into the chunked body")
+
+    tail_at = raw.find("HTTP/1.1 204 No Content", 1)
+    assert(tail_at > 0, "the fixture carries a second response")
+    assert(res.raw.substr(tail_at) == "HTTP/1.1 204 No Content\r\n\r\n",
+           "the second response is still intact in raw")
+}
+test_chunked_stops_at_the_trailer()
+
+test_no_body_framing_does_not_eat_the_next_response() = {
+    // 304：无正文，后面的完整 200 不能被当成 304 的正文
+    raw304 = _fixture("no_body_304_then_200.http")
+    res304 = http.httpParseResponse(raw304, "https://example.org/")
+    assert(res304.status == 304, "status parsed")
+    assert(http.httpPlanRead(res304.status, res304.headers, "GET")["mode"] == "none", "304 has no body")
+    assert(res304.body == "", "304 body is empty: [" + res304.body + "]")
+    tail_at = raw304.find("HTTP/1.1 200 OK", 1)
+    assert(tail_at > 0 && raw304.substr(tail_at) == "HTTP/1.1 200 OK\r\nContent-Length: 3\r\n\r\nxyz",
+           "the 200 that follows a 304 is untouched")
+
+    // HEAD：头里有 Content-Length: 1256，但一个正文字节都没有
+    rawHead = _fixture("head_with_content_length.http")
+    head = http.httpParseResponse(rawHead, "https://example.org/", {"method": "HEAD"})
+    assert(head.status == 200 && head.body == "", "a HEAD response has no body")
+    assert(head.headers["Content-Length"] == "1256", "Content-Length stays readable as metadata")
+
+    // 同一段字节按 GET 解析就是「正文被截断」，必须报 HttpError
+    caught = false
+    try {
+        wrong = http.httpParseResponse(rawHead, "https://example.org/")
+    } catch (e) {
+        caught = e.type == "HttpError" && "Content-Length=1256" in e.message
+    }
+    assert(caught, "the same bytes parsed as GET are a truncated body")
+
+    // 0 块 + trailer：正文是空字符串
+    empty = http.httpParseResponse(_fixture("chunked_empty_body.http"))
+    assert(empty.body == "", "a lone 0-chunk with a trailer is an empty body")
+}
+test_no_body_framing_does_not_eat_the_next_response()
+
+test_eof_framing_reads_to_the_end() = {
+    // 既无 CL 也无 chunked：只能读到给到的字节末尾（网络侧就是对端关闭）
+    raw = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nread until close"
+    assert(http.httpPlanRead(200, {"Connection": "close"}, "GET")["mode"] == "eof",
+           "no framing information at all")
+    res = http.httpParseResponse(raw)
+    assert(res.body == "read until close", "eof framing keeps every byte: [" + res.body + "]")
+}
+test_eof_framing_reads_to_the_end()
+
+// ─── 压缩：gzip + chunked 组合，deflate 的两种容器 ─────────────
+
+test_chunked_gzip_body_is_decoded() = {
+    raw = _fixture("chunked_gzip.http")
+    res = http.httpParseResponse(raw, "https://example.org/")
+
+    assert(res.headers["Content-Encoding"] == "gzip", "response headers are kept as received")
+    assert(res.raw == raw, "raw keeps the compressed bytes as received")
+    assert(res.body == _httpPayload(),
+           "the chunked+gzip body decodes to the original text (len=" + str(res.body.len()) + ")")
+    assert(res.body.len() == 152, "152 code points / 166 UTF-8 bytes: " + str(res.body.len()))
+
+    // decompress=false：既不发 Accept-Encoding 也不解码，body 必须还是那个 gzip 流
+    rawBody = http.httpParseResponse(raw, "https://example.org/", {"decompress": false}).body
+    assert(rawBody != res.body, "decompress=false leaves the body compressed")
+    assert(_hexOf(rawBody).startsWith("1f8b08"), "it is still the gzip stream: " + _hexOf(rawBody).substr(0, 6))
+    assert(_gunzipHex(_hexOf(rawBody)) == _hexOf(_httpPayload()),
+           "the untouched body is exactly gunzip(payload)")
+}
+test_chunked_gzip_body_is_decoded()
+
+test_deflate_is_decoded_in_both_containers() = {
+    // 现实里的服务器两种都有：zlib 容器（RFC 1950）和裸 DEFLATE（RFC 1951）
+    for (name in @["deflate_zlib.http", "deflate_raw.http"]) {
+        res = http.httpParseResponse(_fixture(name), "https://example.org/")
+        assert(res.headers["Content-Encoding"] == "deflate", name + " is declared as deflate")
+        assert(res.body == _httpPayload(), name + " decodes to the original text")
+    }
+
+    // 裸 DEFLATE 不是合法 zlib 容器 → 说明它确实是靠 fallback 解出来的
+    rawDeflateBody = http.httpParseResponse(_fixture("deflate_raw.http"), "",
+                                            {"decompress": false}).body
+    caught = false
+    try {
+        wrong = _unzlibHex(_hexOf(rawDeflateBody))
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "raw DEFLATE is not a zlib container, so the fallback path did the work")
+
+    // zlib 容器反过来是能被 unzlib 直接解出来的
+    zlibBody = http.httpParseResponse(_fixture("deflate_zlib.http"), "", {"decompress": false}).body
+    assert(_unzlibHex(_hexOf(zlibBody)) == _hexOf(_httpPayload()),
+           "the zlib fixture is a real zlib container")
+}
+test_deflate_is_decoded_in_both_containers()
+
+// ─── 负例：坏负载必须是 HttpError ──────────────────────────────
+
+test_bad_compression_and_truncation_raise_http_error() = {
+    // 坏 gzip（deflate 中途翻位 + CRC32 置零）
+    caught = false
+    try {
+        r = http.httpParseResponse(_fixture("bad_gzip.http"))
+    } catch (e) {
+        caught = e.type == "HttpError" && "gunzip" in e.message
+    }
+    assert(caught, "a corrupt gzip body must raise HttpError")
+
+    // 分块中途截断（块长声明 16 字节，只到了 5 字节）
+    caught = false
+    try {
+        r = http.httpParseResponse(_fixture("truncated_chunked.http"))
+    } catch (e) {
+        caught = e.type == "HttpError" && "Truncated chunked body" in e.message
+    }
+    assert(caught, "a chunk cut in half must raise HttpError")
+
+    // Content-Length 大于实际字节
+    caught = false
+    try {
+        r = http.httpParseResponse(_fixture("truncated_body.http"))
+    } catch (e) {
+        caught = e.type == "HttpError" && "Content-Length=100" in e.message
+    }
+    assert(caught, "Content-Length larger than the payload must raise HttpError")
+}
+test_bad_compression_and_truncation_raise_http_error()
+
+// ─── 方法 + 重定向的规划（纯函数层）────────────────────────────
+
+test_plan_redirect_request_rewrites_or_keeps_the_method() = {
+    base = "https://example.org/"
+
+    // 303：改成 GET 并丢请求体
+    r303 = http.HttpResponse(303, {"Location": "/final"}, "", "", base)
+    p303 = http.httpPlanRedirectRequest(r303, base, "POST")
+    assert(!(p303 is none), "303 plans a next request")
+    assert(p303["method"] == "GET" && p303["keepBody"] == false, "303 turns POST into GET: " + str(p303))
+    assert(p303["url"] == "https://example.org:443/final", "url resolved like httpPlanRedirect: " + p303["url"])
+    assert(http.httpPlanRedirect(r303, base) == p303["url"],
+           "httpPlanRedirect keeps its old contract (returns the URL string)")
+
+    // 301 / 302 也是 GET + 丢体
+    for (status in @[301, 302]) {
+        r = http.HttpResponse(status, {"Location": "/moved"}, "", "", base)
+        p = http.httpPlanRedirectRequest(r, base, "POST")
+        assert(p["method"] == "GET" && p["keepBody"] == false,
+               str(status) + " rewrites to GET and drops the body: " + str(p))
+    }
+
+    // 307 / 308：方法与方法体都保留
+    for (status in @[307, 308]) {
+        r = http.HttpResponse(status, {"Location": "/keep"}, "", "", base)
+        p = http.httpPlanRedirectRequest(r, base, "POST")
+        assert(p["method"] == "POST" && p["keepBody"] == true,
+               str(status) + " keeps both method and body: " + str(p))
+    }
+
+    // 200 不是重定向
+    ok = http.httpParseResponse(_fixture("content_length_apple.http"), "https://www.apple.com/")
+    assert(http.httpPlanRedirectRequest(ok, "https://www.apple.com/", "GET") is none, "200 plans nothing")
+
+    // 手工夹具里的 303：POST 必须被规划成 GET
+    fixture303 = http.httpParseResponse(_fixture("redirect_303_see_other.http"), base)
+    p = http.httpPlanRedirectRequest(fixture303, base, "POST")
+    assert(p["method"] == "GET" && p["keepBody"] == false, "the recorded 303 fixture plans a GET")
+    assert(p["url"] == "https://example.org/final", "303 Location kept: " + p["url"])
+
+    // 307 也不能把 https 降级成 http 放过去
+    downgrade = http.HttpResponse(307, {"Location": "http://plain.example/x"}, "", "",
+                                  "https://secure.example/")
+    caught = false
+    try {
+        n = http.httpPlanRedirectRequest(downgrade, "https://secure.example/", "POST")
+    } catch (e) {
+        caught = e.type == "HttpError" && "down to http" in e.message
+    }
+    assert(caught, "307 does not smuggle a https -> http downgrade through")
+}
+test_plan_redirect_request_rewrites_or_keeps_the_method()
+
+// ─── 公开面：新函数存在，且离线时只报类型化连接错误 ────────────
+
+test_method_wrappers_are_public_and_typed() = {
+    for (name in @["httpRequest", "httpGet", "httpHead", "httpPost",
+                   "httpParseResponse", "httpPlanRead", "httpPlanRedirect", "httpPlanRedirectRequest"]) {
+        assert(name in http, name + " must be exported")
+    }
+
+    // 端口 1 上没人监听：三个新入口都要报 NetworkError（离线可测，不依赖网络）
+    caught = false
+    try {
+        http.httpHead("http://127.0.0.1:1/")
+    } catch (e) {
+        caught = e.type == "NetworkError"
+    }
+    assert(caught, "httpHead surfaces the typed connection error")
+
+    caught = false
+    try {
+        http.httpPost("http://127.0.0.1:1/", "body")
+    } catch (e) {
+        caught = e.type == "NetworkError"
+    }
+    assert(caught, "httpPost surfaces the typed connection error")
+
+    caught = false
+    try {
+        http.httpRequest("DELETE", "http://127.0.0.1:1/", {"keepAlive": false, "decompress": false})
+    } catch (e) {
+        caught = e.type == "NetworkError"
+    }
+    assert(caught, "httpRequest surfaces the typed connection error")
+
+    // 选项字典不能被 httpPost 改坏（它只是浅拷贝）
+    opts = {"headers": {"X-Probe": "1"}}
+    try {
+        res = http.httpPost("http://127.0.0.1:1/", "body", opts)
+    } catch (e) {
+        keep = true
+    }
+    assert(!("body" in opts), "httpPost must not mutate the caller's options dict")
+}
+test_method_wrappers_are_public_and_typed()

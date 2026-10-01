@@ -1,0 +1,8 @@
+HTTP/1.1 304 Not Modified
+Date: Mon, 01 Jan 2024 00:00:00 GMT
+ETag: "abc"
+
+HTTP/1.1 200 OK
+Content-Length: 3
+
+xyz

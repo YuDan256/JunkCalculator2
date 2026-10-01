@@ -1,6 +1,11 @@
 // ═══════════════════════════════════════════════════════════════
 // http.jc2 — Modern HTTP Client Standard Library
 // Built with strict JC2 Lexer / Scope standards
+//
+// 四件事：响应定界（none / length / chunked / eof）、keep-alive 连接池、
+// gzip+deflate 解码、方法/重定向。解析与网络两层共用同一套解析器：
+// 网络层只负责按定界规则切出**第一条响应**的字节，然后把这段字节交给
+// httpParseResponse 走同一份代码。
 // ═══════════════════════════════════════════════════════════════
 
 const local import net
@@ -8,6 +13,12 @@ const local import bytes
 // 调用方脚本的顶层绑定会进同一张全局表并覆盖内建（例如顶层 for (round in ...)），
 // 所以模块先把用到的内建绑成自己的私有名，避免被劫持（见设计文档开放项）。
 const local _round = round
+
+// 一个正文的上限：分块/CL 都按它截断，避免恶意长度字段把内存吃光
+const local _MAX_BODY = 67108864        // 64 MiB
+const local _MAX_HEADER = 262144        // 256 KiB
+const local _MAX_LINE = 65536           // 单行（状态行/块长行/trailer）
+const local _READ_CHUNK = 65536         // 一次 recv 的上限
 
 // ─── Response Class ───────────────────────────────────────────
 
@@ -64,6 +75,21 @@ local namespace _Http {
         return @["", len]
     }
 
+    // 字符串 → 小写十六进制（inflate 模块的二进制出入口格式）
+    text_to_hex(s: string) -> string = {
+        n = utf8_bytes(s)
+        buf = bytes.alloc(n + 4)
+        buf.writeStr(s)
+        buf.truncate(n)
+        return buf.toHex()
+    }
+
+    // 小写十六进制 → 字符串
+    hex_to_text(hex: string) -> string = {
+        buf = bytes.fromHex(hex)
+        return buf.readStr(buf.len())
+    }
+
     // 严格的十进制解析：HTTP 头里的数字字段绝不允许把 RuntimeError 漏出去
     parse_uint(text: string, what: string) -> int = {
         t = text.trim()
@@ -99,10 +125,11 @@ local namespace _Http {
         return value
     }
 
-    // 分块解码。body_start 是正文在 raw 中的**字节**偏移；返回 @[正文, chunked?]
-    decode_chunked(raw: string, body_start: int | float) -> string = {
+    // 分块扫描：解码正文，并且**算出正文在哪里结束**（字节偏移）。
+    // 返回 @[正文, 结束偏移]。离线解析与流式读取都靠它判断"读到哪儿为止"。
+    chunked_span(raw: string, body_start: int | float) -> any = {
         buf = to_buffer(raw)
-        text_len = utf8_bytes(raw)
+        total = utf8_bytes(raw)
         char_off = body_start          // 头部是 ASCII：字符偏移与字节偏移相等
         byte_off = body_start
         out = ""
@@ -122,10 +149,19 @@ local namespace _Http {
                 // trailer：读到空行为止（也接受直接结束）
                 while (true) {
                     tl_end = raw.find("\r\n", char_off)
-                    if (tl_end == -1 || tl_end == char_off) break
+                    if (tl_end == -1) return @[out, byte_off]
+                    if (tl_end == char_off) return @[out, byte_off + 2]
+                    byte_off += tl_end + 2 - char_off
                     char_off = tl_end + 2
                 }
-                break
+                return @[out, byte_off]
+            }
+
+            // 块数据必须完整躺在给到的字节里（to_buffer 的容量比数据长，越界读会读到填充的 0）
+            avail = total - byte_off
+            if (avail < size) {
+                throw Exception("HttpError",
+                    f"Truncated chunked body: a chunk of {size} bytes was declared but only {avail} bytes arrived")
             }
 
             read = read_exact(buf, byte_off, size)
@@ -139,7 +175,12 @@ local namespace _Http {
             char_off += 2
             byte_off += 2
         }
-        return out
+        return @[out, byte_off]
+    }
+
+    // 只取正文（旧调用面的兼容壳）
+    decode_chunked(raw: string, body_start: int | float) -> string = {
+        return chunked_span(raw, body_start)[0]
     }
 
     // 头部字段名大小写不敏感
@@ -149,6 +190,20 @@ local namespace _Http {
             if (k.lower() == want) return headers[k]
         }
         return ""
+    }
+
+    // options 字典的浅拷贝（httpPost 之类要给调用方的字典加字段，不能改原件）
+    copy(options: dict) -> dict = {
+        out = {}
+        for (k in options.keys()) out[k] = options[k]
+        return out
+    }
+
+    // 解析时要知道请求方法（HEAD 无正文），这里把 method 塞进 options 的副本
+    copy_with(options: dict, method: string) -> dict = {
+        out = copy(options)
+        out["method"] = method
+        return out
     }
 
     parse_url(url_str: string) -> dict = {
@@ -184,6 +239,11 @@ local namespace _Http {
             throw Exception("HttpError", f"URL has no host: \"{url_str}\"")
         }
         return {"scheme": scheme, "host": url_host, "port": url_port, "path": url_path}
+    }
+
+    // 连接池的键：scheme://host:port
+    origin_key(target: dict) -> string = {
+        return target["scheme"] + "://" + target["host"] + ":" + str(target["port"])
     }
 
     // 最后一次出现的位置（JC2 字符串没有 findRev）
@@ -224,7 +284,79 @@ local namespace _Http {
         return p["scheme"] + "://" + p["host"] + port + p["path"]
     }
 
-    parse_response(raw: string, url: string = "") -> HttpResponse = {
+    // ─── 响应定界 ────────────────────────────────────────────
+    // 规则（RFC 9112 §6）：HEAD / 204 / 304 / 1xx 无正文；Transfer-Encoding: chunked
+    // 到 0 块 + trailer 结束；有 Content-Length 就恰好读 n 字节；都没有才读到对端关闭。
+    // 这是**纯函数**：平台无关，离线可测。
+    plan_read(status: int | float, headers: dict, method: string) -> dict = {
+        m = method.upper()
+        if (m == "HEAD" || status == 204 || status == 304 ||
+            (status >= 100 && status < 200)) {
+            return {"mode": "none", "length": 0}
+        }
+        te = header(headers, "Transfer-Encoding").lower()
+        if (te.find("chunked", 0) != -1) {
+            return {"mode": "chunked", "length": 0}
+        }
+        cl_text = header(headers, "Content-Length")
+        if (cl_text != "") {
+            return {"mode": "length", "length": parse_uint(cl_text, "Content-Length")}
+        }
+        return {"mode": "eof", "length": 0}
+    }
+
+    // HTTP/1.1 且响应没说 Connection: close 才能把连接放回池子
+    keep_alive_ok(raw: string, headers: dict) -> bool = {
+        line_end = raw.find("\r\n", 0)
+        status_line = (line_end == -1) ? raw : raw.substr(0, line_end)
+        if (!status_line.contains("HTTP/1.1")) return false
+        if (header(headers, "Connection").lower().contains("close")) return false
+        return true
+    }
+
+    // ─── Content-Encoding ───────────────────────────────────
+    gunzip_text(body: string) -> string = {
+        const import inflate
+        try {
+            return hex_to_text(inflate.gunzip(text_to_hex(body)))
+        } catch (e) {
+            throw Exception("HttpError", "Failed to gunzip the response body: " + e.message)
+        }
+    }
+
+    unzlib_text(body: string) -> string = {
+        const import inflate
+        return hex_to_text(inflate.unzlib(text_to_hex(body)))
+    }
+
+    inflate_text(body: string) -> string = {
+        const import inflate
+        return hex_to_text(inflate.inflate(text_to_hex(body)))
+    }
+
+    decode_content_encoding(body: string, headers: dict) -> string = {
+        if (body == "") return body
+        ce = header(headers, "Content-Encoding").trim().lower()
+        if (ce == "") return body
+        if (ce.find("gzip", 0) != -1) return gunzip_text(body)
+        if (ce.find("deflate", 0) != -1) {
+            // 现实里的服务器两种容器都有：先按 zlib（RFC 1950）试，失败再按裸 DEFLATE（RFC 1951）
+            try {
+                return unzlib_text(body)
+            } catch (e1) {
+                try {
+                    return inflate_text(body)
+                } catch (e2) {
+                    throw Exception("HttpError",
+                        "Failed to inflate the response body (tried zlib and raw DEFLATE): " + e2.message)
+                }
+            }
+        }
+        return body                 // br / zstd 等没协商过的编码：原样返回
+    }
+
+    // 解析头部，返回 {"status", "headers", "header_bytes"}
+    split_head(raw: string) -> dict = {
         header_end = raw.find("\r\n\r\n", 0)
         if (header_end == -1) {
             throw Exception("HttpError", "Response has no header terminator (\\r\\n\\r\\n)")
@@ -250,51 +382,65 @@ local namespace _Http {
                 headers_dict[k] = v
             }
         }
+        return {"status": status_code, "headers": headers_dict, "header_bytes": header_bytes}
+    }
 
-        // 无正文的状态码：204 / 304 / 1xx，以及 HEAD（这里只做 GET）
-        no_body = (status_code == 204 || status_code == 304 || (status_code >= 100 && status_code < 200))
+    // raw 是**恰好一条**响应的字节（离线喂夹具，网络侧喂定界切出来的那一段）
+    parse_response(raw: string, url: string = "", options: dict = {}) -> HttpResponse = {
+        head = split_head(raw)
 
+        method = "GET"
+        if ("method" in options) method = str(options["method"])
+        decompress = true
+        if ("decompress" in options) decompress = (options["decompress"] == true)
+
+        plan = plan_read(head["status"], head["headers"], method)
+        mode = plan["mode"]
         body = ""
-        if (!no_body) {
-            te = header(headers_dict, "Transfer-Encoding").lower()
-            if (te.find("chunked", 0) != -1) {
-                body = decode_chunked(raw, header_bytes)
-            } else {
-                cl_text = header(headers_dict, "Content-Length")
-                if (cl_text != "") {
-                    want = parse_uint(cl_text, "Content-Length")
-                    avail = utf8_bytes(raw) - header_bytes
-                    if (avail < want) {
-                        throw Exception("HttpError",
-                            f"Truncated response body: Content-Length={want} but only {avail} bytes arrived")
-                    }
-                    buf = to_buffer(raw)
-                    read = read_exact(buf, header_bytes, want)
-                    body = read[0]
-                } else {
-                    // 没有长度信息：读到最后（配合 Connection: close）
-                    buf = to_buffer(raw)
-                    read = read_exact(buf, header_bytes, utf8_bytes(raw) - header_bytes)
-                    body = read[0]
-                }
+
+        if (mode == "length") {
+            want = plan["length"]
+            avail = utf8_bytes(raw) - head["header_bytes"]
+            if (avail < want) {
+                throw Exception("HttpError",
+                    f"Truncated response body: Content-Length={want} but only {avail} bytes arrived")
             }
+            body = read_exact(to_buffer(raw), head["header_bytes"], want)[0]
+        } else if (mode == "chunked") {
+            body = decode_chunked(raw, head["header_bytes"])
+        } else if (mode == "eof") {
+            // 没有长度信息：读到给到的字节末尾（网络侧就是读到对端关闭）
+            body = read_exact(to_buffer(raw), head["header_bytes"], utf8_bytes(raw) - head["header_bytes"])[0]
         }
 
-        return HttpResponse(status_code, headers_dict, body, raw, url)
+        if (decompress) body = decode_content_encoding(body, head["headers"])
+        return HttpResponse(head["status"], head["headers"], body, raw, url)
     }
 }
 
-// ─── Public API ───────────────────────────────────────────────
+// ─── Public API: 解析 / 规划 ───────────────────────────────────
 
 // 解析一段完整的 HTTP 响应字节（离线可用；也方便自己拿 socket 收发的人复用）。
 // 契约：**任何**畸形输入都只以 HttpError 出现，绝不漏出其它异常类型。
-httpParseResponse(raw: string, url: string = "") -> HttpResponse = {
+// options: {"method": "GET"|"HEAD"|..., "decompress": bool}
+httpParseResponse(raw: string, url: string = "", options: dict = {}) -> HttpResponse = {
     try {
-        return _Http.parse_response(raw, url)
+        return _Http.parse_response(raw, url, options)
     } catch (e) {
         if (e.type == "HttpError") throw e
         throw Exception("HttpError", "Malformed HTTP response: " + e.type + ": " + e.message)
     }
+}
+
+// 这条响应该怎么收尾？（纯函数，平台无关）
+//   status  状态码    headers 响应头    method 请求方法（HEAD 无正文）
+// 返回 {"mode": "none"|"length"|"chunked"|"eof", "length": n}
+//   none    无正文（HEAD / 204 / 304 / 1xx），length 恒为 0
+//   length  Content-Length: n，恰好读 n 字节，length == n
+//   chunked 分块传输，读到 0 块 + trailer 结束，length 恒为 0
+//   eof     既无 CL 也无 chunked：只能读到对端关闭（连接**不可复用**），length 恒为 0
+httpPlanRead(status: int | float, headers: dict, method: string = "GET") -> dict = {
+    return _Http.plan_read(_round(status), headers, method)
 }
 
 // 3xx 的下一个地址；不是重定向或缺少 Location 时返回 none
@@ -315,34 +461,376 @@ httpPlanRedirect(res: HttpResponse, current_url: string) -> any = {
     return next_url
 }
 
-_dispatch(target: dict) -> any = {
-    client = none
-    if (target["scheme"] == "https") {
-        client = net.TlsSocket(target["host"], target["port"])
-    } else {
-        client = net.TcpSocket(target["host"], target["port"]).connect()
+// 重定向的**下一步请求**怎么发（纯函数）：
+//   301/302/303 → 改成 GET 且丢弃请求体（keepBody=false）
+//   307/308     → 保留方法与请求体（keepBody=true）
+// 返回 {"url": 下一个地址, "method": 方法, "keepBody": bool}；不是重定向时 none
+httpPlanRedirectRequest(res: HttpResponse, current_url: string, method: string = "GET") -> any = {
+    next_url = httpPlanRedirect(res, current_url)
+    if (next_url is none) return none
+    m = method.upper()
+    if (res.status == 307 || res.status == 308) {
+        return {"url": next_url, "method": m, "keepBody": true}
     }
-    return client
+    return {"url": next_url, "method": "GET", "keepBody": false}
 }
 
-_build_request(target: dict, headers: dict) -> string = {
-    req = f"GET {target['path']} HTTP/1.1\r\n"
-    req += f"Host: {target['host']}\r\n"
-    req += "Connection: close\r\n"
-    req += "User-Agent: JC2-HTTP\r\n"
-    for (k in headers.keys()) {
-        req += f"{k}: {headers[k]}\r\n"
+// ─── 可增长的字节缓冲（顺序读大正文时避免 O(n^2) 的字符串拼接）──
+
+local class _Buf {
+    init(cap: int | float) = {
+        self.cap = _round(cap)
+        self.used = 0
+        self.buf = bytes.alloc(self.cap)
     }
-    return req + "\r\n"
+
+    push(text: string) = {
+        need = _Http.utf8_bytes(text)
+        if (self.used + need > _MAX_BODY) {
+            throw Exception("HttpError", "Response body is larger than the " + str(_MAX_BODY) + " byte limit")
+        }
+        if (self.used + need > self.cap) {
+            new_cap = (self.used + need) * 2 + 64
+            bigger = bytes.alloc(new_cap)
+            self.buf.seek(0)
+            if (self.used > 0) bigger.writeStr(self.buf.readStr(self.used))
+            self.buf = bigger
+            self.cap = new_cap
+        }
+        self.buf.writeStr(text)
+        self.used += need
+        return none
+    }
+
+    text() -> string = {
+        self.buf.seek(0)
+        return self.buf.readStr(self.used)
+    }
 }
 
-// GET 一个 URL；默认跟随最多 5 次重定向。
-// options: {"followRedirects": int, "headers": dict}
-httpGet(url: string, options: dict = {}) -> HttpResponse = {
+// ─── 一条连接：明文 TCP 与 TLS 共用同一套收发 ──────────────────
+
+local class _Conn {
+    init(origin: string, scheme: string, host: string, port: int | float, options: dict) = {
+        self.origin = origin
+        self.got_bytes = false      // 本次请求是否已经收到过响应字节（决定能否重试）
+        self.reused = false
+        if (scheme == "https") {
+            tls_opts = {"serverName": host, "verifyChain": true}
+            // timeoutMs 只在 https 生效：它落到 TcpStream 的 connect/read/write 超时上
+            if ("timeoutMs" in options) tls_opts["timeoutMs"] = options["timeoutMs"]
+            self.client = net.TlsSocket(host, _round(port), tls_opts)
+        } else {
+            // 明文走 socket 模块：阻塞 connect/recv，该模块没有超时接口
+            self.client = net.TcpSocket(host, _round(port)).connect()
+        }
+    }
+
+    send(text: string) = {
+        self.got_bytes = false
+        self.client.send(text)
+        return none
+    }
+
+    recv(max_bytes: int | float) -> string = {
+        chunk = self.client.recv(_round(max_bytes))
+        if (chunk.len() > 0) self.got_bytes = true
+        return chunk
+    }
+
+    close() = {
+        if (self.client is none) return none
+        c = self.client
+        self.client = none
+        try {
+            c.close()
+        } catch (e) {
+            closed_with_error = true
+        }
+        return none
+    }
+}
+
+// ─── 空闲连接池：每个源最多 2 条 ───────────────────────────────
+
+const local _POOL_MAX = 2
+local _pool = {}                    // "scheme://host:port" -> @[连接, ...]
+
+local namespace _Pool {
+    take(origin: string) -> any = {
+        if (!(origin in _pool)) return none
+        idle = _pool[origin]
+        if (idle.len() == 0) return none
+        conn = idle.pop()
+        conn.reused = true
+        return conn
+    }
+
+    put(origin: string, conn: any) = {
+        if (!(origin in _pool)) _pool[origin] = @[]
+        idle = _pool[origin]
+        if (idle.len() >= _POOL_MAX) {
+            conn.close()            // 池满就关掉（不做 LRU/年龄调优）
+            return none
+        }
+        idle.push(conn)
+        return none
+    }
+
+    // 诊断用：当前空闲连接数
+    size() -> int = {
+        total = 0
+        for (k in _pool.keys()) total += _pool[k].len()
+        return total
+    }
+}
+
+// ─── 流式读取：按定界规则把**恰好一条**响应切出来 ──────────────
+
+local namespace _Read {
+    // 读一行（不含 CRLF）；对端中途关闭算连接级失败
+    line(conn: any, what: string) -> string = {
+        text = ""
+        while (true) {
+            b = conn.recv(1)
+            if (b.len() == 0) {
+                throw Exception("NetworkError", "the connection was closed while reading " + what)
+            }
+            if (b == "\n") {
+                if (text.len() > 0 && text.substr(text.len() - 1, 1) == "\r") {
+                    return text.substr(0, text.len() - 1)
+                }
+                return text
+            }
+            text += b
+            if (text.len() > _MAX_LINE) {
+                throw Exception("HttpError", what + " is longer than " + str(_MAX_LINE) + " bytes")
+            }
+        }
+        return text
+    }
+
+    // 头部：读到空行为止，返回原始字节（含最后的 CRLF CRLF）
+    header(conn: any) -> string = {
+        head = ""
+        while (true) {
+            l = line(conn, "the response header")
+            head += l + "\r\n"
+            if (l.len() == 0) return head
+            if (head.len() > _MAX_HEADER) {
+                throw Exception("HttpError", "Response headers are larger than " + str(_MAX_HEADER) + " bytes")
+            }
+        }
+        return head
+    }
+
+    // 恰好 n 字节（绝不多读一个字节：多读就会破坏下一条响应）
+    exact(conn: any, n: int | float) -> string = {
+        want = _round(n)
+        if (want <= 0) return ""
+        if (want > _MAX_BODY) {
+            throw Exception("HttpError", "Response body is larger than the " + str(_MAX_BODY) + " byte limit")
+        }
+        buf = bytes.alloc(want + 4)
+        got = 0
+        while (got < want) {
+            ask = want - got
+            if (ask > _READ_CHUNK) ask = _READ_CHUNK
+            chunk = conn.recv(ask)
+            if (chunk.len() == 0) {
+                throw Exception("HttpError",
+                    f"Truncated response body: {want} bytes expected but the connection closed after {got}")
+            }
+            buf.writeStr(chunk)
+            got += _Http.utf8_bytes(chunk)
+        }
+        buf.seek(0)
+        return buf.readStr(want)
+    }
+
+    // 分块：读回**原始传输字节**（块长行 + 数据 + CRLF + trailer），
+    // 交给 _Http.chunked_span 做与离线完全一致的解码与结束判定
+    chunked_wire(conn: any) -> string = {
+        b = _Buf(4096)
+        while (true) {
+            size_line = line(conn, "a chunk size line")
+            size = _Http.chunk_size(size_line)
+            b.push(size_line + "\r\n")
+            if (size == 0) {
+                // trailer：读到空行为止
+                while (true) {
+                    t = line(conn, "a chunk trailer")
+                    b.push(t + "\r\n")
+                    if (t.len() == 0) break
+                }
+                return b.text()
+            }
+            b.push(exact(conn, size))
+            crlf = exact(conn, 2)
+            b.push(crlf)
+            if (crlf != "\r\n") {
+                throw Exception("HttpError", "Malformed chunked body (chunk data not followed by CRLF)")
+            }
+        }
+        return b.text()
+    }
+
+    // 没有长度信息：只能读到对端关闭
+    to_eof(conn: any) -> string = {
+        b = _Buf(4096)
+        while (true) {
+            chunk = conn.recv(_READ_CHUNK)
+            if (chunk.len() == 0) break
+            b.push(chunk)
+        }
+        return b.text()
+    }
+
+    // 网络侧的一条完整响应：先切字节，再走与离线同一个解析器
+    response(conn: any, method: string, url: string, options: dict) -> HttpResponse = {
+        head_raw = header(conn)
+        head = _Http.split_head(head_raw)
+        plan = _Http.plan_read(head["status"], head["headers"], method)
+        mode = plan["mode"]
+        wire = ""
+        if (mode == "length") {
+            wire = exact(conn, plan["length"])
+        } else if (mode == "chunked") {
+            wire = chunked_wire(conn)
+        } else if (mode == "eof") {
+            wire = to_eof(conn)
+        }
+        return _Http.parse_response(head_raw + wire, url, _Http.copy_with(options, method))
+    }
+}
+
+// ─── 请求构造 / 连接调度 ───────────────────────────────────────
+
+_method_has_body(method: string) -> bool = {
+    return method == "POST" || method == "PUT" || method == "PATCH"
+}
+
+_host_header(target: dict) -> string = {
+    p = target["port"]
+    if ((target["scheme"] == "http" && p == 80) || (target["scheme"] == "https" && p == 443)) {
+        return target["host"]
+    }
+    return target["host"] + ":" + str(p)
+}
+
+_options_flag(options: dict, key: string, fallback: bool) -> bool = {
+    if (key in options) return options[key] == true
+    return fallback
+}
+
+_want_keep_alive(options: dict, user_headers: dict) -> bool = {
+    if (!_options_flag(options, "keepAlive", true)) return false
+    if (_Http.header(user_headers, "Connection").lower() == "close") return false
+    return true
+}
+
+// options["headers"] 里同名的头**覆盖**默认头（大小写不敏感）
+_build_request(method: string, target: dict, user_headers: dict, body: string, options: dict) -> string = {
+    decompress = _options_flag(options, "decompress", true)
+    keep = _want_keep_alive(options, user_headers)
+
+    names = @["Host", "User-Agent", "Accept", "Connection"]
+    values = @[_host_header(target), "JC2-HTTP", "*/*", keep ? "keep-alive" : "close"]
+    if (decompress) {
+        names.push("Accept-Encoding")
+        values.push("gzip, deflate")
+    }
+    if (body.len() > 0 || _method_has_body(method)) {
+        names.push("Content-Length")
+        values.push(str(_Http.utf8_bytes(body)))
+    }
+
+    req = f"{method} {target['path']} HTTP/1.1\r\n"
+    emitted = {}
+    for (i in range(names.len())) {
+        name = names[i]
+        value = _Http.header(user_headers, name)
+        if (value == "") value = values[i]
+        req += f"{name}: {value}\r\n"
+        emitted[name.lower()] = true
+    }
+    for (k in user_headers.keys()) {
+        if (!(k.lower() in emitted)) req += f"{k}: {user_headers[k]}\r\n"
+    }
+    return req + "\r\n" + body
+}
+
+// 用完一条连接：可复用就入池，否则关掉
+_finish(conn: any, res: HttpResponse, method: string, keep: bool) = {
+    if (!keep) {
+        conn.close()
+        return none
+    }
+    plan = _Http.plan_read(res.status, res.headers, method)
+    if (plan["mode"] == "eof") {            // 读到对端关闭：连接已经不可复用
+        conn.close()
+        return none
+    }
+    if (!_Http.keep_alive_ok(res.raw, res.headers)) {
+        conn.close()
+        return none
+    }
+    _Pool.put(conn.origin, conn)
+    return none
+}
+
+// 同一个源上的一次请求/响应往返（含一次换新连接重试）
+_exchange(method: string, url: string, target: dict, user_headers: dict, body: string,
+          options: dict) -> HttpResponse = {
+    origin = _Http.origin_key(target)
+    keep = _want_keep_alive(options, user_headers)
+    retried = false
+    while (true) {
+        // keepAlive=false 的请求要发 Connection: close，那就**不能**再从池子里捡旧连接
+        conn = keep ? _Pool.take(origin) : none
+        if (conn is none) {
+            conn = _Conn(origin, target["scheme"], target["host"], target["port"], options)
+        }
+        was_reused = conn.reused
+        try {
+            conn.send(_build_request(method, target, user_headers, body, options))
+            res = _Read.response(conn, method, url, options)
+            _finish(conn, res, method, keep)
+            return res
+        } catch (e) {
+            conn.close()                    // 任何异常/半途失败都丢弃这条连接
+            // 复用连接在**收到任何响应字节之前**就失败（空闲连接被服务端关掉是常态）：
+            // 只有幂等的 GET/HEAD 允许换一条新连接重试一次，非幂等方法不重试。
+            if (was_reused && !conn.got_bytes && !retried &&
+                (method == "GET" || method == "HEAD") &&
+                (e.type == "NetworkError" || e.type == "TlsError" || e.type == "HttpError")) {
+                retried = true
+                continue
+            }
+            throw e
+        }
+    }
+    return HttpResponse(0, {}, "", "", url)
+}
+
+// ─── Public API: 请求 ─────────────────────────────────────────
+
+// 任意方法发一个请求；默认跟随最多 5 次重定向。
+// options:
+//   followRedirects  int   最多跟几次（默认 5）
+//   headers          dict  覆盖同名默认头
+//   body             string 请求体（httpPost 会替你塞）
+//   decompress       bool  Accept-Encoding: gzip, deflate + 按 Content-Encoding 解码（默认 true）
+//   timeoutMs        int   **仅 https 生效**：连接/读超时；明文 http 走 socket 模块，没有超时
+//   keepAlive        bool  默认 true（Connection: keep-alive + 空闲连接池）
+httpRequest(method: string, url: string, options: dict = {}) -> HttpResponse = {
+    m = method.upper()
     max_redirects = 5
-    extra_headers = {}
     if ("followRedirects" in options) max_redirects = int(options["followRedirects"])
-    if ("headers" in options) extra_headers = options["headers"]
+    user_headers = {}
+    if ("headers" in options) user_headers = options["headers"]
+    body = ""
+    if ("body" in options) body = str(options["body"])
 
     current = url
     visited = @[]
@@ -356,37 +844,42 @@ httpGet(url: string, options: dict = {}) -> HttpResponse = {
         visited.push(key)
 
         target = _Http.parse_url(current)
-        client = _dispatch(target)
-
-        raw_res = ""
-        failure = none
-        try {
-            client.send(_build_request(target, extra_headers))
-            while (true) {
-                chunk = client.recv(4096)
-                if (chunk.len() == 0) break
-                raw_res += chunk
-            }
-        } catch (e) {
-            failure = e
-        }
-        client.close()      // 每跳都要关（defer 在循环里只会在函数返回时执行）
-        if (!(failure is none)) throw failure
-
-        res = _Http.parse_response(raw_res, current)
+        res = _exchange(m, current, target, user_headers, body, options)
         res.redirects = redirects
-        next_url = httpPlanRedirect(res, current)
-        if (next_url is none) return res
 
-        redirects.push(next_url)
+        plan = httpPlanRedirectRequest(res, current, m)
+        if (plan is none) return res
+
+        redirects.push(plan["url"])
         if (hops >= max_redirects) {
             throw Exception("HttpError",
                 f"Too many redirects (>{max_redirects}) while fetching {url}")
         }
         hops += 1
-        current = next_url
+        current = plan["url"]
+        m = plan["method"]
+        if (!plan["keepBody"]) body = ""     // 303 之类：请求体丢掉
     }
     return HttpResponse(0, {}, "", "", url)
+}
+
+// GET 一个 URL；默认跟随最多 5 次重定向。
+// options: {"followRedirects": int, "headers": dict, "decompress": bool,
+//           "timeoutMs": int (仅 https), "keepAlive": bool}
+httpGet(url: string, options: dict = {}) -> HttpResponse = {
+    return httpRequest("GET", url, options)
+}
+
+// HEAD：响应无正文（定界规则第一条），Content-Length 只当元信息
+httpHead(url: string, options: dict = {}) -> HttpResponse = {
+    return httpRequest("HEAD", url, options)
+}
+
+// POST 一个请求体；options 与 httpGet 相同（会被浅拷贝，不改调用方的字典）
+httpPost(url: string, body: string, options: dict = {}) -> HttpResponse = {
+    opts = _Http.copy(options)
+    opts["body"] = body
+    return httpRequest("POST", url, opts)
 }
 
 // ─── Dynamic Help Registry ────────────────────────────────────
@@ -398,26 +891,90 @@ try {
 
   Requires: import http
 
-  A modern, high-level HTTP client capable of parsing URLs, dispatching GET
-  requests, and cleanly separating HTTP metadata from the payload body.
+  A modern, high-level HTTP client: URL parsing, request dispatch, response
+  framing, connection reuse and content decoding, cleanly separating HTTP
+  metadata from the payload body.
 
   Supports both http:// (plain TCP) and https:// (TLS 1.3, certificate chain
-  verified against the system trust store). Chunked transfer-encoding is
-  decoded, Content-Length is honoured, and redirects are followed by default.
+  verified against the system trust store). Both schemes go through the exact
+  same framing and reuse logic.
 
   Functions
   ──────────────────────
-    res = httpGet(url)                        // 默认跟随最多 5 次重定向
-    res = httpGet(url, {"followRedirects": n, "headers": {...}})
+    res = httpRequest(method, url)            // 任意方法；默认跟随最多 5 次重定向
+    res = httpRequest(method, url, options)
+    res = httpGet(url)                        // options 同下
+    res = httpGet(url, options)
+    res = httpHead(url, options)              // 无正文；Content-Length 只是元信息
+    res = httpPost(url, body, options)        // 请求体 + Content-Length
     res = parseResponse(raw_bytes)            // 离线解析一段完整响应
+    res = parseResponse(raw_bytes, url, {"method": "HEAD", "decompress": false})
+    plan = planRead(status, headers, method)  // 纯函数：这条响应怎么收尾
     next_url = planRedirect(res, current_url) // 3xx 的下一个地址，没有则 none
+    step = planRedirectRequest(res, current_url, method)
+                                              // {"url", "method", "keepBody"}，没有则 none
+
+  options (dict)
+  ──────────────────────
+    followRedirects  int    最多跟几次重定向（默认 5）
+    headers          dict   覆盖同名默认头（大小写不敏感）
+    body             string 请求体（httpPost 会替你填）
+    decompress       bool   默认 true：发 Accept-Encoding: gzip, deflate，
+                            并按响应的 Content-Encoding 解 gzip / deflate；
+                            置 false 则既不发这个头也不解码
+    timeoutMs        int    **只对 https 生效**：连接与读写超时（毫秒）
+    keepAlive        bool   默认 true：发 Connection: keep-alive，并把可复用的
+                            空闲连接放进池子（每个源最多 2 条）
+
+  Response framing (RFC 9112 §6)
+  ──────────────────────
+    planRead(status, headers, method) 返回 {"mode", "length"}：
+      "none"     HEAD / 204 / 304 / 1xx —— 没有正文，一个字节都不读
+      "length"   有 Content-Length: n —— 恰好读 n 字节（多读一个字节就会破坏
+                 同一连接上的下一条响应），length == n
+      "chunked"  Transfer-Encoding: chunked —— 读到 0 块 + trailer 结束
+      "eof"      既无 CL 也无 chunked —— 只能读到对端关闭，连接**不可复用**
+
+  Connection reuse
+  ──────────────────────
+    Responses that are HTTP/1.1 and do not say Connection: close are returned to
+    an idle pool keyed by scheme://host:port (at most 2 connections per origin);
+    the next request to that origin reuses them and skips the handshake.
+    HTTP/1.0 responses, Connection: close and "eof" framing close the connection.
+    Any exception or half-finished response discards the connection.
+    A *reused* connection that fails **before a single response byte arrives**
+    (an idle connection killed by the server is normal) is retried once on a
+    fresh connection for GET and HEAD only; non-idempotent methods are not
+    retried (POST/PUT/PATCH responses can never be safely replayed here).
+
+  Compression
+  ──────────────────────
+    Accept-Encoding: gzip, deflate is sent by default. gzip is decoded with
+    inflate.gunzip; "deflate" is first tried as a zlib container then as raw
+    DEFLATE (real servers send both). res.body is the decoded text while
+    res.raw and res.headers keep the bytes as they arrived. A body that fails to
+    decode raises HttpError; other encodings (br, zstd, ...) are returned as-is.
+    Bodies are capped at 64 MiB.
+
+  Redirects
+  ──────────────────────
+    301/302/303 rewrite the next request to GET and drop the body; 307/308 keep
+    both the method and the body. Redirect loops are detected, https -> http
+    downgrades are refused, and the chain is exposed as res.redirects.
+
+  Timeouts — an honest limit
+  ──────────────────────
+    https honours options["timeoutMs"] (connect + read + write).  **Plain http
+    has no timeout at all**: it goes through the socket module, which exposes no
+    timeout/setsockopt interface, so connect() and recv() block until the peer
+    answers or the OS gives up. Do not read timeoutMs as protection for http://.
 
   HttpResponse Object Properties
   ──────────────────────
     res.status          Integer (e.g., 200, 404, 500)
-    res.headers         Dict of response headers
-    res.body            Decoded payload body (chunked already reassembled)
-    res.raw             String containing the entire TCP stream packet
+    res.headers         Dict of response headers (as received)
+    res.body            Decoded payload body (chunked reassembled, compression decoded)
+    res.raw             String containing the raw response bytes (exactly one response)
     res.url             Final URL (after redirects)
     res.redirects       List of URLs that were followed
     res.json()          Helper: maps JSON text to dictionary via C++ parser
@@ -427,5 +984,7 @@ try {
     import http
     response = http.httpGet("https://example.com/")
     print(response.status, response.body.len())
+    head = http.httpHead("https://example.com/")
+    print(head.headers["Content-Length"], head.body.len())
 )DOC")
 }

@@ -25,6 +25,9 @@ bool p256IsOnCurve(const P256Point& p);
 // 标量乘法 k * p（k 为大端字节）。
 P256Point p256ScalarMul(const Bytes& k, const P256Point& p);
 
+// 基点乘法：out 为 65 字节未压缩点（0x04||X||Y）。TLS 的 key_share 需要它。
+bool p256BasePointMul(const Bytes& privateKey, uint8_t out[65]);
+
 // ECDH：输出共享点的 X 坐标（32 字节）。
 bool p256Ecdh(const Bytes& privateKey, const uint8_t* peerPoint, size_t peerLen, uint8_t out[32]);
 

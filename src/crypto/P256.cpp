@@ -136,8 +136,16 @@ P256Point p256ScalarMul(const Bytes& k, const P256Point& p) {
     return result;
 }
 
-bool p256Ecdh(const Bytes& privateKey, const uint8_t* peerPoint, size_t peerLen, uint8_t out[32]) {
-    P256Point peer;
+bool p256BasePointMul(const Bytes& privateKey, uint8_t out[65]) {
+    const P256Point p = p256ScalarMul(privateKey, generator());
+    if (p.infinity) return false;
+    out[0] = 0x04;
+    if (!p.x.toBytes(out + 1, 32)) return false;
+    if (!p.y.toBytes(out + 33, 32)) return false;
+    return true;
+}
+
+bool p256Ecdh(const Bytes& privateKey, const uint8_t* peerPoint, size_t peerLen, uint8_t out[32]) {    P256Point peer;
     if (!p256DecodePoint(peerPoint, peerLen, peer)) return false;
     const P256Point shared = p256ScalarMul(privateKey, peer);
     if (shared.infinity) return false;

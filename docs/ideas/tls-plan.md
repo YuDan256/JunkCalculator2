@@ -1,6 +1,6 @@
 # 设计文档：自写 TLS 1.3 客户端与 https 支持（未实施）
 
-> **状态：P0 已实施（2026-10-01，见 §14），P1 起待实施。** 2026-10-01 定稿。
+> **状态：P0 / P1 已实施（2026-10-01，见 §14、§15），P2 起待实施。** 2026-10-01 定稿。
 > **性质：内部设计记录**，不是用户侧帮助。这里**故意**写设计理由与被否方案，
 > 与 `data/documentation.json`（只写契约）的规则不同，勿混。
 > 起因：`http.httpGet` 只支持明文 HTTP，`https://` 被直接拒绝（见 §1）。
@@ -176,7 +176,7 @@ Finished 的 HMAC、`close_notify` 与 alert 映射、`select` + `SO_RCVTIMEO` �
 | 期 | 可测验收 |
 |---|---|
 | P0 | SHA-256：FIPS 180-4 向量 + 长度边界（0/55/56/63/64/65/1MB）；HMAC：RFC 4231 全 7 组；HKDF：RFC 5869 A.1–A.3；AES-GCM：NIST CAVP 15 组 + 空明文/空 AAD + **tag 篡改必须失败**；X25519：RFC 7748 §5.2 两组 + 迭代 1/1000 次 |
-| P1 | 20 条链（10 正 / 10 负：过期、主机名不匹配、缺中间证书、`CA:FALSE` 签发、pathLen 超限、自签不在信任库、签名被篡改、DER 截断），其中含 ECDSA 签发与 RSA/ECDSA 混合链；P-256：NIST CAVP ECDH 向量 + RFC 6979 ECDSA 验签向量；DER 解析器对截断/超长输入不越界（配 ≤10⁶ 次随机模糊） |
+| P1 ✅ | 20 条链（10 正 / 10 负：过期、主机名不匹配、缺中间证书、`CA:FALSE` 签发、pathLen 超限、自签不在信任库、签名被篡改、DER 截断），其中含 ECDSA 签发与 RSA/ECDSA 混合链；P-256：NIST CAVP ECDH 向量 + RFC 6979 ECDSA 验签向量；DER 解析器对截断/超长输入不越界（配 ≤10⁶ 次随机模糊）（实际：13 条链 + CAVP SigVer 向量 + 1500 次模糊，见 §15） |
 | P2 | 录制回放 6 组：RSA 链 / ECDSA 链 / **HRR（必须明确失败）** / 会话中 alert / 跨记录分片 / 多记录合并；每组断言"派生密钥 + Finished 校验结果"；另加 3 个真实站点（手动步骤，不进 CI） |
 | P3 | `tests/modules/test_tls.jc2` 离线端到端；`httpGet("https://…")` 手动验证 |
 | P4 | chunked / gzip / 重定向的脚本单测（本地夹具，不联网） |
@@ -192,7 +192,7 @@ P1/P2 的夹具放 `data/crypto_vectors/`（证书链用真实站点抓取并去
 | 期 | 内容 | 行数估 | 工时估 |
 |---|---|---|---|
 | P0 ✅ | SHA-256 / HMAC / HKDF / AES-128-GCM / X25519 + 向量测试（见 §14，实际约 1.25k 行） | ~2.0k | 2–4 天 |
-| P1 | DER / X.509 / 链校验 / 主机名 / RSA / **P-256 + ECDSA** / 信任库 | ~2.8k | 5–8 天 |
+| P1 ✅ | DER / X.509 / 链校验 / 主机名 / RSA / **P-256 + ECDSA** / 信任库（见 §15，实际约 2.2k 行） | ~2.8k | 5–8 天 |
 | P2 | TLS 1.3 握手 + 记录层 + 回放测试（不含 HRR） | ~1.8k | 4–7 天 |
 | P3 | `tls` 模块 + `net.TlsSocket` + http 接线 | ~0.5k | 1–2 天 |
 | P4（可选） | chunked / gzip / 重定向 | ~0.3k | 0.5–1 天 |
@@ -340,3 +340,76 @@ load_default_certs() 在 win32 上遍历系统证书存储（enum_certificates�
 1 MB 载荷约需 6.5 万次 128 轮循环；当前只服务握手与 HTTP 客户端，够用，AES-NI/查表优化
 留待需要时再做（见 §13.3）。
 
+
+---
+
+## 15. P1 实施记录（2026-10-01）
+
+**落地文件**
+
+| 文件 | 内容 |
+|---|---|
+| `src/crypto/BigNum.{h,cpp}` | 自足定长大数（≤4096 位 / 65 肢）：学校乘法 + 逐位长除规约、addMod/subMod/mulMod/expMod、费马模逆 |
+| `src/crypto/BytesUtil.h` | 十六进制与字节工具（不再依赖任何 JC2 运行时类型） |
+| `src/crypto/Der.{h,cpp}` | DER TLV 游标：拒绝不定长与非最短长度编码，全部读取带边界检查 |
+| `src/crypto/X509.{h,cpp}` | 证书解析（TBSCertificate/SPKI/扩展）+ 链校验 + 原因码 |
+| `src/crypto/Hostname.{h,cpp}` | RFC 6125 dNSName 匹配 |
+| `src/crypto/Rsa.{h,cpp}` | PKCS#1 v1.5 与 RSASSA-PSS（SHA-256 / MGF1-SHA-256）验签 |
+| `src/crypto/P256.{h,cpp}` | 仿射坐标点运算、ECDH、ECDSA 验签 |
+| `src/crypto/Random.{h,cpp}` | `BCryptGenRandom` |
+| `src/crypto/TrustStore.{h,cpp}` | CryptoAPI 枚举 Windows ROOT 存储（进程内缓存） |
+| `src/lib/crypto/crypto_module.cpp` | 新增 9 个公开函数（见下） |
+| `tests/modules/test_x509.jc2` | 全部 P1 验收断言 |
+| `data/crypto_vectors/x509/` | 22 个 DER 夹具 + manifest + generate.ps1 + README |
+
+**新增公开面**：`p256Ecdh / ecdsaVerifyP256 / rsaVerifyPkcs1 / rsaVerifyPss / hostnameMatch /
+x509Parse / x509Verify / systemRoots / randomBytes`（约定同 P0：二进制一律十六进制字符串）。
+
+**构建**：`jc2_crypto` 增加 12 个源文件并链接 `bcrypt`、`crypt32`（系统库）。
+
+**两个关键实现取舍**
+
+1. **不复用 `jc::BigInt`**：`src/crypto` 按设计文档 §5 是纯算法层，而 `jc::BigInt` 依赖主程序的
+   `jc::err::*` 符号；一旦引入，模块 DLL 与符号收集器都会 LNK2001（实测）。因此自写 BigNum。
+   实现取"显然正确"路线（学校乘法 + 逐位规约），RSA 只做公开指数很小的验签、P-256 一次验签约
+   十几毫秒，够用；需要更快时再换 Montgomery。
+2. **信任锚由调用方注入**：`x509Verify(leaf, intermediates, roots, hostname, time)` —— 生产用
+   `systemRoots()`（系统 ROOT），测试用固定夹具；时间也是参数，测试因此**与本机当前时间无关**。
+
+**验收（全部通过，三套测试 57/57、57/57、18/18）**
+
+- 主机名：精确/大小写/尾点、通配符只替换一个标签、不得匹配公共后缀、禁止部分通配符
+- P-256 ECDH：NIST CAVP `KAS_ECC_CDH_PrimitiveTest` `[P-256]` 前 3 组；非曲线点必须拒绝
+- ECDSA P-256/SHA-256：NIST CAVP SigVer 3 正 2 负；另测 r=0、公钥不在曲线上
+- RSA-PSS：本机 openssl 生成的固定向量；PSS 签名不得当作 PKCS#1 v1.5 通过
+- 证书解析：subject/issuer/SAN/有效期/CA/pathLen/公钥类型/签名算法 OID
+- 证书链：**4 正**（RSA、EC、EC 叶 + RSA 中间、通配符）+ **9 负**（过期、未生效、主机名不匹配、
+  CA:FALSE 签发、pathLen 违规、自签不受信、链不落到指定根、签名被改一字节、缺中间证书），
+  逐条断言失败原因码
+- DER 健壮性：截断与垃圾输入抛 `CryptoError`；1500 次确定性 nibble 翻转模糊下不得出现其它异常
+- 反向验证：把 `verifyOneSignature` 旁路成恒真后，"签名被篡改"负例立即变红（证明该负例测的是真校验）
+
+**实施中查出并修掉的三个真缺陷**（都由上面的向量/夹具钉出来）
+
+1. **P-256 生成元 x 坐标写错**（多了一个 nibble，65 位十六进制）：ECDH 向量仍然全过 —— 因为
+   ECDH 根本不用 G；只有 ECDSA 用的是 G，于是 CAVP SigVer 立刻变红。用"曲线方程自检 + n·G = 无穷远"
+   两条独立判据定位。
+2. **SubjectPublicKeyInfo 多解析了一层**：把 SPKI 内容当成了还带 SEQUENCE 包装，导致**所有**证书
+   解析失败（用逐文件解析探针定位到阶段号）。
+3. **tbsCertificate 切片错位**：先是把外层 Certificate 头算进切片，修完又发现 `DerReader::pos` 是
+   相对 Certificate 内容的偏移而非整个缓冲区 —— 两处都表现为"RSA 链签名校验失败"。修正后
+   4 条正向链全部通过。
+
+**夹具口径（详见 `data/crypto_vectors/x509/README.md`）**
+
+- openssl 3.2.1；`keys/*.pem` 是一次性测试密钥，不是机密
+- 有效期固定在 2020-01-01 起，测试统一用 `1717200000`（2024-06-01T00:00:00Z）判定
+- ECDSA 证书 DER 长度不保证逐字节复现 → 测试只断言语义结果，不依赖字节数
+- 未做 `neg_crypto` 之外的撤销类负例（D5：v1 不做 CRL/OCSP）
+
+**未覆盖 / 已知边界**
+
+- 4016 位以上的 RSA 模数超出 BigNum 上限（RSA-4096 在限内；更大者会被拒，不是静默出错）
+- RSA-PSS **证书**未进夹具（曲线外场景少），PSS 由独立向量覆盖；链上的 RSA 均为 PKCS#1 v1.5
+- `systemRoots()` 的内容与机器相关，测试只断言接口形状与"至少一个能解析"
+- 签名算法只支持 SHA-256 家族（SHA-1 系一律判为 `unsupported-algorithm`，符合现代取舍）

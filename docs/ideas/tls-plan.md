@@ -1,6 +1,6 @@
 # 设计文档：自写 TLS 1.3 客户端与 https 支持（未实施）
 
-> **状态：P0–P3 已实施（2026-10-01，见 §14–§17）；真实站点的算法覆盖见 §17.5（待决策）。**
+> **状态：P0–P3 与算法扩展（§18）已实施（2026-10-01，见 §14–§18）。**
 > **性质：内部设计记录**，不是用户侧帮助。这里**故意**写设计理由与被否方案，
 > 与 `data/documentation.json`（只写契约）的规则不同，勿混。
 > 起因：`http.httpGet` 只支持明文 HTTP，`https://` 被直接拒绝（见 §1）。
@@ -48,8 +48,8 @@ AES-NI 优化、HTTP 层的 chunked/gzip/重定向（后者另立 P4）。
 |---|---|---|---|
 | D1 | 协议版本 | **只 TLS 1.3** | 1.2 留作可选 P5 |
 | D2 | 曲线 | **X25519 + secp256r1** | 与 D4 捆绑（群运算共用） |
-| D3 | 密码套件 | **只 `TLS_AES_128_GCM_SHA256`** | ChaCha20（+~400 行）与 AES-256-GCM（需 SHA-384，+~250 行）延后 |
-| D4 | 签名算法 | **RSA-PSS/PKCS1 + ECDSA-P256** | 只支持 RSA 会漏掉一部分 ECDSA 链 |
+| D3 | 密码套件 | **只 `TLS_AES_128_GCM_SHA256`**（SHA-384/512 已补齐，见 §18，AES-256-GCM 因此不再缺前置） | ChaCha20（+~400 行）与 AES-256-GCM 延后 |
+| D4 | 签名算法 | **RSA-PSS/PKCS1 + ECDSA，摘要 SHA-256/384/512，曲线 P-256/384/521**（2026-10-01 扩展，见 §18） | 只支持 RSA 会漏掉一部分 ECDSA 链；只支持 P-256/SHA-256 会漏掉 P-384 中间证书与 SHA-384 签名 |
 | D5 | 撤销检查 | **不做** | 浏览器同为软失败；文档写明 |
 | D6 | 原语测试载体 | **公开原生模块 `crypto`** | 测试走项目自己的 runner，保持"三套测试全绿"的验收方式 |
 | D7 | 原生模块名 | **`tls`** | 不能叫 `http`（见 §7.1） |
@@ -532,3 +532,64 @@ x509Parse / x509Verify / systemRoots / randomBytes`（约定同 P0：二进制�
 | C | 加 SHA-384/512 + P-384/P-521 | 约 900 行，覆盖几乎所有现代链 |
 
 三种做法都不动已批准的 D1–D10 其余部分；B/C 需要先更新 D1/D3/D4 的范围表述。
+
+---
+
+## 18. 算法覆盖扩展（2026-10-01）
+
+§17.5 列出的三个选项里选了 **C：全加**（SHA-384/512 + P-384/P-521）。这一节记录落地方式、
+验收与代价。
+
+**落地的文件**
+
+| 文件 | 内容 |
+|---|---|
+| `src/crypto/Sha512.{h,cpp}` | SHA-512 增量实现；SHA-384 是换初值 + 截断 48 字节 |
+| `src/crypto/Curve.{h,cpp}` | P-256/384/521 通用实现：点解码/编码、曲线上判定、标量乘、基点乘、ECDH、ECDSA 验签、DER 拆 r/s |
+| `src/crypto/P256.{h,cpp}` | 退化为对 Curve 的兼容外壳（既有调用点不用改） |
+| `src/crypto/Rsa.{h,cpp}` | `RsaHash`（SHA-256/384/512）：DigestInfo 前缀、MGF1 摘要、hLen 全部按摘要选择 |
+| `src/crypto/X509.{h,cpp}` | KeyType 增加 EcP384/EcP521；新增 sha384/512WithRSAEncryption、ecdsa-with-SHA384/512、PSS 的 SHA-384/512 参数；验签改为"按 OID 定摘要再分派" |
+| `src/tls/TlsClient.cpp` | signature_algorithms advertise 9 个方案；CertificateVerify 按方案选摘要与曲线 |
+| `src/lib/crypto/crypto_module.cpp` | 新增 sha384/sha512、ecEcdh/ecBasePointMul、ecdsaVerifyRS（DER 版 ecdsaVerify 保留）；keyType 增加 ec-p384/ec-p521 |
+
+**关键实现选择：Jacobian 射影坐标**
+
+原来的 P-256 用仿射坐标，每步点加/倍点各做一次费马求逆。P-384/P-521 上这样会慢到不可用
+（一次验签数秒），所以 Curve 统一改用 **Jacobian**（a = -3 的优化倍点公式），
+一次标量乘只在收尾做一次模逆。实测：新增的曲线/摘要用例（含 4 条链与 14 次验签）约 2.4 秒。
+
+**侧信道**：标量乘仍是 double-and-add（非常数时间）。ECDSA 验签用的是公开数据；
+ECDH 的私钥是本进程生成的临时密钥 —— 与既有实现一致，不做侧信道加固（沿 D 系列的口径）。
+
+**验收**
+
+- `sha2_vectors.json`：FIPS 180-4 的 SHA-384/512 各 9 条（含 111/112/127/128/129 长度边界）全部一致；
+- `ecdsa_p384_p521.json`：[P-384,SHA-384] 3 正 2 负、[P-521,SHA-512] 3 正 2 负、1 条 SigGen 补充有效向量，
+  逐条判定一致；CAVP KAS ECC CDH 的 P-384/P-521 各 2 组共享秘密逐字节一致；
+- 4 条链（纯 P-384、P-521 中间 + P-384 叶、SHA-384 RSA、SHA-512 RSA）全部通过，
+  并覆盖 hostname-mismatch / no-trust-anchor / 曲线不匹配三类负例；
+- 曲线常量（p, b, n, Gx, Gy）用"G 在曲线上 + n·G = O"独立校验（Python 侧另算一遍）；
+- **反向验证**：把 X509 的摘要选择强制成 SHA-256，P-384 链立刻报 signature-invalid 变红。
+
+**真实站点（同一台机器、同一时刻）**
+
+| 站点 | 扩展前 | 扩展后 |
+|---|---|---|
+| www.apple.com | ✅ | ✅ |
+| www.microsoft.com | ❌ sha384WithRSAEncryption | ✅ |
+| github.com | ❌ P-384 中间证书 | ✅ |
+| www.cloudflare.com | ❌ P-384 中间证书 | ✅ |
+| www.example.org | ❌ P-384 中间证书 | ✅ |
+| bing / wikipedia / jspvz | ❌ 本机网络不可达 | ❌ 同上（与实现无关） |
+
+端到端：`httpGet("https://www.apple.com/")` → status=200、body 66591 字节。
+
+**过程中查出的两个缺陷**
+
+1. **P-521 的 p 常量少了 8 位**（写成 2^513 附近而不是 2^521-1），该曲线完全不可用 ——
+   由"G 在曲线上 / n·G = O"自检发现；
+2. **X509 里残留的 `keyLen != 65` 硬编码**把 P-384/P-521 的公钥一律判成坏 DER，
+   真实站点因此报 `malformed-chain`（而非 `unsupported-algorithm`）。
+
+**仍未做**：Ed25519 证书、SHA-1 签名、显式曲线参数（非命名曲线）、
+AES-256-GCM/ChaCha20 套件、TLS 1.2 回退；撤销检查仍按 D5 不做。

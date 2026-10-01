@@ -80,8 +80,17 @@ public:
     // 取出已解出的应用数据（每次取走）。
     Bytes takeApplicationData();
 
+    // 把应用数据封成记录（握手完成后即应用密钥）。
+    Bytes sealApplicationData(const uint8_t* data, size_t len);
+    Bytes sealApplicationData(const Bytes& data) { return sealApplicationData(data.data(), data.size()); }
+
+    // close_notify（警告级 alert，desc 0），用当前发送密钥保护。
+    Bytes closeNotify();
+
     // 交给服务器之后要发送的字节（start / feed 的返回值已经包含，这里用于查询）
     bool handshakeComplete() const { return state_ == State::Connected; }
+    // 对端发来 close_notify（正常关闭，不是错误）
+    bool peerClosed() const { return peerClosed_; }
     bool failed() const { return fail_ != TlsFail::None; }
     TlsFail failReason() const { return fail_; }
     const std::string& failDetail() const { return failDetail_; }
@@ -153,6 +162,7 @@ private:
     std::vector<Bytes> chainCerts_;
 
     TlsFail fail_ = TlsFail::None;
+    bool peerClosed_ = false;
     std::string failDetail_;
 };
 

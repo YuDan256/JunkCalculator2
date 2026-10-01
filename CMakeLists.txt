@@ -168,9 +168,12 @@ if(MSVC)
 endif()
 
 # ★ TLS 1.3 client（静态库：tls 模块与后续 http 接线共用）
-add_library(jc2_tls STATIC "src/tls/TlsClient.cpp")
+add_library(jc2_tls STATIC "src/tls/TlsClient.cpp" "src/net/TcpStream.cpp")
 target_include_directories(jc2_tls PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(jc2_tls PUBLIC jc2_crypto)
+if(WIN32)
+    target_link_libraries(jc2_tls PUBLIC ws2_32)
+endif()
 if(MSVC)
     target_compile_options(jc2_tls PRIVATE /W4 /WX /utf-8 /bigobj /EHsc)
 endif()

@@ -369,8 +369,10 @@ Bytes TlsClient::sealRecord(uint8_t type, const Bytes& payload) {
         nonce[4 + i] ^= static_cast<uint8_t>((sendSeq_ >> (56 - 8 * i)) & 0xff);
     }
 
+    // RFC 8446 §5.2：受保护记录的 opaque_type 恒为 application_data (23)，
+    // 真实类型只出现在内层明文里（此前误用了内层类型，真实服务器直接回 decode_error）。
     Bytes header;
-    header.push_back(type);
+    header.push_back(kRecApplicationData);
     header.push_back(0x03);
     header.push_back(0x03);
     put16(header, static_cast<uint16_t>(inner.size() + 16));
@@ -500,6 +502,10 @@ void TlsClient::onAlert(const Bytes& payload) {
     }
     const uint8_t level = payload[0];
     const uint8_t desc = payload[1];
+    if (desc == 0) {
+        peerClosed_ = true;   // close_notify：正常关闭
+        return;
+    }
     fail(TlsFail::AlertReceived, std::string("peer sent ") + (level == 1 ? "warning" : "fatal") +
                                      " alert: " + tlsAlertName(desc));
 }
@@ -818,6 +824,29 @@ Bytes TlsClient::takeApplicationData() {
     Bytes out = std::move(appData_);
     appData_.clear();
     return out;
+}
+
+Bytes TlsClient::sealApplicationData(const uint8_t* data, size_t len) {
+    if (!applicationKeysInstalled_) {
+        fail(TlsFail::Internal, "application data before the handshake finished");
+        return Bytes();
+    }
+    Bytes out;
+    size_t off = 0;
+    do {
+        const size_t take = (len - off < 16384) ? (len - off) : 16384;   // 单条记录上限 2^14
+        Bytes payload(data + off, data + off + take);
+        const Bytes rec = sealRecord(kRecApplicationData, payload);
+        out.insert(out.end(), rec.begin(), rec.end());
+        off += take;
+    } while (off < len);
+    return out;
+}
+
+Bytes TlsClient::closeNotify() {
+    if (!sendEncrypted_) return Bytes();
+    const Bytes alert = {0x01, 0x00};   // warning, close_notify
+    return sealRecord(kRecAlert, alert);
 }
 
 } // namespace jc2::tls

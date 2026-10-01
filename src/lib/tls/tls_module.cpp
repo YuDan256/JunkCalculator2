@@ -15,6 +15,7 @@
 #include "../jc2_extension_cpp.h"
 
 #include "../../crypto/BytesUtil.h"
+#include "../../net/TcpStream.h"
 #include "../../tls/TlsClient.h"
 
 #include <cstdint>
@@ -23,6 +24,7 @@
 
 static jc2::Class* g_tlsErrorClass = nullptr;
 static jc2::Class* g_tlsClientClass = nullptr;
+static jc2::Class* g_tlsSocketClass = nullptr;
 
 [[noreturn]] inline void throwTlsError(const std::string& msg) {
     jc2::throw_error_class(*g_tlsErrorClass, msg);
@@ -64,6 +66,183 @@ static jc2::Value makeClient(jc2::tls::TlsConfig cfg) {
 
 #define METHOD(name) JC2_ValueHandle tls_##name(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*)
 
+// ─── 已连接的 TLS 套接字（tls.connect）─────────────────────────
+
+struct SocketWrapper {
+    jc2::net::TcpStream stream;
+    jc2::tls::TlsClient client;
+    int timeoutMs = 30000;
+    explicit SocketWrapper(jc2::tls::TlsConfig cfg) : client(std::move(cfg)) {}
+};
+
+static SocketWrapper* getSocket(const jc2::Value& v, const char* fn) {
+    if (!v.is_instance()) {
+        jc2::throw_error(jc2::ErrorType::TypeError, std::string(fn) + " expects a tls.Socket.");
+    }
+    auto* ptr = v.get_native_data<SocketWrapper>();
+    if (!ptr) {
+        jc2::throw_error(jc2::ErrorType::TypeError, std::string(fn) + " expects a tls.Socket.");
+    }
+    return ptr;
+}
+
+static jc2::Value makeSocket(SocketWrapper* w) {
+    jc2::Instance inst(*g_tlsSocketClass);
+    inst.set_native_data(w, [](void* p) { delete static_cast<SocketWrapper*>(p); });
+    return inst;
+}
+
+static void sendAll(SocketWrapper& w, const jc2::crypto::Bytes& out) {
+    if (out.empty()) return;
+    std::string err;
+    if (!w.stream.send(out.data(), out.size(), err)) throwTlsError(err);
+}
+
+// 读一轮并处理；返回 false 表示对端关闭
+static bool pumpIn(SocketWrapper& w) {
+    uint8_t buf[8192];
+    std::string err;
+    const ptrdiff_t n = w.stream.recv(buf, sizeof(buf), err);
+    if (n < 0) throwTlsError(err);
+    if (n == 0) return false;
+    const jc2::crypto::Bytes out = w.client.feed(buf, static_cast<size_t>(n));
+    if (w.client.failed()) throwTlsError(w.client.failDetail());
+    sendAll(w, out);
+    return true;
+}
+
+// ─── tls.connect(host, port, options) ─────────────────────────
+
+static JC2_ValueHandle tls_connect(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2 || argc > 3) {
+        jc2::throw_error(jc2::ErrorType::TypeError, "tls.connect expects (host, port[, options]).");
+    }
+    const std::string host = jc2::Value(argv[0]).as_string();
+    const int port = static_cast<int>(jc2::Value(argv[1]).as_float());
+
+    jc2::tls::TlsConfig cfg;
+    cfg.serverName = host;
+    int timeoutMs = 30000;
+    if (argc == 3 && jc2::Value(argv[2]).is_dict()) {
+        jc2::Dict d(jc2::Value(argv[2]).get_handle());
+        auto get = [&](const char* key) { return d.has(jc2::Value(key)) ? d.get(jc2::Value(key)) : jc2::Value(); };
+        jc2::Value v = get("serverName");
+        if (v.is_string()) cfg.serverName = v.as_string();
+        v = get("verifyChain");
+        if (v.is_bool()) cfg.verifyChain = v.as_bool();
+        v = get("time");
+        if (v.is_int() || v.is_float()) cfg.verifyTime = static_cast<int64_t>(v.as_float());
+        v = get("timeoutMs");
+        if (v.is_int() || v.is_float()) timeoutMs = static_cast<int>(v.as_float());
+        v = get("alpn");
+        if (v.is_list()) {
+            cfg.alpn.clear();
+            jc2::List l(v.get_handle());
+            for (size_t i = 0; i < l.size(); ++i) cfg.alpn.push_back(l.get(i).as_string());
+        }
+        v = get("roots");
+        if (v.is_list()) {
+            jc2::List l(v.get_handle());
+            for (size_t i = 0; i < l.size(); ++i) cfg.roots.push_back(unhex(l.get(i), "roots entry"));
+        }
+    }
+
+    auto* w = new SocketWrapper(std::move(cfg));
+    w->timeoutMs = timeoutMs;
+    try {
+        std::string err;
+        if (!w->stream.connect(host, static_cast<uint16_t>(port), timeoutMs, err)) {
+            delete w;
+            throwTlsError(err);
+        }
+        try {
+            sendAll(*w, w->client.start());
+        } catch (...) {
+            delete w;
+            throw;
+        }
+        while (!w->client.handshakeComplete()) {
+            uint8_t buf[8192];
+            const ptrdiff_t n = w->stream.recv(buf, sizeof(buf), err);
+            if (n < 0) {
+                delete w;
+                throwTlsError(err);
+            }
+            if (n == 0) {
+                delete w;
+                throwTlsError("the peer closed the connection during the handshake");
+            }
+            const jc2::crypto::Bytes out = w->client.feed(buf, static_cast<size_t>(n));
+            if (w->client.failed()) {
+                const std::string detail = w->client.failDetail();
+                delete w;
+                throwTlsError(detail.empty() ? "the TLS handshake failed" : detail);
+            }
+            sendAll(*w, out);
+        }
+    } catch (...) {
+        throw;
+    }
+    return makeSocket(w).get_handle();
+}
+
+// ─── tls.Socket 方法 ─────────────────────────────────────────
+
+METHOD(send) {
+    (void)argc;
+    auto* w = getSocket(jc2::Value(argv[0]), "send");
+    if (!jc2::Value(argv[1]).is_string()) {
+        jc2::throw_error(jc2::ErrorType::TypeError, "send expects a string.");
+    }
+    const std::string text = jc2::Value(argv[1]).as_string();
+    const auto rec = w->client.sealApplicationData(reinterpret_cast<const uint8_t*>(text.data()), text.size());
+    std::string err;
+    if (!w->stream.send(rec.data(), rec.size(), err)) throwTlsError(err);
+    return jc2::Value(static_cast<int32_t>(text.size())).get_handle();
+}
+
+METHOD(recv) {
+    auto* w = getSocket(jc2::Value(argv[0]), "recv");
+    int maxBytes = 16384;
+    if (argc >= 2 && (jc2::Value(argv[1]).is_int() || jc2::Value(argv[1]).is_float())) {
+        maxBytes = static_cast<int>(jc2::Value(argv[1]).as_float());
+    }
+    if (maxBytes <= 0) maxBytes = 16384;
+
+    // 一直读到有应用数据为止：期间可能只收到 NewSessionTicket 之类的握手记录。
+    // 返回空串表示对端关闭（close_notify 或 TCP 关闭）。
+    jc2::crypto::Bytes data = w->client.takeApplicationData();
+    while (data.empty()) {
+        if (!pumpIn(*w)) break;
+        data = w->client.takeApplicationData();
+    }
+    if (static_cast<int>(data.size()) > maxBytes) data.resize(static_cast<size_t>(maxBytes));
+    return jc2::Value(std::string(reinterpret_cast<const char*>(data.data()), data.size())).get_handle();
+}
+
+METHOD(close) {
+    (void)argc;
+    auto* w = getSocket(jc2::Value(argv[0]), "close");
+    const auto bye = w->client.closeNotify();
+    if (!bye.empty()) {
+        std::string err;
+        w->stream.send(bye.data(), bye.size(), err);   // 尽力而为
+    }
+    w->stream.close();
+    return jc2::Value().get_handle();
+}
+
+METHOD(connected) {
+    (void)argc;
+    auto* w = getSocket(jc2::Value(argv[0]), "connected");
+    return jc2::Value(w->stream.connected()).get_handle();
+}
+
+METHOD(socketCertificate) {
+    (void)argc;
+    auto* w = getSocket(jc2::Value(argv[0]), "certificate");
+    return jc2::Value(jc2::crypto::toHex(w->client.serverCertificate())).get_handle();
+}
 // Client(配置字典) —— 构造函数（类的 allocator/构造走 init）
 METHOD(init) {
     (void)argc;
@@ -194,6 +373,16 @@ int jc2_init(jc2::Module& mod) {
     mod.register_value("Client", *g_tlsClientClass);
     g_tlsClientClass->set_allocator(tls_init);
 
+    g_tlsSocketClass = new jc2::Class("Socket");
+    mod.register_value("Socket", *g_tlsSocketClass);
+    g_tlsSocketClass->bind_method("send", tls_send, 1, 1, {"text"});
+    g_tlsSocketClass->bind_method("recv", tls_recv, 0, 1, {"max_bytes"});
+    g_tlsSocketClass->bind_method("close", tls_close, 0, 0);
+    g_tlsSocketClass->bind_method("connected", tls_connected, 0, 0);
+    g_tlsSocketClass->bind_method("certificate", tls_socketCertificate, 0, 0);
+
+    mod.register_function("connect", tls_connect, 2, 3, {"host", "port", "options"});
+
     g_tlsClientClass->bind_method("start", tls_start, 0, 0);
     g_tlsClientClass->bind_method("feed", tls_feed, 1, 1, {"bytes"});
     g_tlsClientClass->bind_method("data", tls_data, 0, 0);
@@ -203,6 +392,13 @@ int jc2_init(jc2::Module& mod) {
     g_tlsClientClass->bind_method("hello", tls_hello, 0, 0);
     g_tlsClientClass->bind_method("certificate", tls_certificate, 0, 0);
 
+    mod.register_function_help("tls.connect", "tls.connect(host, port, options)",
+        "Dials TCP, performs the TLS 1.3 handshake (certificate chain verified by default) and returns a tls.Socket.",
+        "s = tls.connect(\"example.com\", 443)");
+    mod.register_function_help("tls.Socket.send", "s.send(text)", "Sends application data over TLS.", "");
+    mod.register_function_help("tls.Socket.recv", "s.recv(max_bytes)", "Reads and decrypts application data; empty string means the peer closed.", "");
+    mod.register_function_help("tls.Socket.close", "s.close()", "Sends close_notify and closes the socket.", "");
+    mod.register_function_help("tls.Socket.certificate", "s.certificate()", "Leaf certificate DER of the peer as hex.", "");
     mod.register_function_help("tls.Client", "tls.Client(options)", "Creates a TLS 1.3 client; feeds and returns record bytes as hex.", "c = tls.Client({\"serverName\": \"example.com\"})");
     mod.register_function_help("tls.Client.start", "c.start()", "Returns the ClientHello record as hex.", "");
     mod.register_function_help("tls.Client.feed", "c.feed(bytes)", "Feeds server records (hex) and returns the bytes to send back.", "");
@@ -216,6 +412,9 @@ int jc2_init(jc2::Module& mod) {
         "  Requires: import tls\n\n"
         "  Transport-agnostic: you hand it record bytes from the socket and send back what it returns.\n"
         "  Everything binary is a hexadecimal string, in and out.\n\n"
+        "    s = tls.connect(\"example.com\", 443)   // 一条龙：TCP + 握手 + 证书链校验\n"
+        "    s.send(\"GET / HTTP/1.1\\r\\nHost: example.com\\r\\nConnection: close\\r\\n\\r\\n\")\n"
+        "    while (true) { chunk = s.recv(16384); if (chunk == \"\") break; print(chunk) }\n\n"
         "    c = tls.Client({\"serverName\": \"example.com\"})\n"
         "    c.start()        → the ClientHello record (hex) to write to the socket\n"
         "    c.feed(bytes)    → feed server records, returns the bytes to send back\n"

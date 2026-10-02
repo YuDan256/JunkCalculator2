@@ -20,6 +20,15 @@ import io
 import json
 import sys
 
+// 每个重负载阶段开始前先手工收一次垃圾：让 GC 发生在**已知安全**的位置（测试自己的
+// 顶层代码），而不是碰巧落在某个 native 回调（本模块的 gunzip/inflate、crypto.sha256）
+// 或其他"分配后、建立根之前"的窗口里。这只是把回收时机钉在安全点上，
+// 不改变任何断言语义。
+_gcPause() = {
+    sys.gc()
+    return 0
+}
+
 _nibbles = "0123456789abcdef"
 
 // ─── 工具（helper 必须先定义）─────────────────────────────────
@@ -31,17 +40,6 @@ _next(st: any) -> int = {
     st[0] = (st[0] * 31 + 7) % 1000003
     return st[0]
 }
-
-// 大向量摘要一律走这个小 helper。
-//
-// 为什么不让 crypto.sha256(...) 直接出现在断言里：把"对一个 200KB 十六进制串做
-// sha256，再与期望值比较"这**一个表达式**内联进函数体时，当前 JIT
-// （`jc2 --jit test tests`：61 个测试文件共用一个进程、JIT 状态一路累积，
-// 再跑这个文件时）会在编译期访问违例（0xC0000005）直接崩掉整个测试进程。
-// 同样的调用放进一个有名字的小函数里就完全正常（连跑多次 61/61），而且实测
-// JIT 与解释器给出的摘要与 CPython hashlib 完全一致 —— 崩溃发生在编译期，
-// 不涉及算错。换行/换写法只是绕开这个 JIT 代码形态，断言强度没有降低。
-_shaOf(hexData: string) -> string = return crypto.sha256(hexData)
 
 _loadVectors() -> any = return json.parse(io.readFile("data/codec_vectors/vectors.json"))
 
@@ -82,7 +80,7 @@ _positiveMatches(v: any, decodedHex: string) -> bool = {
     if (v.hasKey("data_hex")) return decodedHex == v["data_hex"]
     if (decodedHex.len() != 2 * v["data_len"]) return false
     if (v["data_len"] == 0) return true
-    return _shaOf(decodedHex) == v["data_sha256"]
+    return crypto.sha256(decodedHex) == v["data_sha256"]
 }
 
 // 负例统一校验：必须抛 InflateError，且不允许是别的异常类型。
@@ -256,7 +254,7 @@ test_large_vectors_and_boundaries() = {
             assert(v["compressed_len"] < 200, "the 100KB same-byte vector should be tiny")
             decoded = inflate.gunzip(v["payload"])
             assert(decoded.len() == 204800, "100KB -> 204800 hex chars")
-            assert(_shaOf(decoded) == v["data_sha256"], "100KB same-byte content")
+            assert(crypto.sha256(decoded) == v["data_sha256"], "100KB same-byte content")
             found += 1
         }
         if (v["name"] == "mixed_100k_deflate_l6") {
@@ -524,6 +522,7 @@ _fuzzBase(all: any, name: string) -> string = {
 _fuzzOneContainer(name: string, container: string, rounds: int) = {
     all = _loadVectors()
     st = @[7]
+    _gcPause()
     base = _fuzzBase(all, name)
     assert(base.len() > 100, "the fuzz base stream must be a real compressed stream")
     baseDecoded = _decode(container, base)
@@ -568,6 +567,7 @@ test_fuzz_mixed_containers() = {
     }
     assert(bases.len() == 6, "expected 6 fuzz base vectors, got " + str(bases.len()))
 
+    _gcPause()
     ok = 0
     rejected = 0
     for (roundIdx in range(400)) {
@@ -600,10 +600,11 @@ test_large_gunzip_roundtrip() -> any = {
     assert(compressedLen > 100, "the 100KB gzip stream must be a real compressed stream")
 
     inner = 20
+    _gcPause()
     t0 = sys.clock()
     decoded = inflate.gunzip(payload)
     first = sys.clock() - t0
-    assert(_shaOf(decoded) == want, "100KB gunzip content")
+    assert(crypto.sha256(decoded) == want, "100KB gunzip content")
     assert(first >= 0, "sys.clock() must be usable for timing")
     assert(decoded.len() == 204800, "100KB gunzip size")
 

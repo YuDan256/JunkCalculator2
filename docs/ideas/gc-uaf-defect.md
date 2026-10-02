@@ -82,3 +82,26 @@ RVA 0x005DE22D → jc::VM::copyClosureTemplate + 0x5D   (VM.cpp:477)
 - `--jit test tests` 仍有约 7% 随机崩溃；
 - 相关改动：`src/vm/VM.cpp` 的 +8 行局部 guard（**不是根治**）；诊断脚手架与临时开关均已移除；
 - 复现配方：ASan 构建 + `jc2.exe test tests`（100% 命中）。
+
+## 9. 复现手册（ASan 构建）
+
+来自本次调查（原始报告在未跟踪的 `docs/ideas/inflate-task-report.md`）。
+
+```powershell
+# 1) 建 ASan 构建（目录已存在：out/build/x64-asan）
+cmake -S . -B out/build/x64-asan -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_CXX_FLAGS="/fsanitize=address"
+cmake --build out/build/x64-asan
+# 2) 跑：100% 命中 heap-use-after-free
+out\build\x64-asan\jc2.exe test tests
+```
+
+**两个已知坑（踩过）**
+
+1. ASan 的运行时 DLL 必须与 exe 放在一起，否则 exe 起不来（把编译器目录下的
+   `clang_rt.asan_dynamic-x86_64.dll` 复制到 exe 同目录）。
+2. `out/build/*/.ninja_deps` 容易陈旧：改了源码却看不到重新编译时，构建输出里不会有该文件的
+   `Building CXX object ...`；此时删掉 `.ninja_deps` 再构建，或对照 repo/out 两侧文件的
+   hash+mtime 是否一致 —— 否则会出现"改了也没生效"的假绿（本会话已因此误判过一次）。
+
+**排期建议**：GC 缺陷单独排期，不要挂在别的任务上顺带修；修之前 `--jit test tests` 视为已知
+flaky（约 5%~25% 失败），门禁用 `test tests` 与 `--jit test jit_tests`。

@@ -3427,8 +3427,20 @@ inline void GcHeap::markObj(Obj* obj) {
             if (inst->slots && inst->slotMode()) {
                 const int total = static_cast<int>(inst->classDef->slotNames.size());
                 for (int i = 0; i < total; ++i) {
-                    const uint64_t* word = (i < ObjInstance::SLOT_INLINE) ? &inst->slotsOwned : inst->slotsOwnedBig;
-                    if (!word || !(*word & (1ull << (i % 64)))) continue;
+                    // ★ 位图按**绝对槽位号**分字：前 SLOT_INLINE 个在 slotsOwned，
+                    //   其余在 slotsOwnedBig[i / 64]（分配大小 (n+63)/64 同样按绝对值；
+                    //   置位侧见 Value.h 的 slotsOwnedBig[idx / 64] |= 1ull << (idx % 64)）。
+                    //   这里原来是 `slotsOwnedBig`（即第 0 个字）配 `i % 64` 判位，
+                    //   于是 i >= SLOT_INLINE 的已赋值槽一律被判成"未赋值" →
+                    //   该槽持有的对象不被 mark → 被 sweep 回收 → 之后实例析构或访问
+                    //   该槽时就是 use-after-free（ASan 栈：~ObjInstance → ~Value → releaseObj）。
+                    uint64_t word = 0;
+                    if (i < ObjInstance::SLOT_INLINE) {
+                        word = inst->slotsOwned;
+                    } else if (inst->slotsOwnedBig) {
+                        word = inst->slotsOwnedBig[i / 64];
+                    }
+                    if (!(word & (1ull << (i % 64)))) continue;
                     markValue(inst->slots[i]);
                 }
             }

@@ -475,6 +475,14 @@ ObjClosure* VM::findInitMethod(ObjClass* cls) {
 ObjClosure* VM::copyClosureTemplate(const ObjClosure* src) {
     if (!src) return nullptr;
     ObjClosure* c = GcHeap::get().allocate<ObjClosure>(src->paramNames, src->isRef, src->rawBody, src->body, src->restName);
+    // ★ 必须从**这里**就把副本钉住：下面这一长串赋值里会再分配 GC 堆对象
+    //   （paramTypes 上的 Value、defaultValues、boundSelf/boundClass …），任何一次
+    //   分配都可能触发 collectGarbage()。此刻 c 还没有任何根（refCount 还是 0，
+    //   `objects_` 里的裸链不算根），mark 扫不到它，sweep 就会把它当垃圾回收，
+    //   于是调用方后面拿到的是一块已释放内存 —— 实测表现为 ASan 在
+    //   ~Value/operator= 上抓到 heap-use-after-free，Release 下退化成随机 0xC0000005。
+    //   调用方（snapshotMembers）自己那层 GcObjGuard 包不住这段窗口，太晚了。
+    GcObjGuard copyGuard(c);
     c->isConst = src->isConst;
     c->upvalueCount = src->upvalueCount;
     if (src->upvalueCount > 0 && src->upvalues) {

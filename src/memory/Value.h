@@ -826,7 +826,7 @@ namespace jc {
             if (i < SLOT_INLINE) {
                 word = &slotsOwned;
             } else {
-                word = slotsOwnedBig;
+                word = slotsOwnedBig + (i / 64);   // 按绝对下标分字，与 insertSlot 和位图分配大小一致
                 if (!word) return false;
             }
             bit = 1ull << (i % 64);
@@ -845,7 +845,7 @@ namespace jc {
                     size_t nwords = static_cast<size_t>(classDef->slotNames.size() + 63) / 64;
                     slotsOwnedBig = new uint64_t[nwords]();
                 }
-                word = slotsOwnedBig;
+                word = slotsOwnedBig + (i / 64);   // 按绝对下标分字，与 insertSlot 和位图分配大小一致
             }
             bit = 1ull << (i % 64);
             return true;

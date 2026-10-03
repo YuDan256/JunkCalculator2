@@ -876,24 +876,25 @@ namespace jc {
             if (slotLookup(k, idx, word, bit)) return (*word & bit) != 0;
             return properties.find(k) != properties.end();
         }
-                const PropertyDescriptor* ownFlags(const std::string& k) const {
-            auto it = properties.find(k);
-            if (it != properties.end()) return &it->second;
-            int idx; uint64_t* word; uint64_t bit;
-            if (slotLookup(k, idx, word, bit) && (*word & bit)) {
-                if (const PropertyDescriptor* cm = classMember(k)) {
-                    flagsScratch = *cm;
-                    flagsScratch.val = slots[idx];
-                    return &flagsScratch;
-                }
-            }
-            return nullptr;
-        }
         static PropFlags toFlags(const PropertyDescriptor& d) {
             PropFlags f;
             f.is_const = d.is_const; f.is_local = d.is_local; f.is_abstract = d.is_abstract;
             f.is_static = d.is_static; f.is_field_decl = d.is_field_decl;
             return f;
+        }
+        // ★ 甲：解析**真实存储**——槽位命中给 &slots[idx]，溢出表命中给 &it->second.val。
+        //   不复制 Value、不写任何成员；写路径可直接写回真实存储（旧 ownFlags 返回 scratch 副本，
+        //   导致 const_cast<PropertyDescriptor*>(pd)->val = val 写到副本上：丢写）。
+        bool ownStorage(const std::string& k, Value*& valOut, PropFlags& flagsOut) {
+            auto it = properties.find(k);
+            if (it != properties.end()) { valOut = &it->second.val; flagsOut = toFlags(it->second); return true; }
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookup(k, idx, word, bit) && (*word & bit)) {
+                if (const PropertyDescriptor* cm = classMember(k)) {
+                    valOut = &slots[idx]; flagsOut = toFlags(*cm); return true;
+                }
+            }
+            return false;
         }
         // ★ 新 API（甲）：按值返回标志，不复制 Value、不写任何成员。
         PropFlags propFlags(const std::string& k) const {
@@ -1059,7 +1060,6 @@ namespace jc {
         }
 
     private:
-        mutable PropertyDescriptor flagsScratch;   // ownFlags 的槽位返回值落点（一次一个）
         void clearSlot(int i) {
             if (i < SLOT_INLINE) {
                 slotsOwned &= ~(1ull << i);
@@ -1220,12 +1220,6 @@ namespace jc {
     // toString / toRepr 的实现在文件后部（与 operator<< 一起，依赖 printValue 核心函数）
 
     inline void ObjInstance::clearTotal() {
-        // ★ 两阶段回收：先断边、后释放。ownFlags() 会把槽位里的 Value 复制到这个
-        //   私有 scratch 成员，而 markObj 遍历不到它（INSTANCE 分支只走 classDef/
-        //   properties/slots，它在 private: 之后）—— 若不在此断开，实例析构时会对
-        //   同轮已释放的对象做 --refCount，即 heap-use-after-free（实测栈：~Value ←
-        //   ~ObjInstance 删除析构 ← sweep 删除循环）。
-        flagsScratch.val = Value::none();
         nativeData.reset(); 
         if (c_nativeDtor && c_nativeData) {
             c_nativeDtor(c_nativeData);

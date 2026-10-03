@@ -162,3 +162,26 @@ flaky（约 5%~25% 失败），门禁用 `test tests` 与 `--jit test jit_tests`
 放在独立 .cpp 里以免污染头文件）；② 用对象尾部的**三时点位模式采样**（ctor/clearEnd/dtor）确定
 "这条 `Value` 何时出现"；③ 两次单变量 A/B 区分"标记"与"断边"。此前多轮弯路的主因是测量无效
 （陈旧构建缓存、探针自解引用、补丁未生效）——这些已作为纪律写入 `local/LESSONS.md` 第一章。
+
+---
+
+## 16. 甲重构：`flagsScratch` 与那条断边都不复存在
+
+`ObjInstance::flagsScratch`（`PropertyDescriptor`，内含 `Value val`）曾是 8d9a09d 需要"手动断边"的原因：
+`ownFlags()` 把槽位 `Value` 复制进它并返回指针，而 `markObj` 遍历不到该私有成员 ⇒ 回收期这条边既不被
+保命也不被断边 ⇒ 受害闭包先死、实例析构时记到已释放对象上，即 heap-use-after-free。
+
+甲重构把它从源头去掉：
+
+- `PropFlags` + `ObjInstance::propFlags(k)`：按值返回标志，不复制 `Value`、不写成员；
+- `ObjInstance::ownStorage(k, Value*&, PropFlags&)`：返回**真实存储**指针（槽位 `&slots[idx]` / 溢出表 `&it->second.val`）；
+- `VM::findPrivateMember` 出参改为 `Value*& foundVal, PropFlags& foundFlags`，10 个调用点同步；
+- 删除旧 `ownFlags`、`flagsScratch`，以及 `clearTotal` 中那条断边行及其注释。
+
+**验证**：ASan 最小复现与全套全绿（62/62）；release 三套 62/62 · 62/62 · 18/18；`--jit test tests` 连跑 15 次 0 崩溃；
+反向验证（恢复复制 `Value` 进 scratch 的形态）重现 UAF。
+
+**顺带修复的既存缺陷**：写私有槽位成员原来写进 scratch 副本（丢写），现在写真实存储。
+
+**结论**：本缺陷的**成因**（一条只存在于回收期、GC 既看不见也不断开的计数引用）已从结构上移除；
+`8d9a09d` 的断边改动成为历史防护，不再是必需的补丁。

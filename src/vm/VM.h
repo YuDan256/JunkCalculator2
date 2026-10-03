@@ -150,10 +150,10 @@ public:
     // 全程无后缀/模糊匹配，结果与容器遍历顺序无关。
     // foundIn 可选：返回命中的 owner 类（用于把绑定闭包的 classContext 指向正确的作用域）。
     static bool findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
-                                  const PropertyDescriptor*& found,
+                                  Value*& foundVal, PropFlags& foundFlags,
                                   ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
     static bool findPrivateMember(const Value& obj, const std::string& name,
-                                  const PropertyDescriptor*& found,
+                                  Value*& foundVal, PropFlags& foundFlags,
                                   ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
 
     // ★ 字段默认值初始化（见 Bytecode.h 的 JC2_FIELD_INIT_NAME）。

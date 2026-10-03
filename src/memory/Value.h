@@ -1205,7 +1205,13 @@ namespace jc {
         bool is_const = false;
     };
 
-    inline void ObjInstance::clearTotal() { 
+    inline void ObjInstance::clearTotal() {
+        // ★ 两阶段回收：先断边、后释放。ownFlags() 会把槽位里的 Value 复制到这个
+        //   私有 scratch 成员，而 markObj 遍历不到它（INSTANCE 分支只走 classDef/
+        //   properties/slots，它在 private: 之后）—— 若不在此断开，实例析构时会对
+        //   同轮已释放的对象做 --refCount，即 heap-use-after-free（实测栈：~Value ←
+        //   ~ObjInstance 删除析构 ← sweep 删除循环）。
+        flagsScratch.val = Value::none();
         nativeData.reset(); 
         if (c_nativeDtor && c_nativeData) {
             c_nativeDtor(c_nativeData);

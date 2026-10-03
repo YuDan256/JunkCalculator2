@@ -108,3 +108,57 @@ flaky（约 5%~25% 失败），门禁用 `test tests` 与 `--jit test jit_tests`
 
 
 ---
+
+---
+
+## 15. 根因与修复（flagsScratch：回收期漏掉的一条不可见边）
+
+### 15.1 现场（A 级，全部来自同一次运行）
+
+```
+[W] ret 符号化栈：
+  #1 jc::Value::~Value                          (Value.h:334)
+  #2 jc::ObjInstance::`scalar deleting destructor' +0x1b
+  #3 jc::GcHeap::sweep                          (删除循环)
+  #5 …lambda_10 (sys.gc())                      (BuiltinRegistry.cpp:2123)
+[C] clear-phase done visited=24 called=14        （清理阶段无遗漏；引爆实例 clear=1）
+[T] ctor     inst=…1540 size=280 tail=7ffc000000000001 bebebe…   （构造时已是 uninit 的 Value）
+[T] clearEnd inst=…1540 size=280 tail=fffc1252a87e8f80 bebebe…   （清理结束时已是闭包指针）
+```
+
+### 15.2 根因
+
+`ObjInstance::flagsScratch`（`PropertyDescriptor`，含 `Value val`，声明在 `private:` 之后）被
+`ownFlags()` 用作"槽位描述符返回值落点"：每次调用都把目标槽位的 `Value` **复制**进去。
+它既不被 `markObj` 遍历（INSTANCE 分支只走 `classDef`/`properties`/`slots`，且它私有），
+也不被 `clearTotal` 清空 ⇒ 回收期**这条边既不被保命也不被断开**。
+受害闭包先被释放，实例析构时销毁 `flagsScratch` ⇒ 对已释放对象记账 ⇒ heap-use-after-free。
+
+### 15.3 修复
+
+`ObjInstance::clearTotal()` 中把 `flagsScratch.val` 置空：属两阶段回收里"先断边、后释放"漏掉的一步。
+（另一可选形态：让 `ownFlags` 不再复制 `Value`、只返回标志位；改动面约 46 个调用点，安全性收益为零
+—— 容器不看 `refCount`，这条 scratch 引用不会钉住任何对象，唯一害处就是没断边。）
+
+### 15.4 判据
+
+| 判据 | 结果 |
+|---|---|
+| ASan 最小复现 | 修复前 100% UAF → 修复后 `asan = 0` |
+| ASan 全套 | 修复前 100% UAF → 修复后 `exit = 0`，62/62，`asan = 0` |
+| release 三套 | 62/62 · 62/62 · 18/18 |
+| release `--jit test tests` ×15 | 0 崩溃 |
+| 反向验证 | 去掉该行 ⇒ UAF 重现 |
+
+### 15.5 A/B
+
+- 先测"标记它"（`markObj` 里 `markValue(inst->flagsScratch.val)`）⇒ **阴性**：实例本身不可达，
+  给不可达对象的字段做标记不产生任何保护；
+- 再测"断边"（`clearTotal` 中置空）⇒ **全绿**。
+
+### 15.6 方法学
+
+定位这一步靠三件事：① 在 `~Value` 里对"目标已被真正释放"打点并**就地符号化**调用栈（dbghelp，
+放在独立 .cpp 里以免污染头文件）；② 用对象尾部的**三时点位模式采样**（ctor/clearEnd/dtor）确定
+"这条 `Value` 何时出现"；③ 两次单变量 A/B 区分"标记"与"断边"。此前多轮弯路的主因是测量无效
+（陈旧构建缓存、探针自解引用、补丁未生效）——这些已作为纪律写入 `local/LESSONS.md` 第一章。

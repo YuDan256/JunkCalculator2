@@ -3221,8 +3221,8 @@ void BuiltinRegistry::registerDictFunctions() {
         if (self.isInstance()) {
             auto inst = self.asInstance();
             if (!args[0].isString()) return Value(false);
-            const PropertyDescriptor* pdesc = inst->ownFlags(args[0].asString());
-            return Value(pdesc && !pdesc->is_local);
+            const PropFlags pf = inst->propFlags(args[0].asString());
+            return Value(inst->ownHas(args[0].asString()) && !pf.is_local);
         }
         ObjDict* d = helpers::getDictMap(self, "hasKey");
         return Value(d->keyMap.find(args[0]) != d->keyMap.end());

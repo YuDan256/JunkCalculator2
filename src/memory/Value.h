@@ -775,6 +775,15 @@ namespace jc {
         return td;
     }
 
+    // ★ 甲重构的目标类型：属性标志查询结果**按值返回**，不含 Value、也不用任何 scratch 成员。
+    struct PropFlags {
+        bool is_const = false;
+        bool is_local = false;
+        bool is_abstract = false;
+        bool is_static = false;
+        bool is_field_decl = false;
+    };
+
     struct ObjInstance : public Obj {
         ObjClass* classDef = nullptr;
         
@@ -880,6 +889,22 @@ namespace jc {
             }
             return nullptr;
         }
+        static PropFlags toFlags(const PropertyDescriptor& d) {
+            PropFlags f;
+            f.is_const = d.is_const; f.is_local = d.is_local; f.is_abstract = d.is_abstract;
+            f.is_static = d.is_static; f.is_field_decl = d.is_field_decl;
+            return f;
+        }
+        // ★ 新 API（甲）：按值返回标志，不复制 Value、不写任何成员。
+        PropFlags propFlags(const std::string& k) const {
+            auto it = properties.find(k);
+            if (it != properties.end()) return toFlags(it->second);
+            int idx; uint64_t* word; uint64_t bit;
+            if (slotLookup(k, idx, word, bit) && (*word & bit)) {
+                if (const PropertyDescriptor* cm = classMember(k)) return toFlags(*cm);
+            }
+            return PropFlags{};
+        }
         const Value* ownGet(const std::string& k) const {
             auto it = properties.find(k);
             if (it != properties.end()) return &it->second.val;
@@ -976,17 +1001,17 @@ namespace jc {
 
         void removeProperty(const std::string& key) {
             checkModify();
-            const PropertyDescriptor* pdesc = ownFlags(key);
-            if (!pdesc || pdesc->is_local) errKeyNotFound(key);
-            if (pdesc->is_const) errDeleteConstProp(key);
+            const PropFlags pf = propFlags(key);
+            if (!ownHas(key) || pf.is_local) errKeyNotFound(key);
+            if (pf.is_const) errDeleteConstProp(key);
             eraseMember(key);
         }
 
         void discardProperty(const std::string& key) {
             checkModify();
-            const PropertyDescriptor* pdesc = ownFlags(key);
-            if (pdesc && !pdesc->is_local) {
-                if (pdesc->is_const) errDeleteConstProp(key);
+            const PropFlags pf = propFlags(key);
+            if (ownHas(key) && !pf.is_local) {
+                if (pf.is_const) errDeleteConstProp(key);
                 eraseMember(key);
             }
         }
@@ -1016,10 +1041,10 @@ namespace jc {
 
         void setProperty(const std::string& key, const Value& val) {
             checkModify();
-            const PropertyDescriptor* existing = ownFlags(key);
-            if (existing) {
-                if (existing->is_local) JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'.");
-                if (existing->is_const) errModifyConstProp(key);
+            const PropFlags existing = propFlags(key);
+            if (ownHas(key)) {
+                if (existing.is_local) JC2_THROW(RuntimeError, "Cannot modify private property '" + key + "'.");
+                if (existing.is_const) errModifyConstProp(key);
                 *ownGetMut(key) = val;
             } else {
                 // ★ 类链上的 const 成员不许被实例影子覆盖（见 docs/OOP_MODEL_DESIGN.md §2.6）
@@ -1193,17 +1218,6 @@ namespace jc {
     }
 
     // toString / toRepr 的实现在文件后部（与 operator<< 一起，依赖 printValue 核心函数）
-
-    struct ClassProperty {
-        Value val;
-        bool is_const = false;
-        bool is_local = false;
-    };
-
-    struct PrivateProperty {
-        Value val;
-        bool is_const = false;
-    };
 
     inline void ObjInstance::clearTotal() {
         // ★ 两阶段回收：先断边、后释放。ownFlags() 会把槽位里的 Value 复制到这个

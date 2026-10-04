@@ -35,6 +35,53 @@
 #include <cstdlib>              // ★ std::system
 
 namespace jc {
+
+// ★ 共用实现（Dict 方法与全局函数唯一真值源）：接收者与错误消息里的名字都作为参数。
+//   Dict 方法传调用栈上的 self 与原名（行为逐字不变）；全局 getFields/hasField 传 args[0]/args[1]。
+static Value fieldsOfValue(const Value& self, const char* what) {
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
+            for (const auto& [k, v] : ns->fields) L->vec.push_back(Value(k));
+            return Value(L);
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
+            inst->ownForEach([&](const std::string& k, const PropertyDescriptor& v) {
+            if (!v.is_local) L->vec.push_back(Value(k));
+        });
+            return Value(L);
+        }
+        if (!self.isObjType(ObjType::DICT)) {
+            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, or Namespace.");
+        }
+        ObjDict* d = helpers::getDictMap(self, what);
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        for (const auto& [k, v] : d->elements) L->vec.push_back(k);
+        return Value(L);
+}
+static Value hasFieldOfValue(const Value& self, const Value& key, const char* what) {
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!key.isString()) return Value(false);
+            return Value(ns->fields.find(key.asString()) != ns->fields.end());
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!key.isString()) return Value(false);
+            const PropFlags pf = inst->propFlags(key.asString());
+            return Value(inst->ownHas(key.asString()) && !pf.is_local);
+        }
+        if (!self.isObjType(ObjType::DICT)) {
+            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, or Namespace.");
+        }
+        ObjDict* d = helpers::getDictMap(self, what);
+        return Value(d->keyMap.find(key) != d->keyMap.end());
+}
     inline std::filesystem::path to_path(const std::string& utf8_str) {
         return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
     }
@@ -3159,28 +3206,7 @@ void BuiltinRegistry::registerArrayFunctions() {
 // =================================================================
 void BuiltinRegistry::registerDictFunctions() {
     auto keysFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        if (self.isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(self.asObj());
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(L);
-            for (const auto& [k, v] : ns->fields) L->vec.push_back(Value(k));
-            return Value(L);
-        }
-        if (self.isInstance()) {
-            auto inst = self.asInstance();
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(L);
-            inst->ownForEach([&](const std::string& k, const PropertyDescriptor& v) {
-            if (!v.is_local) L->vec.push_back(Value(k));
-        });
-            return Value(L);
-        }
-        ObjDict* d = helpers::getDictMap(self, "keys");
-        ObjList* L = GcHeap::get().allocate<ObjList>();
-        GcObjGuard guard(L);
-        for (const auto& [k, v] : d->elements) L->vec.push_back(k);
-        return Value(L);
+        return fieldsOfValue(helpers::nativeSelfStack.back(), "keys");
     };
     regMethod(VM::activeVM->dictProto, "keys", {}, keysFn);
     regMethod(VM::activeVM->dictProto, "getFields", {}, keysFn);
@@ -3212,20 +3238,7 @@ void BuiltinRegistry::registerDictFunctions() {
     regMethod(VM::activeVM->dictProto, "values", {}, valuesFn);
 
     auto hasKeyFn = [](const std::vector<Value>& args) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        if (self.isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(self.asObj());
-            if (!args[0].isString()) return Value(false);
-            return Value(ns->fields.find(args[0].asString()) != ns->fields.end());
-        }
-        if (self.isInstance()) {
-            auto inst = self.asInstance();
-            if (!args[0].isString()) return Value(false);
-            const PropFlags pf = inst->propFlags(args[0].asString());
-            return Value(inst->ownHas(args[0].asString()) && !pf.is_local);
-        }
-        ObjDict* d = helpers::getDictMap(self, "hasKey");
-        return Value(d->keyMap.find(args[0]) != d->keyMap.end());
+        return hasFieldOfValue(helpers::nativeSelfStack.back(), args[0], "hasKey");
     };
     regMethod(VM::activeVM->dictProto, "hasKey", {"key"}, hasKeyFn);
     regMethod(VM::activeVM->dictProto, "hasField", {"key"}, hasKeyFn);
@@ -3821,6 +3834,14 @@ void BuiltinRegistry::registerIntrospection() {
     reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
         try { return Value(args[0].isHashable()); } catch (...) { return Value(false); }
     }, {"obj"});
+    // ★ 实例自省：实例没有原型（内建原型只覆盖容器），实例自检走全局，与 type/isinstance/
+    //   getClass/getParent 同族；与 Dict 方法 keys/getFields、hasKey/hasField 共用同一实现。
+    reg("getFields", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return fieldsOfValue(args[0], "getFields");
+    }, {"obj"});
+    reg("hasField", { 2 }, [](const std::vector<Value>& args) -> Value {
+        return hasFieldOfValue(args[0], args[1], "hasField");
+    }, {"obj", "key"});
     reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) JC2_THROW(TypeError, "getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
     reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else JC2_THROW(TypeError, "getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
 }

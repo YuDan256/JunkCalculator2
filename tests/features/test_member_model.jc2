@@ -307,3 +307,42 @@ test_hash_of_dunder_result_is_type_consistent() = {
     assert(HKey(1001) in st, "and set membership still works")
 }
 test_hash_of_dunder_result_is_type_consistent()
+
+// ★ 实例自省全局函数 getFields / hasField（实例没有原型 ⇒ 只能走全局）：
+//   语义与 Dict 方法 keys/getFields、hasKey/hasField 共用同一实现，故结果一致；
+//   私有（local）字段既不出现在 getFields，也不被 hasField 命中。
+test_instance_introspection_globals() = {
+    class P {
+        x = 1
+        y = 2
+        local s = 9
+    }
+    p = P()
+
+    fs = getFields(p)
+    assert("x" in fs && "y" in fs, "public fields are listed")
+    assert(!("s" in fs), "private field must not be listed")
+
+    assert(hasField(p, "x"), "public field is visible")
+    assert(!hasField(p, "s"), "private field is invisible")
+    assert(!hasField(p, "nope"), "missing field is false")
+    assert(!hasField(p, 42), "non-string key is false")
+
+    d = {"a": 1, "b": 2}
+    assert(getFields(d) == d.keys(), "getFields agrees with d.keys()")
+    assert(hasField(d, "a") == d.hasField("a"), "hasField agrees with d.hasField()")
+
+    // Dict 的键可以是任意可哈希值（非字符串键按原值查找，不是"拒绝"）
+    d2 = {42: "x", true: "y"}
+    assert(hasField(d2, 42), "integer key is looked up as-is")
+    assert(hasField(d2, true), "boolean key is looked up as-is")
+    assert(!hasField(d2, 43), "missing integer key is false")
+    assert(getFields(d2) == d2.keys(), "getFields returns dict keys of any type")
+
+    import sys
+    assert("buildIndex" in getFields(sys), "namespace fields are listed")
+
+    assert(throws(() => getFields(42)), "getFields rejects non-containers")
+    assert(throws(() => hasField(42, "x")), "hasField rejects non-containers")
+}
+test_instance_introspection_globals()

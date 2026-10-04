@@ -2958,6 +2958,8 @@
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
       "    getClass(p)              The class definition object",
       "    getParent(Dog)           Parent class or none",
+      "    getFields(p)             Public field names as a list",
+      "    hasField(p, \"x\")         true if the public field exists (private fields are invisible)",
       "",
       "  Type Predicates (see: /help type)",
       "  ──────────────────────",
@@ -4709,6 +4711,24 @@
       "desc": "Returns the parent class of a class definition.",
       "examples": [
         "getParent(Dog)"
+      ]
+    },
+    "hasField": {
+      "signature": "hasField(obj, key)",
+      "desc": "True if a Dict has this key (any hashable value) or an Instance/Namespace has this public member name.",
+      "examples": [
+        "hasField({\"a\": 1}, \"a\")",
+        "hasField({42: \"x\"}, 42)",
+        "hasField(instance, \"field\")"
+      ]
+    },
+    "getFields": {
+      "signature": "getFields(obj)",
+      "desc": "The member names of an object: a Dict's keys, an Instance's public fields, or a Namespace's names.",
+      "examples": [
+        "getFields({\"a\": 1})",
+        "getFields({42: \"x\"})",
+        "getFields(instance)"
       ]
     },
     "freeze": {

@@ -88,3 +88,20 @@
     *   **机器字长快速通道**：引入 `PolyZp64`，在素数 $p < 2^{63}$ 时走原生 64 位整数运算通道，避免堆分配的 `BigInt` 带来的高频取模开销。
 *   **表达式展开与合并 (Expand & Collect)**：
     *   **小数组内联优化**：对于参数较少（如 < 8 个）的加法和乘法，直接使用栈上小数组进行 $O(N^2)$ 遍历合并，避免触发 `std::unordered_map` 的堆分配和哈希计算。
+
+## 12. 文本语言分层 (Text Language Layering)
+*   **用户可见文本一律英文 (User-Visible Text Is English)**：以下位置**禁止写入中文** —— `modules/*.jc2` 的 `sys.register_help(..., r"DOC(...)")` 帮助块与 `register_function_help` 字符串、`data/documentation.json`（由 `HelpRouter` 从 exe 旁 `data/` 读取，供 `sys.help` 与 LSP 使用）、面向用户的错误消息与提示。理由：它们属于语言界面的一部分，须与英文的 API 名与关键字一致，并便于非中文读者阅读。
+*   **示例内容不受此限 (Examples Are Exempt)**：上述英文要求针对**说明性文字**（散文、标题、标签、选项说明、错误消息）；**示例内容可以有意识地使用中文** —— 例如演示 CJK 标识符（`变量 = 100`、`计算面积(宽, 高) = 宽 * 高`）与按码点计数/下标（`len("你好")` → 2、`"你好"[1]` → `"好"`）。这类示例是语言能力的一等证据，**不得**改成 ASCII 或替换成别的语言。2026-10 曾误把 `data/documentation.json` 中这四行示例改成 `x = 100` / `area(w, h)` / `café`，已恢复。
+*   **源码注释与设计文档用中文 (Comments & Design Docs Are Chinese)**：`src/**` 的 C++ 注释、`modules/*.jc2` 中帮助块之外的代码注释、`docs/**` 正文、提交信息正文用中文；提交主题用英文（形如 `feat(scope): ...`），见 `docs/COMMIT_CONVENTION.md`。
+*   **动手前先测本层约定 (Check The Layer Before Writing)**：写任何文本前，先统计目标文件/目录的既有语言（例如统计目标文件的中文行数），不要用别层的习惯覆盖本层约定。2026-10 曾把 `src/**` 的中文注释习惯带进 `modules/http.jc2` 的帮助块（23 行）与 `data/documentation.json`（7 行），成为全仓唯一的破例，已在同一批提交中修正。
+*   **一键复查 (One-Line Audit)**：统计"帮助块 + `data/documentation.json`"里的中文行，期望为 0；新增模块、修改帮助文本或改动 `data/documentation.json` 后各跑一次。
+
+## 13. 帮助文档写作规则 (Help Documentation Rules)
+*   **两类载体 (Two Carriers)**：
+    *   `data/documentation.json` —— 结构化数据，由 `HelpRouter` 从 exe 旁 `data/` 读取，`sys.help` 与 LSP 共用。顶层分区（括号内为实测条目数）：`topics`(33，值为**行数组**的散文)、`global_functions`(277)、`keywords`(36)、`matrix_methods`(5)、`list_methods`(28)、`string_methods`(14)、`dict_methods`(6)、`set_methods`(9)、`sys_methods`(26)、`math_methods`(26)、`cas_methods`(24)、`random_methods`(7)。结构化条目的字段固定为 `signature`（签名串）、`desc`（说明：字符串或字符串数组）、`examples`（代码示例数组，**不写运行结果**）、`aliases`（可选：别名数组，例如 `d.keys()` 的 `aliases` 为 `["getFields"]`）。
+    *   `modules/*.jc2` —— 模块自带帮助：`sys.register_help("<name>", r"DOC( … )DOC")`（散文，以 `═══ 标题 ═══` 起头）与 `register_function_help("<符号>", "<签名>", "<说明>", "<示例>")`。
+*   **语言 (Language)**：说明性文字一律**英文**；**示例内容不受此限**，可以有意使用中文（CJK 标识符、按码点计数与下标等示范），详见 §12。
+*   **版式 (Layout)**：节标题用 `═══ Title ═══`；节内分隔用 `──────────`；求值结果用 `→`（示例代码里不写结果，结果只出现在 `topics` 散文里）；交叉引用写 `see: /help <topic>`；示例块缩进 4 空格并与上文说明对齐。
+*   **内容边界 (Scope)**：**用户可见文本内**只写**当前实际存在**的能力 —— "用户可见文本"的范围见 §12 第一条（模块帮助块、`register_function_help` 字符串、`data/documentation.json`、面向用户的错误消息与提示）。其中 **TODO 一律禁止**：`TODO`、`FIXME`、"未实现"、"文档漂移"等一切开发备注都不许出现；能力缺失就不写该条目，**不留占位、不写"以后再做"**；发现既有 TODO 只有两个合法动作 —— **删掉**或**改正**（把能力真正实现后改写为正确条目），**不存在"保留待追踪"**，追踪走设计文档/提交信息。**内部代码注释（`src/**`、`modules/*.jc2` 中帮助块之外的注释）不在此限**，按 §12 用中文即可。拿不准就先跑一条最小用例（release 版 exe），以**实测**为准再写。
+*   **改动权限 (Change Control)**：**帮助文档的改动必须先报告、经作者审核后才可执行**。发现陈旧或错误条目时的正确流程：① 用 release 实测该能力的真实形态（全局/方法、实例/容器、是否存在）；② 把证据与建议（删 / 改 / 保留）报告给作者；③ **得到确认后**才改。**禁止"顺手统一"** —— 例如把示例里的中文改成 ASCII、批量重命名示例标识符、按个人偏好在散文里调整版式或措辞。
+*   **踩坑记录 (Incidents)**：2026-10 两次事故都出在**越权/越界**：① 把 `data/documentation.json` 的 7 行中文一律英文化，其中 4 行是刻意的 CJK 示例（已在同一批提交中恢复，并促成 §12 的"示例内容不受此限"）；② 把 "Introspection" / "Type Predicates" 两节里 3 条带 TODO 的陈旧条目按自己的判断删除/改写—— 事实判断可复核，但**流程错在未经审核**。此后一律按上一条的 ①→②→③ 执行。

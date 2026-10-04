@@ -437,7 +437,7 @@ httpParseResponse(raw: string, url: string = "", options: dict = {}) -> HttpResp
 // 返回 {"mode": "none"|"length"|"chunked"|"eof", "length": n}
 //   none    无正文（HEAD / 204 / 304 / 1xx），length 恒为 0
 //   length  Content-Length: n，恰好读 n 字节，length == n
-//   chunked 分块传输，读到 0 块 + trailer 结束，length 恒为 0
+//   chunked 分块传输，read until the 0 chunk + trailer，length 恒为 0
 //   eof     既无 CL 也无 chunked：只能读到对端关闭（连接**不可复用**），length 恒为 0
 httpPlanRead(status: int | float, headers: dict, method: string = "GET") -> dict = {
     return _Http.plan_read(_round(status), headers, method)
@@ -901,39 +901,39 @@ try {
 
   Functions
   ──────────────────────
-    res = httpRequest(method, url)            // 任意方法；默认跟随最多 5 次重定向
+    res = httpRequest(method, url)            // any method; follows up to 5 redirects by default
     res = httpRequest(method, url, options)
-    res = httpGet(url)                        // options 同下
+    res = httpGet(url)                        // options as below
     res = httpGet(url, options)
-    res = httpHead(url, options)              // 无正文；Content-Length 只是元信息
-    res = httpPost(url, body, options)        // 请求体 + Content-Length
-    res = parseResponse(raw_bytes)            // 离线解析一段完整响应
+    res = httpHead(url, options)              // no body; Content-Length is metadata only
+    res = httpPost(url, body, options)        // request body + Content-Length
+    res = parseResponse(raw_bytes)            // parse one complete response offline
     res = parseResponse(raw_bytes, url, {"method": "HEAD", "decompress": false})
-    plan = planRead(status, headers, method)  // 纯函数：这条响应怎么收尾
-    next_url = planRedirect(res, current_url) // 3xx 的下一个地址，没有则 none
+    plan = planRead(status, headers, method)  // pure: how this response must be read out
+    next_url = planRedirect(res, current_url) // next URL for 3xx, none if absent
     step = planRedirectRequest(res, current_url, method)
-                                              // {"url", "method", "keepBody"}，没有则 none
+                                              // {"url", "method", "keepBody"}, none if absent
 
   options (dict)
   ──────────────────────
-    followRedirects  int    最多跟几次重定向（默认 5）
-    headers          dict   覆盖同名默认头（大小写不敏感）
-    body             string 请求体（httpPost 会替你填）
-    decompress       bool   默认 true：发 Accept-Encoding: gzip, deflate，
-                            并按响应的 Content-Encoding 解 gzip / deflate；
-                            置 false 则既不发这个头也不解码
-    timeoutMs        int    **只对 https 生效**：连接与读写超时（毫秒）
-    keepAlive        bool   默认 true：发 Connection: keep-alive，并把可复用的
-                            空闲连接放进池子（每个源最多 2 条）
+    followRedirects  int    max redirects to follow (default 5)
+    headers          dict   override default headers by name (case-insensitive)
+    body             string request body (filled in by httpPost)
+    decompress       bool   default true: sends Accept-Encoding: gzip, deflate and
+                            decodes gzip / deflate per Content-Encoding; false sends
+                            no such header and decodes nothing
+    timeoutMs        int    **https only**: connect and read/write timeout (ms)
+    keepAlive        bool   default true: sends Connection: keep-alive and pools
+                            reusable idle connections (max 2 per origin)
 
   Response framing (RFC 9112 §6)
   ──────────────────────
-    planRead(status, headers, method) 返回 {"mode", "length"}：
-      "none"     HEAD / 204 / 304 / 1xx —— 没有正文，一个字节都不读
-      "length"   有 Content-Length: n —— 恰好读 n 字节（多读一个字节就会破坏
-                 同一连接上的下一条响应），length == n
-      "chunked"  Transfer-Encoding: chunked —— 读到 0 块 + trailer 结束
-      "eof"      既无 CL 也无 chunked —— 只能读到对端关闭，连接**不可复用**
+    planRead(status, headers, method) returns {"mode", "length"}:
+      "none"     HEAD / 204 / 304 / 1xx - no body, not a single byte is read
+      "length"   Content-Length: n - read exactly n bytes (one byte too many would
+                 corrupt the next response on the same connection), length == n
+      "chunked"  Transfer-Encoding: chunked —— read until the 0 chunk + trailer
+      "eof"      neither CL nor chunked - read until the peer closes; the connection is **not reusable**
 
   Connection reuse
   ──────────────────────

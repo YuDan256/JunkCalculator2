@@ -2956,8 +2956,6 @@
       "    type(p)                  → <type 'Point'> (class type object)",
       "    isinstance(p)            true if p is any class instance",
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
-      "    // hasField(p, \"x\")         true if field exists   // TODO: 未实现（文档漂移）",
-      "    // getFields(p)             All field names as list   // TODO: 未实现（文档漂移）",
       "    getClass(p)              The class definition object",
       "    getParent(Dog)           Parent class or none",
       "",
@@ -2965,7 +2963,7 @@
       "  ──────────────────────",
       "    type(Point) is class_type  true if argument is a class definition",
       "    isinstance(p)            true if argument is any instance",
-      "    // isfunction(sin)          true if argument is a function/closure   // TODO: 未实现（文档漂移）"
+      "    iscallable(sin)          true if argument is callable (function/closure/etc.)"
     ],
     "match": [
       "═══ Pattern Matching (match) ═══",

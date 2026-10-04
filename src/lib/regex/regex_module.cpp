@@ -4,6 +4,7 @@
 #include <vector>
 #include <memory>
 #include <cstdint>
+#include <algorithm>
 #include <stdexcept>
 #include <cctype>
 
@@ -500,6 +501,16 @@ public:
     int groupCount;
     bool hasBackref;
 
+    // ★ 去重表：按“代号(generation)”复用。旧实现每次 execute()（= 每个起始位置）都
+    //   assign(insts × (n+1), false)，使 findall/search 整体退化为 O(insts·n²)；
+    //   现在只在需要更大时分配，判定用 seenTable[vIdx] == seenGen，永不清零。
+    std::vector<uint32_t> seenTable;
+    uint32_t seenGen = 0;
+
+    // ★ 字面前缀（仅 ASCII，且必须是模式开头连续的 CHAR）：用于把候选起点从 n 个压到少数几个。
+    //   例：'<h3 class="..."' ⇒ 前缀即该字面量；以 CLASS/ANY/SPLIT 等开头时前缀为空（不预筛）。
+    std::string litPrefix;
+
     RegexVM(const std::string& pat) {
         Parser p(pat);
         auto ast = p.parse();
@@ -514,6 +525,25 @@ public:
         insts = std::move(c.insts);
         classes = std::move(c.classes);
         hasBackref = c.hasBackref;
+        litPrefix = computeLitPrefix();
+    }
+
+    std::string computeLitPrefix() const {
+        std::string out;
+        for (const auto& in : insts) {
+            if (in.op == Opcode::SAVE) continue;              // 前置 SAVE 0 跳过
+            if (in.op != Opcode::CHAR || in.op1 > 0x7F) break; // 非 ASCII 或非字面量 ⇒ 不再延长前缀
+            out.push_back(static_cast<char>(in.op1));
+        }
+        return out;
+    }
+
+    // 从 from 起找下一个值得尝试的起点；无字面前缀时退化为逐个前进。
+    // 返回 text.size() + 1 表示“不可能再有匹配”（调用方的 while (i <= text.length()) 会结束）。
+    size_t skipTo(const std::string& text, size_t from) const {
+        if (litPrefix.empty()) return from;
+        size_t p = text.find(litPrefix, from);
+        return (p == std::string::npos) ? text.size() + 1 : p;
     }
 
     bool execute(const std::string& text, size_t startSp, std::vector<size_t>& outCaps) {
@@ -526,9 +556,10 @@ public:
         
         size_t textLen = text.length();
         
-        std::vector<bool> visited;
         if (!hasBackref) {
-            visited.assign(insts.size() * (textLen + 1), false);
+            const size_t need = insts.size() * (textLen + 1);
+            if (seenTable.size() < need) { seenTable.assign(need, 0u); seenGen = 0u; }
+            if (++seenGen == 0u) { std::fill(seenTable.begin(), seenTable.end(), 0u); seenGen = 1u; }
         }
         
         int stepCount = 0;
@@ -538,8 +569,8 @@ public:
             
             if (!hasBackref) {
                 size_t vIdx = current.pc * (textLen + 1) + current.sp;
-                if (visited[vIdx]) goto backtrack;
-                visited[vIdx] = true;
+                if (seenTable[vIdx] == seenGen) goto backtrack;
+                seenTable[vIdx] = seenGen;
             } else {
                 stepCount++;
                 if (g_max_steps != -1 && stepCount > g_max_steps) {
@@ -760,7 +791,7 @@ JC2_ValueHandle regex_findall(JC2_VMContext, int, JC2_ValueHandle* argv, void*) 
             res.push_back(jc2::Value(text.substr(start, end - start)));
             i = (end == start) ? end + 1 : end;
         } else {
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     return res.get_handle();
@@ -782,10 +813,10 @@ JC2_ValueHandle regex_split(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
                 lastEnd = end;
                 i = (end == start) ? end + 1 : end;
             } else {
-                i++;
+                i = vm->skipTo(text, i + 1);
             }
         } else {
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     res.push_back(jc2::Value(text.substr(lastEnd)));
@@ -836,7 +867,7 @@ JC2_ValueHandle regex_subst(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
             }
         } else {
             if (i < text.length()) res += text[i];
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     return jc2::Value(res).get_handle();
@@ -931,7 +962,7 @@ JC2_ValueHandle global_findall(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
             res.push_back(jc2::Value(text.substr(start, end - start)));
             i = (end == start) ? end + 1 : end;
         } else {
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     return res.get_handle();
@@ -953,10 +984,10 @@ JC2_ValueHandle global_split(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
                 lastEnd = end;
                 i = (end == start) ? end + 1 : end;
             } else {
-                i++;
+                i = vm->skipTo(text, i + 1);
             }
         } else {
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     res.push_back(jc2::Value(text.substr(lastEnd)));
@@ -1007,7 +1038,7 @@ JC2_ValueHandle global_subst(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
             }
         } else {
             if (i < text.length()) res += text[i];
-            i++;
+            i = vm->skipTo(text, i + 1);
         }
     }
     return jc2::Value(res).get_handle();

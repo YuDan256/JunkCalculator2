@@ -36,3 +36,37 @@ test_set_mutation() = {
     assert(!(1 in s), "Set remove failed")
 }
 test_set_mutation()
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+
+// ★ Set 上的聚合与谓词方法：此前实现体只写了 LIST 分支（`any`/`all` 还多一层
+//   iterateAndCheck 的 else 抛错），导致这 7 个方法在 Set 上全部失效。
+test_set_aggregates_and_predicates() = {
+    s = @{1, 2, 3, 4}
+    l = @[1, 2, 3, 4]
+
+    assert(s.sum() == l.sum(), "Set sum must match List sum")
+    assert(s.prod() == l.prod(), "Set prod must match List prod")
+    assert(s.max() == l.max(), "Set max must match List max")
+    assert(s.min() == l.min(), "Set min must match List min")
+    assert(s.span() == l.span(), "Set span must match List span")
+
+    assert(s.any((x) => x > 3), "Set any must see a matching element")
+    assert(!s.any((x) => x > 9), "Set any must be false when none match")
+    assert(!s.all((x) => x > 3), "Set all must be false when some fail")
+    assert(s.all((x) => x > 0), "Set all must be true when all match")
+
+    e = set()
+    assert(e.sum() == 0, "empty Set sum is 0")
+    assert(e.prod() == 1, "empty Set prod is 1")
+    assert(throws(() => e.max()), "empty Set max must throw")
+    assert(throws(() => e.min()), "empty Set min must throw")
+    assert(throws(() => e.span()), "empty Set span must throw")
+
+    // apply 是“把元素当位置实参展开调用”，不是 map；Set 与 List 同样支持
+    assert(@[1, 2, 3].apply((a, b, c) => a + b + c) == 6, "apply spreads elements positionally")
+    assert(@{1, 2, 3}.apply((a, b, c) => a + b + c) == 6, "apply works on Set too")
+}
+test_set_aggregates_and_predicates()

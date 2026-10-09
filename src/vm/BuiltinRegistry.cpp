@@ -1202,6 +1202,16 @@ void BuiltinRegistry::registerMatrixOps() {
             }
             return listSum;
         }
+        if (self.isObjType(ObjType::SET)) {
+            const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
+            if (S.empty()) return Value(0.0);
+            Value setSum = S[0];
+            GcValueGuard setSumGuard(setSum);
+            for (size_t i = 1; i < S.size(); ++i) {
+                setSum = setSum + S[i];
+            }
+            return setSum;
+        }
         return matrixDispatch1(self, [](const auto& m) { return m.sum(); });
     };
     regMethod(VM::activeVM->listProto, "sum", {}, sumFn);
@@ -1230,6 +1240,16 @@ void BuiltinRegistry::registerMatrixOps() {
                 listProd = listProd * L[i];
             }
             return listProd;
+        }
+        if (self.isObjType(ObjType::SET)) {
+            const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
+            if (S.empty()) return Value(1.0);
+            Value setProd = S[0];
+            GcValueGuard setProdGuard(setProd);
+            for (size_t i = 1; i < S.size(); ++i) {
+                setProd = setProd * S[i];
+            }
+            return setProd;
         }
         return matrixDispatch1(self, [](const auto& m) { return m.product(); });
     };
@@ -1913,6 +1933,17 @@ void BuiltinRegistry::registerStatistics() {
             }
             return listMx;
         }
+        if (self.isObjType(ObjType::SET)) {
+            const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
+            if (S.empty()) JC2_THROW(MathError, "Cannot compute max of empty set.");
+            Value setMx = S[0];
+            GcValueGuard setMxGuard(setMx);
+            for (size_t i = 1; i < S.size(); ++i) {
+                Value v = S[i];
+                if (helpers::checkGreater(v, setMx)) setMx = v;
+            }
+            return setMx;
+        }
         auto d = extractDS(self, "max");
         double mx_d = d[0]; for (double v : d) if (v > mx_d) mx_d = v; return Value(mx_d);
     };
@@ -1943,6 +1974,17 @@ void BuiltinRegistry::registerStatistics() {
                 if (helpers::checkLess(v, listMn)) listMn = v;
             }
             return listMn;
+        }
+        if (self.isObjType(ObjType::SET)) {
+            const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
+            if (S.empty()) JC2_THROW(MathError, "Cannot compute min of empty set.");
+            Value setMn = S[0];
+            GcValueGuard setMnGuard(setMn);
+            for (size_t i = 1; i < S.size(); ++i) {
+                Value v = S[i];
+                if (helpers::checkLess(v, setMn)) setMn = v;
+            }
+            return setMn;
         }
         auto d = extractDS(self, "min");
         double mn_d = d[0]; for (double v : d) if (v < mn_d) mn_d = v; return Value(mn_d);
@@ -1981,6 +2023,20 @@ void BuiltinRegistry::registerStatistics() {
                 if (helpers::checkLess(v, listMn)) listMn = v;
             }
             return listMx - listMn;
+        }
+        if (self.isObjType(ObjType::SET)) {
+            const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
+            if (S.empty()) JC2_THROW(MathError, "Cannot compute span of empty set.");
+            Value setMn = S[0];
+            Value setMx = S[0];
+            GcValueGuard setSpanMnGuard(setMn);
+            GcValueGuard setSpanMxGuard(setMx);
+            for (size_t i = 1; i < S.size(); ++i) {
+                Value v = S[i];
+                if (helpers::checkGreater(v, setMx)) setMx = v;
+                if (helpers::checkLess(v, setMn)) setMn = v;
+            }
+            return setMx - setMn;
         }
         auto d = extractDS(self, "span");
         double mx_d = d[0], mn_d = d[0];
@@ -4213,6 +4269,11 @@ void BuiltinRegistry::registerHigherOrder() {
             for (const auto& x : static_cast<ObjComplexMatrix*>(iterable.asObj())->mat.rawData()) {
                 jc::checkInterrupt();
                 if (checkFn(safeCallValue(f, { Value(x) }).truthy())) return Value(true);
+            }
+        } else if (iterable.isObjType(ObjType::SET)) {
+            for (const auto& e : static_cast<ObjSet*>(iterable.asObj())->elements) {
+                jc::checkInterrupt();
+                if (checkFn(safeCallValue(f, { e }).truthy())) return Value(true);
             }
         } else {
             JC2_THROW(TypeError, "expects a vector/list.");

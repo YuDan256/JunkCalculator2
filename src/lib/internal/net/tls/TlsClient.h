@@ -41,6 +41,7 @@ struct TlsConfig {
     std::vector<Bytes> roots;               // 空 = 系统信任库（Windows ROOT）
     int64_t verifyTime = 0;                 // 0 = 当前时间
     std::vector<std::string> alpn{"http/1.1"};
+    bool enableTls12 = true;                // ★ 同时在 ClientHello 里提供 TLS 1.2（部分站点只支持 1.2）
 
     // ↓ 回放/确定性模式：用于 RFC 8448 轨迹回放测试，正常连接不要设置
     bool deterministic = false;
@@ -62,6 +63,12 @@ struct TlsSecrets {
     Bytes exporterMaster;
     Bytes serverFinishedVerify;
     Bytes clientFinishedVerify;
+    // TLS 1.2（仅 1.2 连接填充）
+    Bytes masterSecret12;
+    Bytes clientWriteKey12;
+    Bytes serverWriteKey12;
+    Bytes clientFinished12;
+    Bytes serverFinished12;
 };
 
 class TlsClient {
@@ -124,6 +131,19 @@ private:
     void installHandshakeKeys();
     void installApplicationKeys();
 
+    // ---- TLS 1.2 分支（与 1.3 互斥）----
+    void onServerHello12(const Bytes& msg, const Bytes& serverRandom, uint16_t suite, bool ems);
+    void onCertificate12(const Bytes& msg);
+    void onServerKeyExchange12(const Bytes& msg);
+    void onServerHelloDone12(Bytes& out);
+    void onCcs12();
+    void onFinished12(const Bytes& msg);
+    void sendHandshake12(const Bytes& msg, Bytes& out);
+    void deriveTls12Keys(const Bytes& preMasterSecret);
+    void installTls12Keys();
+    Bytes sealRecord12(uint8_t type, const Bytes& payload);
+    bool openRecord12(const Bytes& header, const Bytes& payload, uint8_t& innerType, Bytes& plain);
+
     void fail(TlsFail reason, const std::string& detail);
 
     TlsConfig cfg_;
@@ -160,6 +180,16 @@ private:
     TlsSecrets secrets_;
     Bytes leafCert_;
     std::vector<Bytes> chainCerts_;
+
+    // TLS 1.2 状态
+    bool tls12_ = false;
+    uint16_t suite12_ = 0;
+    Bytes serverRandom12_;
+    Bytes master12_, cwKey12_, cwIv12_, swKey12_, swIv12_;
+    bool ems12_ = false;
+    bool serverCcs12_ = false;
+    uint16_t skeGroup12_ = 0;
+    Bytes skePub12_;
 
     TlsFail fail_ = TlsFail::None;
     bool peerClosed_ = false;

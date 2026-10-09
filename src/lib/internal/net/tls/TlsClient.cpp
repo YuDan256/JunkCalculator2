@@ -36,6 +36,16 @@ constexpr uint8_t kHsEncryptedExtensions = 8;
 constexpr uint8_t kHsCertificate = 11;
 constexpr uint8_t kHsCertificateVerify = 15;
 constexpr uint8_t kHsFinished = 20;
+constexpr uint8_t kHsServerKeyExchange = 12;
+constexpr uint8_t kHsServerHelloDone = 14;
+constexpr uint8_t kHsClientKeyExchange = 16;
+
+// TLS 1.2 套件（本轮只提供 SHA-256 + AES-128-GCM 的两支，覆盖绝大多数站点）
+constexpr uint16_t kCipher12EcdheRsaAes128GcmSha256 = 0xC02F;
+constexpr uint16_t kCipher12EcdheEcdsaAes128GcmSha256 = 0xC02B;
+constexpr uint16_t kExtEcPointFormats = 0x000b;
+constexpr uint16_t kExtExtendedMasterSecret = 0x0017;
+constexpr uint16_t kExtRenegotiationInfo = 0xff01;
 
 constexpr uint16_t kCipherAes128GcmSha256 = 0x1301;
 constexpr uint16_t kGroupX25519 = 0x001d;
@@ -52,6 +62,25 @@ constexpr uint16_t kSigRsaPssRsaeSha384 = 0x0805;
 constexpr uint16_t kSigRsaPssRsaeSha512 = 0x0806;
 
 constexpr size_t kMaxCiphertext = 16384 + 256;
+
+// TLS 1.2 PRF（RFC 5246 §5）：P_hash 建在 HMAC-SHA256 上（本轮只提供 SHA-256 套件）
+Bytes prf12(const Bytes& secret, const char* label, const Bytes& seed, size_t outLen) {
+    Bytes s(label, label + std::strlen(label));
+    s.insert(s.end(), seed.begin(), seed.end());
+    Bytes a = s;                      // A(0) = label || seed
+    Bytes out;
+    uint8_t mac[32];
+    while (out.size() < outLen) {
+        hmacSha256(secret.data(), secret.size(), a.data(), a.size(), mac);
+        a.assign(mac, mac + 32);      // A(i)
+        Bytes block = a;
+        block.insert(block.end(), s.begin(), s.end());
+        hmacSha256(secret.data(), secret.size(), block.data(), block.size(), mac);
+        out.insert(out.end(), mac, mac + 32);
+    }
+    out.resize(outLen);
+    return out;
+}
 
 // HelloRetryRequest 的 random 是 SHA-256("HelloRetryRequest")
 const uint8_t kHrrMagic[32] = {
@@ -339,20 +368,50 @@ void TlsClient::buildClientHello() {
         putBlock16(ext, e);
     }
 
-    {   // supported_versions (0x002b)
+    {   // supported_versions (0x002b)：同时提供 1.3 与 1.2（1.3 优先）
         Bytes e;
-        e.push_back(2);
-        put16(e, 0x0304);
+        if (cfg_.enableTls12) {
+            e.push_back(4);
+            put16(e, 0x0304);
+            put16(e, 0x0303);
+        } else {
+            e.push_back(2);
+            put16(e, 0x0304);
+        }
         put16(ext, 0x002b);
         putBlock16(ext, e);
+    }
+
+    if (cfg_.enableTls12) {
+        {   // ec_point_formats (0x000b)：uncompressed
+            Bytes e;
+            e.push_back(1);
+            e.push_back(0);
+            put16(ext, kExtEcPointFormats);
+            putBlock16(ext, e);
+        }
+        {   // extended_master_secret (0x0017)（RFC 7627）
+            put16(ext, kExtExtendedMasterSecret);
+            putBlock16(ext, Bytes());
+        }
+        {   // renegotiation_info (0xff01)：空的重协商信息
+            Bytes e;
+            e.push_back(0);
+            put16(ext, kExtRenegotiationInfo);
+            putBlock16(ext, e);
+        }
     }
 
     Bytes body;
     put16(body, 0x0303);
     putBytes(body, clientRandom_);
     putBlock8(body, legacySessionId_);
-    put16(body, 2);
+    put16(body, static_cast<uint16_t>(cfg_.enableTls12 ? 6 : 2));
     put16(body, kCipherAes128GcmSha256);
+    if (cfg_.enableTls12) {
+        put16(body, kCipher12EcdheRsaAes128GcmSha256);
+        put16(body, kCipher12EcdheEcdsaAes128GcmSha256);
+    }
     body.push_back(1);
     body.push_back(0);
     putBlock16(body, ext);
@@ -374,6 +433,8 @@ Bytes TlsClient::sealRecord(uint8_t type, const Bytes& payload) {
         putBytes(rec, payload);
         return rec;
     }
+
+    if (tls12_) return sealRecord12(type, payload);   // ★ TLS 1.2：显式 nonce + 序号 AAD
 
     Bytes inner = payload;
     inner.push_back(type);   // 内层真实类型
@@ -430,8 +491,27 @@ Bytes TlsClient::feed(const uint8_t* data, size_t len, std::string* err) {
                      recvBuffer_.begin() + static_cast<std::ptrdiff_t>(consumed + 5));
         consumed += 5 + recLen;
 
-        // 兼容模式的 ChangeCipherSpec：明文、忽略、不进转录
-        if (type == kRecChangeCipherSpec) continue;
+        // 兼容模式的 ChangeCipherSpec：1.3 下明文忽略；1.2 下表示后续记录加密
+        if (type == kRecChangeCipherSpec) {
+            if (tls12_) onCcs12();
+            continue;
+        }
+
+        if (tls12_) {
+            if (recvEncrypted_) {
+                uint8_t innerType = 0;
+                Bytes plain;
+                if (!openRecord12(header, payload, innerType, plain)) {
+                    fail(TlsFail::DecryptFailed, "AEAD authentication failed on a TLS 1.2 record");
+                    break;
+                }
+                handleRecord(innerType, plain, out);
+            } else {
+                handleRecord(type, payload, out);
+            }
+            if (state_ == State::Failed) break;
+            continue;
+        }
 
         if (recvEncrypted_) {
             if (payload.size() < 16) {
@@ -479,6 +559,53 @@ Bytes TlsClient::feed(const uint8_t* data, size_t len, std::string* err) {
 }
 
 void TlsClient::handleRecord(uint8_t type, const Bytes& payload, Bytes& out) {
+    if (tls12_) {
+        if (type == kRecAlert) { onAlert(payload); return; }
+        if (type == kRecApplicationData) {
+            appData_.insert(appData_.end(), payload.begin(), payload.end());
+            return;
+        }
+        if (type != kRecHandshake) {
+            fail(TlsFail::UnexpectedMessage, "unexpected record type " + std::to_string(type));
+            return;
+        }
+        hsBuffer_.insert(hsBuffer_.end(), payload.begin(), payload.end());
+        size_t off12 = 0;
+        while (hsBuffer_.size() - off12 >= 4) {
+            const uint8_t* p12 = hsBuffer_.data() + off12;
+            const size_t mlen = (static_cast<size_t>(p12[1]) << 16) | (static_cast<size_t>(p12[2]) << 8) | p12[3];
+            if (hsBuffer_.size() - off12 - 4 < mlen) break;
+            const Bytes m(hsBuffer_.begin() + static_cast<std::ptrdiff_t>(off12),
+                          hsBuffer_.begin() + static_cast<std::ptrdiff_t>(off12 + 4 + mlen));
+            off12 += 4 + mlen;
+            // ★ 1.2 的转录：Certificate / ServerKeyExchange / ServerHelloDone 都必须在
+            //   密钥派生（EMS 的 session_hash）与 Finished 的 verify_data 之前进入转录。
+            switch (p12[0]) {
+                case kHsCertificate:
+                    transcript_.insert(transcript_.end(), m.begin(), m.end());
+                    onCertificate12(m);
+                    break;
+                case kHsServerKeyExchange:
+                    transcript_.insert(transcript_.end(), m.begin(), m.end());
+                    onServerKeyExchange12(m);
+                    break;
+                case kHsServerHelloDone:
+                    transcript_.insert(transcript_.end(), m.begin(), m.end());
+                    onServerHelloDone12(out);
+                    break;
+                case kHsFinished:          onFinished12(m); break;
+                case kHsNewSessionTicket:  break;   // 1.2 的会话票证：忽略
+                default:
+                    fail(TlsFail::UnexpectedMessage,
+                         "unexpected handshake message type " + std::to_string(p12[0]) + " (TLS 1.2)");
+                    break;
+            }
+            if (state_ == State::Failed) break;
+        }
+        if (off12 > 0) hsBuffer_.erase(hsBuffer_.begin(), hsBuffer_.begin() + static_cast<std::ptrdiff_t>(off12));
+        return;
+    }
+
     if (type == kRecAlert) {
         onAlert(payload);
         return;
@@ -542,7 +669,7 @@ void TlsClient::handleHandshake(const Bytes& msg, Bytes& out) {
 void TlsClient::onServerHello(const Bytes& msg, Bytes& /*out*/) {
     const Bytes body(msg.begin() + 4, msg.end());
     Reader r(body.data(), body.size());
-    (void)r.u16();
+    const uint16_t legacyVersion = r.u16();
     const Bytes random = r.bytes(32);
     const Bytes sessionId = r.bytes(r.u8());
     const uint16_t suite = r.u16();
@@ -559,23 +686,20 @@ void TlsClient::onServerHello(const Bytes& msg, Bytes& /*out*/) {
              "server requested HelloRetryRequest; this client already offers x25519 and secp256r1");
         return;
     }
-    if (!legacySessionId_.empty() && sessionId != legacySessionId_) {
-        fail(TlsFail::UnexpectedMessage, "ServerHello did not echo our legacy_session_id");
-        return;
-    }
-    if (suite != kCipherAes128GcmSha256) {
-        fail(TlsFail::UnsupportedCipherSuite, "server selected cipher suite " + std::to_string(suite));
-        return;
-    }
+    const bool sessionEchoes = legacySessionId_.empty() || (sessionId == legacySessionId_);
+    const bool suiteIs13 = (suite == kCipherAes128GcmSha256);
 
     bool sawVersion = false;
+    bool sawEms = false;
     Bytes serverKey;
     while (ext.remaining() >= 4) {
         const uint16_t et = ext.u16();
         const size_t el = ext.u16();
         Reader e = ext.sub(el);
         if (!e.ok) break;
-        if (et == 0x002b) {
+        if (et == kExtExtendedMasterSecret) {
+            sawEms = true;
+        } else if (et == 0x002b) {
             const uint16_t v = e.u16();
             if (v != 0x0304) {
                 fail(TlsFail::UnsupportedCipherSuite, "server negotiated protocol version " + std::to_string(v));
@@ -588,7 +712,24 @@ void TlsClient::onServerHello(const Bytes& msg, Bytes& /*out*/) {
         }
     }
     if (!sawVersion) {
-        fail(TlsFail::MissingExtension, "ServerHello without supported_versions (not TLS 1.3)");
+        // ★ 服务器选了 TLS 1.2（没有 supported_versions 扩展）
+        if (!cfg_.enableTls12) {
+            fail(TlsFail::MissingExtension, "ServerHello without supported_versions (not TLS 1.3)");
+            return;
+        }
+        if (legacyVersion != 0x0303) {
+            fail(TlsFail::UnsupportedCipherSuite, "server negotiated protocol version " + std::to_string(legacyVersion));
+            return;
+        }
+        onServerHello12(msg, random, suite, sawEms);
+        return;
+    }
+    if (!sessionEchoes) {
+        fail(TlsFail::UnexpectedMessage, "ServerHello did not echo our legacy_session_id");
+        return;
+    }
+    if (!suiteIs13) {
+        fail(TlsFail::UnsupportedCipherSuite, "server selected cipher suite " + std::to_string(suite));
         return;
     }
     if (selectedGroup_ != kGroupX25519 && selectedGroup_ != kGroupSecp256r1) {
@@ -620,6 +761,302 @@ void TlsClient::onServerHello(const Bytes& msg, Bytes& /*out*/) {
     installHandshakeKeys();
     recvEncrypted_ = true;
     state_ = State::WaitEncryptedExtensions;
+}
+
+// ==================== TLS 1.2 分支（RFC 5246 / RFC 7627）====================
+// 与 1.3 平行：ServerHello 无 supported_versions 扩展即进入此路。
+
+void TlsClient::onServerHello12(const Bytes& msg, const Bytes& serverRandom, uint16_t suite, bool ems) {
+    if (suite != kCipher12EcdheRsaAes128GcmSha256 && suite != kCipher12EcdheEcdsaAes128GcmSha256) {
+        fail(TlsFail::UnsupportedCipherSuite, "server selected TLS 1.2 cipher suite " + std::to_string(suite));
+        return;
+    }
+    tls12_ = true;
+    suite12_ = suite;
+    serverRandom12_ = serverRandom;
+    ems12_ = ems;
+    transcript_.insert(transcript_.end(), msg.begin(), msg.end());
+    state_ = State::WaitCertificate;    // 仅表示“握手中”；1.2 的消息按类型路由
+}
+
+void TlsClient::onCertificate12(const Bytes& msg) {
+    const Bytes body(msg.begin() + 4, msg.end());
+    Reader r(body.data(), body.size());
+    const size_t listLen = r.u24();
+    Reader list = r.sub(listLen);
+    if (!r.ok || !list.ok) {
+        fail(TlsFail::RecordMalformed, "malformed Certificate message (TLS 1.2)");
+        return;
+    }
+    chainCerts_.clear();
+    leafCert_.clear();
+    while (list.remaining() >= 3) {
+        const size_t certLen = list.u24();
+        Bytes der = list.bytes(certLen);
+        if (!list.ok) break;
+        if (chainCerts_.empty()) leafCert_ = der;
+        chainCerts_.push_back(der);
+    }
+    if (leafCert_.empty()) {
+        fail(TlsFail::CertificateRejected, "server sent an empty certificate list");
+        return;
+    }
+}
+
+void TlsClient::onServerKeyExchange12(const Bytes& msg) {
+    const Bytes body(msg.begin() + 4, msg.end());
+    Reader r(body.data(), body.size());
+    const uint8_t curveType = r.u8();
+    const uint16_t group = r.u16();
+    const Bytes pub = r.bytes(r.u8());
+    const size_t paramsLen = body.size() - r.remaining();   // 参数区（签名输入用）
+    const uint16_t scheme = r.u16();
+    const Bytes sig = r.bytes(r.u16());
+    if (!r.ok || curveType != 3) {
+        fail(TlsFail::RecordMalformed, "malformed ServerKeyExchange");
+        return;
+    }
+    if (group != kGroupX25519 && group != kGroupSecp256r1) {
+        fail(TlsFail::UnsupportedGroup, "server selected group " + std::to_string(group));
+        return;
+    }
+
+    // 签名输入：client_random || server_random || ServerKeyExchange 参数
+    Bytes input = clientRandom_;
+    input.insert(input.end(), serverRandom12_.begin(), serverRandom12_.end());
+    input.insert(input.end(), body.begin(), body.begin() + static_cast<std::ptrdiff_t>(paramsLen));
+
+    RsaHash hash = RsaHash::Sha256;
+    if (scheme == kSigRsaPssRsaeSha384 || scheme == kSigRsaPkcs1Sha384 || scheme == kSigEcdsaP384Sha384) {
+        hash = RsaHash::Sha384;
+    } else if (scheme == kSigRsaPssRsaeSha512 || scheme == kSigRsaPkcs1Sha512 || scheme == kSigEcdsaP521Sha512) {
+        hash = RsaHash::Sha512;
+    }
+    uint8_t digest[64];
+    switch (hash) {
+        case RsaHash::Sha384: sha384(input.data(), input.size(), digest); break;
+        case RsaHash::Sha512: sha512(input.data(), input.size(), digest); break;
+        default: sha256(input.data(), input.size(), digest); break;
+    }
+
+    X509Certificate leaf;
+    if (!x509Parse(leafCert_, leaf)) {
+        fail(TlsFail::CertificateRejected, "leaf certificate could not be parsed");
+        return;
+    }
+    bool ok = false;
+    if (scheme == kSigRsaPssRsaeSha256 || scheme == kSigRsaPssRsaeSha384 || scheme == kSigRsaPssRsaeSha512) {
+        ok = leaf.keyType == X509Certificate::KeyType::Rsa &&
+             rsaVerifyPss(leaf.rsaN, leaf.rsaE, digest, sig, rsaHashLength(hash), hash);
+    } else if (scheme == kSigRsaPkcs1Sha256 || scheme == kSigRsaPkcs1Sha384 || scheme == kSigRsaPkcs1Sha512) {
+        ok = leaf.keyType == X509Certificate::KeyType::Rsa &&
+             rsaVerifyPkcs1(leaf.rsaN, leaf.rsaE, digest, sig, hash);
+    } else if (scheme == kSigEcdsaP256Sha256 || scheme == kSigEcdsaP384Sha384 || scheme == kSigEcdsaP521Sha512) {
+        const EcCurve want = (scheme == kSigEcdsaP384Sha384) ? EcCurve::P384
+                             : (scheme == kSigEcdsaP521Sha512) ? EcCurve::P521
+                                                               : EcCurve::P256;
+        const X509Certificate::KeyType wantKey = (want == EcCurve::P384) ? X509Certificate::KeyType::EcP384
+                                                 : (want == EcCurve::P521) ? X509Certificate::KeyType::EcP521
+                                                                           : X509Certificate::KeyType::EcP256;
+        if (leaf.keyType == wantKey) {
+            const EcGroup& g = ecGroup(want);
+            EcPoint point;
+            Bytes rb, sb;
+            if (ecDecodePoint(g, leaf.ecPoint.data(), leaf.ecPoint.size(), point) &&
+                ecEcdsaSignatureFromDer(sig, rb, sb)) {
+                ok = ecEcdsaVerify(g, point, digest, rsaHashLength(hash), rb, sb);
+            }
+        }
+    } else {
+        fail(TlsFail::UnsupportedCipherSuite,
+             "unsupported ServerKeyExchange signature scheme " + std::to_string(scheme));
+        return;
+    }
+    if (!ok) {
+        fail(TlsFail::BadCertificateVerify, "ServerKeyExchange signature did not verify");
+        return;
+    }
+
+    if (cfg_.verifyChain) {
+        std::vector<Bytes> intermediates(chainCerts_.begin() + 1, chainCerts_.end());
+        std::vector<Bytes> roots = cfg_.roots;
+        if (roots.empty()) roots = systemRootCertificates();
+        const int64_t now = cfg_.verifyTime != 0 ? cfg_.verifyTime : static_cast<int64_t>(std::time(nullptr));
+        const X509VerifyResult vr = x509VerifyChain(leafCert_, intermediates, roots, cfg_.serverName, now);
+        if (!vr.ok) {
+            fail(TlsFail::CertificateRejected, std::string("certificate chain rejected: ") + x509FailName(vr.reason) +
+                                                   " (" + vr.detail + ")");
+            return;
+        }
+    }
+    skeGroup12_ = group;
+    skePub12_ = pub;
+}
+
+void TlsClient::onServerHelloDone12(Bytes& out) {
+    const Bytes pub = (skeGroup12_ == kGroupX25519) ? x25519Pub_ : p256Pub_;
+    Bytes ckeBody;
+    putBlock8(ckeBody, pub);
+    Bytes cke;
+    cke.push_back(kHsClientKeyExchange);
+    put24(cke, static_cast<uint32_t>(ckeBody.size()));
+    putBytes(cke, ckeBody);
+    transcript_.insert(transcript_.end(), cke.begin(), cke.end());
+
+    Bytes shared(32);
+    if (skeGroup12_ == kGroupX25519) {
+        if (skePub12_.size() != 32) {
+            fail(TlsFail::RecordMalformed, "x25519 ServerKeyExchange key must be 32 bytes");
+            return;
+        }
+        if (!x25519(shared.data(), x25519Priv_.data(), skePub12_.data())) {
+            fail(TlsFail::RecordMalformed, "x25519 produced the all-zero shared secret");
+            return;
+        }
+    } else if (!p256Ecdh(p256Priv_, skePub12_.data(), skePub12_.size(), shared.data())) {
+        fail(TlsFail::RecordMalformed, "invalid P-256 ServerKeyExchange key");
+        return;
+    }
+    deriveTls12Keys(shared);
+    sendHandshake12(cke, out);
+
+    uint8_t th[32];
+    sha256(transcript_.data(), transcript_.size(), th);
+    const Bytes clientVerify = prf12(master12_, "client finished", Bytes(th, th + 32), 12);
+    secrets_.clientFinished12 = clientVerify;
+    Bytes fin;
+    fin.push_back(kHsFinished);
+    put24(fin, 12);
+    putBytes(fin, clientVerify);
+    transcript_.insert(transcript_.end(), fin.begin(), fin.end());
+
+    Bytes ccsRec;
+    ccsRec.push_back(kRecChangeCipherSpec);
+    ccsRec.push_back(0x03);
+    ccsRec.push_back(0x03);
+    put16(ccsRec, 1);
+    ccsRec.push_back(1);
+    out.insert(out.end(), ccsRec.begin(), ccsRec.end());
+
+    sendEncrypted_ = true;
+    sendSeq_ = 0;
+    sendHandshake12(fin, out);
+    state_ = State::WaitFinished;
+}
+
+void TlsClient::onCcs12() {
+    serverCcs12_ = true;
+    recvSeq_ = 0;
+    recvEncrypted_ = true;
+}
+
+void TlsClient::onFinished12(const Bytes& msg) {
+    uint8_t th[32];
+    sha256(transcript_.data(), transcript_.size(), th);
+    const Bytes expect = prf12(master12_, "server finished", Bytes(th, th + 32), 12);
+    const Bytes body(msg.begin() + 4, msg.end());
+    if (body.size() != 12 || !ctEqual(body.data(), expect.data(), 12)) {
+        fail(TlsFail::BadFinished, "server Finished verify_data mismatch (TLS 1.2)");
+        return;
+    }
+    secrets_.serverFinished12 = body;
+    transcript_.insert(transcript_.end(), msg.begin(), msg.end());
+    installTls12Keys();
+    state_ = State::Connected;
+}
+
+void TlsClient::sendHandshake12(const Bytes& msg, Bytes& out) {
+    // ★ CCS 之前（ClientKeyExchange）必须明文；CCS 之后（Finished）才加密
+    const Bytes rec = sendEncrypted_ ? sealRecord12(kRecHandshake, msg)
+                                     : sealRecord(kRecHandshake, msg);
+    out.insert(out.end(), rec.begin(), rec.end());
+}
+
+void TlsClient::deriveTls12Keys(const Bytes& preMasterSecret) {
+    if (ems12_) {
+        uint8_t th[32];
+        sha256(transcript_.data(), transcript_.size(), th);
+        master12_ = prf12(preMasterSecret, "extended master secret", Bytes(th, th + 32), 48);
+    } else {
+        Bytes seed = clientRandom_;
+        seed.insert(seed.end(), serverRandom12_.begin(), serverRandom12_.end());
+        master12_ = prf12(preMasterSecret, "master secret", seed, 48);
+    }
+    Bytes seed2 = serverRandom12_;
+    seed2.insert(seed2.end(), clientRandom_.begin(), clientRandom_.end());
+    const Bytes kb = prf12(master12_, "key expansion", seed2, 40);
+    // RFC 5246 §6.3：key_block 按**类型**分组（AEAD 套件的 MAC 长度为 0）：
+    //   client_write_key | server_write_key | client_write_IV | server_write_IV
+    cwKey12_.assign(kb.begin(), kb.begin() + 16);
+    swKey12_.assign(kb.begin() + 16, kb.begin() + 32);
+    cwIv12_.assign(kb.begin() + 32, kb.begin() + 36);
+    swIv12_.assign(kb.begin() + 36, kb.begin() + 40);
+    secrets_.masterSecret12 = master12_;
+    secrets_.clientWriteKey12 = cwKey12_;
+    secrets_.serverWriteKey12 = swKey12_;
+}
+
+void TlsClient::installTls12Keys() {
+    sendKey_ = cwKey12_;
+    sendIv_ = cwIv12_;
+    recvKey_ = swKey12_;
+    recvIv_ = swIv12_;
+    // ★ 1.2 的应用数据沿用同一套写密钥，但这个标志必须置上：
+    //   sealApplicationData() 之前会因它未置而直接 fail 并返回空记录。
+    applicationKeysInstalled_ = true;
+}
+
+Bytes TlsClient::sealRecord12(uint8_t type, const Bytes& payload) {
+    Bytes seq;
+    for (int i = 0; i < 8; ++i) seq.push_back(static_cast<uint8_t>((sendSeq_ >> (56 - 8 * i)) & 0xff));
+    Bytes nonce = cwIv12_;
+    nonce.insert(nonce.end(), seq.begin(), seq.end());
+
+    Bytes aad = seq;
+    aad.push_back(type);
+    aad.push_back(0x03);
+    aad.push_back(0x03);
+    put16(aad, static_cast<uint16_t>(payload.size()));
+
+    Bytes ct(payload.size());
+    uint8_t tag[16];
+    aes128GcmSeal(cwKey12_.data(), nonce.data(), nonce.size(), aad.data(), aad.size(),
+                  payload.data(), payload.size(), ct.data(), tag);
+
+    Bytes rec;
+    rec.push_back(type);
+    rec.push_back(0x03);
+    rec.push_back(0x03);
+    put16(rec, static_cast<uint16_t>(seq.size() + ct.size() + 16));
+    putBytes(rec, seq);
+    putBytes(rec, ct);
+    rec.insert(rec.end(), tag, tag + 16);
+    ++sendSeq_;
+    return rec;
+}
+
+bool TlsClient::openRecord12(const Bytes& header, const Bytes& payload, uint8_t& innerType, Bytes& plain) {
+    if (payload.size() < 8 + 16) return false;
+    Bytes nonce = swIv12_;
+    nonce.insert(nonce.end(), payload.begin(), payload.begin() + 8);
+
+    Bytes aad;
+    for (int i = 0; i < 8; ++i) aad.push_back(static_cast<uint8_t>((recvSeq_ >> (56 - 8 * i)) & 0xff));
+    aad.push_back(header[0]);
+    aad.push_back(0x03);
+    aad.push_back(0x03);
+    const size_t ctLen = payload.size() - 8 - 16;
+    put16(aad, static_cast<uint16_t>(ctLen));
+
+    Bytes pt(ctLen);
+    if (!aes128GcmOpen(swKey12_.data(), nonce.data(), nonce.size(), aad.data(), aad.size(),
+                       payload.data() + 8, ctLen, payload.data() + 8 + ctLen, pt.data())) {
+        return false;
+    }
+    ++recvSeq_;
+    innerType = header[0];
+    plain = pt;
+    return true;
 }
 
 void TlsClient::onEncryptedExtensions(const Bytes& msg) {

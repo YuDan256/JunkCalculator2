@@ -93,8 +93,13 @@ namespace jc {
         std::string lexeme;
         int position;
         int line;
-        Token(TokenType type, std::string lexeme, int position = 0, int line = 0)
-            : type(type), lexeme(std::move(lexeme)), position(position), line(line) {
+        // ★ 源码中的原始长度。对字符串/注释/f-string 而言 lexeme 是**解码后的值**
+        //   （引号被去掉、转义被还原、多行内容含真实的 \n），与源码片段长度和各行的
+        //   实际边界都不同；语义高亮必须按源文本算 span，否则会把下一行染成字符串。
+        //   -1 表示“与 lexeme 等长”（标识符、数字、运算符等）。
+        int rawLength = -1;
+        Token(TokenType type, std::string lexeme, int position = 0, int line = 0, int rawLength = -1)
+            : type(type), lexeme(std::move(lexeme)), position(position), line(line), rawLength(rawLength) {
         }
     };
 

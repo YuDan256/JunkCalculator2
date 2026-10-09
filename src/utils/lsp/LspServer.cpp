@@ -900,6 +900,84 @@ namespace lsp {
                         prevChar = startChar;
                     };
 
+                    // ★ f-string：字面段发 string，{...} 插值段再走一遍 Lexer 独立着色。
+                    //   依据源文本切片（token.rawLength），与整段染成字符串的老做法不同。
+                    auto emitSpan = [&](const std::string& seg, int segStartOffset, int spanType) {
+                        size_t st = 0;
+                        while (st < seg.size()) {
+                            size_t nl = seg.find('\n', st);
+                            std::string lineStr = (nl == std::string::npos) ? seg.substr(st)
+                                                                            : seg.substr(st, nl - st);
+                            int len = static_cast<int>(jc::utf8::charIndex(lineStr, lineStr.length()));
+                            if (len > 0) {
+                                Position sp = doc->offsetToPosition(segStartOffset + static_cast<int>(st));
+                                addToken(sp.line, sp.character, len, spanType, 0);
+                            }
+                            if (nl == std::string::npos) break;
+                            st = nl + 1;
+                        }
+                    };
+                    auto emitFString = [&](const std::string& src, int basePos) {
+                        size_t i = 0;
+                        while (i < src.size() && (src[i] == 'f' || src[i] == 'F' || src[i] == 'r' || src[i] == 'R')) i++;
+                        size_t q = 0;
+                        while (i + q < src.size() && src[i + q] == '"') q++;
+                        if (q == 0) { while (i + q < src.size() && src[i + q] == '\'') q++; }
+                        if (q == 0) { emitSpan(src, basePos, 18); return; }
+                        size_t qn = (q >= 3) ? 3 : 1;
+                        size_t bodyA = i + qn;
+                        size_t bodyB = (src.size() >= qn) ? src.size() - qn : bodyA;
+                        emitSpan(src.substr(0, bodyA), basePos, 18);          // 前缀：f" 或 f"""
+                        size_t seg = bodyA, k = bodyA;
+                        while (k < bodyB) {
+                            if (src[k] == '{' && k + 1 < bodyB && src[k + 1] == '{') { k += 2; continue; }
+                            if (src[k] == '}' && k + 1 < bodyB && src[k + 1] == '}') { k += 2; continue; }
+                            if (src[k] != '{') { ++k; continue; }
+                            emitSpan(src.substr(seg, k - seg), basePos + static_cast<int>(seg), 18);
+                            int depth = 0; char inq = 0; size_t j = k;
+                            for (; j < bodyB; ++j) {
+                                char c = src[j];
+                                if (inq) {
+                                    if (c == '\\') { ++j; continue; }
+                                    if (c == inq) inq = 0;
+                                    continue;
+                                }
+                                if (c == '"' || c == '\'') { inq = c; continue; }
+                                if (c == '{') depth++;
+                                else if (c == '}') { depth--; if (depth == 0) break; }
+                            }
+                            size_t innerA = k + 1, innerB = (j < bodyB) ? j : bodyB;
+                            std::string inner = src.substr(innerA, innerB - innerA);
+                            if (!inner.empty()) {
+                                Lexer innerLexer(inner, uri);
+                                auto innerToks = innerLexer.tokenize();
+                                for (const auto& it : innerToks) {
+                                    int tt = -1;
+                                    switch (it.type) {
+                                        case TokenType::IDENTIFIER: tt = 8;  break; // variable
+                                        case TokenType::NUMBER:
+                                        case TokenType::IMAGINARY:  tt = 19; break; // number
+                                        case TokenType::STRING:
+                                        case TokenType::RSTRING:
+                                        case TokenType::FSTRING:    tt = 18; break; // string
+                                        case TokenType::TRUE_KW: case TokenType::FALSE_KW:
+                                        case TokenType::NONE_KW:    tt = 15; break; // keyword
+                                        default:                    tt = 21; break; // operator
+                                    }
+                                    const int rawLen = (it.rawLength >= 0) ? it.rawLength
+                                                                          : static_cast<int>(it.lexeme.size());
+                                    std::string piece = inner.substr(static_cast<size_t>(it.position),
+                                                                     static_cast<size_t>(rawLen));
+                                    emitSpan(piece, basePos + static_cast<int>(innerA) + it.position, tt);
+                                }
+                            }
+                            k = (j < bodyB) ? j + 1 : bodyB;
+                            seg = k;
+                        }
+                        emitSpan(src.substr(seg, bodyB - seg), basePos + static_cast<int>(seg), 18);
+                        emitSpan(src.substr(bodyB), basePos + static_cast<int>(bodyB), 18);  // 收尾引号
+                    };
+
                     // 结合 NameResolver 获取更精确的符号类型
                     NameResolver resolver(doc, builtinIndex);
                     std::vector<Token> parserTokens;
@@ -1035,6 +1113,7 @@ namespace lsp {
                                     break;
                                 case TokenType::STRING:
                                 case TokenType::RSTRING:
+                                case TokenType::FSTRING:
                                     tokenType = 18; // string
                                     break;
                                 // FSTRING 不标记 semantic token：交给 tmLanguage 的 fstrings/fstring-interpolation，
@@ -1093,7 +1172,17 @@ namespace lsp {
 
                         if (tokenType != -1) {
                             Position pos = doc->offsetToPosition(t.position);
-                            std::string lexeme = t.lexeme;
+                            // ★ span 取自**源文本**：t.lexeme 对字符串/注释是解码后的值
+                            //   （引号被去掉、转义还原、多行内容含真实换行），按它算长度会把
+                            //   多行字符串错误地落到下一行、单行字符串只染开头引号。
+                            const int rawLen = (t.rawLength >= 0) ? t.rawLength
+                                                                  : static_cast<int>(t.lexeme.size());
+                            std::string lexeme = doc->content.substr(static_cast<size_t>(t.position),
+                                                                    static_cast<size_t>(rawLen));
+                            if (t.type == TokenType::FSTRING) {
+                                emitFString(lexeme, t.position);
+                                continue;
+                            }
                             int currentLine = pos.line;
                             int currentChar = pos.character;
                             

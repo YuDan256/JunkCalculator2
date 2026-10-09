@@ -560,7 +560,7 @@ namespace jc {
             return;
         }
         advance(); advance(); advance(); // 吃掉对应的三个引号
-        tokens.emplace_back(TokenType::STRING, value, start);
+        tokens.emplace_back(TokenType::STRING, value, start, line, current - start);
     }
 
     void Lexer::stringLiteral(char quoteChar) {
@@ -620,7 +620,7 @@ namespace jc {
             return;
         }
         advance(); // 吃掉对应的右引号
-        tokens.emplace_back(TokenType::STRING, value, start);
+        tokens.emplace_back(TokenType::STRING, value, start, line, current - start);
     }
 
     void Lexer::fmultilineStringLiteral(char quoteChar) {
@@ -715,7 +715,7 @@ namespace jc {
             return;
         }
         advance(); advance(); advance(); // consume closing quotes
-        tokens.emplace_back(TokenType::FSTRING, value, start);
+        tokens.emplace_back(TokenType::FSTRING, value, start, line, current - start);
     }
 
     void Lexer::fstringLiteral(char quoteChar) {
@@ -810,7 +810,7 @@ namespace jc {
             return;
         }
         advance(); // consume closing quote
-        tokens.emplace_back(TokenType::FSTRING, value, start);
+        tokens.emplace_back(TokenType::FSTRING, value, start, line, current - start);
     }
 
     void Lexer::rmultilineStringLiteral(char quoteChar) {
@@ -824,7 +824,7 @@ namespace jc {
         }
         if (isAtEnd()) { emitError("Unterminated multiline raw string."); return; }
         advance(); advance(); advance();
-        tokens.emplace_back(TokenType::RSTRING, value, start);
+        tokens.emplace_back(TokenType::RSTRING, value, start, line, current - start);
     }
 
     void Lexer::rstringLiteral(char quoteChar) {
@@ -864,7 +864,7 @@ namespace jc {
                     }
                     if (match) {
                         current += static_cast<int>(endLen);
-                        tokens.emplace_back(TokenType::RSTRING, value, start);
+                        tokens.emplace_back(TokenType::RSTRING, value, start, line, current - start);
                         return;
                     }
                 }
@@ -881,7 +881,7 @@ namespace jc {
             }
             if (isAtEnd()) { emitError("Unterminated raw string."); return; }
             advance();
-            tokens.emplace_back(TokenType::RSTRING, value, start);
+            tokens.emplace_back(TokenType::RSTRING, value, start, line, current - start);
         }
     }
 

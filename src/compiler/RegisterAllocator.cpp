@@ -253,6 +253,35 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         }
     }
 
+    // ★ try/catch：catch 处理器读到的变量，在**整段 try 体内**都必须保持活跃。
+    //   否则它的寄存器会被复用给 try 体内的其它值，异常跳进处理器时读到的是垃圾
+    //   （实测：形参在 catch 里首次使用即拼接 ⇒ none + string）。
+    //   这里先算出「块 → 需要额外并存活性的 catch 块」映射，再在不动点内应用，使其随迭代传播。
+    std::vector<std::vector<int>> extraLiveFrom(blocks.size());
+    for (size_t i = 0; i < blocks.size(); ++i) {
+        auto& bb = blocks[i];
+        if (!bb->controlNode || bb->controlNode->op != IROp::TryBegin) continue;
+        int catchIdx = -1;
+        for (BasicBlock* succ : bb->succs) {
+            if (succ->controlNode && succ->controlNode->op == IROp::Catch) { catchIdx = succ->id; break; }
+        }
+        if (catchIdx < 0) continue;
+        // 从 TryBegin 出发前向遍历（跳过处理器自身）得到 try 区域
+        std::vector<bool> seen(blocks.size(), false);
+        std::vector<int> work{ static_cast<int>(i) };
+        while (!work.empty()) {
+            int cur = work.back();
+            work.pop_back();
+            if (seen[cur] || cur == catchIdx) continue;
+            seen[cur] = true;
+            extraLiveFrom[cur].push_back(catchIdx);
+            auto& curBb = blocks[cur];
+            for (BasicBlock* succ : curBb->succs) {
+                if (!seen[succ->id]) work.push_back(succ->id);
+            }
+        }
+    }
+
     bool changed = true;
     while (changed) {
         changed = false;
@@ -263,6 +292,15 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                 int sIdx = succ->id;
                 for (int v = 0; v < numVRegs; ++v) {
                     if (liveIn[sIdx][v] && !liveOut[i][v]) {
+                        liveOut[i][v] = true;
+                        changed = true;
+                    }
+                }
+            }
+
+            for (int ci : extraLiveFrom[i]) {
+                for (int v = 0; v < numVRegs; ++v) {
+                    if (liveIn[ci][v] && !liveOut[i][v]) {
                         liveOut[i][v] = true;
                         changed = true;
                     }

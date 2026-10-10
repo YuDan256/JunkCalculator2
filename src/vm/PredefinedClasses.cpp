@@ -904,7 +904,7 @@ void registerPredefinedClasses() {
             inst->is_frozen = true;
             return res;
         });
-        baseNumClass->properties["fromString"] = {Value(fn), false, false};
+        baseNumClass->properties["fromString"] = {Value(fn), false, false, false, true, false}; // class method: is_static
     }
 
     // 注册到全局

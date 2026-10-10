@@ -1,0 +1,25 @@
+// math.BaseNum —— 基数算术包装（帮助主题 base）
+// 回归点：原生预定义类的「类方法」必须在类上可调用（is_static），
+//         而静态成员不得从实例上可见（成员模型 §2.6）。
+
+import math
+
+test_basenum_class_methods() = {
+    // 帮助里的两个示例
+    assert(str(math.BaseNum.fromString("FF", 16)) == "[FF]_16", "fromString base 16")
+    b3 = math.BaseNum.fromString("1000210210201201020100012012010", 3)
+    assert(str(b3) == "[1000210210201201020100012012010]_3", "fromString base 3")
+
+    // 构造 + 实例方法仍正常
+    b = math.BaseNum(255, 16)
+    assert(str(b) == "[FF]_16", "constructor")
+    assert(str(b.changeBase(2)) == "[11111111]_2", "changeBase")
+    assert(isinstance(b, math.BaseNum), "isinstance")
+
+    // 类方法不得从实例上可达（静态只住类袋子）
+    rejected = false
+    try { b.fromString("FF", 16) } catch (e) { rejected = true }
+    assert(rejected, "class method must not be reachable through an instance")
+}
+
+test_basenum_class_methods()

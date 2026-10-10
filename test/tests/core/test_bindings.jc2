@@ -1,0 +1,309 @@
+import math
+
+
+test_explicit_init() = {
+    counterA() = {
+        state n = 0
+        n += 1
+        return n
+    }
+    assert(counterA() == 1, "counterA 1")
+    assert(counterA() == 2, "counterA 2")
+    assert(counterA() == 3, "counterA 3")
+
+    x_val = 100
+    counterB() = {
+        state x_val = x_val
+        x_val += 10
+        return x_val
+    }
+    assert(counterB() == 110, "counterB 1")
+    assert(counterB() == 120, "counterB 2")
+    assert(x_val == 100, "counterB outer untouched")
+}
+test_explicit_init()
+
+test_compound_assign() = {
+    base_val = 50
+    counterC() = {
+        state base_val += 5
+        return base_val
+    }
+    assert(counterC() == 55, "counterC 1")
+    assert(counterC() == 60, "counterC 2")
+    assert(base_val == 50, "counterC outer untouched")
+}
+test_compound_assign()
+
+test_standalone() = {
+    start_val = 1000
+    counterD() = {
+        state start_val
+        start_val += 1
+        return start_val
+    }
+    assert(counterD() == 1001, "counterD 1")
+    assert(counterD() == 1002, "counterD 2")
+    assert(start_val == 1000, "counterD outer untouched")
+}
+test_standalone()
+
+test_nested_closures() = {
+    make_shared() = {
+        state shared = 0
+        inc() = { ref shared += 1; return shared }
+        dec() = { ref shared -= 1; return shared }
+        return @[inc, dec]
+    }
+    @[f_inc, f_dec] = make_shared()
+    assert(f_inc() == 1, "shared inc 1")
+    assert(f_inc() == 2, "shared inc 2")
+    assert(f_dec() == 1, "shared dec 1")
+    assert(f_inc() == 2, "shared inc 3")
+}
+test_nested_closures()
+
+test_destructuring() = {
+    destruct_test() = {
+        [state a, state b] = [10, 20]
+        a += 1
+        b += 2
+        return [a, b]
+    }
+    assert(destruct_test() == [11, 22], "destruct 1")
+    assert(destruct_test() == [12, 24], "destruct 2")
+}
+test_destructuring()
+
+test_memoization() = {
+    make_memo(f) = {
+        return (x) => {
+            state cache = dict()
+            if (x in cache) return cache[x]
+            res = f(x)
+            cache[x] = res
+            return res
+        }
+    }
+    memo_sin = make_memo(sin)
+    memo_cos = make_memo(cos)
+    assert(memo_sin(math.PI/2) == 1.0, "memo sin 1")
+    assert(memo_sin(math.PI/2) == 1.0, "memo sin 2 (cached)") 
+    assert(memo_cos(0) == 1.0, "memo cos 1")
+    assert(memo_cos(0) == 1.0, "memo cos 2 (cached)")    
+}
+test_memoization()
+test_top_level_state_is_rejected() = {
+    // ★ 回归：state 永远向上绑定到闭包，闭包外没有可绑定的状态槽。
+    //   顶层的 `state y = 2` 曾一路走到 readVariable，那里对
+    //   currentFunction->upvalues 解引用 → 空指针（0xC0000005 段错误）；
+    //   在 -e 模式下更是无任何输出、只剩崩溃码。同类的顶层解构
+    //   `@[state a] = @[1]` 也崩。现在必须报可捕获的 SyntaxError。
+    //   （文件顶层是编译期报错，所以用 eval 使它可以被 catch。）
+    caught = 0
+    for (src in @["state y = 2", "state y = x", "@[state a] = @[1]", "[state a, state b] = [1, 2]"]) {
+        try {
+            eval(src)
+        } catch (e) {
+            assert("state' modifier cannot be used at the top level" in str(e),
+                   f"[{src}] unexpected error: {e}")
+            caught += 1
+        }
+    }
+    assert(caught == 4, "all top-level state forms must be rejected, caught=" + str(caught))
+}
+test_top_level_state_is_rejected()
+
+test_state_still_works_inside_closures() = {
+    // 反面：闭包内的 state（含解构形式）必须照常工作，不能因上面的检查被误伤
+    counter() = {
+        state n = 0
+        n += 1
+        return n
+    }
+    assert(counter() == 1, "closure state 1")
+    assert(counter() == 2, "closure state 2")
+
+    destruct() = {
+        @[state a, state b] = @[10, 20]
+        a += 1
+        return a + b
+    }
+    assert(destruct() == 31, "closure state destructuring 1")
+    assert(destruct() == 32, "closure state destructuring 2")
+}
+test_state_still_works_inside_closures()
+
+// 原型方法的尾部可选形参必须按 uninit 补位（此前直接读 args[i] 越界 → UB）：
+// substr(2) 曾返回空串、slice(1) 曾返回空列表、enumerate() 曾取到垃圾起始值。
+// 多 arity 的全局 native（ones/zeros/round…）靠 args.size() 区分重载，不能被补位影响。
+
+test_optional_args_padded_string() = {
+    assert("abcdef".substr(2) == "cdef", "substr(start) must return the tail")
+    assert("abcdef".substr(2, 3) == "cde", "substr(start, length)")
+    assert("abcdef".substr(-2) == "ef", "substr accepts a negative start")
+    assert("abcdef".find("c") == 2, "find(sub)")
+    assert("abcabc".find("b", 2) == 4, "find(sub, pos)")
+    assert("abcabc".find("z") == -1, "find returns -1 when absent")
+}
+test_optional_args_padded_string()
+
+test_optional_args_padded_containers() = {
+    L = @[1, 2, 3, 4]
+    assert(L.slice(1) == @[2, 3, 4], "slice(start)")
+    assert(L.slice(1, 3) == @[2, 3], "slice(start, end)")
+    assert(L.slice(-2) == @[3, 4], "slice accepts a negative start")
+    assert(str("ab".enumerate()) == '@[@[0, "a"], @[1, "b"]]', "enumerate() starts at 0")
+    assert(str("ab".enumerate(5)) == '@[@[5, "a"], @[6, "b"]]', "enumerate(start)")
+    assert(@[1, 2, 3].reduce((a, b) => a + b) == 6, "reduce(f) without init")
+    assert(@[1, 2, 3].reduce((a, b) => a + b, 10) == 16, "reduce(f, init)")
+    assert(@[3, 1, 2].sort() == @[1, 2, 3], "sort() without comparator")
+    assert(@[3, 1, 2].sort((a, b) => a > b) == @[3, 2, 1], "sort(cmp)")
+}
+test_optional_args_padded_containers()
+
+test_multi_arity_globals_keep_args_size_dispatch() = {
+    assert(ones(2).rows() == 2 && ones(2).cols() == 2, "ones(n) is n by n")
+    assert(ones(1, 3).rows() == 1 && ones(1, 3).cols() == 3, "ones(r, c)")
+    assert(zeros(2).rows() == 2, "zeros(n)")
+    assert(round(1.2345, 2) == 1.23, "round(x, digits)")
+}
+test_multi_arity_globals_keep_args_size_dispatch()
+
+global_x = 10
+test_global_ref() = {
+    modify_global(ref x) = { x = 20 }
+    modify_global(global_x)
+    assert(global_x == 20, "Global ref failed")
+}
+test_global_ref()
+
+test_local_ref() = {
+    local_y = 30
+    modify_local(ref y) = { y += 5 }
+    modify_local(local_y)
+    assert(local_y == 35, "Local ref failed")
+}
+test_local_ref()
+
+test_upvalue_ref() = {
+    make_counter() = {
+        count = 0
+        increment(ref c) = { c += 1 }
+        return () => { increment(count); return count }
+    }
+    c1 = make_counter()
+    assert(c1() == 1, "Upvalue ref failed 1")
+    assert(c1() == 2, "Upvalue ref failed 2")
+}
+test_upvalue_ref()
+
+test_nested_ref() = {
+    inner(ref a) = { a *= 2 }
+    outer(ref b) = { inner(b) }
+    val = 5
+    outer(val)
+    assert(val == 10, "Nested ref failed")
+}
+test_nested_ref()
+
+test_exception_ref() = {
+    val2 = 100
+    fail_halfway(ref x) = { x = 999; throw "Oops" }
+    try { fail_halfway(val2) } catch (e) {}
+    assert(val2 == 999, "Real-time ref modification failed")
+}
+test_exception_ref()
+
+test_ufcs_ref() = {
+    // ★ UFCS 的"接收者当第 0 个实参"已废止（docs/OOP_MODEL_DESIGN.md §2.1）：
+    //   接收者只走隐藏通道 self，实参就是实参，所以这里显式写两个实参。
+    ufcs_modify(obj, ref x) = { x += obj }
+    val3 = 10
+    ufcs_modify(5, val3)
+    assert(val3 == 15, "Explicit receiver ref failed")
+
+    // 点号调用把接收者交给 self，不占实参位：0 参自由函数也能读到接收者。
+    read_self() = self
+    assert(5.read_self() == 5, "Dot call should pass the receiver through self")
+}
+test_ufcs_ref()
+
+test_class_ref() = {
+    class RefTester {
+        init(f) = { self.factor = f }
+        modify(ref x) = { x *= self.factor }
+    }
+    tester = RefTester(3)
+    val4 = 7
+    tester.modify(val4)
+    assert(val4 == 21, "Class method ref failed")
+}
+test_class_ref()
+
+test_const_local() = {
+    const local x = 10
+    assert(x == 10, "const local init failed")
+}
+test_const_local()
+
+test_const_state() = {
+    call_count = 0
+    get_val() = {
+        ref call_count
+        const state s = {
+            call_count += 1
+            42
+        }
+        return s
+    }
+    assert(get_val() == 42, "const state init failed")
+    assert(call_count == 1, "const state should evaluate once")
+    assert(get_val() == 42, "const state read failed")
+    assert(call_count == 1, "const state should not re-evaluate")
+}
+test_const_state()
+
+test_const_ref() = {
+    outer_var = 100
+    read_only_view() = {
+        const ref outer_var
+        assert(outer_var == 100, "const ref read failed")
+    }
+    read_only_view()
+    outer_var = 300
+    read_only_view_2() = {
+        const ref outer_var
+        assert(outer_var == 300, "const ref should see updated value")
+    }
+    read_only_view_2()
+}
+test_const_ref()
+
+test_destruct_modifiers() = {
+    const local @[a, b] = @[1, 2]
+    assert(a == 1 && b == 2, "const local destruct failed")
+    
+    call_count = 0
+    get_state() = {
+        ref call_count
+        state @[x, y] = {
+            call_count += 1
+            @[10, 20]
+        }
+        return x + y
+    }
+    assert(get_state() == 30, "state destruct failed")
+    assert(get_state() == 30, "state destruct read failed")
+    assert(call_count == 1, "state destruct should evaluate once")
+}
+test_destruct_modifiers()
+
+test_forin_modifiers() = {
+    sum = 0
+    for (const local x in @[1, 2, 3]) {
+        sum += x
+    }
+    assert(sum == 6, "const local for-in failed")
+}
+test_forin_modifiers()

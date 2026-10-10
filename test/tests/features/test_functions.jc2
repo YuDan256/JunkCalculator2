@@ -1,3 +1,5 @@
+
+
 check(name, actual, expected) = {
     assert(str(actual) == str(expected), f"[{name}] Expected {expected}, got {actual}")
 }
@@ -66,3 +68,181 @@ test_closure_capture() = {
     assert(total == 300 + 299 * 300 / 2, "repeated closure creation")
 }
 test_closure_capture()
+
+test_basic_kwargs() = {
+    f(a, b, c) = a * 100 + b * 10 + c
+    assert(f(1, 2, 3) == 123, "Positional failed")
+    assert(f(a=1, b=2, c=3) == 123, "Basic kwargs failed")
+    assert(f(c=3, a=1, b=2) == 123, "Out of order kwargs failed")
+    assert(f(1, c=3, b=2) == 123, "Mixed kwargs failed")
+}
+test_basic_kwargs()
+
+test_duplicate_parameter_names_are_rejected() = {
+    // ★ 回归：形参重复检查此前只覆盖"位置参数段"，rest / 仅关键字 / kwargs
+    //   三段都漏了，于是跨分区同名被放行，且不是无害的——它静默产生错误语义：
+    //     f(x, ...x) = x     → f(1,2,3) 返回 @[2,3]（rest 覆盖位置参数）
+    //     f(x; ...x) = x     → f(1) 返回 {}（kwargs 字典遮蔽位置参数）
+    //   现在四段同口径，一律 SyntaxError。
+    throws(f) = { try { f(); return false } catch (e) { return true } }
+    assert(throws(() => eval("f(x, x) = x")), "positional duplicate rejected")
+    assert(throws(() => eval("f(x; x) = x")), "positional vs keyword-only duplicate rejected")
+    assert(throws(() => eval("f(x; x = 1) = x")), "positional vs kwarg-with-default rejected")
+    assert(throws(() => eval("f(x, y; x) = x")), "cross-partition duplicate rejected")
+    assert(throws(() => eval("f(x; y, x) = x")), "keyword-only duplicate rejected")
+    assert(throws(() => eval("f(x, ...x) = x")), "rest shadowing a positional rejected")
+    assert(throws(() => eval("f(x; ...x) = x")), "kwargs shadowing a positional rejected")
+    assert(throws(() => eval("f(...x; x) = x")), "keyword-only shadowing rest rejected")
+    assert(throws(() => eval("f(x; y, ...x) = x")), "kwargs shadowing duplicate rejected")
+}
+test_duplicate_parameter_names_are_rejected()
+
+test_legal_parameter_shapes_still_work() = {
+    // 反面：合法的形参组合不得被误伤
+    legal = @[
+        "f(x, y) = x",
+        "f(x; y) = x",
+        "f(x, ...rest) = x",
+        "f(x; y, z = 1) = y",
+        "f(x, ...rest; y, ...kw) = y",
+        "f(a, b = 2, ...rest) = a",
+        "f(_; _) = 1",
+        "f(x; ...kw) = kw",
+    ]
+    for (src in legal) {
+        try {
+            eval(src)
+        } catch (e) {
+            assert(false, f"legal parameter shape rejected: {src} -> {e}")
+        }
+    }
+}
+test_legal_parameter_shapes_still_work()
+
+test_kwargs_with_defaults() = {
+    f(a, b=2, c=3) = a * 100 + b * 10 + c
+    assert(f(1) == 123, "Defaults failed")
+    assert(f(1, c=9) == 129, "Kwarg skipping default failed")
+    assert(f(a=5) == 523, "Kwarg only failed")
+}
+test_kwargs_with_defaults()
+
+test_kwargs_with_rest() = {
+    f(a, b=2, ...rest) = a + b + rest.sum()
+    assert(f(10, 20, 1, 2, 3) == 36, "Rest positional failed")
+    assert(f(10, b=5) == 15, "Rest with kwarg failed")
+    // Note: rest does not collect kwargs.
+}
+test_kwargs_with_rest()
+
+test_kwargs_errors() = {
+    f(a, b, c) = a + b + c
+    
+    try {
+        eval("f(a=1, 2, 3)")
+        assert(false, "Should throw SyntaxError for positional after kwarg")
+    } catch (e) {
+        assert("Positional argument cannot follow keyword argument" in e.message, "Wrong error for positional after kwarg")
+    }
+    
+    try {
+        f(1, 2, 3, d=4)
+        assert(false, "Should throw TypeError for unknown kwarg")
+    } catch (e) {
+        assert("Unexpected keyword argument 'd'" in e.message, "Wrong error for unknown kwarg")
+    }
+    
+    try {
+        f(1, 2, b=99)
+        assert(false, "Should throw TypeError for multiple values")
+    } catch (e) {
+        assert("Multiple values for argument 'b'" in e.message, "Wrong error for multiple values")
+    }
+}
+test_kwargs_errors()
+
+test_kwargs_escape_hatch() = {
+    f(x) = x
+    a = 0
+    assert(f((a = 42)) == 42, "Escape hatch failed")
+    assert(a == 42, "Variable not assigned in escape hatch")
+}
+test_kwargs_escape_hatch()
+
+test_native_kwargs() = {
+    // isapprox(a, b, rtol, atol)
+    assert(isapprox(1.0, 1.001, atol=0.01), "Native kwarg failed")
+    assert(!isapprox(1.0, 1.001, atol=0.0001), "Native kwarg failed (should be false)")
+}
+test_native_kwargs()
+
+test_dict_defaults() = {
+    {a, b = 20, c: d = 30} = {a: 10}
+    assert(a == 10 && b == 20 && d == 30, "Dict Default Failed")
+
+    {x = 99, y = 88} = {x: 1, y: 88}
+    assert(x == 1 && y == 88, "Dict Default (Existing Key) Failed")
+}
+test_dict_defaults()
+
+test_list_defaults() = {
+    @[l1, l2 = 2, l3 = 3] = @[10]
+    assert(l1 == 10 && l2 == 2 && l3 == 3, "List Default Failed")
+
+    @[l4 = 4, l5 = 5] = @[40, 50]
+    assert(l4 == 40 && l5 == 50, "List Default (Existing Index) Failed")
+}
+test_list_defaults()
+
+test_matrix_defaults() = {
+    [m1, m2 = 2; m3 = 3, m4 = 4] = [10]
+    assert(m1 == 10 && m2 == 2 && m3 == 3 && m4 == 4, "Matrix Default Failed")
+}
+test_matrix_defaults()
+
+test_lazy_eval() = {
+    side_effect_count = 0
+    get_default() = {
+        ref side_effect_count += 1
+        return 999
+    }
+
+    {val1 = get_default()} = {val1: 1}
+    assert(val1 == 1 && side_effect_count == 0, "Lazy Eval (Dict Existing) Failed")
+
+    {val2 = get_default()} = {}
+    assert(val2 == 999 && side_effect_count == 1, "Lazy Eval (Dict Missing) Failed")
+
+    @[val3 = get_default()] = @[1]
+    assert(val3 == 1 && side_effect_count == 1, "Lazy Eval (List Existing) Failed")
+
+    @[val4, val5 = get_default()] = @[1]
+    assert(val5 == 999 && side_effect_count == 2, "Lazy Eval (List Missing) Failed")
+}
+test_lazy_eval()
+
+test_modifiers_defaults() = {
+    outer_var = 0
+    inner() = {
+        @[local ma = 10, ref outer_var = 20, const mc = 30] = @[]
+        return @[ma, outer_var, mc]
+    }
+    res = inner()
+    assert(res[0] == 10 && res[1] == 20 && res[2] == 30, "Modifiers with Defaults Failed")
+}
+test_modifiers_defaults()
+
+test_rest_defaults() = {
+    @[ra = 1, rb = 2, ...r_rest] = @[99]
+    assert(ra == 99 && rb == 2 && r_rest == @[], "Rest Pattern with Defaults Failed")
+}
+test_rest_defaults()
+
+test_nested_defaults() = {
+    @[@[na, nb = 2] = @[1], nc = 3] = @[]
+    assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
+
+    {nested: {nx, ny = 20} = {nx: 10}} = {}
+    assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
+}
+test_nested_defaults()

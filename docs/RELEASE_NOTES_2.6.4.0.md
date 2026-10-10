@@ -46,12 +46,12 @@ engine, and a slimmer release package that ships the always-on test suite only.
 * Tests moved: the suites now live under `test/` — `jc2 test test/tests`, `test/jit_tests` and `test/http_tests`.
 
 ### Packaging
-* The release zip ships the always-on suite only (57 tests); the vector/network suite and its fixtures are a separate on-demand download. The main package shrank from 8.59 MB to 4.57 MB.
+* The release zip ships the always-on suite only (43 tests); the vector/network suite and its fixtures are a separate on-demand download. The main package shrank from 8.59 MB to 4.57 MB.
 
 ***
 
 Asset Notes
-* JunkCalculator2-2.6.4.0-Windows-x64.zip: Statically-linked standalone Windows executable. Includes bin, lib (Native DLL extensions), modules (JC2 standard scripts), data, examples, and test/tests (57 always-on tests).
+* JunkCalculator2-2.6.4.0-Windows-x64.zip: Statically-linked standalone Windows executable. Includes bin, lib (Native DLL extensions), modules (JC2 standard scripts), data, examples, and test/tests (43 always-on tests).
 * JunkCalculator2-2.6.4.0-http_tests.zip: Optional bundle holding test/http_tests (6 vector and network tests plus their fixtures). Unpack it at the package root and run `jc2 test test/http_tests`.
 * jc2-language-6.4.0.vsix: VS Code extension (language server client) with its bundled help re-synced.
 

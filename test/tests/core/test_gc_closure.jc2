@@ -1,3 +1,6 @@
+import sys
+import math
+
 // 回归：GC 跑过之后，脚本类仍必须能实例化、访问成员、调用方法、继承。
 //
 // 曾经的缺陷：mark 阶段走 ObjClass 时只 mark 了 static 域（properties），漏掉了
@@ -10,7 +13,6 @@
 // 触发方式：显式 sys.gc() 一次即可稳定复现（不需要把分配量顶到引擎阈值）；
 // 额外再用一次小规模分配循环踩自动 GC 路径。
 
-import sys
 
 // 前置定义：继承用的父类必须在子类之前
 class Base {
@@ -98,3 +100,50 @@ test_class_survives_explicit_gc()
 test_class_can_be_instantiated_after_gc()
 test_class_survives_automatic_gc_during_allocation()
 test_repeated_gc_does_not_eat_class_members()
+
+
+test_closure_caching() = {
+    cache = dict()
+    make_calc(f) = {
+        state cache
+        return (x) => {
+            key = freeze(@[f,x])
+            if(key in cache) return cache[key]
+            res = f(x)
+            cache[key] = res
+            return res
+        }
+    }
+    calcA = make_calc(cos)
+    calcB = make_calc(sin)
+    calcC = make_calc(sin)
+
+    assert(isapprox(calcA(math.PI), -1.0), "calcA failed")
+    assert(isapprox(calcB(math.PI), 0.0, 1e-9, 1e-9), "calcB failed")
+    assert(isapprox(calcC(math.PI), 0.0, 1e-9, 1e-9), "calcC failed")
+}
+test_closure_caching()
+
+test_self_assignment_capture() = {
+    // Test local x = x
+    x = 10
+    f_local() = {
+        local x = x
+        x += 5
+        return x
+    }
+    assert(f_local() == 15, "local x = x failed to capture outer x")
+    assert(x == 10, "local x = x polluted outer scope")
+
+    // Test state y = y
+    y = 20
+    f_state() = {
+        state y = y
+        y += 1
+        return y
+    }
+    assert(f_state() == 21, "state y = y failed on first call")
+    assert(f_state() == 22, "state y = y failed on second call")
+    assert(y == 20, "state y = y polluted outer scope")
+}
+test_self_assignment_capture()

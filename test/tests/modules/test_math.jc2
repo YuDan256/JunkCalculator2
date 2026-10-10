@@ -1,0 +1,99 @@
+import prob
+import math
+import latex
+
+
+test_prob_normal() = {
+    d = prob.Normal(0, 1)
+    assert(abs(d.mean() - 0.0) < 1e-5, "Normal mean failed")
+    assert(abs(d.var() - 1.0) < 1e-5, "Normal var failed")
+    assert(abs(d.pdf(0) - 0.398942) < 1e-5, "Normal pdf failed")
+    assert(abs(d.cdf(0) - 0.5) < 1e-5, "Normal cdf failed")
+    assert(abs(d.quantile(0.5) - 0.0) < 1e-5, "Normal quantile failed")
+    
+    s = d.sample(10)
+    assert(s.cols() == 10, "Normal sample failed")
+}
+test_prob_normal()
+
+test_prob_binom() = {
+    d = prob.Binom(10, 0.5)
+    assert(abs(d.mean() - 5.0) < 1e-5, "Binom mean failed")
+    assert(abs(d.var() - 2.5) < 1e-5, "Binom var failed")
+    assert(abs(d.pmf(5) - 0.24609375) < 1e-5, "Binom pmf failed")
+}
+test_prob_binom()
+
+test_prob_math() = {
+    assert(abs(prob.gamma(5) - 24.0) < 1e-5, "gamma failed")
+    assert(abs(prob.betaFn(2, 5) - 0.0333333) < 1e-5, "betaFn failed")
+    assert(abs(prob.erf(0) - 0.0) < 1e-5, "erf failed")
+}
+test_prob_math()
+
+test_prob_ttest() = {
+    data = [1.2, 1.4, 1.3, 1.5, 1.4]
+    res = prob.ttest(data, 1.0)
+    assert(res.cols() == 3, "ttest result shape failed")
+    assert(res[0, 1] == 4.0, "ttest df failed") // df = n - 1 = 4
+}
+test_prob_ttest()
+
+// math.BaseNum —— 基数算术包装（帮助主题 base）
+// 回归点：原生预定义类的「类方法」必须在类上可调用（is_static），
+//         而静态成员不得从实例上可见（成员模型 §2.6）。
+
+
+test_basenum_class_methods() = {
+    // 帮助里的两个示例
+    assert(str(math.BaseNum.fromString("FF", 16)) == "[FF]_16", "fromString base 16")
+    b3 = math.BaseNum.fromString("1000210210201201020100012012010", 3)
+    assert(str(b3) == "[1000210210201201020100012012010]_3", "fromString base 3")
+
+    // 构造 + 实例方法仍正常
+    b = math.BaseNum(255, 16)
+    assert(str(b) == "[FF]_16", "constructor")
+    assert(str(b.changeBase(2)) == "[11111111]_2", "changeBase")
+    assert(isinstance(b, math.BaseNum), "isinstance")
+
+    // 类方法不得从实例上可达（静态只住类袋子）
+    rejected = false
+    try { b.fromString("FF", 16) } catch (e) { rejected = true }
+    assert(rejected, "class method must not be reachable through an instance")
+}
+
+test_basenum_class_methods()
+
+
+test_latex_to_latex() = {
+    assert(latex.to_latex(1.5) == "1.5", "to_latex float failed")
+    assert(latex.to_latex(@[1, 2]) == "\\left[ 1, 2 \\right]", "to_latex list failed")
+}
+test_latex_to_latex()
+
+test_latex_eval() = {
+    assert(abs(latex.eval(r"\frac{1}{2}") - 0.5) < 1e-5, "eval frac failed")
+    assert(abs(latex.eval(r"1 + 2 * 3") - 7.0) < 1e-5, "eval arithmetic failed")
+    assert(abs(latex.eval(r"\sin(\pi / 2)") - 1.0) < 1e-5, "eval sin failed")
+    assert(abs(latex.eval(r"\sqrt{16}") - 4.0) < 1e-5, "eval sqrt failed")
+}
+test_latex_eval()
+
+test_latex_compile() = {
+    f = latex.compile(r"x^2 + y", @["x", "y"])
+    assert(abs(f(2, 3) - 7.0) < 1e-5, "compile failed")
+    
+    f2 = latex.compile(r"\frac{a}{b}", @["a", "b"])
+    assert(abs(f2(10, 2) - 5.0) < 1e-5, "compile frac failed")
+}
+test_latex_compile()
+
+test_latex_parse_error() = {
+    try {
+        latex.eval(r"\frac{1}")
+        assert(false, "Should throw parse error for incomplete frac")
+    } catch (e) {
+        assert("Expected" in e.message || "Missing" in e.message, "Wrong error message thrown")
+    }
+}
+test_latex_parse_error()

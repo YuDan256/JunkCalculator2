@@ -361,7 +361,7 @@
       "signature": "help([topic])"
     },
     "sym": {
-      "signature": "sym(name)"
+      "signature": "sym(name_or_value)"
     },
     "symbolics": {
       "signature": "symbolics(names)"
@@ -419,6 +419,12 @@
     },
     "getParent": {
       "signature": "getParent(cls)"
+    },
+    "hasField": {
+      "signature": "hasField(obj, key)"
+    },
+    "getFields": {
+      "signature": "getFields(obj)"
     },
     "freeze": {
       "signature": "freeze(obj)"
@@ -776,6 +782,9 @@
     },
     "ishashable": {
       "signature": "ishashable(x)"
+    },
+    "istrait": {
+      "signature": "istrait(x)"
     },
     "isalpha": {
       "signature": "isalpha(s)"

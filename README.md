@@ -73,6 +73,34 @@ JC2 standard libraries loaded via `import`:
 
 ---
 
+## What's New in v2.6.4.0
+
+### Language
+- **Initializer-less members**: a class member may be declared without a value (`const id`, `local balance`, `name`). It must then be assigned in `init`; otherwise construction throws `member 'x' was not initialized in init()`. A `const` member accepts exactly one such assignment.
+- **Traits and interfaces**: `trait` / `with` composition, abstract methods, frozen constraints, and the `istrait(x)` predicate.
+- **Built-in error types are classes**: `TypeError`, `ValueError` and friends can be caught by type and subclassed like user classes.
+- **Iteration ends with `StopIteration`** instead of returning `none`.
+- **Renames (breaking)**: `double` → `float` (with `sqrtF` / `cbrtF` / `rootF`); the `is*` predicates are all lowercase; `pi` / `e` / `i` live in `math`; the `switch` expression is replaced by `match`.
+- **CAS**: broader factoring and solving (perfect powers, multivariate forms, `RootOf` for degree ≥ 4) and branch-safe rewrite guards.
+
+### Standard Library & Networking
+- **`http` module**: `httpGet` plus request helpers, chunked bodies, redirects, and `https` (TLS 1.3 **and** TLS 1.2).
+- **`tls.connect` / `TcpStream`**: raw TCP and TLS sockets for scripts.
+- **`crypto` module**: SHA-256/384/512, AES-GCM, X25519, P-256/384/521 and X.509 chain verification.
+- **`gzip` / `zlib` decoding** for compressed bodies.
+
+### Fixes & Performance
+- **Catch handlers keep live values**: a parameter read inside `catch` no longer comes back as `none` after a call in the `try` body.
+- **`regex` is linear**: the dedup table is reused and a literal-prefix prefilter skips non-matching regions (a real 160 KB page: ~86 s → 0.013 s).
+- **`Set` aggregates and predicates**: `sum`, `prod`, `max`, `min`, `span`, `any`, `all` now work on sets.
+- **Initializer-less private fields are per-instance**, no longer shared between instances.
+- **GC fixes** for instances, class member tables and closure copies.
+
+### Tooling
+- **Semantic highlighting**: token spans now come from the source text (multi-line strings and comments no longer bleed into the next line) and f-string `{...}` interpolations are coloured as expressions.
+- **VS Code extension 6.4.0**, bundled help re-synced.
+
+
 ## What's New in v2.6.3.2
 
 ### Errors & Printing

@@ -564,7 +564,10 @@ void VM::runFieldInitializers(ObjClass* cls, const Value& self) {
 void VM::runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std::vector<Value>& initArgs) {
     runFieldInitializers(cls, self);
     ObjClosure* initMethod = findInitMethod(cls);
-    if (!initMethod) return;
+    if (!initMethod) {
+        checkRequiredMembersInitialized(cls, self);
+        return;
+    }
     if (initMethod->isBytecode()) {
         callVMFunction(initMethod->compiledFnIndex, initArgs, initMethod, self, Value(cls));
     } else if (initMethod->isNative()) {
@@ -581,6 +584,60 @@ void VM::runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std
         }
         helpers::nativeSelfStack.pop_back();
         helpers::nativeClassStack.pop_back();
+    }
+    checkRequiredMembersInitialized(cls, self);
+}
+
+// ★ 构造收口检查（省略初值的成员必须已赋值）
+//   判据落在**实例槽位/属性位图**上，与描述符里存的是 none 还是 uninit 无关：
+//   - 带初值的字段：值由各级 <fieldinit> 写入 ⇒ 构造结束时已存在；
+//   - 省略初值的字段：进不了 <fieldinit>（IRBuilder 不注入）⇒ 只有用户在 init 里赋值才会存在；
+//   - 方法（闭包）住类表、static 住类袋子，都不在实例上，故跳过；
+//   - 该检查只在「正常构造」这条路径上执行（copy/反序列化等其他路径不经过本函数），
+//     且在阶段 1 之前「省略初值」根本无法通过解析，故对既有代码只会是空操作。
+void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
+    if (!cls || !self.isInstance() || cls->is_native) return;
+    ObjInstance* inst = self.asInstance();
+
+    // 实例自有成员的「纯名」集合（只读；不解引用可疑对象、不触发任何 dunder）
+    std::vector<std::string> ownPlain;
+    auto plainOf = [](const std::string& k) {
+        std::string n = k;
+        const size_t sep = n.rfind("::");
+        if (!n.empty() && n[0] == '<' && sep != std::string::npos) {
+            n = n.substr(sep + 2);
+            if (!n.empty() && n.back() == '>') n.pop_back();
+        }
+        return n;
+    };
+    inst->ownForEach([&](const std::string& k, const PropertyDescriptor&) { ownPlain.push_back(plainOf(k)); });
+
+    const size_t n = cls->slotNames.size();
+    for (size_t i = 0; i < n; ++i) {
+        const std::string& key = cls->slotNames[i];
+        const PropertyDescriptor* pd = nullptr;
+        for (ObjClass* c = cls; c; c = c->parent) {
+            const PropertyDescriptor* pit = c->ownMember(key);
+            if (pit) { pd = pit; break; }
+        }
+        if (!pd) continue;
+        if (!pd->is_field_decl) continue;          // 只查「只写名字、没有初值」的声明
+        if (pd->is_static) continue;               // static 住类袋子
+        if (pd->is_local) continue;                // 私有成员暂不覆盖（见提交信息中的独立缺陷）
+        if (pd->val.isFunctionClosure()) continue; // 方法不进实例
+
+        const std::string shown = plainOf(key);
+        bool assigned = false;
+        for (const auto& op : ownPlain) {
+            if (op == shown) { assigned = true; break; }
+        }
+        if (!assigned) {
+            for (ObjClass* c = cls; c; c = c->parent) {
+                if (inst->ownHas(manglePrivate(c->classId, shown))) { assigned = true; break; }
+            }
+        }
+        if (assigned) continue;                    // 已赋值：<fieldinit> 或用户 init
+        JC2_THROW(RuntimeError, "member '" + shown + "' was not initialized in init()");
     }
 }
 
@@ -1539,6 +1596,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
         runFieldInitializers(cls, Value(instance));
         
         ObjClosure* initMethod = findInitMethod(cls);
+        // ★ 没有 init：构造到此即结束，立刻做存在性检查（构造时抛）
+        if (!initMethod) checkRequiredMembersInitialized(cls, Value(instance));
         
         if (initMethod) {
             if (initMethod->isBytecode()) {
@@ -1589,6 +1648,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     currentFrame->closure = initMethod;
                     currentFrame->selfContext = Value(instance);
                     currentFrame->classContext = Value(cls);
+                    currentFrame->checkRequiredOnReturn = true;
                     
                     populateRefParams(*currentFrame, fnDef.get());
                     profileFrameStart(currentFrame);
@@ -1609,6 +1669,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 newFrame.closure = initMethod;
                 newFrame.selfContext = Value(instance);
                 newFrame.classContext = Value(cls);
+                newFrame.checkRequiredOnReturn = true;
                 
                 populateRefParams(newFrame, fnDef.get());
                 
@@ -7979,6 +8040,14 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::RETURN: {
+                // ★ 构造完成点：正在构造的那个 init 帧返回 ⇒ 立刻检查省略初值的成员是否已赋值
+                if (frame->checkRequiredOnReturn) {
+                    frame->checkRequiredOnReturn = false;
+                    if (frame->selfContext.isInstance()) {
+                        checkRequiredMembersInitialized(frame->selfContext.asInstance()->classDef,
+                                                       frame->selfContext);
+                    }
+                }
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value res = std::move(getReg(a));
             

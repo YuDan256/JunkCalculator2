@@ -3636,6 +3636,10 @@ namespace jc {
             bool isAbstract = false;
             if (match({ TokenType::ASSIGN })) {
                 value = ternary();
+            } else if (!check(TokenType::LPAREN)) {
+                // ★ 省略初值的成员声明（`const id` / `local balance` / `w`）：
+                //   初值必须由构造期提供（“必须初始化”的检查在下一阶段接入）。
+                value = nullptr;
             } else {
                 consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 

@@ -3795,8 +3795,9 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     // 直接丢失）。改名后每个类/trait 各自持有一份自己的字段初始化器，实例化时按继承链与 trait
     // 顺序全部执行。
     bool hasFieldDefaults = false;
+    // ★ 省略初值的成员（value == nullptr）没有默认值可注入：它们必须由构造期赋值。
     for (auto& p : expr->instanceProperties) {
-        if (!dynamic_cast<LambdaExpr*>(p.value.get())) { hasFieldDefaults = true; break; }
+        if (p.value && !dynamic_cast<LambdaExpr*>(p.value.get())) { hasFieldDefaults = true; break; }
     }
     if (hasFieldDefaults) {
         auto initBody = std::make_shared<Block>(std::vector<std::unique_ptr<Expr>>());
@@ -3821,7 +3822,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     // 触发 "Property 'x' already defined"）。因此 isInitMethod 只对 <fieldinit> 生效。
     std::vector<ClassDefExpr::PropertyDef*> fieldsToInit;
     for (auto& p : expr->instanceProperties) {
-        if (!dynamic_cast<LambdaExpr*>(p.value.get())) {
+        if (p.value && !dynamic_cast<LambdaExpr*>(p.value.get())) {
             fieldsToInit.push_back(&p);
         }
     }

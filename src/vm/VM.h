@@ -31,6 +31,9 @@ struct CallFrame {
     Value selfContext = Value::none();
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none(); // ★ JIT 返回值锚点，防止即时释放
+    // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
+    //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
+    bool checkRequiredOnReturn = false;
     
     std::chrono::time_point<std::chrono::steady_clock> startTime;
     double childTimeMs = 0.0;
@@ -163,6 +166,9 @@ public:
     static ObjClosure* findInitMethod(ObjClass* cls);
     void runFieldInitializers(ObjClass* cls, const Value& self);
     void runFieldInitializersAndInit(ObjClass* cls, const Value& self, const std::vector<Value>& initArgs);
+    // ★ 构造收口检查：省略初值的成员（类体只写名字、没有 = expr）必须已由构造期赋值
+    void checkRequiredMembersInitialized(ObjClass* cls, const Value& self);
+
 
     // ★ 构造快照（docs/OOP_MODEL_DESIGN.md §2.4）：类体里的每个成员定义 = 构造时对这个实例
     //   求值一次。把类上的实例成员模板抄进刚造好的实例：没有捕获的闭包抄指针（可观察等价，

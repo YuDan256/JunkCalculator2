@@ -1,6 +1,6 @@
 // inflate 模块向量测试 + 确定性变异 fuzz。
 //
-// 向量来源：data/codec_vectors/vectors.json，由 data/codec_vectors/generate.py
+// 向量来源：test/http_tests/data/codec_vectors/vectors.json，由 test/http_tests/data/codec_vectors/generate.py
 // 用 CPython 自带的 zlib（RFC 1950/1951/1952 的参考实现）现场生成 —— 解压侧是
 // JC2 自己手写的容器层 + src/utils/deflate/Deflate.cpp 的裸 DEFLATE 解码器，
 // 两套独立实现互为对拍。
@@ -41,7 +41,7 @@ _next(st: any) -> int = {
     return st[0]
 }
 
-_loadVectors() -> any = return json.parse(io.readFile("data/codec_vectors/vectors.json"))
+_loadVectors() -> any = return json.parse(io.readFile("test/http_tests/data/codec_vectors/vectors.json"))
 
 // v["kind"] 是 positive/negative，v["container"] 才是 deflate/zlib/gzip；
 // 空串表示"不筛选"。

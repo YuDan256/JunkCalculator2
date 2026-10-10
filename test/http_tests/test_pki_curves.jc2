@@ -1,10 +1,10 @@
 // P-384/P-521 曲线、SHA-384/512 与 SHA-384/512 证书链的官方向量测试。
 //
 // 夹具（逐字节抄自官方来源，出处与自校验见各自 notes / manifest.md）：
-//   data/crypto_vectors/pki/sha2_vectors.json         FIPS 180-4 的 SHA-384/512（含 111/112/127/128/129 边界）
-//   data/crypto_vectors/pki/ecdsa_p384_p521.json      NIST CAVP SigVer 的 P-384/SHA-384 与 P-521/SHA-512，
+//   test/http_tests/data/crypto_vectors/pki/sha2_vectors.json         FIPS 180-4 的 SHA-384/512（含 111/112/127/128/129 边界）
+//   test/http_tests/data/crypto_vectors/pki/ecdsa_p384_p521.json      NIST CAVP SigVer 的 P-384/SHA-384 与 P-521/SHA-512，
 //                                                     外加 CAVP ECDH 的 P-384/P-521 各 2 组
-//   data/crypto_vectors/pki/*.der                     4 条链：纯 P-384、P-521 中间+P-384 叶、
+//   test/http_tests/data/crypto_vectors/pki/*.der                     4 条链：纯 P-384、P-521 中间+P-384 叶、
 //                                                     SHA-384 RSA、SHA-512 RSA
 //
 // 证书有效期统一 2020-01-01→2035-01-01，校验时刻固定 1717200000（2024-06-01T00:00:00Z）。
@@ -14,9 +14,9 @@ import bytes
 import json
 import io
 
-_pki() = return json.parse(io.readFile("data/crypto_vectors/pki/ecdsa_p384_p521.json"))
-_sha2() = return json.parse(io.readFile("data/crypto_vectors/pki/sha2_vectors.json"))
-_der(name: string) -> string = return bytes.readFile("data/crypto_vectors/pki/" + name).toHex()
+_pki() = return json.parse(io.readFile("test/http_tests/data/crypto_vectors/pki/ecdsa_p384_p521.json"))
+_sha2() = return json.parse(io.readFile("test/http_tests/data/crypto_vectors/pki/sha2_vectors.json"))
+_der(name: string) -> string = return bytes.readFile("test/http_tests/data/crypto_vectors/pki/" + name).toHex()
 
 // ─── SHA-384 / SHA-512 ────────────────────────────────────────
 

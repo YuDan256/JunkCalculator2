@@ -1,6 +1,6 @@
 // X.509 / P-256 / RSA 验签测试（P1）。
 //
-// 夹具在 data/crypto_vectors/x509/（生成方式与逐条期望见 manifest.md）。
+// 夹具在 test/http_tests/data/crypto_vectors/x509/（生成方式与逐条期望见 manifest.md）。
 // 全部离线、与机器无关：有效期判定统一用固定时间 1717200000（2024-06-01T00:00:00Z）。
 //
 // 向量来源：
@@ -14,7 +14,7 @@ import bytes
 
 NOW = 1717200000
 
-_der(name: string) -> string = return bytes.readFile("data/crypto_vectors/x509/" + name + ".der").toHex()
+_der(name: string) -> string = return bytes.readFile("test/http_tests/data/crypto_vectors/x509/" + name + ".der").toHex()
 
 _derList(names: list) -> list = {
     out = @[]

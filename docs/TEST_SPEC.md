@@ -1,6 +1,6 @@
 # JC2 Test Suite Specification (测试规范)
 
-为了保证 Junk Calculator 2 (JC2) 的稳定性和可维护性，所有位于 `tests/` 目录下的测试脚本应遵循以下统一规范。
+为了保证 Junk Calculator 2 (JC2) 的稳定性和可维护性，所有位于 `test/tests/` 目录下的测试脚本应遵循以下统一规范。
 
 ## 1. 文件命名 (File Naming)
 * 所有测试文件必须以 `test_` 开头，并以 `.jc2` 作为扩展名。

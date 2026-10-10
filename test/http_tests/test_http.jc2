@@ -4,13 +4,13 @@
 //   - httpPlanRedirect：绝对/相对 Location、跳转去重用的规范化、https→http 降级拒绝；
 //   - TlsSocket 不可达时的类型化错误。
 //
-// 解析用例全部喂**录制下来的真实响应字节**（data/http_vectors/，出处见 manifest.json），
+// 解析用例全部喂**录制下来的真实响应字节**（test/http_tests/data/http_vectors/，出处见 manifest.json），
 // 不依赖网络。内部命名空间 _Http 不导出，测试只走公开面。
 
 import http
 import io
 
-_fixture(name: string) -> string = return io.readFile("data/http_vectors/" + name)
+_fixture(name: string) -> string = return io.readFile("test/http_tests/data/http_vectors/" + name)
 
 test_internals_are_not_exported() = {
     assert(!("_Http" in http), "the internal parser namespace must not be exported")
@@ -194,7 +194,7 @@ test_unreachable_hosts_raise_typed_errors()
 // 以下为新增（既有断言一条未改）：响应定界 / CL 与 chunked 边界 /
 // gzip+deflate 解码 / 方法-重定向规划 / 坏负载的类型化错误
 //
-// 新增夹具全部由 data/http_vectors/generate_http_vectors.py 生成
+// 新增夹具全部由 test/http_tests/data/http_vectors/generate_http_vectors.py 生成
 // （manifest_extra.json 里 source=(synthetic)、constructed_for_test=true）。
 // ═══════════════════════════════════════════════════════════════
 

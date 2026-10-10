@@ -1,6 +1,6 @@
 // TLS 1.3 客户端测试（P2）—— 全部离线，基于 RFC 8448 的官方握手轨迹回放。
 //
-// 轨迹来源：data/crypto_vectors/tls/rfc8448.json（逐字节抄自 RFC 8448，含出处与自校验说明）。
+// 轨迹来源：test/http_tests/data/crypto_vectors/tls/rfc8448.json（逐字节抄自 RFC 8448，含出处与自校验说明）。
 // 回放方式：注入轨迹里的 clientHello / x25519 私钥，让客户端与轨迹"同一个 ClientHello + 同一对
 // 密钥"，从而可以逐项断言：记录层、密钥调度、转录哈希、Finished、CertificateVerify、应用数据。
 //
@@ -12,7 +12,7 @@ import crypto
 import json
 import io
 
-_fx() = return json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))
+_fx() = return json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))
 _simple() = return _fx()["simple_1rtt"]
 
 _hexByte(v: int) -> string = {

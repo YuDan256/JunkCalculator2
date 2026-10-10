@@ -315,8 +315,16 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
 endif()
 
 set(SYNC_CMD_TESTS "")
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
-    set(SYNC_CMD_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/tests" "$<TARGET_FILE_DIR:JunkCalculator2>/tests")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/tests")
+    set(SYNC_CMD_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/tests")
+endif()
+
+# http_tests (vector/network tests + their fixtures) is synced to the build tree for
+# local development only; it is NOT part of the release package. Users download
+# JunkCalculator2-<ver>-http_tests.zip on demand and unpack it at the package root.
+set(SYNC_CMD_HTTP_TESTS "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/http_tests")
+    set(SYNC_CMD_HTTP_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/http_tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/http_tests")
 endif()
 
 add_custom_target(SyncResources ALL
@@ -324,7 +332,8 @@ add_custom_target(SyncResources ALL
     ${SYNC_CMD_MODULES}
     ${SYNC_CMD_EXAMPLES}
     ${SYNC_CMD_TESTS}
-    COMMENT "Syncing resource directories (data, modules, examples, tests) to build output..."
+    ${SYNC_CMD_HTTP_TESTS}
+    COMMENT "Syncing resource directories (data, modules, examples, test/tests, test/http_tests) to build output..."
 )
 add_dependencies(SyncResources JunkCalculator2)
 
@@ -347,10 +356,20 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples")
     install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/examples" DESTINATION bin)
 endif()
-# ★ Make sure tests are included in the released ZIP!
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests")
-    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/tests" DESTINATION bin)
+# Make sure the always-on tests are included in the released ZIP.
+# test/http_tests and test/jit_tests are NOT packaged: the former is an on-demand
+# download, the latter is JIT-specific.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/tests")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test/tests" DESTINATION bin/test/tests)
 endif()
+
+# Optional http_tests attachment (tests + vector fixtures) for on-demand download:
+#   cmake --build <build-dir> --target http_tests_package
+add_custom_target(http_tests_package
+    COMMAND ${CMAKE_COMMAND} -E tar cf "${CMAKE_BINARY_DIR}/JunkCalculator2-${PROJECT_VERSION}-http_tests.zip" --format=zip test/http_tests
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    COMMENT "Packaging the optional http_tests bundle")
+
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/README.md")
     install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/README.md" DESTINATION .)

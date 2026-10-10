@@ -377,4 +377,4 @@ local/
 .commit_msg.txt
 
 # JIT 测试结果（回归测试产物）
-jit_tests/results/
+test/jit_tests/results/

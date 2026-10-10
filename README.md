@@ -99,6 +99,7 @@ JC2 standard libraries loaded via `import`:
 ### Tooling
 - **Semantic highlighting**: token spans now come from the source text (multi-line strings and comments no longer bleed into the next line) and f-string `{...}` interpolations are coloured as expressions.
 - **VS Code extension 6.4.0**, bundled help re-synced.
+- **Test layout**: suites now live under `test/`; `jc2 test test/tests` ships in the package, while `test/http_tests` (vector and network tests plus their fixtures) is an on-demand download.
 
 ## Building
 
@@ -157,7 +158,10 @@ Global flags (appendable to any command):
     +-- docs/                       Design documentation (JIT, VM, Extension API, ...)
     +-- data/                       Bundled data (help documentation, icon, prime table)
     +-- examples/                   Showcase scripts
-    +-- tests/                      Automated test script suite
+    +-- test/                       Test scripts (see below)
+        +-- tests/                  Always-on suite (shipped in the package)
+        +-- jit_tests/              JIT-specific suite (optional)
+        +-- http_tests/             Vector/network suite + fixtures (optional download)
     +-- jc2-language/               VS Code Language Support Extension
 
 ---

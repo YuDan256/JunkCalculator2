@@ -70,7 +70,7 @@ _mutateText(s: string, st: any) -> string = {
 // ─── TLS 记录/握手 fuzz ───────────────────────────────────────
 
 _tlsRecords() -> any = {
-    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))
+    fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))
     simple = fx["simple_1rtt"]
     return @[
         simple["server_hello_record"],
@@ -87,7 +87,7 @@ _tlsRecords() -> any = {
 }
 
 test_tls_fuzz_never_crashes_or_lies() = {
-    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
     records = _tlsRecords()
     st = @[1]
     rounds = 0
@@ -130,7 +130,7 @@ test_tls_fuzz_never_crashes_or_lies()
 test_feed_hex_contract_is_a_caller_error() = {
     // feed 的参数是十六进制字符串：奇数长度/非十六进制属于**调用方**错误，
     // 用 TlsError 抛出是契约的一部分（网络字节永远经 unhex 合法化，不受对端影响）。
-    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
     c = tls.Client({"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
@@ -151,7 +151,7 @@ test_feed_hex_contract_is_a_caller_error()
 test_tls_fuzz_after_handshake() = {
     // 完整握完手之后再喂变异记录：只能被当成"受保护记录解不开"或应用数据，
     // 不允许把畸形输入当成合法数据静默吞掉后还报 ok。
-    fx = json.parse(io.readFile("data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
+    fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
     st = @[99]
     for (roundIdx in range(200)) {
         c = tls.Client({
@@ -184,9 +184,9 @@ test_tls_fuzz_after_handshake()
 
 test_http_parser_fuzz() = {
     bases = @[
-        io.readFile("data/http_vectors/chunked_example_org.http"),
-        io.readFile("data/http_vectors/chunked_utf8.http"),
-        io.readFile("data/http_vectors/content_length_apple.http")
+        io.readFile("test/http_tests/data/http_vectors/chunked_example_org.http"),
+        io.readFile("test/http_tests/data/http_vectors/chunked_utf8.http"),
+        io.readFile("test/http_tests/data/http_vectors/content_length_apple.http")
     ]
     // 未变异的基线：必须真的解析出 200 + 完整正文（挡住"整体失效但断言仍成立"）
     baseline = http.httpParseResponse(bases[0], "https://example.org/")

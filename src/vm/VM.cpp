@@ -623,7 +623,6 @@ void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
         if (!pd) continue;
         if (!pd->is_field_decl) continue;          // 只查「只写名字、没有初值」的声明
         if (pd->is_static) continue;               // static 住类袋子
-        if (pd->is_local) continue;                // 私有成员暂不覆盖（见提交信息中的独立缺陷）
         if (pd->val.isFunctionClosure()) continue; // 方法不进实例
 
         const std::string shown = plainOf(key);
@@ -7235,8 +7234,23 @@ Value VM::run(int targetFrameDepth) {
                             JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
                         }
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
-                        // 直接就地改写命中的描述符（实例属性 / 类表 / trait 表均适用）
-                        *pdv = val;
+                        // ★ 省略初值的私有字段：类表里那份只是「声明登记」（is_field_decl），
+                        //   实例上还没有对应存储。就地改写会写到类上、跨实例共享，故改为先在
+                        //   实例上建立该字段再写入（带初值的字段由 <fieldinit> 建好，走不到这里）。
+                        bool classFieldDecl = false;
+                        if (inst && foundIn) {
+                            const std::string kOther = manglePrivate(foundIn->classId, keyVal.asString());
+                            auto c1 = foundIn->properties.find(mangledName);
+                            auto c2 = foundIn->properties.find(kOther);
+                            classFieldDecl = (c1 != foundIn->properties.end() && c1->second.is_field_decl) ||
+                                             (c2 != foundIn->properties.end() && c2->second.is_field_decl);
+                        }
+                        if (classFieldDecl) {
+                            inst->ownPut(mangledName, val, false, true);
+                        } else {
+                            // 其余情形（实例属性 / 私有 static / trait 表）保持就地改写
+                            *pdv = val;
+                        }
                     } else {
                         if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
                         inst->ownPut(mangledName, val, op == OpCode::DEFINE_PRIVATE_CONST, true);

@@ -41,8 +41,8 @@
 *   memory   : 动态类型系统基类、容器引用模型及垃圾回收器（src/memory）。
 *   math     : 大整数基础结构、高精度有理数、复平面及矩阵线性代数底层算理（src/math）。
 *   cas      : 计算机代数推导过程、微积分算法及极限评估器（src/cas）。
-*   mod      : C++ 原生扩展模块层（src/lib/*，含 src/lib/internal/{crypto,net,codec}）。
-*   lib      : JC2 语言标准库层（由 .jc2 脚本编写的公共库，modules/*.jc2）。
+*   mod      : JC2 脚本标准库层（modules/*.jc2 中由脚本编写的公共模块）。
+*   lib      : C++ 原生扩展模块层（src/lib/*，含 src/lib/internal/{crypto,net,codec}）。
 *   lang     : 跨层语言语义决策（同时涉及 frontend / compiler / vm 的语法或语义变更）。
 *   utils    : 通用工具层（src/utils/deflate、src/utils/fmt、src/utils/json）。
 *   lsp      : 语言服务与编辑器支持（src/utils/lsp 与 jc2-language 扩展）。

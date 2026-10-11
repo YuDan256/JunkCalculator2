@@ -222,3 +222,45 @@ test_graph_algorithms() = {
 }
 
 test_graph_algorithms()
+
+// 强连通分量（Kosaraju）：经典两团 + 桥、DAG、单点、无向图报错、与双向可达一致
+test_scc() = {
+    g = discrete.Graph(true)
+    g.addEdge(1, 2, 0); g.addEdge(2, 3, 0); g.addEdge(3, 1, 0)      // {1,2,3}
+    g.addEdge(4, 5, 0); g.addEdge(5, 6, 0); g.addEdge(6, 4, 0)      // {4,5,6}
+    g.addEdge(3, 4, 0)                                              // 桥
+    comps = g.stronglyConnectedComponents()
+    assert(comps.len() == 2, "two SCCs, got " + str(comps.len()))
+    sizes = @[]
+    for (c in comps) { sizes.push(c.len()) }
+    sizes = sizes.sort()
+    assert(sizes == @[3, 3], "sizes are 3 and 3, got " + str(sizes))
+
+    // 每个分量内部两两双向可达
+    for (c in comps) {
+        for (u in c) {
+            for (v in c) {
+                assert(u == v || (g.findPath(u, v).len() > 0 && g.findPath(v, u).len() > 0), "mutually reachable inside a component")
+            }
+        }
+    }
+    // 跨分量不可能双向可达
+    assert(g.findPath(1, 6).len() > 0 && g.findPath(6, 1).len() == 0, "one-way across components")
+
+    // DAG：每个顶点自成分量
+    d = discrete.Graph(true)
+    d.addEdge("a", "b", 0); d.addEdge("b", "c", 0)
+    assert(d.stronglyConnectedComponents().len() == 3, "DAG has one SCC per vertex")
+
+    // 单点与孤立点
+    s1 = discrete.Graph(true); s1.addVertex("x")
+    assert(s1.stronglyConnectedComponents().len() == 1, "single vertex")
+
+    // 无向图不允许
+    u = discrete.Graph(false); u.addEdge(1, 2, 1)
+    threw = false
+    try { u.stronglyConnectedComponents() } catch (e) { threw = true }
+    assert(threw, "undirected graphs are rejected")
+}
+
+test_scc()

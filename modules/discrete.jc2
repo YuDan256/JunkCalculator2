@@ -697,6 +697,55 @@ class Graph {
         return {dist: dist, prev: prev, negativeCycle: negCycle}
     }
 
+    // Kosaraju 强连通分量：反图 + 两次 DFS。O(V + E)
+    stronglyConnectedComponents() -> list = {
+        if (!self.directed) throw GraphError("stronglyConnectedComponents() requires a directed graph.")
+        vs = self.vertices()
+
+        // 反图
+        radj = {}
+        for (v in vs) { radj[v] = @[] }
+        for (u in toList(self.adj.keys())) {
+            for (e in self.adj[u]) { radj[e[0]].push(u) }
+        }
+
+        // 第一趟：原图上按完成时间入栈
+        visited = @{}
+        order = @[]
+        for (v in vs) { if (!(v in visited)) self._finishOrder(v, visited, order) }
+
+        // 第二趟：按完成时间逆序在反图上收集分量
+        seen = @{}
+        comps = @[]
+        i = order.len() - 1
+        while (i >= 0) {
+            v = order[i]
+            if (!(v in seen)) {
+                comp = @[]
+                self._collectComponent(v, radj, seen, comp)
+                comps.push(comp)
+            }
+            i -= 1
+        }
+        return comps
+    }
+
+    local _finishOrder(v: any, visited: any, order: list) = {
+        visited.add(v)
+        if (v in self.adj) {
+            for (e in self.adj[v]) { if (!(e[0] in visited)) self._finishOrder(e[0], visited, order) }
+        }
+        order.push(v)
+    }
+
+    local _collectComponent(v: any, radj: dict, seen: any, comp: list) = {
+        seen.add(v)
+        comp.push(v)
+        if (v in radj) {
+            for (u in radj[v]) { if (!(u in seen)) self._collectComponent(u, radj, seen, comp) }
+        }
+    }
+
 }
 
 // ┌────────────────────────────────────────────────────────┐
@@ -837,6 +886,7 @@ try {
                                                             index; elements are never
                                                             shifted, so no O(n) dequeue)
     Graph.hasCycle                                          O(V + E)
+    Graph.stronglyConnectedComponents (Kosaraju, two DFS)   O(V + E)
     Graph.kruskal (binary heap + UnionFind)                 O(E log E)
     Graph.bellmanFord (V-1 relaxation rounds)               O(V * E)
     Graph.floydWarshall (all pairs)                         O(V^3)

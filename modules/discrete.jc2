@@ -629,6 +629,59 @@ class Relation {
     __contains__(pair: any) -> bool = return pair in self.R
     __len__() -> int                = return self.R.len()
     __str__() -> string             = return f"Relation(|S|={self.S.len()}, |R|={self.R.len()})"
+    // ── 定义域 / 值域 / 像与原像（序对以 @[a, b] 存放，直接解构）──
+    domain() -> set = {
+        out = @{}
+        for (p in self.R) { @[a, b] = p; out.add(a) }
+        return out
+    }
+
+    range() -> set = {
+        out = @{}
+        for (p in self.R) { @[a, b] = p; out.add(b) }
+        return out
+    }
+
+    image(subset: any) -> set = {
+        out = @{}
+        for (p in self.R) { @[a, b] = p; if (a in subset) { out.add(b) } }
+        return out
+    }
+
+    preimage(subset: any) -> set = {
+        out = @{}
+        for (p in self.R) { @[a, b] = p; if (b in subset) { out.add(a) } }
+        return out
+    }
+
+    // ── 函数性质（陪域取本关系的全集 S）──
+    // 函数：每个源至多一个像；单射：每个像至多一个源；满射：值域恰为 S
+    isFunction() -> bool = {
+        seen = {}
+        for (p in self.R) {
+            @[a, b] = p
+            if (a in seen) { if (!(seen[a] == b)) return false } else { seen[a] = b }
+        }
+        return true
+    }
+
+    isInjective() -> bool = {
+        seen = {}
+        for (p in self.R) {
+            @[a, b] = p
+            if (b in seen) { if (!(seen[b] == a)) return false } else { seen[b] = a }
+        }
+        return true
+    }
+
+    isSurjective() -> bool = {
+        r = self.range()
+        for (x in r) { if (!(x in self.S)) return false }
+        return r.len() == self.S.len()
+    }
+
+    isBijective() -> bool = return self.isFunction() && self.isInjective() && self.isSurjective()
+
 }
 
 // ┌────────────────────────────────────────────────────────┐

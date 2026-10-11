@@ -459,3 +459,42 @@ test_prop_parse() = {
     }
 }
 test_prop_parse()
+
+// Relation：定义域/值域/像/原像 与函数性质四问
+test_relation_functions() = {
+    S = toSet(@[1, 2, 3])
+    r = discrete.Relation(S)
+    r.addPair(1, 2); r.addPair(2, 3)
+    assert(r.domain() == toSet(@[1, 2]), "domain")
+    assert(r.range() == toSet(@[2, 3]), "range")
+    assert(r.image(toSet(@[1])) == toSet(@[2]), "image of a subset")
+    assert(r.preimage(toSet(@[3])) == toSet(@[2]), "preimage of a subset")
+    assert(r.isFunction(), "each source has at most one image")
+    assert(r.isInjective(), "distinct sources have distinct images")
+    assert(!r.isSurjective(), "3 is not in the range")
+    assert(!r.isBijective(), "not bijective")
+
+    // 满射：值域覆盖 S（此处 S = {1,2}）
+    onto = discrete.Relation(toSet(@[1, 2]))
+    onto.addPair(1, 1); onto.addPair(1, 2)
+    assert(onto.isSurjective(), "range covers the codomain")
+    assert(!onto.isFunction(), "1 maps to both 1 and 2, so it is not a function")
+
+    // 双射：S = {1,2}，1->2，2->1
+    bij = discrete.Relation(toSet(@[1, 2]))
+    bij.addPair(1, 2); bij.addPair(2, 1)
+    assert(bij.isFunction() && bij.isInjective() && bij.isSurjective() && bij.isBijective(), "bijection")
+
+    // 非单射：1->1，2->1
+    dup = discrete.Relation(toSet(@[1, 2]))
+    dup.addPair(1, 1); dup.addPair(2, 1)
+    // 值域是 {1}，不覆盖陪域 S = {1,2}，故既非单射也非满射
+    assert(dup.range() == toSet(@[1]), "range of the duplicate-image relation")
+    assert(dup.isFunction() && !dup.isInjective() && !dup.isSurjective() && !dup.isBijective(), "not injective, not onto")
+
+    // 空关系
+    empty = discrete.Relation(toSet(@[1, 2]))
+    assert(empty.domain().len() == 0 && empty.range().len() == 0, "empty relation has empty domain and range")
+    assert(empty.isFunction() && empty.isInjective() && !empty.isSurjective(), "empty relation is a function, not onto")
+}
+test_relation_functions()

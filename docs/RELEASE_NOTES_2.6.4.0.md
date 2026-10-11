@@ -27,11 +27,16 @@ engine, and a slimmer release package that ships the always-on test suite only.
 * `crypto`: SHA-256/384/512, AES-GCM, X25519, P-256/384/521 and X.509 chain verification.
 * `inflate`: zero-dependency gzip / zlib decoding.
 * `Set` aggregates: `sum`, `prod`, `max`, `min`, `span`, `any` and `all` now work on sets.
+* **`isapprox` for matrices**: `isapprox(A, B[, rtol[, atol]])` compares matrices of the same shape elementwise, with the same tolerance rule as for numbers; a shape mismatch yields `false`.
+
 
 ### Performance & Fixes
 * Regex is linear: the per-position dedup table is reused and a literal-prefix prefilter skips non-matching regions — a real 160 KB page dropped from about 86 s to 0.013 s.
 * Catch handlers keep live values: a parameter read inside `catch` no longer comes back as `none` after a call in the `try` body.
 * GC: dangling-object fixes for instances, class member tables and closure copies.
+* **Matrix integer powers**: `A^n` no longer comes back transposed — a row-major/column-major mismatch in the real-to-complex conversion made `A^1` differ from `A` and `A^-1` the transpose of `inv(A)`. The sibling symbolic conversions were fixed as well.
+* **Native class methods**: `math.BaseNum.fromString(s, r)` works again (native class methods were registered without the `is_static` flag the class-call dispatch requires).
+
 
 ### CAS
 * Broader factoring and solving (perfect powers, multivariate forms, `RootOf` for degree >= 4), branch-safe rewrite guards, and canonical results from `diff` / `integ`.
@@ -47,6 +52,8 @@ engine, and a slimmer release package that ships the always-on test suite only.
 
 ### Packaging
 * The release zip ships the always-on suite only (43 tests); the vector/network suite and its fixtures are a separate on-demand download. The main package shrank from 8.59 MB to 4.57 MB.
+* The always-on suite was consolidated from 57 to 43 files with no test lost (822 test functions and 1621 assertions before and after).
+
 
 ***
 

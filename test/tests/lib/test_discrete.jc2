@@ -264,3 +264,43 @@ test_scc() = {
 }
 
 test_scc()
+
+// DPLL 风格搜索：与真值表法逐例对拍（可满足性必须完全一致），并验证返回的赋值确实满足公式
+test_prop_dpll_search() = {
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b"); c = mk("c")
+
+    cases = @[
+        a,                          // 可满足
+        a & -a,                     // 矛盾
+        a | -a,                     // 重言
+        a.implies(b),               // 可满足
+        (a & b) | (-a & c),         // 可满足
+        (a | b) & (-a | b) & (a | -b) & (-a | -b),   // 四式合取：矛盾
+        a.iff(b),                   // 可满足
+        (a.implies(b)) & (b.implies(c)) & a & -c    // 矛盾（传递性）
+    ]
+    for (f in cases) {
+        want = f.isSatisfiable()
+        got = f.satisfiableBySearch()
+        assert(got.found == want, "search matches the truth table: want " + str(want) + " got " + str(got.found))
+        if (got.found) {
+            assert(f.eval(got.env) == true, "the returned assignment satisfies the formula")
+        }
+    }
+    assert(!(a & -a).satisfiableBySearch().found, "explicit contradiction is unsatisfiable")
+    assert((a | -a).satisfiableBySearch().found, "explicit tautology is satisfiable")
+
+    // 剪枝的效果：矛盾式在大变量数下也应迅速返回
+    big = mk("v0") & -mk("v0")
+    i = 1
+    while (i < 12) { big = big & (mk("v" + str(i)) | -mk("v" + str(i))); i += 1 }
+    r = big.satisfiableBySearch()
+    assert(!r.found, "a formula containing v0 & !v0 is unsatisfiable regardless of other clauses")
+
+    // 可满足式：应给出满足赋值
+    f2 = (mk("x") | mk("y")) & (-mk("x") | mk("z")) & mk("y")
+    r2 = f2.satisfiableBySearch()
+    assert(r2.found && f2.eval(r2.env) == true, "witness assignment verified")
+}
+test_prop_dpll_search()

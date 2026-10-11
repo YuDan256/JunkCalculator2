@@ -49,6 +49,42 @@ combinations(arr: any, k: int | float) -> list = {
 // │ 2. PROPOSITIONAL LOGIC (class Prop)                    │
 // └────────────────────────────────────────────────────────┘
 
+// 三值求值（模块级私有函数）：未赋值变量返回 none，用于搜索剪枝
+local _propEval3(node: any, env: dict) -> any = {
+    tp = node.tp
+    if (tp == "var") {
+        if (node.a in env) return env[node.a] ? true : false
+        return none
+    }
+    if (tp == "not") {
+        v = _propEval3(node.a, env)
+        if (v is none) return none
+        return v ? false : true
+    }
+    ea = _propEval3(node.a, env)
+    eb = _propEval3(node.b, env)
+    if (tp == "and") {
+        if (ea == false || eb == false) return false
+        if (ea == true && eb == true) return true
+        return none
+    }
+    if (tp == "or") {
+        if (ea == true || eb == true) return true
+        if (ea == false && eb == false) return false
+        return none
+    }
+    if (tp == "imp") {
+        if (ea == false || eb == true) return true
+        if (ea == true && eb == false) return false
+        return none
+    }
+    if (tp == "iff") {
+        if (ea is none || eb is none) return none
+        return ea == eb ? true : false
+    }
+    return none
+}
+
 class Prop {
     init(tp: string, a: any, b: any) = {
         self.tp = tp
@@ -163,6 +199,35 @@ class Prop {
         if (self.tp == "var" || self.tp == "not") return self.a == other.a
         return (self.a == other.a) && (self.b == other.b)
     }
+    // 三值求值：未赋值的变量返回 none（用于搜索剪枝）
+    // DPLL 风格的分裂搜索：部分赋值下先做三值化简，已判假的分支不再展开；
+    // 找到第一组可满足赋值即返回。返回 {found: bool, env: dict}
+    satisfiableBySearch() -> dict = {
+        varList = toList(self.vars()).sort()
+        return self._search(varList, 0, {})
+    }
+
+    local _search(vars: list, idx: int, env: dict) -> dict = {
+        partial = _propEval3(self, env)
+        if (partial == false) return {found: false, env: {}}      // 剪枝：该分支已假
+        if (partial == true) {
+            // 剪枝：已真 —— 把剩余未定变量补成 false，保证返回的是一组完整赋值（可直接交给 eval）
+            i = idx
+            while (i < vars.len()) { if (!(vars[i] in env)) env[vars[i]] = false; i += 1 }
+            return {found: true, env: env}
+        }
+        if (idx >= vars.len()) return {found: false, env: {}}
+
+        v = vars[idx]
+        env[v] = true
+        r = self._search(vars, idx + 1, env)
+        if (r.found) return r
+        env[v] = false
+        r2 = self._search(vars, idx + 1, env)
+        if (r2.found) return r2
+        return {found: false, env: {}}
+    }
+
 }
 
 Var(name: string) -> Prop = return Prop("var", name, "null")
@@ -893,6 +958,7 @@ try {
     Graph.dijkstra (binary heap, lazy deletion)             O((V + E) log V)
     Graph.shortestPath                                      dijkstra + O(V) rebuild
     Relation.transitiveClosure / reflexive / symmetric      O(n^3) / O(n^2) / O(n^2)
+    Prop negation is the unary minus (-p); !p coerces to bool
     Prop.table / isTautology / isContradiction              exponential in the number
                                                             of distinct variables
 )DOC")

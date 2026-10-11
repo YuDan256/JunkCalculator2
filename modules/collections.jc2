@@ -533,6 +533,56 @@ class BST {
 
     __str__() -> string = return "BST(size=" + str(self.size()) + ")"
 
+    // 最小 / 最大（空树返回 none）
+    min() -> any = {
+        if (self.root == none) return none
+        curr = self.root
+        while (curr.left != none) { curr = curr.left }
+        return curr.val
+    }
+
+    max() -> any = {
+        if (self.root == none) return none
+        curr = self.root
+        while (curr.right != none) { curr = curr.right }
+        return curr.val
+    }
+
+    // 中序后继：比 val 大的最小元素；不存在返回 none
+    successor(val: any) -> any = {
+        curr = self.root
+        succ = none
+        while (curr != none) {
+            if (val < curr.val) { succ = curr.val; curr = curr.left }
+            else { curr = curr.right }
+        }
+        return succ
+    }
+
+    // 删除：返回 true 表示树中确有该元素被移除
+    delete(val: any) -> bool = {
+        before = self._size
+        self.root = self._deleteNode(self.root, val)
+        return self._size < before
+    }
+
+    // 两子节点时用右子树最小元素替换，再递归删除该后继节点（其至多一个子节点，
+    // 因此 _size 只在真正摘除节点处减一，净效果恰好减一）
+    local _deleteNode(node: any, val: any) -> any = {
+        if (node == none) return none
+        if (val < node.val) { node.left = self._deleteNode(node.left, val) }
+        else if (val > node.val) { node.right = self._deleteNode(node.right, val) }
+        else {
+            if (node.left == none) { self._size -= 1; return node.right }
+            if (node.right == none) { self._size -= 1; return node.left }
+            succ = node.right
+            while (succ.left != none) { succ = succ.left }
+            node.val = succ.val
+            node.right = self._deleteNode(node.right, succ.val)
+        }
+        return node
+    }
+
 }
 
 

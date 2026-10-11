@@ -314,3 +314,47 @@ test_union_find() = {
 }
 
 test_union_find()
+
+// BST：min/max/successor 与三种删除情形（叶子 / 单子 / 双子），并与参考有序表比对
+test_bst_operations() = {
+    b = collections.BST()
+    assert(b.min() is none && b.max() is none, "empty tree has no min/max")
+
+    for (v in @[50, 30, 70, 20, 40, 60, 80, 65]) { b.insert(v) }
+    assert(b.min() == 20 && b.max() == 80, "min/max on a full tree")
+    assert(b.successor(50) == 60, "successor of an inner value")
+    assert(b.successor(40) == 50, "successor across subtrees")
+    assert(b.successor(80) is none, "no successor for the maximum")
+    assert(b.successor(10) == 20, "successor of a value smaller than everything")
+
+    // 叶子
+    assert(b.delete(20), "delete a leaf returns true")
+    assert(!b.contains(20) && b.size() == 7, "leaf removed, size 7")
+    // 单子（65 无子；删 60 后 65 顶上）
+    assert(b.delete(60), "delete a single-child node")
+    assert(!b.contains(60) && b.contains(65) && b.size() == 6, "child promoted")
+    // 双子（根 50：右子树最小为 65）
+    assert(b.delete(50), "delete a two-child node")
+    assert(!b.contains(50) && b.size() == 5, "root replaced by its successor")
+    assert(b.toList() == @[30, 40, 65, 70, 80], "in-order after deletions: " + str(b.toList()))
+    // 不存在的元素
+    assert(!b.delete(999), "deleting a missing value returns false")
+    assert(b.size() == 5, "size unchanged for a missing value")
+
+    // 与参考模型比对：随机序插入 + 逐个删除
+    b2 = collections.BST()
+    model = @[]
+    for (v in @[5, 2, 8, 1, 9, 3, 7, 4, 6]) { b2.insert(v); model.push(v) }
+    model = model.sort()          // sort() 返回排序后的新表，不改变原表
+    got = @[]
+    for (x in b2) { got.push(x) }
+    assert(got == model, "insertion order does not affect in-order")
+    for (v in @[5, 1, 9, 3]) { b2.delete(v) }
+    rest = @[]
+    for (v in model) { if (!(v == 5) && !(v == 1) && !(v == 9) && !(v == 3)) { rest.push(v) } }
+    got2 = @[]
+    for (x in b2) { got2.push(x) }
+    assert(got2 == rest && b2.size() == rest.len(), "after mixed deletions: " + str(got2))
+}
+
+test_bst_operations()

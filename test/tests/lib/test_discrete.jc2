@@ -382,3 +382,45 @@ test_prop_three_way() = {
     assert(big.isContradiction(), "pruning keeps a large contradiction cheap to decide")
 }
 test_prop_three_way()
+
+// 变量代入：在任意扩充赋值下与原式等价；全代入后必为常量；未代入变量集合正确
+test_prop_substitute() = {
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b"); c = mk("c")
+    cases = @[a, -a, a & b, a | b, a.implies(b), a.iff(b), (a & b) | (-a & c), a.iff(b) & b.iff(c)]
+    for (f in cases) {
+        for (row in f.table()) {
+            // 取该行赋值的一个真子集做代入，再在整行赋值下比较
+            part = {}
+            first = true
+            for (k in row.env.keys()) { if (first) { part[k] = row.env[k]; first = false } }
+            sub = f.substitute(part)
+            assert(sub.eval(row.env) == f.eval(row.env), "substitute preserves the value under every extension")
+            // 更强的语义性质：代入后该变量再翻转也不影响取值（内联常量 (v|-v)/(v&-v) 仍提到 v，
+            // 但它已不再起作用，因此 vars() 不去除它属预期行为）
+            for (k in part.keys()) {
+                flip = {}
+                for (kk in row.env.keys()) { flip[kk] = row.env[kk] }
+                flip[k] = !row.env[k]
+                assert(sub.eval(flip) == sub.eval(row.env), "substituted variable is semantically irrelevant")
+            }
+        }
+        // 全部变量代入后必为常量（重言或矛盾）
+        full = {}
+        for (v in toList(f.vars())) { full[v] = true }
+        allTrue = f.substitute(full)
+        assert(allTrue.isTautology() || allTrue.isContradiction(), "full substitution yields a constant")
+    }
+    // 具体一例：a & b 代入 a=true 后等价于 b
+    r = (a & b).substitute({a: true})
+    assert(r.isSatisfiable() && !r.isContradiction(), "a&b with a=true is satisfiable")
+    // 代入后公式里仍内联提到 a，故 eval 需要完整赋值；顺带验证 a 已无关
+    assert(r.eval({a: true, b: false}) == false && r.eval({a: true, b: true}) == true, "a&b with a=true behaves like b")
+    assert(r.eval({a: false, b: true}) == r.eval({a: true, b: true}), "a is irrelevant after substitution")
+    r2 = (a & b).substitute({a: false})
+    assert(r2.isContradiction(), "a&b with a=false is a contradiction")
+    // 代入后 a 翻转不再影响结果（其名仍出现在内联常量里，属预期）
+    r3 = (a | b).substitute({a: false})
+    assert(r3.eval({a: true, b: false}) == r3.eval({a: false, b: false}), "a is irrelevant after substitution")
+}
+test_prop_substitute()

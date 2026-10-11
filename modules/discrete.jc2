@@ -361,6 +361,22 @@ class Prop {
         return {sat: true, env: env}
     }
 
+    // 变量代入：把 env 中已赋值的变量替换为内联常量公式（true 用 (v | -v)、false 用 (v & -v)），
+    // 因此不需要引入新的节点类型，eval / cnf / dnf / 三个判定全部自动适用
+    substitute(env: dict) -> Prop = {
+        tp = self.tp
+        if (tp == "var") {
+            if (!(self.a in env)) return self
+            return env[self.a] ? (self | -self) : (self & -self)
+        }
+        if (tp == "not") return -(self.a.substitute(env))
+        if (tp == "and") return self.a.substitute(env) & self.b.substitute(env)
+        if (tp == "or")  return self.a.substitute(env) | self.b.substitute(env)
+        if (tp == "imp") return self.a.substitute(env).implies(self.b.substitute(env))
+        if (tp == "iff") return self.a.substitute(env).iff(self.b.substitute(env))
+        return self
+    }
+
 }
 
 Var(name: string) -> Prop = return Prop("var", name, "null")

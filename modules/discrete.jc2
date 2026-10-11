@@ -218,6 +218,80 @@ local _dpllSolve(clauses: list, assign: dict) -> dict = {
     return _dpllSolve(work, a2)
 }
 
+// ── 命题文本解析（递归下降）：优先级 <=> 最低，其次 =>，再 |、&、~，原子为变量或括号 ──
+// 字符串不支持大小比较（帮助：ordering throws），故字符分类一律用 contains。
+_ppSkip(st: dict) = {
+    while (st.pos < st.text.len()) {
+        c = st.text[st.pos]
+        if (c == " " || c == "\t" || c == "\n") { st.pos += 1 } else { break }
+    }
+}
+
+_ppMatch(st: dict, tok: string) -> bool = {
+    _ppSkip(st)
+    if (st.text.substr(st.pos, tok.len()) == tok) { st.pos += tok.len(); return true }
+    return false
+}
+
+_ppAtom(st: dict) -> any = {
+    _ppSkip(st)
+    if (_ppMatch(st, "(")) {
+        e = _ppIff(st)
+        if (!_ppMatch(st, ")")) throw ValueError("Prop.parse: missing ')' at position " + str(st.pos))
+        return e
+    }
+    if (_ppMatch(st, "!") || _ppMatch(st, "~")) return -(_ppAtom(st))
+    _ppSkip(st)
+    start = st.pos
+    letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
+    digits = "0123456789"
+    while (st.pos < st.text.len()) {
+        c = st.text[st.pos]
+        if (letters.contains(c)) { st.pos += 1 }
+        else if (st.pos > start && digits.contains(c)) { st.pos += 1 }
+        else { break }
+    }
+    if (st.pos == start) throw ValueError("Prop.parse: expected a variable or '(' at position " + str(start))
+    return Prop("var", st.text.substr(start, st.pos - start), none)
+}
+
+_ppNot(st: dict) -> any = {
+    if (_ppMatch(st, "!") || _ppMatch(st, "~")) return -(_ppNot(st))
+    return _ppAtom(st)
+}
+
+_ppAnd(st: dict) -> any = {
+    left = _ppNot(st)
+    while (_ppMatch(st, "&")) { left = left & _ppNot(st) }
+    return left
+}
+
+_ppOr(st: dict) -> any = {
+    left = _ppAnd(st)
+    while (_ppMatch(st, "|")) { left = left | _ppAnd(st) }
+    return left
+}
+
+_ppImp(st: dict) -> any = {
+    left = _ppOr(st)
+    while (true) {
+        if (_ppMatch(st, "=>")) { left = left.implies(_ppOr(st)) }
+        else if (_ppMatch(st, "->")) { left = left.implies(_ppOr(st)) }
+        else { break }
+    }
+    return left
+}
+
+_ppIff(st: dict) -> any = {
+    left = _ppImp(st)
+    while (true) {
+        if (_ppMatch(st, "<=>")) { left = left.iff(_ppImp(st)) }
+        else if (_ppMatch(st, "<->")) { left = left.iff(_ppImp(st)) }
+        else { break }
+    }
+    return left
+}
+
 class Prop {
     init(tp: string, a: any, b: any) = {
         self.tp = tp
@@ -377,7 +451,22 @@ class Prop {
         return self
     }
 
+    // 从文本解析命题（与 str() 互逆）：变量、括号、~ / !、&、|、=> / ->、<=> / <->
+    // 变量名以字母或下划线开头，可含数字
+
 }
+
+// 从文本解析命题（与 Prop 的 str() 互逆）：变量、括号、~ / !、&、|、=> / ->、<=> / <->
+// 变量名以字母或下划线开头，可含数字。以模块级函数提供：Prop 的实例成员无法从类上调用，
+// 静态成员虽可见但取回后不可调用（实测 Target is not callable），故这里用模块命名空间。
+parseProp(text: string) -> Prop = {
+    st = {text: text, pos: 0}
+    e = _ppIff(st)
+    _ppSkip(st)
+    if (st.pos < st.text.len()) throw ValueError("parseProp: unexpected trailing text at position " + str(st.pos))
+    return e
+}
+
 
 Var(name: string) -> Prop = return Prop("var", name, "null")
 

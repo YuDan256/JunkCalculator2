@@ -424,3 +424,38 @@ test_prop_substitute() = {
     assert(r3.eval({a: true, b: false}) == r3.eval({a: false, b: false}), "a is irrelevant after substitution")
 }
 test_prop_substitute()
+
+// 文本解析：与 str() 互逆（逐行对拍真值表），并覆盖别名、括号与错误输入
+test_prop_parse() = {
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b"); c = mk("c")
+    cases = @[a, -a, a & b, a | b, a.implies(b), a.iff(b), (a & b) | (-a & c), a.iff(b) & b.iff(c)]
+    for (f in cases) {
+        text = str(f)
+        back = discrete.parseProp(text)
+        for (row in f.table()) {
+            assert(back.eval(row.env) == row.result, "parse(str(f)) agrees on every row: " + text)
+        }
+        assert(back.isTautology() == f.isTautology(), "tautology preserved through parse/print")
+    }
+    // 别名与括号
+    x = discrete.parseProp("a -> b")
+    assert(x.eval({a: true, b: false}) == false, "'->' is implication")
+    y = discrete.parseProp("a <-> b")
+    assert(y.isTautology() == false && y.eval({a: true, b: true}) == true, "'<->' is equivalence")
+    z = discrete.parseProp("!(a & b) | c")
+    assert(z.eval({a: true, b: true, c: false}) == false, "'!' and '&' and '|' together")
+    assert(discrete.parseProp("~a").eval({a: true}) == false, "'~' is negation")
+    assert(discrete.parseProp("(a)").eval({a: true}) == true, "redundant parentheses")
+    assert(discrete.parseProp("a_1 & b2").vars().len() == 2, "identifiers may contain digits after the first char")
+    // 优先级：& 比 | 紧
+    p1 = discrete.parseProp("a | b & c")
+    assert(p1.eval({a: false, b: true, c: false}) == false, "& binds tighter than |")
+    // 错误输入
+    for (bad in @["", "a &", "(a", "a )", "a $ b"]) {
+        threw = false
+        try { discrete.parseProp(bad) } catch (e) { threw = true }
+        assert(threw, "rejects bad input: " + str(bad))
+    }
+}
+test_prop_parse()

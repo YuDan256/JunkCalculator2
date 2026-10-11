@@ -749,5 +749,15 @@ try {
   ──────────────────────
     GraphError      Graph algorithm preconditions (directedness, cycles).
     RelationError   Relation and equivalence-class preconditions.
+
+  Complexity
+  ──────────────────────
+    Graph.bfs / dfs / hasCycle / topSort / components      O(V + E)
+    Graph.findPath (BFS, unweighted)                        O(V + E)
+    Graph.dijkstra (binary heap, lazy deletion)             O((V + E) log V)
+    Graph.shortestPath                                      dijkstra + O(V) rebuild
+    Relation.transitiveClosure / reflexive / symmetric      O(n^3) / O(n^2) / O(n^2)
+    Prop.table / isTautology / isContradiction              exponential in the number
+                                                            of distinct variables
 )DOC")
 }

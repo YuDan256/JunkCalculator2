@@ -584,5 +584,22 @@ try {
   Errors
   ──────────────────────
     IndexError      pop / peek / dequeue on an empty container.
+
+  Complexity & Iteration
+  ──────────────────────
+    Stack          push/pop O(1); iteration is top-down.
+    Queue          enqueue/dequeue amortized O(1) (two-stack queue); iteration is
+                   front-to-back, across both internal stacks.
+    Deque          push/pop at either end amortized O(1) (half-transfer rebalance);
+                   iteration is left-to-right.
+    PriorityQueue  push/pop O(log n) (binary heap); iteration is in priority order,
+                   measured on a private copy so the queue itself is untouched.
+    BST            insert/contains O(h) for tree height h (worst case O(n) when the
+                   input is sorted; no rebalancing); iteration is in-order.
+    Counter        get O(1); mostCommon sorts, so O(k log k) for k distinct keys.
+
+    for (x in container) never consumes the container, and repeated loops yield the
+    same sequence. toList() returns that same snapshot order as a plain list.
+    clear() replaces the internal storage, so it is O(1).
 )DOC")
 }

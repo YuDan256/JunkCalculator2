@@ -28,20 +28,32 @@
 *   docs     : 文档编撰（如 HelpText.h 内容修改或项目 README 更新）。
 *   test     : 单元测试集成或测试断言的修改。
 *   chore    : 杂项事务（编译脚本 CMakeLists、依赖配置或代码格式化）。
+*   revert   : 回退既有提交（把仓库恢复到该提交之前的状态）。
 
 ## 3. ``<scope>`` 作用模块
 
 界定当前提交影响的代码边界，必须与项目目录划分相对应：
 
-*   frontend : 词法分析、语法递归下降生成与 AST 树构建。
-*   compiler : 字节码生成、词法作用域及上下文指令分发。
-*   vm       : 虚拟机栈帧控制、执行环及中断处理机制。
-*   memory   : 动态类型系统基类、容器引用模型及垃圾回收器（GcHeap）。
-*   math     : 大整数基础结构、高精度有理数、复平面及矩阵线性代数底层算理。
-*   cas      : 计算机代数推导过程、微积分算法及极限评估器。
-*   mod      : C++ 原生扩展模块层（图形、网络、系统通信等）。
-*   lib      : JC2 语言标准库层（由 .jc2 脚本编写的公共库，如正则表达式、集合算法、网络封装等）。
-*   arch     : 全局框架大类（全局目录重构、基础依赖头文件更替）。
+*   frontend : 词法分析、语法递归下降生成与 AST 树构建（src/frontend）。
+*   compiler : 字节码生成、IR 与寄存器分配、词法作用域及上下文指令分发（src/compiler）。
+*   jit      : JIT 后端（src/jit）。
+*   vm       : 虚拟机栈帧控制、执行环及中断处理机制（src/vm）。
+*   memory   : 动态类型系统基类、容器引用模型及垃圾回收器（src/memory）。
+*   math     : 大整数基础结构、高精度有理数、复平面及矩阵线性代数底层算理（src/math）。
+*   cas      : 计算机代数推导过程、微积分算法及极限评估器（src/cas）。
+*   mod      : C++ 原生扩展模块层（src/lib/*，含 src/lib/internal/{crypto,net,codec}）。
+*   lib      : JC2 语言标准库层（由 .jc2 脚本编写的公共库，modules/*.jc2）。
+*   lang     : 跨层语言语义决策（同时涉及 frontend / compiler / vm 的语法或语义变更）。
+*   utils    : 通用工具层（src/utils/deflate、src/utils/fmt、src/utils/json）。
+*   lsp      : 语言服务与编辑器支持（src/utils/lsp 与 jc2-language 扩展）。
+*   test     : 测试套件的组织与布局（test/ 目录；与 type 中的 test 并存，互不冲突）。
+*   docs     : 文档与帮助文本（docs/**、data/documentation.json、README）。
+*   examples : 策展示例（examples/）。
+*   pkg      : 构建、打包与发布（CMakeLists.txt、CPack、版本号、.vsix 产物）。
+
+标题可在 type 与 scope 之后加 `!` 表示破坏性变更，例如 `refactor(vm)!: rename the slot accessors`。
+
+新增顶层区域或新的模块层时，必须先在本文档登记 scope，再在提交中使用。
 
 ## 4. ``<subject>`` 标题要求
 

@@ -102,9 +102,14 @@ local _propNnf(node: any, negate: bool) -> dict = {
     }
     if (tp == "iff") {
         // a <-> b 等价于 (a & b) | (!a & !b)；其否定为 (a & !b) | (!a & b)
+        // 注意两者必须分别写死：若用同一个 negate 参数套两遍，取反分支会退化成原式
+        if (negate) return {t: "or", kids: @[
+            {t: "and", kids: @[_propNnf(node.a, false), _propNnf(node.b, true)]},
+            {t: "and", kids: @[_propNnf(node.a, true), _propNnf(node.b, false)]}
+        ]}
         return {t: "or", kids: @[
-            {t: "and", kids: @[_propNnf(node.a, negate), _propNnf(node.b, negate)]},
-            {t: "and", kids: @[_propNnf(node.a, !negate), _propNnf(node.b, !negate)]}
+            {t: "and", kids: @[_propNnf(node.a, false), _propNnf(node.b, false)]},
+            {t: "and", kids: @[_propNnf(node.a, true), _propNnf(node.b, true)]}
         ]}
     }
     return {t: "lit", name: "?", neg: false}
@@ -172,6 +177,47 @@ local _propToDnf(n: dict) -> list = {
     return @[]
 }
 
+// 子句级 DPLL：化简 + 单元传播 + 分裂。clauses 为子句列表，字面量 @[变量名, 是否取反]；
+// assign 为部分赋值。返回 {sat: bool, env: dict}
+local _dpllSolve(clauses: list, assign: dict) -> dict = {
+    work = @[]
+    for (cl in clauses) {
+        satisfied = false
+        rest = @[]
+        for (lit in cl) {
+            if (lit[0] in assign) {
+                if (assign[lit[0]] != lit[1]) { satisfied = true; break }   // 字面量已真
+            } else {
+                rest.push(lit)
+            }
+        }
+        if (satisfied) continue
+        if (rest.len() == 0) return {sat: false, env: {}}                   // 空子句：冲突
+        work.push(rest)
+    }
+    if (work.len() == 0) return {sat: true, env: assign}                    // 子句全部满足
+
+    // 单元传播
+    for (cl in work) {
+        if (cl.len() == 1) {
+            assign[cl[0][0]] = !cl[0][1]
+            return _dpllSolve(work, assign)
+        }
+    }
+
+    // 分裂（取第一个子句的第一个字面量）
+    v = work[0][0][0]
+    a1 = {}
+    for (k in assign.keys()) { a1[k] = assign[k] }
+    a1[v] = true
+    r1 = _dpllSolve(work, a1)
+    if (r1.sat) return r1
+    a2 = {}
+    for (k in assign.keys()) { a2[k] = assign[k] }
+    a2[v] = false
+    return _dpllSolve(work, a2)
+}
+
 class Prop {
     init(tp: string, a: any, b: any) = {
         self.tp = tp
@@ -208,26 +254,13 @@ class Prop {
     }
 
     isTautology() -> bool = {
-        varList = toList(self.vars()).sort(); n = varList.len()
-        for (i in range(2^n)) {
-            env = {}
-            for (j in range(n)) { env[varList[j]] = int(i / (2^(n-1-j))) % 2 }
-            if (!self.eval(env)) return false
-        }
-        return true
+        // 重言 <=> 取反后不可满足（-p 是 Prop 的取反糖；!p 会得到 bool）
+        return !(-self).satisfiableDpll().sat
     }
 
-    isContradiction() -> bool = {
-        varList = toList(self.vars()).sort(); n = varList.len()
-        for (i in range(2^n)) {
-            env = {}
-            for (j in range(n)) { env[varList[j]] = int(i / (2^(n-1-j))) % 2 }
-            if (self.eval(env)) return false
-        }
-        return true
-    }
+    isContradiction() -> bool = return !self.satisfiableDpll().sat
 
-    isSatisfiable() -> bool       = return !self.isContradiction()
+    isSatisfiable() -> bool       = return self.satisfiableDpll().sat
     equiv(other: Prop) -> bool    = return self.iff(other).isTautology()
 
     __call__(env: dict) -> int    = return self.eval(env)
@@ -318,6 +351,15 @@ class Prop {
     // 合取范式 / 析取范式（重言子句与矛盾项已剪除；@[] 分别表示 TRUE / FALSE）
     cnf() -> list = return _propToCnf(_propNnf(self, false))
     dnf() -> list = return _propToDnf(_propNnf(self, false))
+
+    // 子句级 DPLL（对 cnf() 求解），返回 {sat: bool, env: dict}；env 为完整赋值
+    satisfiableDpll() -> dict = {
+        r = _dpllSolve(self.cnf(), {})
+        if (!r.sat) return {sat: false, env: {}}
+        env = r.env
+        for (v in toList(self.vars())) { if (!(v in env)) env[v] = false }
+        return {sat: true, env: env}
+    }
 
 }
 
@@ -1050,7 +1092,12 @@ try {
     Graph.shortestPath                                      dijkstra + O(V) rebuild
     Relation.transitiveClosure / reflexive / symmetric      O(n^3) / O(n^2) / O(n^2)
     Prop negation is the unary minus (-p); !p coerces to bool
-    Prop.table / isTautology / isContradiction              exponential in the number
+    Prop.table (full enumeration)                           exponential in the number
                                                             of distinct variables
+    Prop.isTautology / isContradiction / isSatisfiable      clause-level DPLL over
+                                                            cnf() (unit propagation +
+                                                            splitting); worst case is
+                                                            still exponential, but
+                                                            pruning skips most of it
 )DOC")
 }

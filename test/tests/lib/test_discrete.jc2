@@ -331,7 +331,9 @@ test_prop_cnf_dnf() = {
     cases = @[a, a & b, a | b, -a, a.implies(b), a.iff(b),
               (a & b) | (-a & c), -(a | b), (a.implies(b)) & (b.implies(c)),
               a | -a,                                  // 重言：CNF 应剪成 @[]（TRUE）
-              a & -a]                                  // 矛盾：CNF 应含空子句
+              a & -a,                                  // 矛盾
+              -(a & b), -(a | b), -(a.implies(b)), -(a.iff(b)),
+              a.iff(b) & b.iff(c) & -(a.iff(c))]       // iff 传递性矛盾（暴露过 iff 取反缺陷）
     for (f in cases) {
         cnf = f.cnf(); dnf = f.dnf()
         for (row in f.table()) {
@@ -350,3 +352,33 @@ test_prop_cnf_dnf() = {
     assert((a & b).cnf().len() == 2, "conjunction keeps two clauses")
 }
 test_prop_cnf_dnf()
+
+// 三方互证：DPLL（子句级）↔ 剪枝搜索 ↔ 真值表 必须完全一致
+test_prop_three_way() = {
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b"); c = mk("c")
+    cases = @[a, -a, a & b, a | b, a.implies(b), a.iff(b), a & -a, a | -a,
+              (a & b) | (-a & c), (a.implies(b)) & (b.implies(c)),
+              (a | b) & (-a | b) & (a | -b) & (-a | -b),        // 不可满足
+              a.iff(b) & b.iff(c) & -a.iff(c)                   // 不可满足（等价传递）
+              ]
+    for (f in cases) {
+        want = f.isSatisfiable()
+        dpll = f.satisfiableDpll()
+        search = f.satisfiableBySearch()
+        assert(dpll.sat == want, "DPLL agrees with the truth table")
+        assert(search.found == want, "search agrees with the truth table")
+        if (dpll.sat) assert(f.eval(dpll.env) == true, "DPLL witness satisfies the formula")
+        assert(f.isTautology() == !(-f).isSatisfiable(), "isTautology = negation unsatisfiable")
+        assert(f.isContradiction() == !want, "isContradiction = unsatisfiable")
+    }
+    assert((a | -a).isTautology() && !(a & -a).isTautology(), "tautology detection")
+    assert((a & -a).isContradiction() && !(a | -a).isContradiction(), "contradiction detection")
+
+    // 剪枝效果：含直接矛盾的公式即便加很多永真子句也应迅速判不可满足
+    big = mk("z") & -mk("z")
+    i = 1
+    while (i < 14) { big = big & (mk("w" + str(i)) | -mk("w" + str(i))); i += 1 }
+    assert(big.isContradiction(), "pruning keeps a large contradiction cheap to decide")
+}
+test_prop_three_way()

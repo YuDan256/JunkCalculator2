@@ -3,6 +3,8 @@
 // Pure JC2 Implementation with Strict Type Contracts
 // ═══════════════════════════════════════════════════════════════
 
+import collections
+
 // ┌────────────────────────────────────────────────────────┐
 // │ 1. COMBINATORICS                                       │
 // └────────────────────────────────────────────────────────┘
@@ -491,38 +493,34 @@ class Graph {
     }
 
     dijkstra(start: any) -> dict = {
-            vs = toList(self.adj.keys())
-            dist = {}; prev = {}
-            for (v in vs) dist[v] = none
-            dist[start] = 0; visited = @{}
-            
-            while (visited.len() < vs.len()) {
-                minV = none; minD = none
-                for (v in vs) {
-                    if (!(v in visited) && !(dist[v] is none)) {
-                        if (minD is none || dist[v] < minD) { minD = dist[v]; minV = v }
-                    }
-                }
-                if (minV is none) break
-                visited.add(minV)
-                
-                if ((minV in self.adj)) {
-                    for (e in self.adj[minV]) {
-                        nbr = e[0]; w = e[1]
-                        alt = dist[minV] + w
-                        if (dist[nbr] is none || alt < dist[nbr]) {
-                            dist[nbr] = alt; prev[nbr] = minV
-                        }
+        // 二叉堆版：O((V + E) log V)。旧实现每轮按 dist 线性找最小顶点，为 O(V^2)。
+        dist = {}; prev = {}
+        for (v in toList(self.adj.keys())) dist[v] = none
+        dist[start] = 0
+
+        pq = collections.PriorityQueue((a, b) => a[0] < b[0])
+        pq.push(@[0, start])
+        while (!pq.isEmpty()) {
+            top = pq.pop()
+            d = top[0]; u = top[1]
+            if (dist[u] is none || d > dist[u]) continue      // 惰性删除：跳过已被松弛的过期条目
+            if ((u in self.adj)) {
+                for (e in self.adj[u]) {
+                    nbr = e[0]; w = e[1]
+                    alt = dist[u] + w
+                    if (dist[nbr] is none || alt < dist[nbr]) {
+                        dist[nbr] = alt; prev[nbr] = u
+                        pq.push(@[alt, nbr])
                     }
                 }
             }
-            return {dist: dist, prev: prev}
         }
-
-        shortestPath(start: any, end: any) -> dict = {
+        return {dist: dist, prev: prev}
+    }
+    shortestPath(start: any, end: any) -> dict = {
         r = self.dijkstra(start)
         if (r.dist[end] is none) return {path: @[], dist: none}
-        
+
         path = @[]; curr = end
         while (!(curr is none)) {
             path.push(curr)
@@ -531,7 +529,7 @@ class Graph {
         return {path: path.reverse(), dist: r.dist[end]}
     }
 
-    // ── Topology & Properties ──
+
     hasCycle() -> bool = {
         vs = toList(self.adj.keys())
         found = @[false]

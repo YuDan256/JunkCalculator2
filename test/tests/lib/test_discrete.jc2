@@ -87,3 +87,72 @@ test_internal_pair_normalizer_is_private() = {
     assert(r(1, 2), "public membership check still works")
 }
 test_internal_pair_normalizer_is_private()
+
+// dijkstra（堆版）：手算经典图 + 不可达 + 单点 + 与独立 Floyd-Warshall 差分
+test_dijkstra_heap() = {
+    g = discrete.Graph(true)
+    g.addEdge("a", "b", 4); g.addEdge("a", "c", 2)
+    g.addEdge("c", "b", 1); g.addEdge("c", "d", 8)
+    g.addEdge("b", "d", 5); g.addEdge("d", "e", 3)
+    r = g.dijkstra("a")
+    assert(r.dist["a"] == 0, "source distance is 0")
+    assert(r.dist["c"] == 2, "a->c = 2")
+    assert(r.dist["b"] == 3, "a->c->b = 3 (beats direct 4)")
+    assert(r.dist["d"] == 8, "a->c->b->d = 8 (beats a->c->d = 10)")
+    assert(r.dist["e"] == 11, "a->c->b->d->e = 11")
+    assert(r.prev["b"] == "c", "predecessor of b is c")
+
+    sp = g.shortestPath("a", "e")
+    assert(sp.dist == 11 && sp.path.len() == 5, "shortestPath stays consistent")
+
+    // 不可达顶点
+    g2 = discrete.Graph(true)
+    g2.addEdge(1, 2, 7)
+    g2.addVertex(99)
+    r2 = g2.dijkstra(1)
+    assert(r2.dist[99] is none, "unreachable vertex keeps none")
+    assert(g2.shortestPath(1, 99).dist is none, "unreachable path reports none")
+
+    // 单点图
+    g3 = discrete.Graph(true); g3.addVertex("x")
+    r3 = g3.dijkstra("x")
+    assert(r3.dist["x"] == 0, "single vertex distance 0")
+
+    // 差分：与独立实现的 Floyd-Warshall 逐点比对（含等权与多路径）
+    g4 = discrete.Graph(true)
+    for (e in @[@["s","a",1], @["s","b",4], @["a","b",2], @["a","c",5], @["b","c",1], @["c","d",2], @["b","d",9]]) {
+        g4.addEdge(e[0], e[1], e[2])
+    }
+    vs = g4.vertices().sort()
+    n = vs.len()
+    INF = 1000000
+    M = @[]
+    i = 0
+    while (i < n) { row = @[]; j = 0; while (j < n) { row.push(i == j ? 0 : INF); j += 1 }; M.push(row); i += 1 }
+    idx = (v) => { k = 0; while (k < n) { if (vs[k] == v) return k; k += 1 }; return -1 }
+    for (e in g4.edges()) {
+        u = idx(e[0]); v = idx(e[1])
+        if (e[2] < M[u][v]) { M[u][v] = e[2] }
+    }
+    k = 0
+    while (k < n) {
+        i = 0
+        while (i < n) {
+            j = 0
+            while (j < n) { if (M[i][k] + M[k][j] < M[i][j]) { M[i][j] = M[i][k] + M[k][j] }; j += 1 }
+            i += 1
+        }
+        k += 1
+    }
+    r4 = g4.dijkstra("s")
+    si = idx("s")
+    t = 0
+    while (t < n) {
+        want = M[si][t] >= INF ? none : M[si][t]
+        got = r4.dist[vs[t]]
+        assert(got == want, "dijkstra vs Floyd-Warshall at " + str(vs[t]) + ": " + str(got) + " vs " + str(want))
+        t += 1
+    }
+}
+
+test_dijkstra_heap()

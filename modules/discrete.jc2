@@ -617,6 +617,82 @@ class Graph {
     __contains__(v: any) -> bool = return self.hasVertex(v)
     __len__() -> int             = return self.adj.keys().len()
     __str__() -> string          = return f"<Graph({self.directed ? 'directed' : 'undirected'}) V={len(self)} E={self._ec}>"
+    // Kruskal 最小生成树：边按权升序（二叉堆）+ 并查集判环。O(E log E)
+    kruskal() -> dict = {
+        pq = collections.PriorityQueue((a, b) => a[2] < b[2])
+        for (e in self.edges()) { pq.push(e) }
+        uf = collections.UnionFind()
+        // 先登记全部顶点：无边孤立顶点也是一个连通分量（生成森林要把它算进去）
+        for (v in self.vertices()) { uf.makeSet(v) }
+        chosen = @[]
+        total = 0
+        while (!pq.isEmpty()) {
+            e = pq.pop()
+            if (uf.union(e[0], e[1])) {
+                chosen.push(e)
+                total += e[2]
+            }
+        }
+        return {edges: chosen, weight: total, components: uf.componentCount()}
+    }
+
+    // Floyd–Warshall 全源最短路，O(V^3)；返回 {dist: {u: {v: d}}, negativeCycle: bool}
+    floydWarshall() -> dict = {
+        vs = self.vertices()
+        d = {}
+        for (u in vs) {
+            row = {}
+            for (v in vs) { row[v] = u == v ? 0 : none }
+            d[u] = row
+        }
+        for (e in self.edges()) {
+            u = e[0]; v = e[1]; w = e[2]
+            if (d[u][v] is none || w < d[u][v]) { d[u][v] = w }
+            if (!self.directed) { if (d[v][u] is none || w < d[v][u]) { d[v][u] = w } }
+        }
+        for (k in vs) {
+            for (i in vs) {
+                if (d[i][k] is none) continue
+                for (j in vs) {
+                    if (d[k][j] is none) continue
+                    alt = d[i][k] + d[k][j]
+                    if (d[i][j] is none || alt < d[i][j]) { d[i][j] = alt }
+                }
+            }
+        }
+        neg = false
+        for (v in vs) { if (d[v][v] < 0) neg = true }
+        return {dist: d, negativeCycle: neg}
+    }
+
+    // Bellman–Ford 单源最短路，支持负权并检测负环，O(V*E)。edges() 对无向图已给出双向边，
+    // 故此处不再额外反向松弛；注意无向图中的负边必然构成负环（来回各一次）
+    bellmanFord(start: any) -> dict = {
+        vs = self.vertices()
+        dist = {}; prev = {}
+        for (v in vs) dist[v] = none
+        dist[start] = 0
+        es = self.edges()
+        round = 0
+        while (round < vs.len() - 1) {
+            changed = false
+            for (e in es) {
+                u = e[0]; v = e[1]; w = e[2]
+                if (dist[u] is none) continue
+                alt = dist[u] + w
+                if (dist[v] is none || alt < dist[v]) { dist[v] = alt; prev[v] = u; changed = true }
+            }
+            if (!changed) break
+            round += 1
+        }
+        negCycle = false
+        for (e in es) {
+            u = e[0]; v = e[1]; w = e[2]
+            if (!(dist[u] is none) && (dist[v] is none || dist[u] + w < dist[v])) { negCycle = true }
+        }
+        return {dist: dist, prev: prev, negativeCycle: negCycle}
+    }
+
 }
 
 // ┌────────────────────────────────────────────────────────┐

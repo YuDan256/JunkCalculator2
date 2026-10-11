@@ -828,8 +828,15 @@ try {
 
   Complexity
   ──────────────────────
-    Graph.bfs / dfs / hasCycle / topSort / components      O(V + E)
-    Graph.findPath (BFS, unweighted)                        O(V + E)
+    Graph.hasCycle / topSort                                O(V + E)
+    Graph.bfs / dfs / findPath / components                 currently dequeue with
+                                                            list.shift(), which is O(n),
+                                                            so treat them as O(V^2) until
+                                                            the traversal queue keeps a
+                                                            head index instead
+    Graph.kruskal (binary heap + UnionFind)                 O(E log E)
+    Graph.bellmanFord (V-1 relaxation rounds)               O(V * E)
+    Graph.floydWarshall (all pairs)                         O(V^3)
     Graph.dijkstra (binary heap, lazy deletion)             O((V + E) log V)
     Graph.shortestPath                                      dijkstra + O(V) rebuild
     Relation.transitiveClosure / reflexive / symmetric      O(n^3) / O(n^2) / O(n^2)

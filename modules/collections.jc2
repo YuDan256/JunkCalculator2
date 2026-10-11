@@ -792,6 +792,9 @@ try {
     BST            insert/contains O(h) for tree height h (worst case O(n) when the
                    input is sorted; no rebalancing); iteration is in-order.
     Counter        get O(1); mostCommon sorts, so O(k log k) for k distinct keys.
+    UnionFind      makeSet/find/union amortized O(alpha(n)) (path compression + union by rank).
+    LRU            get/put/has O(1); eviction removes the tail of an internal doubly linked list.
+    BST            delete/min/max/successor are O(h) like insert; successor is O(h), min/max O(h).
 
     for (x in container) never consumes the container, and repeated loops yield the
     same sequence. toList() returns that same snapshot order as a plain list.

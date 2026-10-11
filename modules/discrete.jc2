@@ -449,8 +449,9 @@ class Graph {
     // ── Traversals ──
     bfs(start: any) -> list = {
         visited = set(start); q = @[start]; res = @[]
-        while (q.len() > 0) {
-            curr = q.shift(); res.push(curr)
+        h = 0
+        while (h < q.len()) {
+            curr = q[h]; h += 1; res.push(curr)
             if ((curr in self.adj)) {
                 for (e in self.adj[curr]) {
                     if (!(e[0] in visited)) { visited.add(e[0]); q.push(e[0]) }
@@ -478,8 +479,9 @@ class Graph {
         if (start == end) return @[start]
         
         visited = set(start); q = @[@[start]]
-        while (q.len() > 0) {
-            path = q.shift(); curr = path.last()
+        h = 0
+        while (h < q.len()) {
+            path = q[h]; h += 1; curr = path.last()
             if ((curr in self.adj)) {
                 for (e in self.adj[curr]) {
                     nbr = e[0]
@@ -488,8 +490,8 @@ class Graph {
                     if (!(nbr in visited)) { visited.add(nbr); q.push(np) }
                 }
             }
-            return @[]
         }
+        return @[]
     }
 
     dijkstra(start: any) -> dict = {
@@ -578,11 +580,12 @@ class Graph {
         }
         
         q = @[]
+        h = 0
         for (v in vs) { if (inDeg[v] == 0) q.push(v) }
         res = @[]
         
-        while (q.len() > 0) {
-            v = q.shift(); res.push(v)
+        while (h < q.len()) {
+            v = q[h]; h += 1; res.push(v)
             if ((v in self.adj)) {
                 for (e in self.adj[v]) {
                     inDeg[e[0]] = inDeg[e[0]] - 1
@@ -601,8 +604,9 @@ class Graph {
         for (v in toList(self.adj.keys())) {
             if (v in visited) continue
             comp = @[]; q = @[v]; visited.add(v)
-            while (q.len() > 0) {
-                curr = q.shift(); comp.push(curr)
+            h = 0
+            while (h < q.len()) {
+                curr = q[h]; h += 1; comp.push(curr)
                 if ((curr in self.adj)) {
                     for (e in self.adj[curr]) {
                         if (!(e[0] in visited)) { visited.add(e[0]); q.push(e[0]) }
@@ -828,12 +832,11 @@ try {
 
   Complexity
   ──────────────────────
-    Graph.hasCycle / topSort                                O(V + E)
-    Graph.bfs / dfs / findPath / components                 currently dequeue with
-                                                            list.shift(), which is O(n),
-                                                            so treat them as O(V^2) until
-                                                            the traversal queue keeps a
-                                                            head index instead
+    Graph.bfs / dfs / findPath / components / topSort        O(V + E)
+                                                            (traversal queues keep a head
+                                                            index; elements are never
+                                                            shifted, so no O(n) dequeue)
+    Graph.hasCycle                                          O(V + E)
     Graph.kruskal (binary heap + UnionFind)                 O(E log E)
     Graph.bellmanFord (V-1 relaxation rounds)               O(V * E)
     Graph.floydWarshall (all pairs)                         O(V^3)

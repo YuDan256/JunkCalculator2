@@ -638,6 +638,99 @@ class UnionFind {
     __str__() -> string = return "UnionFind(sets=" + str(self._count) + ")"
 }
 
+// ─── LRU 缓存（哈希表 + 双向链表，get/put 均 O(1)）──────────────
+local class _LRUNode {
+    init(key: any, val: any) = {
+        self.key = key
+        self.val = val
+        self.prev = none
+        self.next = none
+    }
+}
+
+class LRU {
+    init(capacity: int = 16) = {
+        self.capacity = capacity < 1 ? 1 : capacity
+        self.index = {}
+        self.head = none          // 最近使用
+        self.tail = none          // 最久未使用
+        self._size = 0
+        self.hits = 0
+        self.misses = 0
+    }
+
+    local _unlink(n) = {
+        if (n.prev != none) { n.prev.next = n.next } else { self.head = n.next }
+        if (n.next != none) { n.next.prev = n.prev } else { self.tail = n.prev }
+        n.prev = none
+        n.next = none
+    }
+
+    local _pushFront(n) = {
+        n.prev = none
+        n.next = self.head
+        if (self.head != none) { self.head.prev = n }
+        self.head = n
+        if (self.tail == none) { self.tail = n }
+    }
+
+    // 命中时把节点提到表头（最近使用），未命中返回 none
+    get(key: any) -> any = {
+        if (!(key in self.index)) {
+            self.misses += 1
+            return none
+        }
+        self.hits += 1
+        n = self.index[key]
+        self._unlink(n)
+        self._pushFront(n)
+        return n.val
+    }
+
+    put(key: any, val: any) -> LRU = {
+        if (key in self.index) {
+            n = self.index[key]
+            n.val = val
+            self._unlink(n)
+            self._pushFront(n)
+            return self
+        }
+        n = _LRUNode(key, val)
+        self.index[key] = n
+        self._pushFront(n)
+        self._size += 1
+        if (self._size > self.capacity) {
+            old = self.tail
+            self._unlink(old)
+            self.index.removeKey(old.key)
+            self._size -= 1
+        }
+        return self
+    }
+
+    has(key: any) -> bool = return key in self.index
+    size() -> int = return self._size
+    // 由最近使用到最久未使用的键序（用于断言淘汰顺序）
+    keysByRecency() -> list = {
+        out = @[]
+        n = self.head
+        while (n != none) { out.push(n.key); n = n.next }
+        return out
+    }
+
+    clear() = {
+        self.index = {}
+        self.head = none
+        self.tail = none
+        self._size = 0
+        return self
+    }
+
+    __len__() -> int = return self._size
+    __contains__(key: any) -> bool = return key in self.index
+    __str__() -> string = return "LRU(size=" + str(self._size) + "/" + str(self.capacity) + ")"
+}
+
 // ─── Dynamic Help Registry ────────────────────────────────────
 
 const local import sys

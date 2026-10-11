@@ -358,3 +358,46 @@ test_bst_operations() = {
 }
 
 test_bst_operations()
+
+// LRU：O(1) 读写、命中提升最近使用、超容淘汰最久未使用
+test_lru_cache() = {
+    c = collections.LRU(3)
+    c.put("a", 1); c.put("b", 2); c.put("c", 3)
+    assert(len(c) == 3 && str(c) == "LRU(size=3/3)", "filled to capacity: " + str(c))
+    assert(c.keysByRecency() == @["c", "b", "a"], "recency order: " + str(c.keysByRecency()))
+
+    // get 命中会提升最近使用（不淘汰 b）
+    assert(c.get("a") == 1, "get returns the value")
+    assert(c.keysByRecency() == @["a", "c", "b"], "get promotes to most-recent")
+    c.put("d", 4)                                   // 淘汰最久未使用的 b
+    assert(!c.has("b"), "least-recently-used key evicted")
+    assert(c.has("a") && c.has("c") && c.has("d"), "recent keys survive")
+    assert(c.size() == 3, "capacity respected")
+
+    // 未命中返回 none 并计入 misses
+    assert(c.get("zzz") is none, "miss returns none")
+    assert(c.misses == 1, "miss counter")
+    assert(c.hits == 1, "hit counter")
+
+    // 覆盖已有键：更新值 + 提升，不新增容量
+    c.put("c", 33)
+    assert(c.get("c") == 33 && len(c) == 3, "put updates an existing key in place")
+    assert(c.keysByRecency() == @["c", "d", "a"], "put promotes the updated key: " + str(c.keysByRecency()))
+
+    // 规模用例：容量 10，写入 1000 个键后恰好留最近 10 个
+    big = collections.LRU(10)
+    i = 0
+    while (i < 1000) { big.put(i, i * i); i += 1 }
+    assert(big.size() == 10, "capacity honoured under load")
+    assert(big.keysByRecency() == @[999, 998, 997, 996, 995, 994, 993, 992, 991, 990], "last 10 keys survive: " + str(big.keysByRecency()))
+    assert(big.get(999) == 999 * 999, "value of the newest key")
+    assert(!big.has(0), "oldest key evicted")
+
+    // clear 后可继续使用
+    big.clear()
+    assert(big.size() == 0 && !big.has(999), "cleared")
+    big.put("x", 1)
+    assert(big.get("x") == 1, "usable after clear")
+}
+
+test_lru_cache()

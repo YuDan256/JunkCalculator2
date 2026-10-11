@@ -1,4 +1,3 @@
-import errors
 // ═══════════════════════════════════════════════════════════════
 // http.jc2 — Modern HTTP Client Standard Library
 // Built with strict JC2 Lexer / Scope standards
@@ -11,6 +10,11 @@ import errors
 
 const local import net
 const local import bytes
+
+class HttpError extends Exception {
+    init(msg) = { super.init(msg) }
+}
+
 // 调用方脚本的顶层绑定会进同一张全局表并覆盖内建（例如顶层 for (round in ...)），
 // 所以模块先把用到的内建绑成自己的私有名，避免被劫持（见设计文档开放项）。
 const local _round = round
@@ -95,12 +99,12 @@ local namespace _Http {
     parse_uint(text: string, what: string) -> int = {
         t = text.trim()
         if (t.len() == 0 || t.len() > 10) {
-            throw errors.HttpError(f"Invalid {what}: \"{text}\"")
+            throw HttpError(f"Invalid {what}: \"{text}\"")
         }
         value = 0
         for (i in range(t.len())) {
             d = "0123456789".find(t.substr(i, 1), 0)
-            if (d == -1) throw errors.HttpError(f"Invalid {what}: \"{text}\"")
+            if (d == -1) throw HttpError(f"Invalid {what}: \"{text}\"")
             value = value * 10 + d
         }
         return value
@@ -112,14 +116,14 @@ local namespace _Http {
         hex_part = (semi == -1) ? line : line.substr(0, semi)
         hex_part = hex_part.trim()
         if (hex_part.len() == 0 || hex_part.len() > 8) {
-            throw errors.HttpError(f"Invalid chunk size line: \"{line}\"")
+            throw HttpError(f"Invalid chunk size line: \"{line}\"")
         }
         digits = "0123456789abcdef"
         value = 0
         for (i in range(hex_part.len())) {
             d = digits.find(hex_part.substr(i, 1).lower(), 0)
             if (d == -1) {
-                throw errors.HttpError(f"Invalid chunk size line: \"{line}\"")
+                throw HttpError(f"Invalid chunk size line: \"{line}\"")
             }
             value = value * 16 + d
         }
@@ -137,7 +141,7 @@ local namespace _Http {
         while (true) {
             line_end = raw.find("\r\n", char_off)
             if (line_end == -1) {
-                throw errors.HttpError("Truncated chunked body (no chunk size line)")
+                throw HttpError("Truncated chunked body (no chunk size line)")
             }
             line = raw.substr(char_off, line_end - char_off)
             size = chunk_size(line)
@@ -161,7 +165,7 @@ local namespace _Http {
             // 块数据必须完整躺在给到的字节里（to_buffer 的容量比数据长，越界读会读到填充的 0）
             avail = total - byte_off
             if (avail < size) {
-                throw errors.HttpError(
+                throw HttpError(
                     f"Truncated chunked body: a chunk of {size} bytes was declared but only {avail} bytes arrived")
             }
 
@@ -171,7 +175,7 @@ local namespace _Http {
             char_off += read[0].len()
 
             if (char_off + 2 > raw.len() || raw.substr(char_off, 2) != "\r\n") {
-                throw errors.HttpError("Malformed chunked body (chunk data not followed by CRLF)")
+                throw HttpError("Malformed chunked body (chunk data not followed by CRLF)")
             }
             char_off += 2
             byte_off += 2
@@ -237,7 +241,7 @@ local namespace _Http {
         }
 
         if (url_host.len() == 0) {
-            throw errors.HttpError(f"URL has no host: \"{url_str}\"")
+            throw HttpError(f"URL has no host: \"{url_str}\"")
         }
         return {"scheme": scheme, "host": url_host, "port": url_port, "path": url_path}
     }
@@ -321,7 +325,7 @@ local namespace _Http {
         try {
             return hex_to_text(inflate.gunzip(text_to_hex(body)))
         } catch (e) {
-            throw errors.HttpError("Failed to gunzip the response body: " + e.message)
+            throw HttpError("Failed to gunzip the response body: " + e.message)
         }
     }
 
@@ -348,7 +352,7 @@ local namespace _Http {
                 try {
                     return inflate_text(body)
                 } catch (e2) {
-                    throw errors.HttpError(
+                    throw HttpError(
                         "Failed to inflate the response body (tried zlib and raw DEFLATE): " + e2.message)
                 }
             }
@@ -360,7 +364,7 @@ local namespace _Http {
     split_head(raw: string) -> dict = {
         header_end = raw.find("\r\n\r\n", 0)
         if (header_end == -1) {
-            throw errors.HttpError("Response has no header terminator (\\r\\n\\r\\n)")
+            throw HttpError("Response has no header terminator (\\r\\n\\r\\n)")
         }
 
         head_part = raw.substr(0, header_end)
@@ -403,7 +407,7 @@ local namespace _Http {
             want = plan["length"]
             avail = utf8_bytes(raw) - head["header_bytes"]
             if (avail < want) {
-                throw errors.HttpError(
+                throw HttpError(
                     f"Truncated response body: Content-Length={want} but only {avail} bytes arrived")
             }
             body = read_exact(to_buffer(raw), head["header_bytes"], want)[0]
@@ -429,7 +433,7 @@ httpParseResponse(raw: string, url: string = "", options: dict = {}) -> HttpResp
         return _Http.parse_response(raw, url, options)
     } catch (e) {
         if (e.type == "HttpError") throw e
-        throw errors.HttpError("Malformed HTTP response: " + e.type + ": " + e.message)
+        throw HttpError("Malformed HTTP response: " + e.type + ": " + e.message)
     }
 }
 
@@ -457,7 +461,7 @@ httpPlanRedirect(res: HttpResponse, current_url: string) -> any = {
     from_parts = _Http.parse_url(current_url)
     to_parts = _Http.parse_url(next_url)
     if (from_parts["scheme"] == "https" && to_parts["scheme"] == "http") {
-        throw errors.HttpError(f"Refusing to follow a redirect from https down to http: {next_url}")
+        throw HttpError(f"Refusing to follow a redirect from https down to http: {next_url}")
     }
     return next_url
 }
@@ -488,7 +492,7 @@ local class _Buf {
     push(text: string) = {
         need = _Http.utf8_bytes(text)
         if (self.used + need > _MAX_BODY) {
-            throw errors.HttpError("Response body is larger than the " + str(_MAX_BODY) + " byte limit")
+            throw HttpError("Response body is larger than the " + str(_MAX_BODY) + " byte limit")
         }
         if (self.used + need > self.cap) {
             new_cap = (self.used + need) * 2 + 64
@@ -595,7 +599,7 @@ local namespace _Read {
         while (true) {
             b = conn.recv(1)
             if (b.len() == 0) {
-                throw errors.NetworkError("the connection was closed while reading " + what)
+                throw net.NetworkError("the connection was closed while reading " + what)
             }
             if (b == "\n") {
                 if (text.len() > 0 && text.substr(text.len() - 1, 1) == "\r") {
@@ -605,7 +609,7 @@ local namespace _Read {
             }
             text += b
             if (text.len() > _MAX_LINE) {
-                throw errors.HttpError(what + " is longer than " + str(_MAX_LINE) + " bytes")
+                throw HttpError(what + " is longer than " + str(_MAX_LINE) + " bytes")
             }
         }
         return text
@@ -619,7 +623,7 @@ local namespace _Read {
             head += l + "\r\n"
             if (l.len() == 0) return head
             if (head.len() > _MAX_HEADER) {
-                throw errors.HttpError("Response headers are larger than " + str(_MAX_HEADER) + " bytes")
+                throw HttpError("Response headers are larger than " + str(_MAX_HEADER) + " bytes")
             }
         }
         return head
@@ -630,7 +634,7 @@ local namespace _Read {
         want = _round(n)
         if (want <= 0) return ""
         if (want > _MAX_BODY) {
-            throw errors.HttpError("Response body is larger than the " + str(_MAX_BODY) + " byte limit")
+            throw HttpError("Response body is larger than the " + str(_MAX_BODY) + " byte limit")
         }
         buf = bytes.alloc(want + 4)
         got = 0
@@ -639,7 +643,7 @@ local namespace _Read {
             if (ask > _READ_CHUNK) ask = _READ_CHUNK
             chunk = conn.recv(ask)
             if (chunk.len() == 0) {
-                throw errors.HttpError(
+                throw HttpError(
                     f"Truncated response body: {want} bytes expected but the connection closed after {got}")
             }
             buf.writeStr(chunk)
@@ -670,7 +674,7 @@ local namespace _Read {
             crlf = exact(conn, 2)
             b.push(crlf)
             if (crlf != "\r\n") {
-                throw errors.HttpError("Malformed chunked body (chunk data not followed by CRLF)")
+                throw HttpError("Malformed chunked body (chunk data not followed by CRLF)")
             }
         }
         return b.text()
@@ -840,7 +844,7 @@ httpRequest(method: string, url: string, options: dict = {}) -> HttpResponse = {
     while (true) {
         key = _Http.normalize(current)
         if (key in visited) {
-            throw errors.HttpError(f"Redirect loop detected at {current}")
+            throw HttpError(f"Redirect loop detected at {current}")
         }
         visited.push(key)
 
@@ -853,7 +857,7 @@ httpRequest(method: string, url: string, options: dict = {}) -> HttpResponse = {
 
         redirects.push(plan["url"])
         if (hops >= max_redirects) {
-            throw errors.HttpError(
+            throw HttpError(
                 f"Too many redirects (>{max_redirects}) while fetching {url}")
         }
         hops += 1
@@ -987,5 +991,12 @@ try {
     print(response.status, response.body.len())
     head = http.httpHead("https://example.com/")
     print(head.headers["Content-Length"], head.body.len())
+
+  Errors
+  ──────────────────────
+    HttpError         HTTP protocol failures: malformed or truncated response,
+                      redirect loops, oversized headers or body.
+    net.NetworkError  Thrown when the peer closes the connection while a body is
+                      being read (defined by the net module, as its name implies).
 )DOC")
 }

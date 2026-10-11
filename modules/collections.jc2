@@ -1,4 +1,3 @@
-import errors
 // ═══════════════════════════════════════════════════════════════
 // collections.jc2 — Advanced Data Structures Standard Library
 // Pure JC2 Implementation (Stacks, Queues, Heaps, Trees)
@@ -18,12 +17,12 @@ class Stack {
     }
     
     pop() = {
-        if (self.isEmpty()) throw errors.IndexError("pop from empty Stack")
+        if (self.isEmpty()) throw IndexError("pop from empty Stack")
         return self.data.pop()
     }
     
     peek() = {
-        if (self.isEmpty()) throw errors.IndexError("peek from empty Stack")
+        if (self.isEmpty()) throw IndexError("peek from empty Stack")
         return self.data[-1]
     }
     
@@ -46,12 +45,12 @@ class Queue {
     }
     
     dequeue() = {
-        if (self.isEmpty()) throw errors.IndexError("dequeue from empty Queue")
+        if (self.isEmpty()) throw IndexError("dequeue from empty Queue")
         return self.data.shift()
     }
     
     peek() = {
-        if (self.isEmpty()) throw errors.IndexError("peek from empty Queue")
+        if (self.isEmpty()) throw IndexError("peek from empty Queue")
         return self.data[0]
     }
     
@@ -72,12 +71,12 @@ class Deque {
     pushLeft(item: any)  = { self.data.prepend(item); return self }
     
     popRight() = {
-        if (self.isEmpty()) throw errors.IndexError("popRight from empty Deque")
+        if (self.isEmpty()) throw IndexError("popRight from empty Deque")
         return self.data.pop()
     }
     
     popLeft() = {
-        if (self.isEmpty()) throw errors.IndexError("popLeft from empty Deque")
+        if (self.isEmpty()) throw IndexError("popLeft from empty Deque")
         return self.data.shift()
     }
     
@@ -156,7 +155,7 @@ class PriorityQueue {
     
     pop() = {
         n = self.data.len()
-        if (n == 0) throw errors.IndexError("pop from empty PriorityQueue")
+        if (n == 0) throw IndexError("pop from empty PriorityQueue")
         
         result = self.data[0]
         last = self.data.pop()
@@ -169,7 +168,7 @@ class PriorityQueue {
     }
     
     peek() = {
-        if (self.isEmpty()) throw errors.IndexError("peek from empty PriorityQueue")
+        if (self.isEmpty()) throw IndexError("peek from empty PriorityQueue")
         return self.data[0]
     }
     
@@ -278,6 +277,11 @@ class BST {
 // ─── Dynamic Help Registry ────────────────────────────────────
 
 const local import sys
+
+class IndexError extends Exception {
+    init(msg) = { super.init(msg) }
+}
+
 try {
     sys.register_help("collections", r"DOC(
 ═══ Collections (Standard Library) ═══
@@ -314,5 +318,9 @@ try {
 
     BST()                     Binary Search Tree. (Ignores duplicates).
                               Methods: insert(x), contains(x), size(), inorder()
+
+  Errors
+  ──────────────────────
+    IndexError      pop / peek / dequeue on an empty container.
 )DOC")
 }

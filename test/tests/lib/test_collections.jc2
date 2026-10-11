@@ -1,7 +1,6 @@
 // collections 标准库冒烟：线性结构 / 哈希结构 / 堆 / 树 + 空结构错误类型。
 
 import collections
-import errors
 
 test_stack() = {
     s = collections.Stack()
@@ -131,9 +130,9 @@ test_std_error_classes() = {
     s = collections.Stack()
 
     got = none
-    try { s.pop() } catch { e: errors.IndexError => got = e }
-    assert(got != none, "typed catch by errors.IndexError")
-    assert(isinstance(got, errors.IndexError), "isinstance against the error class")
+    try { s.pop() } catch { e: collections.IndexError => got = e }
+    assert(got != none, "typed catch by collections.IndexError")
+    assert(isinstance(got, collections.IndexError), "isinstance against the error class")
     assert(isinstance(got, Exception), "error classes extend Exception")
     assert(got.type == "IndexError", "e.type unchanged (non-breaking)")
     assert(got.message == "pop from empty Stack", "e.message unchanged (non-breaking)")

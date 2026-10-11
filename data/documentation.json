@@ -1587,7 +1587,7 @@
       "",
       "  Numeric Value Predicates",
       "  ──────────────────────",
-      "    isapprox(a, b, [rtol], [atol])",
+      "    isapprox(a, b, [rtol], [atol])   Numbers, or matrices of the same shape (elementwise).",
       "                        Returns true if a and b are approximately equal.",
       "                        rtol defaults to 1e-9, atol defaults to 0.0.",
       "                        Formula: |a - b| <= max(atol, rtol * max(|a|, |b|))",

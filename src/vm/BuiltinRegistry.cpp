@@ -5210,6 +5210,36 @@ void BuiltinRegistry::registerTypeChecks() {
         double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asFloat() : 1e-9;
         double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asFloat() : 0.0;
 
+        // ★ 矩阵路径：同形状逐元素套用与标量相同的容差规则；形状不同返回 false。
+        //   取值一律走 (r,c) 访问器（矩阵本版为列主序，直接碰 flat 会踩转置坑）。
+        const bool aMat = args[0].isObjType(ObjType::REAL_MATRIX) || args[0].isObjType(ObjType::COMPLEX_MATRIX);
+        const bool bMat = args[1].isObjType(ObjType::REAL_MATRIX) || args[1].isObjType(ObjType::COMPLEX_MATRIX);
+        if (aMat || bMat) {
+            if (!aMat || !bMat) {
+                JC2_THROW(TypeError, "isapprox() cannot compare a matrix with a non-matrix.");
+            }
+            const ComplexMatrix A = args[0].asComplexMatrix();
+            const ComplexMatrix B = args[1].asComplexMatrix();
+            if (A.getRows() != B.getRows() || A.getCols() != B.getCols()) return Value(false);
+            for (int r = 0; r < A.getRows(); ++r) {
+                for (int c = 0; c < A.getCols(); ++c) {
+                    const Complex x = A(r, c);
+                    const Complex y = B(r, c);
+                    if (std::isnan(x.real) || std::isnan(x.imag) || std::isnan(y.real) || std::isnan(y.imag)) {
+                        return Value(false);
+                    }
+                    if (x.real == y.real && x.imag == y.imag) continue;
+                    if (std::isinf(x.real) || std::isinf(x.imag) || std::isinf(y.real) || std::isinf(y.imag)) {
+                        return Value(false);
+                    }
+                    const double diff = (x - y).modulus();
+                    const double tol = std::max(atol, rtol * std::max(x.modulus(), y.modulus()));
+                    if (!(diff <= tol)) return Value(false);
+                }
+            }
+            return Value(true);
+        }
+
         bool isComp = false;
         if (args[0].isComplex() || args[1].isComplex()) isComp = true;
 

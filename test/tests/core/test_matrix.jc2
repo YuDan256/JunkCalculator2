@@ -150,3 +150,19 @@ test_matrix_integer_power() = {
 }
 
 test_matrix_integer_power()
+
+// isapprox 的矩阵路径：同形状逐元素容差比较，形状不同为 false
+test_isapprox_matrix() = {
+    B = matrix(2, 2, 5, 7, 6, 8)
+    I2 = matrix(2, 2, 1, 0, 0, 1)
+    assert(isapprox(B, B), "identical matrices")
+    assert(isapprox(B * B.inv(), I2), "A*A^-1 is approximately the identity")
+    assert(isapprox(B.inv(), matrix(2, 2, -4, 3.5, 3, -2.5)), "tolerance covers the 1e-15 residual")
+    assert(!isapprox(B, matrix(2, 2, 5, 7, 6, 9)), "differing elements are not approximately equal")
+    assert(!isapprox(B, matrix(2, 2, 5, 7, 6, 0)), "large difference")
+    assert(!isapprox(matrix(2, 2, 1, 2, 3, 4), matrix(3, 3, 1, 2, 3, 4, 5, 6, 7, 8, 9)), "shape mismatch -> false")
+    assert(isapprox(B.inv(), matrix(2, 2, -4, 3.5, 3, -2.5), 1e-9), "explicit rtol")
+    assert(!isapprox(B.inv(), matrix(2, 2, -4, 3.5, 3, -2.5), 1e-30), "tight rtol rejects the residual")
+}
+
+test_isapprox_matrix()

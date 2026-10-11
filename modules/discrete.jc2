@@ -728,6 +728,27 @@ class Relation {
         return r
     }
 
+    // Hasse 图：偏序的覆盖关系（a ≺ b 当且仅当 aRb 且不存在严格居中的 c）。
+    // 返回 {nodes: list, covers: list}，covers 中的元素为 @[a, b]。O(|S|^3)。
+    hasseDiagram() -> dict = {
+        if (!self.isPartialOrder()) throw RelationError("hasseDiagram subject must be a partial order")
+        nodes = toList(self.S)
+        covers = @[]
+        for (a in nodes) {
+            for (b in nodes) {
+                if (!(self.hasPair(a, b))) continue
+                if (a == b) continue
+                covered = true
+                for (c in nodes) {
+                    if (c == a || c == b) continue
+                    if (self.hasPair(a, c) && self.hasPair(c, b)) { covered = false; break }
+                }
+                if (covered) { covers.push(@[a, b]) }
+            }
+        }
+        return {nodes: nodes, covers: covers}
+    }
+
 }
 
 // ┌────────────────────────────────────────────────────────┐
@@ -1285,6 +1306,8 @@ try {
   ──────────────────────
     domain() / range() / image(subset) / preimage(subset)   Sets of first/second components
     isFunction / isInjective / isSurjective / isBijective   Codomain is the relation's own S
+    hasseDiagram()                                          Covering pairs of a partial
+                                                            order, as {nodes, covers}
     unionOf / intersect / difference / complement / restrict
                                                             complement is taken inside S x S;
                                                             results carry the union of both S

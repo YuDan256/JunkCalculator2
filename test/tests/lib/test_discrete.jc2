@@ -535,3 +535,35 @@ test_relation_algebra() = {
     assert(m.S.len() == 3 && m.R.len() == 2, "union merges the underlying sets")
 }
 test_relation_algebra()
+
+// Hasse 图：整除偏序的覆盖关系
+test_hasse() = {
+    S = toSet(@[1, 2, 3, 4, 6, 12])
+    d = discrete.Relation(S)
+    for (a in toList(S)) {
+        for (b in toList(S)) { if (b % a == 0) { d.addPair(a, b) } }
+    }
+    assert(d.isPartialOrder(), "divisibility is a partial order on these numbers")
+    h = d.hasseDiagram()
+    assert(h.nodes.len() == 6, "six nodes")
+    // 手算覆盖：1≺2 1≺3 2≺4 2≺6 3≺6 4≺12 6≺12
+    assert(h.covers.len() == 7, "seven covering pairs, got " + str(h.covers.len()))
+    want = toSet(@["1-2", "1-3", "2-4", "2-6", "3-6", "4-12", "6-12"])
+    got = toSet(@[])
+    for (c in h.covers) { got.add(str(c[0]) + "-" + str(c[1])) }
+    assert(got == want, "covering pairs: " + str(got))
+    // 非覆盖：1<4 有中间元素 2；2<12 有中间元素 4 与 6
+    has = (a, b) => {
+        for (c in h.covers) { if (c[0] == a && c[1] == b) return true }
+        return false
+    }
+    assert(!has(1, 4) && !has(1, 12) && !has(2, 12) && !has(3, 12), "transitive edges are omitted")
+    assert(has(1, 2) && has(4, 12), "covering edges are present")
+
+    // 非偏序应当拒绝
+    bad = discrete.Relation(toSet(@[1, 2])); bad.addPair(1, 2)
+    threw = false
+    try { bad.hasseDiagram() } catch (e) { threw = true }
+    assert(threw, "non-partial-order is rejected")
+}
+test_hasse()

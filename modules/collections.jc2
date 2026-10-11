@@ -35,58 +35,125 @@ class Stack {
 // ─── Queue (FIFO) ─────────────────────────────────────────────
 
 class Queue {
+    // 双栈队列：enqueue 摊还 O(1)，dequeue 摊还 O(1)（旧实现用 list.shift()，为 O(n)）
     init() = {
-        self.data = @[]
+        self.front = @[]
+        self.back = @[]
+        self._size = 0
     }
-    
-    enqueue(item: any) = {
-        self.data.push(item)
+
+    local _transfer() = {
+        while (self.back.len() > 0) { self.front.push(self.back.pop()) }
+    }
+
+    enqueue(item: any) -> Queue = {
+        self.back.push(item)
+        self._size += 1
         return self
     }
-    
-    dequeue() = {
-        if (self.isEmpty()) throw IndexError("dequeue from empty Queue")
-        return self.data.shift()
+
+    dequeue() -> any = {
+        if (self._size == 0) throw IndexError("dequeue from empty Queue")
+        if (self.front.len() == 0) { self._transfer() }
+        self._size -= 1
+        return self.front.pop()
     }
-    
-    peek() = {
-        if (self.isEmpty()) throw IndexError("peek from empty Queue")
-        return self.data[0]
+
+    peek() -> any = {
+        if (self._size == 0) throw IndexError("peek from empty Queue")
+        if (self.front.len() == 0) { self._transfer() }
+        return self.front[self.front.len() - 1]
     }
-    
-    isEmpty() -> bool = return self.data.len() == 0
-    size() -> int     = return self.data.len()
-    clear()           = self.data.clear()
+
+    isEmpty() -> bool = return self._size == 0
+    size() -> int     = return self._size
+
+    clear() = {
+        self.front.clear()
+        self.back.clear()
+        self._size = 0
+    }
+
+    __len__() -> int = return self._size
+    __str__() -> string = return "Queue(size=" + str(self._size) + ")"
 }
 
-
-// ─── Deque (Double-Ended Queue) ───────────────────────────────
 
 class Deque {
+    // 双端队列：两端 push/pop 均摊还 O(1)（旧实现 pushLeft/popLeft 走 prepend/shift，为 O(n)）
+    // front 逆序存放左半（栈顶=最左元素），back 正序存放右半（栈顶=最右元素）。
     init() = {
-        self.data = @[]
+        self.front = @[]
+        self.back = @[]
+        self._size = 0
     }
-    
-    pushRight(item: any) = { self.data.push(item); return self }
-    pushLeft(item: any)  = { self.data.prepend(item); return self }
-    
-    popRight() = {
-        if (self.isEmpty()) throw IndexError("popRight from empty Deque")
-        return self.data.pop()
+
+    local _rebalanceLeft() = {
+        // 把 back 的一半搬到 front（取半而非全部，保证交替两端的操作也是摊还 O(1)）
+        n = self.back.len()
+        half = n - n / 2
+        i = 0
+        while (i < half) { self.front.push(self.back.pop()); i += 1 }
     }
-    
-    popLeft() = {
-        if (self.isEmpty()) throw IndexError("popLeft from empty Deque")
-        return self.data.shift()
+
+    local _rebalanceRight() = {
+        n = self.front.len()
+        half = n - n / 2
+        i = 0
+        while (i < half) { self.back.push(self.front.pop()); i += 1 }
     }
-    
-    isEmpty() -> bool = return self.data.len() == 0
-    size() -> int     = return self.data.len()
-    clear()           = self.data.clear()
+
+    pushRight(item: any) -> Deque = {
+        self.back.push(item)
+        self._size += 1
+        return self
+    }
+
+    pushLeft(item: any) -> Deque = {
+        self.front.push(item)
+        self._size += 1
+        return self
+    }
+
+    popRight() -> any = {
+        if (self._size == 0) throw IndexError("popRight from empty Deque")
+        if (self.back.len() == 0) { self._rebalanceRight() }
+        self._size -= 1
+        return self.back.pop()
+    }
+
+    popLeft() -> any = {
+        if (self._size == 0) throw IndexError("popLeft from empty Deque")
+        if (self.front.len() == 0) { self._rebalanceLeft() }
+        self._size -= 1
+        return self.front.pop()
+    }
+
+    peekLeft() -> any = {
+        if (self._size == 0) throw IndexError("peekLeft from empty Deque")
+        if (self.front.len() == 0) { self._rebalanceLeft() }
+        return self.front[self.front.len() - 1]
+    }
+
+    peekRight() -> any = {
+        if (self._size == 0) throw IndexError("peekRight from empty Deque")
+        if (self.back.len() == 0) { self._rebalanceRight() }
+        return self.back[self.back.len() - 1]
+    }
+
+    isEmpty() -> bool = return self._size == 0
+    size() -> int     = return self._size
+
+    clear() = {
+        self.front.clear()
+        self.back.clear()
+        self._size = 0
+    }
+
+    __len__() -> int = return self._size
+    __str__() -> string = return "Deque(size=" + str(self._size) + ")"
 }
 
-
-// ─── DefaultDict ──────────────────────────────────────────────
 
 class DefaultDict {
     init(defaultFactory: function) = {

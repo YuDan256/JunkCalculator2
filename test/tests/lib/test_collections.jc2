@@ -143,3 +143,53 @@ test_std_error_classes() = {
 }
 
 test_std_error_classes()
+
+// Queue/Deque 的摊还 O(1) 改写：与参考模型逐操作比对（顺序 + 长度一致性）
+test_queue_deque_model() = {
+    q = collections.Queue()
+    expect = @[]
+    i = 0
+    while (i < 60) {
+        q.enqueue(i)
+        expect.push(i)
+        if (i % 3 == 2) {
+            assert(q.dequeue() == expect.shift(), "Queue FIFO order at step " + str(i))
+        }
+        i += 1
+    }
+    while (expect.len() > 0) {
+        assert(q.dequeue() == expect.shift(), "Queue drains in FIFO order")
+    }
+    assert(q.isEmpty() && q.size() == 0, "Queue empty after drain")
+
+    d = collections.Deque()
+    model = @[]
+    k = 0
+    while (k < 200) {
+        if (k % 4 == 0) { d.pushLeft(k); model.prepend(k) }
+        else if (k % 4 == 1) { d.pushRight(k); model.push(k) }
+        else if (k % 4 == 2) {
+            assert(d.popLeft() == model.shift(), "Deque popLeft matches model at " + str(k))
+        } else {
+            assert(d.popRight() == model.pop(), "Deque popRight matches model at " + str(k))
+        }
+        assert(d.size() == model.len(), "Deque size matches model at " + str(k))
+        k += 1
+    }
+    // 交替两端的高频场景（针对"折半搬运"的摊还性）
+    m = 0
+    while (m < 300) {
+        d.pushLeft(m)
+        model.prepend(m)
+        assert(d.popRight() == model.pop(), "alternating left-push/right-pop at " + str(m))
+        m += 1
+    }
+    // 清空后两侧仍可用（用 popLeft 排空：'clear' 与同名全局函数冲突，待单独处理，见提交说明）
+    while (!d.isEmpty()) { d.popLeft() }
+    assert(d.isEmpty(), "Deque drained")
+    d.pushLeft(1); d.pushRight(2)
+    assert(d.peekLeft() == 1 && d.peekRight() == 2, "Deque usable after clear")
+    assert(d.popLeft() == 1 && d.popRight() == 2, "Deque drains after clear")
+}
+
+test_queue_deque_model()

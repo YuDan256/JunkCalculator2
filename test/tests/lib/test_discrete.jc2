@@ -498,3 +498,40 @@ test_relation_functions() = {
     assert(empty.isFunction() && empty.isInjective() && !empty.isSurjective(), "empty relation is a function, not onto")
 }
 test_relation_functions()
+
+// 关系运算：并 / 交 / 差 / S×S 内补 / 限制
+test_relation_algebra() = {
+    S = toSet(@[1, 2, 3])
+    A = discrete.Relation(S); A.addPair(1, 2); A.addPair(2, 3)
+    B = discrete.Relation(S); B.addPair(2, 3); B.addPair(3, 1)
+
+    u = A.unionOf(B)
+    assert(u.R.len() == 3 && u.hasPair(1, 2) && u.hasPair(3, 1), "union pairs")
+    assert(u.S.len() == 3, "union of the underlying sets")
+
+    it = A.intersect(B)
+    assert(it.R.len() == 1 && it.hasPair(2, 3) && !it.hasPair(1, 2), "intersection pairs")
+
+    df = A.difference(B)
+    assert(df.R.len() == 1 && df.hasPair(1, 2) && !df.hasPair(2, 3), "difference pairs")
+
+    c = A.complement()
+    assert(c.R.len() == 7, "complement within SxS has 9 - 2 pairs, got " + str(c.R.len()))
+    assert(!c.hasPair(1, 2) && c.hasPair(1, 1) && c.hasPair(3, 2), "complement content")
+
+    // 补与原关系互补：并集恰为 S×S
+    back = A.unionOf(c)
+    assert(back.R.len() == 9, "A union its complement is SxS, got " + str(back.R.len()))
+
+    rs = A.restrict(toSet(@[1]))
+    assert(rs.R.len() == 1 && rs.hasPair(1, 2), "restriction keeps only pairs from the subset")
+    assert(rs.S.len() == 3, "restriction keeps the underlying set")
+
+    // 不同底集的关系：结果的 S 为两者之并
+    T = toSet(@[4])
+    D = discrete.Relation(toSet(@[1, 2])); D.addPair(1, 1)
+    E = discrete.Relation(T); E.addPair(4, 4)
+    m = D.unionOf(E)
+    assert(m.S.len() == 3 && m.R.len() == 2, "union merges the underlying sets")
+}
+test_relation_algebra()

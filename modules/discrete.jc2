@@ -682,6 +682,52 @@ class Relation {
 
     isBijective() -> bool = return self.isFunction() && self.isInjective() && self.isSurjective()
 
+    // ── 关系运算（结果关系的 S 为两者之并；complement 在 S×S 内取补）──
+    local _unionS(other: Relation) -> set = {
+        out = @{}
+        for (x in self.S) { out.add(x) }
+        for (x in other.S) { out.add(x) }
+        return out
+    }
+
+    unionOf(other: Relation) -> Relation = {
+        r = Relation(self._unionS(other))
+        for (p in self.R) { r.R.add(p) }
+        for (p in other.R) { r.R.add(p) }
+        return r
+    }
+
+    intersect(other: Relation) -> Relation = {
+        r = Relation(self._unionS(other))
+        for (p in self.R) { if (p in other.R) { r.R.add(p) } }
+        return r
+    }
+
+    difference(other: Relation) -> Relation = {
+        r = Relation(self._unionS(other))
+        for (p in self.R) { if (!(p in other.R)) { r.R.add(p) } }
+        return r
+    }
+
+    // 在 S×S 内取补：保留 S 中所有不属于 R 的序对
+    complement() -> Relation = {
+        r = Relation(self.S)
+        for (a in self.S) {
+            for (b in self.S) {
+                p = self._mp(a, b)
+                if (!(p in self.R)) { r.R.add(p) }
+            }
+        }
+        return r
+    }
+
+    // 限制：只保留源落在 subset 内的序对
+    restrict(subset: any) -> Relation = {
+        r = Relation(self.S)
+        for (p in self.R) { @[a, b] = p; if (a in subset) { r.R.add(p) } }
+        return r
+    }
+
 }
 
 // ┌────────────────────────────────────────────────────────┐
@@ -1234,6 +1280,14 @@ try {
   ──────────────────────
     GraphError      Graph algorithm preconditions (directedness, cycles).
     RelationError   Relation and equivalence-class preconditions.
+
+  Relation Extras
+  ──────────────────────
+    domain() / range() / image(subset) / preimage(subset)   Sets of first/second components
+    isFunction / isInjective / isSurjective / isBijective   Codomain is the relation's own S
+    unionOf / intersect / difference / complement / restrict
+                                                            complement is taken inside S x S;
+                                                            results carry the union of both S
 
   Complexity
   ──────────────────────

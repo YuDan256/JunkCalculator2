@@ -536,6 +536,58 @@ class BST {
 }
 
 
+// ─── UnionFind（并查集：路径压缩 + 按秩合并，元素可为任意值）──────
+class UnionFind {
+    init() = {
+        self.parent = {}
+        self.rank = {}
+        self._count = 0
+    }
+
+    makeSet(x: any) -> UnionFind = {
+        if (!(x in self.parent)) {
+            self.parent[x] = x
+            self.rank[x] = 0
+            self._count += 1
+        }
+        return self
+    }
+
+    // 查找根：两趟法做路径压缩
+    find(x: any) -> any = {
+        self.makeSet(x)
+        root = x
+        while (!(self.parent[root] == root)) { root = self.parent[root] }
+        cur = x
+        while (!(self.parent[cur] == root)) {
+            nxt = self.parent[cur]
+            self.parent[cur] = root
+            cur = nxt
+        }
+        return root
+    }
+
+    // 合并：返回 true 表示两个元素原本属于不同集合
+    union(a: any, b: any) -> bool = {
+        ra = self.find(a)
+        rb = self.find(b)
+        if (ra == rb) return false
+        if (self.rank[ra] < self.rank[rb]) { t = ra; ra = rb; rb = t }
+        self.parent[rb] = ra
+        if (self.rank[ra] == self.rank[rb]) { self.rank[ra] += 1 }
+        self._count -= 1
+        return true
+    }
+
+    connected(a: any, b: any) -> bool = return self.find(a) == self.find(b)
+
+    componentCount() -> int = return self._count
+
+    __len__() -> int = return self._count
+    __contains__(x: any) -> bool = return x in self.parent
+    __str__() -> string = return "UnionFind(sets=" + str(self._count) + ")"
+}
+
 // ─── Dynamic Help Registry ────────────────────────────────────
 
 const local import sys

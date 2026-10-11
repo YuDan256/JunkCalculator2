@@ -277,3 +277,40 @@ test_container_dunders() = {
 }
 
 test_container_dunders()
+
+// UnionFind：路径压缩 + 按秩合并（含 Kruskal 式用法与规模用例）
+test_union_find() = {
+    uf = collections.UnionFind()
+    uf.makeSet("a"); uf.makeSet("b"); uf.makeSet("c"); uf.makeSet("d")
+    assert(len(uf) == 4, "four singleton sets")
+    assert(!uf.connected("a", "b"), "initially separate")
+    assert(uf.union("a", "b"), "merge a-b returns true")
+    assert(!uf.union("b", "a"), "already merged returns false")
+    assert(uf.connected("a", "b") && !uf.connected("a", "c"), "connectivity after merge")
+    uf.union("c", "d"); uf.union("b", "c")
+    assert(uf.componentCount() == 1, "all merged into one set")
+    assert(uf.find("a") == uf.find("d"), "same root after chained unions")
+    assert(str(uf) == "UnionFind(sets=1)", "str(UnionFind) = " + str(uf))
+    assert("a" in uf && !("z" in uf), "contains")
+
+    // find 自动登记新元素
+    assert(uf.find("z") == "z", "find registers unknown elements")
+
+    // 路径压缩后的根唯一性 + 规模用例：0..199 链式合并
+    big = collections.UnionFind()
+    i = 0
+    while (i < 200) { big.makeSet(i); i += 1 }
+    i = 1
+    while (i < 200) { big.union(i - 1, i); i += 1 }
+    assert(big.componentCount() == 1, "chain of 200 merges yields one component")
+    assert(big.find(0) == big.find(199), "ends of the chain share a root")
+
+    // Kruskal 式用法：按边权升序合并，统计生成森林
+    edges = @[@["a","b",1], @["c","d",2], @["b","c",3], @["d","e",4]]
+    k = collections.UnionFind()
+    used = 0
+    for (e in edges) { if (k.union(e[0], e[1])) { used += 1 } }
+    assert(used == 4 && k.componentCount() == 1, "all edges merged the 5 vertices")
+}
+
+test_union_find()

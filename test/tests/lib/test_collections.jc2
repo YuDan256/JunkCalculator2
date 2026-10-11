@@ -241,3 +241,39 @@ test_container_iteration() = {
 }
 
 test_container_iteration()
+
+// 容器 dunder 与 toList：len / in / str / 结构相等（含顺序与类型敏感）
+test_container_dunders() = {
+    s = collections.Stack(); s.push(1); s.push(2)
+    assert(len(s) == 2, "len(Stack)")
+    assert(2 in s, "in finds an element")
+    assert(!(9 in s), "in rejects a missing element")
+    assert(str(s) == "Stack(size=2)", "str(Stack) = " + str(s))
+    assert(s.toList() == @[2, 1], "toList follows iteration order (top-down)")
+
+    s2 = collections.Stack(); s2.push(1); s2.push(2)
+    assert(s == s2, "structural equality")
+    s3 = collections.Stack(); s3.push(2); s3.push(1)
+    assert(!(s == s3), "order matters for equality")
+    q = collections.Queue(); q.enqueue(2); q.enqueue(1)
+    assert(!(s == q), "different container types are not equal")
+
+    pq = collections.PriorityQueue(); pq.push(5); pq.push(1); pq.push(3)
+    assert(len(pq) == 3, "len(PriorityQueue)")
+    assert(3 in pq && !(4 in pq), "contains scans the priority-ordered snapshot")
+    assert(str(pq) == "PriorityQueue(size=3)", "str(PriorityQueue) = " + str(pq))
+    pq2 = collections.PriorityQueue(); pq2.push(1); pq2.push(3); pq2.push(5)
+    assert(pq == pq2, "PriorityQueue equality is by priority order, not push order")
+
+    b = collections.BST()
+    b.insert(5); b.insert(3); b.insert(8)
+    assert(len(b) == 3, "len(BST)")
+    assert(3 in b && !(4 in b), "contains(BST)")
+    assert(str(b) == "BST(size=3)", "str(BST) = " + str(b))
+    assert(b.toList() == @[3, 5, 8], "toList is in-order")
+
+    d = collections.Deque(); d.pushRight(2); d.pushLeft(1)
+    assert(len(d) == 2 && (1 in d) && str(d) == "Deque(size=2)", "Deque dunders")
+}
+
+test_container_dunders()

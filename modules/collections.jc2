@@ -53,6 +53,35 @@ class Stack {
         return _SeqIter(snap)
     }
 
+    // 快照列表（顺序与 __iter__ 相同）
+    toList() -> list = {
+        snap = @[]
+        for (v in self) { snap.push(v) }
+        return snap
+    }
+
+    __len__() -> int = return self.size()
+
+    __contains__(x: any) -> bool = {
+        for (v in self) { if (v == x) return true }
+        return false
+    }
+
+    __eq__(other: any) -> bool = {
+        if (!isinstance(other, Stack)) return false
+        a = self.toList()
+        b = other.toList()
+        if (a.len() != b.len()) return false
+        i = 0
+        while (i < a.len()) {
+            if (!(a[i] == b[i])) return false
+            i += 1
+        }
+        return true
+    }
+
+    __str__() -> string = return "Stack(size=" + str(self.size()) + ")"
+
 }
 
 
@@ -108,6 +137,31 @@ class Queue {
         i = 0
         while (i < self.back.len()) { snap.push(self.back[i]); i += 1 }
         return _SeqIter(snap)
+    }
+
+    // 快照列表（顺序与 __iter__ 相同）
+    toList() -> list = {
+        snap = @[]
+        for (v in self) { snap.push(v) }
+        return snap
+    }
+
+    __contains__(x: any) -> bool = {
+        for (v in self) { if (v == x) return true }
+        return false
+    }
+
+    __eq__(other: any) -> bool = {
+        if (!isinstance(other, Queue)) return false
+        a = self.toList()
+        b = other.toList()
+        if (a.len() != b.len()) return false
+        i = 0
+        while (i < a.len()) {
+            if (!(a[i] == b[i])) return false
+            i += 1
+        }
+        return true
     }
 
 }
@@ -194,6 +248,31 @@ class Deque {
         i = 0
         while (i < self.back.len()) { snap.push(self.back[i]); i += 1 }
         return _SeqIter(snap)
+    }
+
+    // 快照列表（顺序与 __iter__ 相同）
+    toList() -> list = {
+        snap = @[]
+        for (v in self) { snap.push(v) }
+        return snap
+    }
+
+    __contains__(x: any) -> bool = {
+        for (v in self) { if (v == x) return true }
+        return false
+    }
+
+    __eq__(other: any) -> bool = {
+        if (!isinstance(other, Deque)) return false
+        a = self.toList()
+        b = other.toList()
+        if (a.len() != b.len()) return false
+        i = 0
+        while (i < a.len()) {
+            if (!(a[i] == b[i])) return false
+            i += 1
+        }
+        return true
     }
 
 }
@@ -328,6 +407,35 @@ class PriorityQueue {
         return _SeqIter(snap)
     }
 
+    // 快照列表（顺序与 __iter__ 相同）
+    toList() -> list = {
+        snap = @[]
+        for (v in self) { snap.push(v) }
+        return snap
+    }
+
+    __len__() -> int = return self.size()
+
+    __contains__(x: any) -> bool = {
+        for (v in self) { if (v == x) return true }
+        return false
+    }
+
+    __eq__(other: any) -> bool = {
+        if (!isinstance(other, PriorityQueue)) return false
+        a = self.toList()
+        b = other.toList()
+        if (a.len() != b.len()) return false
+        i = 0
+        while (i < a.len()) {
+            if (!(a[i] == b[i])) return false
+            i += 1
+        }
+        return true
+    }
+
+    __str__() -> string = return "PriorityQueue(size=" + str(self.size()) + ")"
+
 }
 
 
@@ -395,6 +503,35 @@ class BST {
     }
     // 迭代：中序（快照，不改动树；可重复遍历）
     __iter__() = return _SeqIter(self.inorder())
+
+    // 快照列表（顺序与 __iter__ 相同）
+    toList() -> list = {
+        snap = @[]
+        for (v in self) { snap.push(v) }
+        return snap
+    }
+
+    __len__() -> int = return self.size()
+
+    __contains__(x: any) -> bool = {
+        for (v in self) { if (v == x) return true }
+        return false
+    }
+
+    __eq__(other: any) -> bool = {
+        if (!isinstance(other, BST)) return false
+        a = self.toList()
+        b = other.toList()
+        if (a.len() != b.len()) return false
+        i = 0
+        while (i < a.len()) {
+            if (!(a[i] == b[i])) return false
+            i += 1
+        }
+        return true
+    }
+
+    __str__() -> string = return "BST(size=" + str(self.size()) + ")"
 
 }
 

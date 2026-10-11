@@ -133,3 +133,20 @@ test_matrix_rejects_bad_args() = {
     }
 }
 test_matrix_rejects_bad_args()
+
+// 整数幂不得引入转置（曾因 real->complex 转换按行主序组装 flat 而整体转置）
+test_matrix_integer_power() = {
+    B = matrix(2, 2, 5, 7, 6, 8)
+    assert(repr(B^1) == repr(B), "A^1 must equal A")
+    assert(repr(B^2) == repr(B * B), "A^2 must equal A*A")
+    assert(repr(B^0) == repr(matrix(2, 2, 1, 0, 0, 1)), "A^0 is the identity")
+    assert(repr(B^-1) == repr(B.inv()), "A^-1 must equal A.inv()")
+    assert(repr(B^-2) == repr(B.inv()^2), "A^-2 must equal inv(A)^2")
+    C = matrix(2, 2, 1, 2, 3, 5)
+    assert(repr(C^1) == repr(C), "asymmetric A^1 must equal A")
+    assert(repr(C^2) == repr(C * C), "asymmetric A^2 must equal A*A")
+    S = symmatrix(2, 2, 1, 2, 3, 5)
+    assert(repr(S^1) == repr(S), "symmatrix^1 must equal itself")
+}
+
+test_matrix_integer_power()

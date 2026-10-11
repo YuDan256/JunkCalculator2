@@ -446,13 +446,14 @@ namespace jc {
             if (isObjType(ObjType::COMPLEX_MATRIX)) return static_cast<ObjComplexMatrix*>(asObj())->mat;
             if (isObjType(ObjType::REAL_MATRIX)) {
                 const RealMatrix& m = static_cast<ObjRealMatrix*>(asObj())->mat;
-                std::vector<Complex> flat(m.getRows() * m.getCols());
+                // 按下标访问器逐格填充。矩阵在本版统一为列主序，而这里原先按行主序组装 flat
+                // 再交给 ComplexMatrix(rows, cols, flat)，两套约定不一致 => 复数矩阵整体被转置一次，
+                // 于是实数矩阵的整数幂统统变成 (A^n)^T（B^1 都不等于 B）。
+                ComplexMatrix cm(m.getRows(), m.getCols());
                 for (int r = 0; r < m.getRows(); ++r) {
-                    for (int c = 0; c < m.getCols(); ++c) {
-                        flat[r * m.getCols() + c] = Complex(m(r, c));
-                    }
+                    for (int cc = 0; cc < m.getCols(); ++cc) cm(r, cc) = Complex(m(r, cc));
                 }
-                return ComplexMatrix(m.getRows(), m.getCols(), flat);
+                return cm;
             }
             errExpectMatrix();
         }
@@ -466,7 +467,7 @@ namespace jc {
                 std::vector<SymExpr> flat(m.getRows() * m.getCols());
                 for (int r = 0; r < m.getRows(); ++r) {
                     for (int c = 0; c < m.getCols(); ++c) {
-                        flat[r * m.getCols() + c] = SymExpr(m(r, c));
+                        flat[c * m.getRows() + r] = SymExpr(m(r, c));
                     }
                 }
                 return SymMatrix(m.getRows(), m.getCols(), flat);
@@ -476,7 +477,7 @@ namespace jc {
                 std::vector<SymExpr> flat(m.getRows() * m.getCols());
                 for (int r = 0; r < m.getRows(); ++r) {
                     for (int c = 0; c < m.getCols(); ++c) {
-                        flat[r * m.getCols() + c] = SymExpr(m(r, c));
+                        flat[c * m.getRows() + r] = SymExpr(m(r, c));
                     }
                 }
                 return SymMatrix(m.getRows(), m.getCols(), flat);

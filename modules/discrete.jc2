@@ -85,6 +85,93 @@ local _propEval3(node: any, env: dict) -> any = {
     return none
 }
 
+// ── 命题范式：NNF 下推 + 分布律（模块级私有函数）──
+// 字面量表示为 @[变量名, 是否取反]；CNF 为子句之合取（@[] 表示 TRUE，含空子句表示 FALSE）；
+// DNF 为项之析取（@[] 表示 FALSE，含空项表示 TRUE）。重言子句会被剪除。
+
+local _propNnf(node: any, negate: bool) -> dict = {
+    tp = node.tp
+    if (tp == "var") return {t: "lit", name: node.a, neg: negate}
+    if (tp == "not") return _propNnf(node.a, !negate)
+    if (tp == "and") return {t: negate ? "or" : "and", kids: @[_propNnf(node.a, negate), _propNnf(node.b, negate)]}
+    if (tp == "or")  return {t: negate ? "and" : "or", kids: @[_propNnf(node.a, negate), _propNnf(node.b, negate)]}
+    if (tp == "imp") {
+        // a -> b 等价于 !a | b；其否定为 a & !b
+        if (negate) return {t: "and", kids: @[_propNnf(node.a, false), _propNnf(node.b, true)]}
+        return {t: "or", kids: @[_propNnf(node.a, true), _propNnf(node.b, false)]}
+    }
+    if (tp == "iff") {
+        // a <-> b 等价于 (a & b) | (!a & !b)；其否定为 (a & !b) | (!a & b)
+        return {t: "or", kids: @[
+            {t: "and", kids: @[_propNnf(node.a, negate), _propNnf(node.b, negate)]},
+            {t: "and", kids: @[_propNnf(node.a, !negate), _propNnf(node.b, !negate)]}
+        ]}
+    }
+    return {t: "lit", name: "?", neg: false}
+}
+
+// 子句/项是否含互补字面量（重言子句 / 矛盾项）
+local _hasComplement(lits: list) -> bool = {
+    i = 0
+    while (i < lits.len()) {
+        j = i + 1
+        while (j < lits.len()) {
+            if (lits[i][0] == lits[j][0] && lits[i][1] != lits[j][1]) return true
+            j += 1
+        }
+        i += 1
+    }
+    return false
+}
+
+local _propToCnf(n: dict) -> list = {
+    if (n.t == "lit") return @[@[@[n.name, n.neg]]]
+    if (n.t == "and") {
+        out = @[]
+        for (k in n.kids) { for (cl in _propToCnf(k)) { out.push(cl) } }
+        return out
+    }
+    if (n.t == "or") {
+        left = _propToCnf(n.kids[0]); right = _propToCnf(n.kids[1])
+        out = @[]
+        for (l in left) {
+            for (r in right) {
+                m = @[]
+                for (x in l) { m.push(x) }
+                for (y in r) { m.push(y) }
+                if (_hasComplement(m)) continue      // 重言子句恒真，可从合取中剪除
+                out.push(m)
+            }
+        }
+        return out
+    }
+    return @[]
+}
+
+local _propToDnf(n: dict) -> list = {
+    if (n.t == "lit") return @[@[@[n.name, n.neg]]]
+    if (n.t == "or") {
+        out = @[]
+        for (k in n.kids) { for (tm in _propToDnf(k)) { out.push(tm) } }
+        return out
+    }
+    if (n.t == "and") {
+        left = _propToDnf(n.kids[0]); right = _propToDnf(n.kids[1])
+        out = @[]
+        for (l in left) {
+            for (r in right) {
+                m = @[]
+                for (x in l) { m.push(x) }
+                for (y in r) { m.push(y) }
+                if (_hasComplement(m)) continue      // 矛盾项恒假，可从析取中剪除
+                out.push(m)
+            }
+        }
+        return out
+    }
+    return @[]
+}
+
 class Prop {
     init(tp: string, a: any, b: any) = {
         self.tp = tp
@@ -227,6 +314,10 @@ class Prop {
         if (r2.found) return r2
         return {found: false, env: {}}
     }
+
+    // 合取范式 / 析取范式（重言子句与矛盾项已剪除；@[] 分别表示 TRUE / FALSE）
+    cnf() -> list = return _propToCnf(_propNnf(self, false))
+    dnf() -> list = return _propToDnf(_propNnf(self, false))
 
 }
 

@@ -304,3 +304,49 @@ test_prop_dpll_search() = {
     assert(r2.found && f2.eval(r2.env) == true, "witness assignment verified")
 }
 test_prop_dpll_search()
+
+// CNF / DNF：与真值表逐行对拍（每一行赋值下两者取值必须与原公式一致）
+test_prop_cnf_dnf() = {
+    litSat = (lit, env) => env[lit[0]] != lit[1]
+    cnfTrue = (cnf, env) => {
+        for (cl in cnf) {
+            ok = false
+            for (lit in cl) { if (litSat(lit, env)) { ok = true } }
+            if (!ok) return false
+        }
+        return true
+    }
+    dnfTrue = (dnf, env) => {
+        if (dnf.len() == 0) return false
+        for (tm in dnf) {
+            all = true
+            for (lit in tm) { if (!litSat(lit, env)) { all = false } }
+            if (all) return true
+        }
+        return false
+    }
+
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b"); c = mk("c")
+    cases = @[a, a & b, a | b, -a, a.implies(b), a.iff(b),
+              (a & b) | (-a & c), -(a | b), (a.implies(b)) & (b.implies(c)),
+              a | -a,                                  // 重言：CNF 应剪成 @[]（TRUE）
+              a & -a]                                  // 矛盾：CNF 应含空子句
+    for (f in cases) {
+        cnf = f.cnf(); dnf = f.dnf()
+        for (row in f.table()) {
+            assert(cnfTrue(cnf, row.env) == row.result, "CNF agrees with the truth table")
+            assert(dnfTrue(dnf, row.env) == row.result, "DNF agrees with the truth table")
+        }
+    }
+    assert((a | -a).cnf().len() == 0, "tautology collapses to an empty CNF")
+    assert((a | -a).dnf().len() > 0, "tautology is a non-empty DNF")
+    // 矛盾在 CNF 里表现为互补单元子句（本实现不做归结，故不产生空子句）
+    cc = (a & -a).cnf()
+    assert(cc.len() == 2 && cc[0].len() == 1 && cc[1].len() == 1, "contradiction yields two unit clauses")
+    assert(cc[0][0][0] == "a" && cc[1][0][0] == "a" && cc[0][0][1] != cc[1][0][1], "the two units are complementary")
+    assert((a & -a).dnf().len() == 0, "contradiction collapses to an empty DNF")
+    assert(a.cnf() == @[@[@["a", false]]], "single variable CNF")
+    assert((a & b).cnf().len() == 2, "conjunction keeps two clauses")
+}
+test_prop_cnf_dnf()

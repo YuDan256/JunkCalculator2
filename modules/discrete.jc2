@@ -200,7 +200,7 @@ class Relation {
     }
 
     clearPairs() = {
-        self.R.clear()
+        self.R = @{}
         return self
     }
     

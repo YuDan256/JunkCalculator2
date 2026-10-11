@@ -184,9 +184,13 @@ test_queue_deque_model() = {
         assert(d.popRight() == model.pop(), "alternating left-push/right-pop at " + str(m))
         m += 1
     }
-    // 清空后两侧仍可用（用 popLeft 排空：'clear' 与同名全局函数冲突，待单独处理，见提交说明）
-    while (!d.isEmpty()) { d.popLeft() }
-    assert(d.isEmpty(), "Deque drained")
+    // clear()：容器清空（原实现误用 list 上不存在的 .clear() 方法，已修正）
+    d.clear()
+    assert(d.isEmpty(), "Deque cleared")
+    q2 = collections.Queue(); q2.enqueue(1); q2.enqueue(2); q2.clear()
+    assert(q2.isEmpty(), "Queue cleared")
+    s2 = collections.Stack(); s2.push(1); s2.clear()
+    assert(s2.isEmpty(), "Stack cleared")
     d.pushLeft(1); d.pushRight(2)
     assert(d.peekLeft() == 1 && d.peekRight() == 2, "Deque usable after clear")
     assert(d.popLeft() == 1 && d.popRight() == 2, "Deque drains after clear")

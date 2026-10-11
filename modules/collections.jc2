@@ -28,7 +28,10 @@ class Stack {
     
     isEmpty() -> bool = return self.data.len() == 0
     size() -> int     = return self.data.len()
-    clear()           = self.data.clear()
+    clear() = {
+        self.data = @[]
+        return self
+    }
 }
 
 
@@ -69,8 +72,8 @@ class Queue {
     size() -> int     = return self._size
 
     clear() = {
-        self.front.clear()
-        self.back.clear()
+        self.front = @[]
+        self.back = @[]
         self._size = 0
     }
 
@@ -145,8 +148,8 @@ class Deque {
     size() -> int     = return self._size
 
     clear() = {
-        self.front.clear()
-        self.back.clear()
+        self.front = @[]
+        self.back = @[]
         self._size = 0
     }
 

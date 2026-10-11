@@ -29,12 +29,12 @@ class Stack {
         return self
     }
     
-    pop() = {
+    pop() -> any = {
         if (self.isEmpty()) throw IndexError("pop from empty Stack")
         return self.data.pop()
     }
     
-    peek() = {
+    peek() -> any = {
         if (self.isEmpty()) throw IndexError("peek from empty Stack")
         return self.data[-1]
     }
@@ -343,7 +343,7 @@ class PriorityQueue {
         return self
     }
     
-    pop() = {
+    pop() -> any = {
         n = self.data.len()
         if (n == 0) throw IndexError("pop from empty PriorityQueue")
         
@@ -357,7 +357,7 @@ class PriorityQueue {
         return result
     }
     
-    peek() = {
+    peek() -> any = {
         if (self.isEmpty()) throw IndexError("peek from empty PriorityQueue")
         return self.data[0]
     }

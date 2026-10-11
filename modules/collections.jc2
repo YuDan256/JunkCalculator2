@@ -6,6 +6,19 @@
 
 // ─── Stack (LIFO) ─────────────────────────────────────────────
 
+// ─── 迭代器（__iter__ 返回它；__next__ 耗尽时抛 StopIteration）──────────
+class _SeqIter {
+    init(items: list) = {
+        self.items = items
+        self.i = 0
+    }
+    __next__() = {
+        if (self.i >= self.items.len()) throw StopIteration()
+        self.i += 1
+        return self.items[self.i - 1]
+    }
+}
+
 class Stack {
     init() = {
         self.data = @[]
@@ -32,6 +45,14 @@ class Stack {
         self.data = @[]
         return self
     }
+    // 迭代：自顶向下（快照，不消耗栈；可重复遍历）
+    __iter__() = {
+        snap = @[]
+        i = self.data.len() - 1
+        while (i >= 0) { snap.push(self.data[i]); i -= 1 }
+        return _SeqIter(snap)
+    }
+
 }
 
 
@@ -79,6 +100,16 @@ class Queue {
 
     __len__() -> int = return self._size
     __str__() -> string = return "Queue(size=" + str(self._size) + ")"
+    // 迭代：自队首至队尾（快照，不出队；可重复遍历）
+    __iter__() = {
+        snap = @[]
+        i = self.front.len() - 1
+        while (i >= 0) { snap.push(self.front[i]); i -= 1 }
+        i = 0
+        while (i < self.back.len()) { snap.push(self.back[i]); i += 1 }
+        return _SeqIter(snap)
+    }
+
 }
 
 
@@ -155,6 +186,16 @@ class Deque {
 
     __len__() -> int = return self._size
     __str__() -> string = return "Deque(size=" + str(self._size) + ")"
+    // 迭代：自左至右（快照，不弹出；可重复遍历）
+    __iter__() = {
+        snap = @[]
+        i = self.front.len() - 1
+        while (i >= 0) { snap.push(self.front[i]); i -= 1 }
+        i = 0
+        while (i < self.back.len()) { snap.push(self.back[i]); i += 1 }
+        return _SeqIter(snap)
+    }
+
 }
 
 
@@ -277,6 +318,16 @@ class PriorityQueue {
             } else { break }
         }
     }
+    // 迭代：按优先级升序（用副本堆排序，不改动自身；可重复遍历）
+    __iter__() = {
+        copy = PriorityQueue(self.cmp)
+        i = 0
+        while (i < self.data.len()) { copy.push(self.data[i]); i += 1 }
+        snap = @[]
+        while (!copy.isEmpty()) { snap.push(copy.pop()) }
+        return _SeqIter(snap)
+    }
+
 }
 
 
@@ -288,6 +339,7 @@ local class TreeNode {
         self.left = none
         self.right = none
     }
+
 }
 
 class BST {
@@ -341,6 +393,9 @@ class BST {
             self._inorderTraversal(node.right, res)
         }
     }
+    // 迭代：中序（快照，不改动树；可重复遍历）
+    __iter__() = return _SeqIter(self.inorder())
+
 }
 
 

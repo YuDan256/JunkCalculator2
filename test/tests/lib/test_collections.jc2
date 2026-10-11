@@ -197,3 +197,47 @@ test_queue_deque_model() = {
 }
 
 test_queue_deque_model()
+
+// 迭代协议：__iter__ 返回带 __next__ 的迭代器；快照语义、可重复遍历
+test_container_iteration() = {
+    s = collections.Stack()
+    s.push(1); s.push(2); s.push(3)
+    got = @[]
+    for (x in s) { got.push(x) }
+    assert(got == @[3, 2, 1], "Stack iterates top-down: " + str(got))
+    again = @[]
+    for (x in s) { again.push(x) }
+    assert(again == @[3, 2, 1] && s.size() == 3, "Stack iteration is repeatable and non-consuming")
+
+    q = collections.Queue()
+    q.enqueue("a"); q.enqueue("b"); q.enqueue("c")
+    q.dequeue()
+    q.enqueue("d")
+    got2 = @[]
+    for (x in q) { got2.push(x) }
+    assert(got2 == @["b", "c", "d"], "Queue iterates front-to-back across the two stacks: " + str(got2))
+    assert(q.size() == 3, "Queue iteration does not dequeue")
+
+    d = collections.Deque()
+    d.pushRight(2); d.pushLeft(1); d.pushRight(3)
+    got3 = @[]
+    for (x in d) { got3.push(x) }
+    assert(got3 == @[1, 2, 3], "Deque iterates left-to-right: " + str(got3))
+
+    pq = collections.PriorityQueue()
+    pq.push(5); pq.push(1); pq.push(3)
+    got4 = @[]
+    for (x in pq) { got4.push(x) }
+    assert(got4 == @[1, 3, 5], "PriorityQueue iterates in priority order: " + str(got4))
+    assert(pq.size() == 3, "PriorityQueue iteration does not pop")
+
+    b = collections.BST()
+    b.insert(5); b.insert(3); b.insert(8); b.insert(4)
+    got5 = @[]
+    for (x in b) { got5.push(x) }
+    assert(got5 == @[3, 4, 5, 8], "BST iterates in order: " + str(got5))
+
+    assert(isiterable(s) && isiterable(q) && isiterable(d) && isiterable(pq) && isiterable(b), "isiterable true")
+}
+
+test_container_iteration()

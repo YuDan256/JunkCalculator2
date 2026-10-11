@@ -1,3 +1,4 @@
+import errors
 // ═══════════════════════════════════════════════════════════════
 // discrete.jc2 — Discrete Mathematics Standard Library v2.2.2
 // Pure JC2 Implementation with Strict Type Contracts
@@ -186,7 +187,7 @@ class Relation {
 
     addPair(a: any, b: any) = { 
         if (!(a in self.S) || !(b in self.S)) {
-            throw f"Relation Error: Both elements '{a}' and '{b}' must exist in the base set S."
+            throw errors.RelationError(f"Relation Error: Both elements '{a}' and '{b}' must exist in the base set S.")
         }
         self.R.add(self._mp(a, b))
         return self 
@@ -306,7 +307,7 @@ class Relation {
 
     // ── Equivalence Classes ──
     equivalenceClasses() -> list = {
-        if (!self.isEquivalence()) throw Exception("RelationError", "equivalenceClasses subject must be an equivalence relation.")
+        if (!self.isEquivalence()) throw errors.RelationError("equivalenceClasses subject must be an equivalence relation.")
         assigned = @{}
         classes = @[]
         for (x in self.S) {
@@ -569,7 +570,7 @@ class Graph {
     }
 
     topSort() -> list = {
-        if (!self.directed) throw Exception("GraphError", "topSort() requires a directed graph.")
+        if (!self.directed) throw errors.GraphError("topSort() requires a directed graph.")
         
         vs = toList(self.adj.keys())
         inDeg = {}; for (v in vs) inDeg[v] = 0
@@ -592,12 +593,12 @@ class Graph {
                 }
             }
         }
-        if (res.len() != vs.len()) throw Exception("GraphError", "Cycle detected, topological sort impossible.")
+        if (res.len() != vs.len()) throw errors.GraphError("Cycle detected, topological sort impossible.")
         return res
     }
 
     components() -> list = {
-        if (self.directed) throw Exception("GraphError", "components() requires an undirected graph.")
+        if (self.directed) throw errors.GraphError("components() requires an undirected graph.")
         
         visited = @{}; comps = @[]
         for (v in toList(self.adj.keys())) {

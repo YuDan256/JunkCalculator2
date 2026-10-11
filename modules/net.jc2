@@ -1,3 +1,4 @@
+import errors
 // ═══════════════════════════════════════════════════════════════
 // net.jc2 — TCP Native Networking Standard Library
 // Pure, Zero-Dependency Socket Engine (Client & Server)
@@ -27,14 +28,14 @@ class TcpSocket {
     }
 
     send(text: string) -> TcpSocket = {
-        if (self.sock is none) throw Exception("NetworkError", "Socket is not connected!")
+        if (self.sock is none) throw errors.NetworkError("Socket is not connected!")
         self.sock.send(text)
         return self
     }
 
     recv(max_bytes: int | float = 4096) -> string = {
         max_bytes = round(max_bytes)
-        if (self.sock is none) throw Exception("NetworkError", "Socket is not connected!")
+        if (self.sock is none) throw errors.NetworkError("Socket is not connected!")
         return self.sock.recv(max_bytes)
     }
 
@@ -56,7 +57,7 @@ class TcpServer {
     }
 
     accept() -> TcpSocket = {
-        if (self.sock is none) throw Exception("NetworkError", "TCP Server is not bound to a port!")
+        if (self.sock is none) throw errors.NetworkError("TCP Server is not bound to a port!")
         native_client = self.sock.accept()
         
         client = TcpSocket(self.host, self.port)

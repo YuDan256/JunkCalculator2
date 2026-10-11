@@ -306,18 +306,18 @@ class Prop {
     implies(other: Prop) -> Prop    = return Prop("imp", self, other)
     iff(other: Prop) -> Prop        = return Prop("iff", self, other)
 
-    eval(env: dict) -> int = {
+    eval(env: dict) -> bool = {
         tp = self.tp
-        if (tp == "var") return env[self.a] ? 1 : 0
-        if (tp == "not") return self.a.eval(env) ? 0 : 1
+        if (tp == "var") return env[self.a] ? true : false
+        if (tp == "not") return self.a.eval(env) ? false : true
         
         ea = self.a.eval(env)
         eb = self.b.eval(env)
-        if (tp == "and") return (ea && eb) ? 1 : 0
-        if (tp == "or")  return (ea || eb) ? 1 : 0
-        if (tp == "imp") return (!ea || eb) ? 1 : 0
-        if (tp == "iff") return ea == eb ? 1 : 0
-        return 0
+        if (tp == "and") return (ea && eb) ? true : false
+        if (tp == "or")  return (ea || eb) ? true : false
+        if (tp == "imp") return (!ea || eb) ? true : false
+        if (tp == "iff") return ea == eb ? true : false
+        return false
     }
 
     vars() -> set = {
@@ -337,7 +337,7 @@ class Prop {
     isSatisfiable() -> bool       = return self.satisfiableDpll().sat
     equiv(other: Prop) -> bool    = return self.iff(other).isTautology()
 
-    __call__(env: dict) -> int    = return self.eval(env)
+    __call__(env: dict) -> bool    = return self.eval(env)
 
     table() -> list = {
         varList = toList(self.vars()).sort(); n = varList.len()

@@ -567,3 +567,24 @@ test_hasse() = {
     assert(threw, "non-partial-order is rejected")
 }
 test_hasse()
+
+// Prop 求值返回 bool（破坏性：原先返回 0/1）
+test_prop_bool_eval() = {
+    mk = (n) => discrete.Prop("var", n, none)
+    a = mk("a"); b = mk("b")
+    t1 = a & b
+    assert(t1.eval({a: true, b: true}) == true, "and both true -> true")
+    assert(t1.eval({a: true, b: false}) == false, "and one false -> false")
+    assert(t1({a: true, b: true}) == true, "__call__ forwards the bool")
+    assert((-a).eval({a: false}) == true, "negation -> bool")
+    assert(a.implies(b).eval({a: true, b: false}) == false, "implication -> bool")
+    assert(a.isSatisfiable() && t1.isSatisfiable(), "satisfiability unchanged")
+    assert((a | -a).isTautology(), "tautology still detected")
+    assert((a & -a).isContradiction(), "contradiction still detected")
+    rows = t1.table()
+    assert(rows.len() == 4 && (rows[0].result == true || rows[0].result == false), "table records booleans")
+    // 三值求值与搜索仍依赖真值判断，不受类型改动影响
+    assert(t1.satisfiableBySearch().found == true, "search still works")
+    assert(t1.satisfiableDpll().sat == true, "DPLL still works")
+}
+test_prop_bool_eval()

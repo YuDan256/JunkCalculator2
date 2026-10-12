@@ -15,7 +15,7 @@ class BytecodeSerializer {
 public:
     static constexpr uint32_t MAGIC_NUMBER = 0x4A434203; // JCB3（压缩）
     static constexpr uint32_t JCW_MAGIC = 0x4A435702;      // JCW2（压缩）
-    static constexpr uint32_t VERSION = 7;
+    static constexpr uint32_t VERSION = 8;
 
     // 将一组编译好的函数序列化为 .jcb 文件
     static void saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug = false);
@@ -34,7 +34,8 @@ private:
         NONE = 0, BOOL_FALSE, BOOL_TRUE, INT32, DOUBLE, STRING,
         BIGINT, FRACTION, COMPLEX,
         REAL_MATRIX, COMPLEX_MATRIX,
-        NAMESPACE, FNIDX, UNINIT
+        NAMESPACE, FNIDX, UNINIT,
+        BUILTIN_CLASS   // 内置类对象按名字序列化（match 兜底用的 MatchError 等）
     };
 
     static void write8(std::ostream& os, uint8_t v);

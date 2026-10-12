@@ -68,6 +68,16 @@ std::string BytecodeSerializer::readString(std::istream& is) {
     return s;
 }
 
+// ★ 内置类按名绑定（与 jcw 路径同一逻辑：内置对象不写进文件，读时绑定到现有实例）
+//   用 VM 的内置名表查回，避免硬编码清单，也保证读回来的是同一个类对象（身份一致，
+//   catch/isinstance 才成立）。VM::activeVM 的用法与 PredefinedClasses.cpp 一致。
+ObjClass* builtinClassByName(const std::string& name) {
+    if (!VM::activeVM) return nullptr;
+    Value v = VM::activeVM->getBuiltinValue(name);
+    if (!v.isClass()) return nullptr;
+    return static_cast<ObjClass*>(v.asObj());
+}
+
 void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const std::unordered_set<int>& fnIdxConstants, int constIdx, int startIndex) {
     if (fnIdxConstants.count(constIdx)) {
         write8(os, static_cast<uint8_t>(ConstTag::FNIDX));
@@ -143,12 +153,29 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         }
         return;
     }
+    if (val.isClass()) {
+        // ★ 内置类对象（如 MatchError）会由编译器内联进常量池（match 的兜底分支），
+        // 序列化时按名字写；读时按同一张表查回，避免把指针写进文件。
+        ObjClass* cls = static_cast<ObjClass*>(val.asObj());
+        if (builtinClassByName(cls->name) == cls) {   // 必须是【同一个】内置类对象
+            write8(os, static_cast<uint8_t>(ConstTag::BUILTIN_CLASS));
+            writeString(os, cls->name);
+            return;
+        }
+        JC2_THROW(InternalError, "Unsupported constant class '<" + cls->name + ">' for serialization.");
+    }
     JC2_THROW(InternalError, "Unsupported constant type for serialization.");
 }
 
 Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
     ConstTag tag = static_cast<ConstTag>(read8(is));
     switch (tag) {
+        case ConstTag::BUILTIN_CLASS: {
+            std::string clsName = readString(is);
+            ObjClass* cls = builtinClassByName(clsName);
+            if (!cls) JC2_THROW(InternalError, "Unknown built-in class '" + clsName + "' in bytecode.");
+            return Value(cls);
+        }
         case ConstTag::NONE: return Value::none();
         case ConstTag::UNINIT: return Value::uninit();
         case ConstTag::BOOL_FALSE: return Value(false);

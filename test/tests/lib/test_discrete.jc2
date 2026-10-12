@@ -438,6 +438,12 @@ test_prop_parse() = {
         }
         assert(back.isTautology() == f.isTautology(), "tautology preserved through parse/print")
     }
+    // 静态入口：Prop.parse 与模块级 parseProp 行为一致
+    sp = discrete.Prop.parse("a & b")
+    mp = discrete.parseProp("a & b")
+    assert(sp.eval({a: true, b: true}) == mp.eval({a: true, b: true}), "Prop.parse agrees with parseProp")
+    assert(sp.eval({a: true, b: false}) == false, "Prop.parse evaluates correctly")
+
     // 别名与括号
     x = discrete.parseProp("a -> b")
     assert(x.eval({a: true, b: false}) == false, "'->' is implication")

@@ -736,25 +736,27 @@ public:
                         break;
                     }
                     case OpCode::GET_PROP: {
-                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
                         auto fs = captureFrameState(currentIp);
                         HIRNode* objVal = getBoxedRKNode(b);
                         auto icIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_prop), JITType::TaggedValue, 3, {objVal, icIdxNode, chunkNode}, fs);
                         setLocalSync(a, callout);
-                        regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
+                        // ★ 不把【成员名】写进 regFuncName_：后续 CALL 会拿它去全局表按名解析，做内联或内建快路径，
+                        //   成员（如 NS.f / NS.sqrt）会被同名全局函数张冠李戴。成员调用走通用调用路径。
+                        // （曾实测：funcName=f 时 targetFn 被解析成全局 f；仅因 canInline/fb 守卫才未出错。）
                         break;
                     }
                     case OpCode::TRY_GET_PROP: {
-                        InlineCache& ic = const_cast<InlineCache&>(chunk_.inlineCaches[c]);
                         auto fs = captureFrameState(currentIp);
                         HIRNode* objVal = getBoxedRKNode(b);
                         auto icIdxNode = builder_.createInt32Constant(c);
                         auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_try_get_prop), JITType::TaggedValue, 3, {objVal, icIdxNode, chunkNode}, fs);
                         setLocalSync(a, callout);
-                        regFuncName_[a] = chunk_.constants[ic.nameIdx].asString();
+                        // ★ 不把【成员名】写进 regFuncName_：后续 CALL 会拿它去全局表按名解析，做内联或内建快路径，
+                        //   成员（如 NS.f / NS.sqrt）会被同名全局函数张冠李戴。成员调用走通用调用路径。
+                        // （曾实测：funcName=f 时 targetFn 被解析成全局 f；仅因 canInline/fb 守卫才未出错。）
                         break;
                     }
                     case OpCode::SET_PROP: {

@@ -70,7 +70,22 @@ void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool
     }
     
     sym.depth = static_cast<int>(scopes.size()) - 1;
+    if (declSerial >= 0) {               // ★ 记录声明位置（由 hoistBlock 逐语句设置）
+        sym.declBlock = declSerial;
+        sym.declStmt = declStmt;
+    }
     scopes.back().symbols[name] = sym;
+}
+
+// ★ 诊断辅助：若符号声明于当前语句之后（同一块内），标记 declaredLater
+static void markDeclaredLater(ResolvedSym& sym, const std::vector<std::pair<int, int>>& frames) {
+    if (sym.declBlock < 0) return;
+    for (size_t i = 0; i < frames.size(); ++i) {
+        if (frames[i].first == sym.declBlock) {
+            if (sym.declStmt > frames[i].second) sym.declaredLater = true;
+            return;
+        }
+    }
 }
 
 ResolvedSym Resolver::resolveName(const std::string& name) {
@@ -92,6 +107,7 @@ ResolvedSym Resolver::resolveName(const std::string& name) {
                     sym.scope = VarScope::Upvalue;
                 }
             }
+            markDeclaredLater(sym, blockFrames);
             return sym;
         }
     }
@@ -107,16 +123,26 @@ void Resolver::resolve(Expr* expr) {
 
 void Resolver::visitBlock(Block* expr) {
     beginScope();
+    // ★ 诊断：先压本块帧（含块序号），hoistBlock 才能把声明记到本块与正确语句序号上
+    int serial = nextBlockSerial++;
+    blockFrames.push_back({serial, 0});
     hoistBlock(expr);
-    for (auto& stmt : expr->statements) {
-        resolve(stmt.get());
+    for (size_t k = 0; k < expr->statements.size(); ++k) {
+        blockFrames.back().second = static_cast<int>(k);
+        resolve(expr->statements[k].get());
     }
+    blockFrames.pop_back();
     endScope();
 }
 
 void Resolver::hoistBlock(Block* block) {
     // 预扫描块内的变量声明，实现 Auto-Local 和显式声明的提升
+    int serial = blockFrames.empty() ? -1 : blockFrames.back().first;
+    int stmtIndex = 0;
     for (auto& stmt : block->statements) {
+        declSerial = serial;
+        declStmt = stmtIndex++;
+
         if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
             if (assign->isState || assign->isRef || assign->isLocal || assign->isConst) {
                 checkExplicitDecl(assign, assign->name.lexeme);
@@ -150,6 +176,8 @@ void Resolver::hoistBlock(Block* block) {
             resolvePattern(destAssign->pattern.get(), true, mod, destAssign->isConst);
         }
     }
+    declSerial = -1;
+    declStmt = -1;
 }
 
 void Resolver::visitVariable(Variable* expr) {

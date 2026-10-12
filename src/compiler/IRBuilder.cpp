@@ -1642,6 +1642,10 @@ void IRBuilder::visitVariable(Variable* expr) {
     graph->currentLine = expr->name.line;
     auto it = exprSymbols->find(expr);
     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+    // ★ 诊断：引用出现在其声明的初始化语句之前（语义不变，仅报错更达意）
+    if (sym.declaredLater) {
+        error(expr->name.line, "Variable '" + expr->name.lexeme + "' is used before its declaration is initialized.");
+    }
     lastValue = readVariable(expr->name.lexeme, sym);
 }
 
@@ -1906,6 +1910,10 @@ void IRBuilder::visitCall(Call* expr) {
     std::string calleeName = expr->callee.lexeme;
     auto it = exprSymbols->find(expr);
     ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+    // ★ 诊断：被调函数声明于本引用之后（local 前向引用）——语义不变，只把报错说清楚
+    if (sym.declaredLater) {
+        error(expr->callee.line, "Function '" + calleeName + "' is used before its declaration is initialized.");
+    }
     IRNode* calleeNode = readVariable(calleeName, sym);
     
     std::vector<IRNode*> argNodes;

@@ -26,6 +26,10 @@ struct ResolvedSym {
     int index = -1;      // 局部变量槽位、上值索引等
     int depth = -1;      // 作用域深度
     bool isConst = false;
+    // ★ 诊断用：声明所在的块序号与语句序号；引用若出现在声明之前则为 true
+    int declBlock = -1;
+    int declStmt = -1;
+    bool declaredLater = false;
 };
 
 class Resolver : public ExprVisitor {
@@ -112,6 +116,13 @@ private:
     };
     std::vector<Scope> scopes;
     std::unordered_set<void*> checkedDecls;
+
+    // ★ 诊断用：块帧栈（块序号, 当前语句序号），用于判定"用在声明初始化之前"
+    std::vector<std::pair<int, int>> blockFrames;
+    int nextBlockSerial = 1;
+    // ★ 提升阶段逐语句设置，供 declareVariable 记录"声明所在的块 + 语句序号"
+    int declSerial = -1;
+    int declStmt = -1;
 
     void checkExplicitDecl(void* node, const std::string& name);
     void beginScope(bool isFunc = false, bool isNamespace = false);

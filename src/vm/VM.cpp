@@ -762,16 +762,12 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             instance->classDef = cls;
             VM::activeVM->snapshotMembers(cls, res);   // ★ 构造快照：类模板 → 实例成员（docs/OOP_MODEL_DESIGN.md §2.4）
             
-            ObjClosure* initMethod = nullptr;
-            auto c = cls;
-            while (c) {
-                auto it = c->properties.find("<init>");
-                if (it != c->properties.end() && it->second.val.isFunctionClosure()) {
-                    initMethod = it->second.val.asFunction();
-                    break;
-                }
-                c = c->parent;
-            }
+            // ★ 与解释器的类调用分支保持一致（VM.cpp 解释器路径）：
+            //   ① 先跑字段默认值初始化器 ② 用 findInitMethod 查找初始化器
+            //   （初始化器不在 cls->properties 里，自建查找会漏掉，导致实例缺少字段）。
+            VM::activeVM->runFieldInitializers(cls, res);
+            ObjClosure* initMethod = VM::activeVM->findInitMethod(cls);
+            if (!initMethod) VM::activeVM->checkRequiredMembersInitialized(cls, res);
             
             if (initMethod) {
                 if (initMethod->isBytecode()) {

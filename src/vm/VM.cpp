@@ -8093,8 +8093,12 @@ Value VM::run(int targetFrameDepth) {
                 frame->classContext = Value::none();
 
                 frameCount--;
+                // ★ init 帧的返回值语义：构造完成的实例由 selfCtx 提供（与下面写回 targetReg 的分支一致）。
+                //   必须在【两条出口】之前算好 —— 否则 run(targetFrameDepth) 的调用方（如 JIT 的
+                //   jc2_jit_invoke）会拿到 init 的原始返回值（0），而不是构造出的实例。
+                Value frameResult = isInit ? (selfCtx.isNone() ? std::move(res) : selfCtx) : std::move(res);
                 if (frameCount <= targetFrameDepth) {
-                    return res;
+                    return frameResult;
                 }
                 
                 // 恢复调用方帧状态
@@ -8104,11 +8108,7 @@ Value VM::run(int targetFrameDepth) {
                 frameRegs = &registers[frame->registerBase];
                 ip = frame->ip;
                 
-                if (isInit) {
-                    getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
-                } else {
-                    getReg(targetReg) = res;
-                }
+                getReg(targetReg) = frameResult;
                 break;
             }
                     default:

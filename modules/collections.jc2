@@ -757,7 +757,7 @@ try {
                               Methods: enqueue(x), dequeue(), peek(), isEmpty(), size()
 
     Deque()                   Double-ended queue.
-                              Methods: pushRight(x), pushLeft(x), popRight(), popLeft()
+                              Methods: pushRight(x), pushLeft(x), popRight(), popLeft(), peekLeft(), peekRight()
 
   Hash Structures
   ──────────────────────
@@ -775,6 +775,11 @@ try {
 
     BST()                     Binary Search Tree. (Ignores duplicates).
                               Methods: insert(x), contains(x), size(), inorder()
+    UnionFind()               Disjoint-set forest (path compression + union by rank).
+                              Methods: makeSet(x), find(x), union(a, b), connected(a, b), componentCount()
+
+    LRU([capacity])           Least-recently-used cache (capacity defaults to 16).
+                              Methods: get(k), put(k, v), has(k), size(), keysByRecency(), clear()
 
   Errors
   ──────────────────────

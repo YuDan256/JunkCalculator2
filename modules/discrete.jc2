@@ -1250,6 +1250,11 @@ try {
     p.isTautology()            True for all assignments
     p.isContradiction()        False for all assignments
     p.isSatisfiable()          True for at least one assignment
+    p.cnf() / p.dnf()          Clause list (CNF) / term list (DNF)
+    p.substitute(env)          Force the given variables to true/false
+    p.satisfiableDpll()        Witness env from the DPLL engine (or none)
+    p.satisfiableBySearch()    Witness env from the pruning-search engine (or none)
+    Prop.parse(text)           Build a Prop from text, as does discrete.parseProp
     p.equiv(other)             Logically equivalent to other Prop
 
   Standalone Truth Tables
@@ -1285,6 +1290,7 @@ try {
     
     g.vertices()               Return all vertices (List)
     g.edges()                  Return all edges (List)
+    g.edgeCount()              Number of edges
     g.neighbors(v)             Return all adjacent vertices (List)
     g.hasVertex(v)             Vertex presence check
     g.hasEdge(u, v) / g(u, v)  Edge presence check (Callable)

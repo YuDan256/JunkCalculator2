@@ -2951,6 +2951,7 @@ Value VM::execImport(const std::string& name) {
     }
 
     if (!modFn && !jc2Path.empty()) {
+      try {
         std::ifstream file(to_path(jc2Path));
         if (!file.is_open()) { loadedModules.erase(name); JC2_THROW(IOError, "Cannot read module script."); }
         std::string code, line;
@@ -3000,6 +3001,13 @@ Value VM::execImport(const std::string& name) {
         modFn->localCount = Emitter::emit(&fnGraph, modFn->chunk);
         compiledFunctions.push_back(modFn);
         executePath = jc2Path;
+      } catch (const jc::Jc2Error& e) {
+          // ★ 模块编译失败：带上模块名与原始位置前缀。注意异常转成脚本实例时，
+          // VM 会剥掉【以】"[Line " 开头的消息前缀（见 wrapException），故这里把
+          // 模块名放在前面，位置信息得以保留。
+          loadedModules.erase(name);
+          JC2_THROW(SyntaxError, "In module '" + baseName + "', " + e.message);
+      }
     }
 
     CallFrame newFrame;

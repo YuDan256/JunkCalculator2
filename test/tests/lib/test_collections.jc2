@@ -401,3 +401,36 @@ test_lru_cache() = {
 }
 
 test_lru_cache()
+
+// 空容器为假，非空为真（各容器自带 __len__ 与 __bool__）
+test_container_truthiness() = {
+    assert(!collections.Stack(), "empty Stack is falsy")
+    assert(!collections.Queue(), "empty Queue is falsy")
+    assert(!collections.Deque(), "empty Deque is falsy")
+    assert(!collections.DefaultDict(() => 0), "empty DefaultDict is falsy")
+    assert(!collections.Counter(), "empty Counter is falsy")
+    assert(!collections.PriorityQueue(), "empty PriorityQueue is falsy")
+    assert(!collections.BST(), "empty BST is falsy")
+    assert(!collections.UnionFind(), "empty UnionFind is falsy")
+    assert(!collections.LRU(2), "empty LRU is falsy")
+
+    s = collections.Stack()
+    s.push(1)
+    assert(s, "non-empty Stack is truthy")
+
+    q = collections.Queue()
+    q.enqueue(1)
+    assert(q, "non-empty Queue is truthy")
+
+    dd = collections.DefaultDict(() => 0)
+    dd["k"] = 1
+    assert(dd, "non-empty DefaultDict is truthy")
+    assert(len(dd) == 1, "DefaultDict __len__")
+
+    c = collections.Counter()
+    c.update(@[1, 1, 2])
+    assert(c, "non-empty Counter is truthy")
+    assert(len(c) == 2, "Counter __len__ counts distinct keys")
+    assert(!collections.Counter(), "empty Counter has zero length")
+}
+test_container_truthiness()

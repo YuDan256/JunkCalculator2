@@ -1,3 +1,6 @@
+import bytes
+import decimal
+import tensor
 // 测试类型反射与向后兼容性
 test_type_reflection() = {
     assert(type(5) == int, "type(5) should be int")
@@ -98,3 +101,16 @@ test_range_truthiness() = {
     assert(range(4) ? true : false, "non-empty range takes the if-branch")
 }
 test_range_truthiness()
+// 原生容器类：空为假，非空为真
+test_native_container_truthiness() = {
+    assert(bool(bytes.Bytes(0)) == false, "empty Bytes is falsy")
+    assert(bool(bytes.Bytes(4)) == true, "non-empty Bytes is truthy")
+    assert(bool(bytes.fromHex("")) == false, "empty fromHex result is falsy")
+    assert(len(bytes.Bytes(3)) == 3, "Bytes __len__")
+
+    assert(bool(decimal.Decimal("0")) == false, "Decimal zero is falsy")
+    assert(bool(decimal.Decimal("1")) == true, "Decimal one is truthy")
+    assert(bool(tensor.zeros(@[0])) == false, "empty Tensor is falsy")
+    assert(bool(tensor.zeros(@[3])) == true, "non-empty Tensor is truthy")
+}
+test_native_container_truthiness()

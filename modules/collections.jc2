@@ -61,7 +61,7 @@ class Stack {
     }
 
     __len__() -> int = return self.size()
-
+    __bool__() -> bool = return self.size() > 0
     __contains__(x: any) -> bool = {
         for (v in self) { if (v == x) return true }
         return false
@@ -128,6 +128,7 @@ class Queue {
     }
 
     __len__() -> int = return self._size
+    __bool__() -> bool = return self._size > 0
     __str__() -> string = return "Queue(size=" + str(self._size) + ")"
     // 迭代：自队首至队尾（快照，不出队；可重复遍历）
     __iter__() = {
@@ -239,6 +240,7 @@ class Deque {
     }
 
     __len__() -> int = return self._size
+    __bool__() -> bool = return self._size > 0
     __str__() -> string = return "Deque(size=" + str(self._size) + ")"
     // 迭代：自左至右（快照，不弹出；可重复遍历）
     __iter__() = {
@@ -296,6 +298,8 @@ class DefaultDict {
     
     keys() -> list   = return self.data.keys()
     values() -> list = return self.data.values()
+    __len__() -> int = return self.data.len()
+    __bool__() -> bool = return self.data.len() > 0
 }
 
 
@@ -326,6 +330,9 @@ class Counter {
         sorted = L.sort((a, b) => a[1] > b[1])
         return sorted.slice(0, n)
     }
+    
+    __len__() -> int = return self.data.len()
+    __bool__() -> bool = return self.data.len() > 0
 }
 
 
@@ -415,7 +422,7 @@ class PriorityQueue {
     }
 
     __len__() -> int = return self.size()
-
+    __bool__() -> bool = return self.size() > 0
     __contains__(x: any) -> bool = {
         for (v in self) { if (v == x) return true }
         return false
@@ -512,7 +519,7 @@ class BST {
     }
 
     __len__() -> int = return self.size()
-
+    __bool__() -> bool = return self.size() > 0
     __contains__(x: any) -> bool = {
         for (v in self) { if (v == x) return true }
         return false
@@ -634,6 +641,7 @@ class UnionFind {
     componentCount() -> int = return self._count
 
     __len__() -> int = return self._count
+    __bool__() -> bool = return self._count > 0
     __contains__(x: any) -> bool = return x in self.parent
     __str__() -> string = return "UnionFind(sets=" + str(self._count) + ")"
 }
@@ -727,6 +735,7 @@ class LRU {
     }
 
     __len__() -> int = return self._size
+    __bool__() -> bool = return self._size > 0
     __contains__(key: any) -> bool = return key in self.index
     __str__() -> string = return "LRU(size=" + str(self._size) + "/" + str(self.capacity) + ")"
 }

@@ -637,6 +637,7 @@ class Relation {
     // ── Dunder Methods ──
     __contains__(pair: any) -> bool = return pair in self.R
     __len__() -> int                = return self.R.len()
+    __bool__() -> bool              = return self.R.len() > 0
     __str__() -> string             = return f"Relation(|S|={self.S.len()}, |R|={self.R.len()})"
     // ── 定义域 / 值域 / 像与原像（序对以 @[a, b] 存放，直接解构）──
     domain() -> set = {
@@ -1052,6 +1053,7 @@ class Graph {
 
     __contains__(v: any) -> bool = return self.hasVertex(v)
     __len__() -> int             = return self.adj.keys().len()
+    __bool__() -> bool           = return self.adj.keys().len() > 0
     __str__() -> string          = return f"<Graph({self.directed ? 'directed' : 'undirected'}) V={len(self)} E={self._ec}>"
     // Kruskal 最小生成树：边按权升序（二叉堆）+ 并查集判环。O(E log E)
     kruskal() -> dict = {

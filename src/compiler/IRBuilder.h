@@ -10,6 +10,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <functional>
 
 namespace jc {
 

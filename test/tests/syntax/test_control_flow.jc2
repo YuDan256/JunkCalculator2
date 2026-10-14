@@ -115,3 +115,34 @@ test_for_in_loop() = {
     assert(str_concat == "JC2", "For-in loop over string failed")
 }
 test_for_in_loop()
+
+// 块内的普通赋值绑定到函数作用域，只有 local 留在块内。
+test_auto_local_bypasses_block() = {
+    f1() = { if (true) a = 1; a }
+    assert(f1() == 1, "assignment in an if-branch is visible after the if")
+
+    f2() = { if (true) a = 1 else a = 2; a }
+    assert(f2() == 1, "assignment in if/else, true branch")
+
+    f3() = { if (false) a = 1 else a = 2; a }
+    assert(f3() == 2, "assignment in if/else, false branch")
+
+    f4(n) = { if (n > 0) a = 7; a }
+    assert(f4(1) == 7, "assignment under a non-constant condition")
+
+    f5() = { r = 0; for (i = 0; i < 3; i += 1) { r = r + i }; r }
+    assert(f5() == 3, "assignment in a for body")
+
+    f6() = { r = 0; while (r < 4) { r = r + 1 }; r }
+    assert(f6() == 4, "assignment in a while body")
+
+    f7() = { if (true) { a = 5 }; a + 1 }
+    assert(f7() == 6, "assignment in a braced if body")
+
+    // 对照：local 仍然只在块内可见
+    f8() = { if (true) local z = 1; z }
+    threw = false
+    try { f8() } catch (e) { threw = true }
+    assert(threw, "local stays block-scoped")
+}
+test_auto_local_bypasses_block()

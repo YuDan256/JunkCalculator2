@@ -1825,8 +1825,38 @@ void IRBuilder::hoistBlock(Block* block) {
         }
     };
 
-    for (auto& stmt : block->statements) {
-        if (auto* assign = dynamic_cast<Assign*>(stmt.get())) {
+    // ★ 递归下探控制流体内的语句。裸赋值（auto-local）按语义属于【函数级】
+    //   （documentation.json 的 Variable Routing：ordinary assignments inside blocks
+    //   bypass the block and attach to the function/global scope）。若只在块自己那层
+    //   hoist，绑定会落在分支帧里；而 visitIfExpr 在分支前就把 baseEnv 拷走、分支后
+    //   `envStack = baseEnv` 覆盖回去 ⇒ 绑定丢失、汇合看不到它 ⇒ 不生成 Phi，
+    //   分支外的读取退化成 <uninit> 并被常量折叠掉整个函数。见 local/FINDINGS.md F14。
+    std::function<void(Expr*)> hoistStmt = [&](Expr* e) {
+        if (!e) return;
+        if (auto* blk = dynamic_cast<Block*>(e)) {
+            for (auto& st : blk->statements) hoistStmt(st.get());
+            return;
+        }
+        if (auto* i = dynamic_cast<IfExpr*>(e)) {
+            hoistStmt(i->thenBranch.get());
+            hoistStmt(i->elseBranch.get());
+            return;
+        }
+        if (auto* w = dynamic_cast<WhileExpr*>(e)) { hoistStmt(w->body.get()); return; }
+        if (auto* f = dynamic_cast<ForExpr*>(e)) { hoistStmt(f->body.get()); return; }
+        if (auto* fi = dynamic_cast<ForInExpr*>(e)) { hoistStmt(fi->body.get()); return; }
+        if (auto* m = dynamic_cast<MatchExpr*>(e)) {
+            for (auto& c : m->branches) hoistStmt(c.body.get());
+            return;
+        }
+        if (auto* tc = dynamic_cast<TryCatchExpr*>(e)) {
+            hoistStmt(tc->tryBody.get());
+            for (auto& c : tc->catchBranches) hoistStmt(c.body.get());
+            return;
+        }
+        // 注意：不进入 LambdaExpr —— 那是另一个函数，有自己的作用域。
+
+        if (auto* assign = dynamic_cast<Assign*>(e)) {
             if (!assign->isRef && !assign->isState) {
                 auto it = exprSymbols->find(assign);
                 ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
@@ -1834,11 +1864,11 @@ void IRBuilder::hoistBlock(Block* block) {
                     hoistVar(assign->name.lexeme, assign->isLocal);
                 }
             }
-        } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
-            hoistVar(locDecl->name.lexeme, true);
-        } else if (auto* constDecl = dynamic_cast<ConstDecl*>(stmt.get())) {
-            hoistVar(constDecl->name.lexeme, true);
-        } else if (auto* destAssign = dynamic_cast<DestructAssign*>(stmt.get())) {
+            return;
+        }
+        if (auto* locDecl = dynamic_cast<LocalDecl*>(e)) { hoistVar(locDecl->name.lexeme, true); return; }
+        if (auto* constDecl = dynamic_cast<ConstDecl*>(e)) { hoistVar(constDecl->name.lexeme, true); return; }
+        if (auto* destAssign = dynamic_cast<DestructAssign*>(e)) {
             if (!destAssign->isRef && !destAssign->isState) {
                 std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> boundVars;
                 collectPatternVars(destAssign->pattern.get(), boundVars);
@@ -1855,8 +1885,11 @@ void IRBuilder::hoistBlock(Block* block) {
                     }
                 }
             }
+            return;
         }
-    }
+    };
+
+    for (auto& stmt : block->statements) hoistStmt(stmt.get());
 }
 
 void IRBuilder::visitBlock(Block* expr) {

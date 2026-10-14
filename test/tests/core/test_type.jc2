@@ -69,3 +69,32 @@ test_callable_types() = {
     assert(list(1, 2) == @[1, 2], "list type should be callable")
 }
 test_callable_types()
+
+// 空矩阵为假，非空矩阵（即使全 0）为真
+test_matrix_truthiness() = {
+    assert(bool(zeros(1, 0)) == false, "1x0 matrix is falsy")
+    assert(bool(zeros(0, 1)) == false, "0x1 matrix is falsy")
+    assert(bool(zeros(0, 0)) == false, "0x0 matrix is falsy")
+    assert(bool(zeros(1, 1)) == true, "1x1 zero matrix is still truthy")
+    assert(bool(zeros(2, 2)) == true, "2x2 zero matrix is still truthy")
+    assert(!zeros(0, 1), "empty matrix negates as falsy")
+
+    if (zeros(0, 1)) { assert(false, "empty matrix must not take the if-branch") }
+    assert(zeros(5, 5) ? true : false, "non-empty matrix takes the if-branch")
+}
+test_matrix_truthiness()
+
+// 空 range 为假
+test_range_truthiness() = {
+    assert(bool(range(0)) == false, "range(0) is falsy")
+    assert(bool(range(5)) == true, "range(5) is truthy")
+    assert(bool(range(3, 3)) == false, "range(3,3) is empty and falsy")
+    assert(bool(range(0, 0)) == false, "range(0,0) is empty and falsy")
+    assert(bool(range(5, 1)) == false, "range(5,1) is empty and falsy")
+    assert(bool(range(5, 1, -1)) == true, "range(5,1,-1) has elements and is truthy")
+    assert(!range(0), "empty range negates as falsy")
+
+    if (range(0)) { assert(false, "empty range must not take the if-branch") }
+    assert(range(4) ? true : false, "non-empty range takes the if-branch")
+}
+test_range_truthiness()

@@ -2251,6 +2251,10 @@ namespace jc {
             case ObjType::SET: return !static_cast<ObjSet*>(obj)->elements.empty();
             case ObjType::SYMBOLIC: return !static_cast<ObjSym*>(obj)->sym.isZero();
             case ObjType::SYM_MATRIX: return static_cast<ObjSymMatrix*>(obj)->mat.getRows() * static_cast<ObjSymMatrix*>(obj)->mat.getCols() > 0;
+            // 空矩阵为假：与 SYM_MATRIX 同口径。此前 REAL/COMPLEX 矩阵没有 case，
+            // 落到 default 恒为 true，于是 zeros(1,0) 之类被判为真。
+            case ObjType::REAL_MATRIX:    return static_cast<ObjRealMatrix*>(obj)->mat.getRows()    * static_cast<ObjRealMatrix*>(obj)->mat.getCols()    > 0;
+            case ObjType::COMPLEX_MATRIX: return static_cast<ObjComplexMatrix*>(obj)->mat.getRows() * static_cast<ObjComplexMatrix*>(obj)->mat.getCols() > 0;
             case ObjType::NAMESPACE: return true;
             case ObjType::SLICE: return true;
             case ObjType::INSTANCE: {

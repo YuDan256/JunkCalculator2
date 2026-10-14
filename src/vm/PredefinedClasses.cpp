@@ -81,6 +81,16 @@ void registerPredefinedClasses() {
     });
     rangeClass->properties["__len__"] = {Value(rangeLen), false, false};
 
+    // __bool__()：空 range 为假，与空矩阵/空容器同口径
+    auto rangeBool = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__bool__", nullptr);
+    GcObjGuard rbGuard(rangeBool);
+    rangeBool->nativeFn = std::make_any<NativeCallable>([](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto& data = std::any_cast<RangeData&>(self.asInstance()->nativeData);
+        return Value(data.length > 0);
+    });
+    rangeClass->properties["__bool__"] = {Value(rangeBool), false, false};
+
     // __str__()
     auto rangeStr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__str__", nullptr);
     GcObjGuard rsGuard(rangeStr);

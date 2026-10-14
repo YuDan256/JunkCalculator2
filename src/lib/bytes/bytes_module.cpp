@@ -204,6 +204,12 @@ METHOD(len) {
     return jc2::BigInt(std::to_string(buf.size())).get_handle();
 }
 
+// 空缓冲为假，与空矩阵、空 range 同口径
+METHOD(__bool__) {
+    GET_SELF;
+    return jc2::Value(buf.size() > 0).get_handle();
+}
+
 METHOD(toHex) {
     GET_SELF;
     static const char hex_chars[] = "0123456789abcdef";
@@ -415,6 +421,8 @@ int jc2_init(jc2::Module& mod) {
     g_bytesClass->bind_method("get", bytes_get, 2, 3, {"offset", "type", "len"});
     g_bytesClass->bind_method("len", bytes_len, 0, 0);
     g_bytesClass->bind_method("length", bytes_len, 0, 0);
+    g_bytesClass->bind_method("__len__", bytes_len, 0, 0);
+    g_bytesClass->bind_method("__bool__", bytes___bool__, 0, 0);
     g_bytesClass->bind_method("toHex", bytes_toHex, 0, 0);
     g_bytesClass->bind_method("toBase64", bytes_toBase64, 0, 0);
     g_bytesClass->bind_method("view", bytes_view, 1, 2, {"start", "len"});

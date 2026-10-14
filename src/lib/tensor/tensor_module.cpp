@@ -231,6 +231,9 @@ METHOD(__setitem__) {
     return jc2::Value().get_handle();
 }
 METHOD(__len__) { GET_SELF; return jc2::Value(t1->dim() > 0 ? static_cast<double>(t1->shape[0]) : 0.0).get_handle(); }
+
+// 空张量（numel 为 0）为假，与空矩阵、空 range 同口径
+METHOD(__bool__) { GET_SELF; return jc2::Value(t1->numel() > 0).get_handle(); }
 METHOD(__abs__) { GET_SELF; return wrapTensor(jc::tensor_abs(*t1)).get_handle(); }
 
 METHOD(item) { GET_SELF; return jc2::Value(t1->item()).get_handle(); }
@@ -536,6 +539,7 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("__getitem__", tensor___getitem__, 1, 16777215, {}, "dims");
     g_tensorClass->bind_method("__setitem__", tensor___setitem__, 2, 16777215, {}, "dims_and_val");
     g_tensorClass->bind_method("__len__", tensor___len__, 0, 0);
+    g_tensorClass->bind_method("__bool__", tensor___bool__, 0, 0);
     g_tensorClass->bind_method("__abs__", tensor___abs__, 0, 0);
 
     g_tensorClass->bind_method("item", tensor_item, 0, 0);

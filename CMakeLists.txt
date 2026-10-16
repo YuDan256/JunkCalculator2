@@ -2,7 +2,7 @@
 # Junk Calculator 2 - Ultimate CMake Build Script
 # Version: 2.6.4.0
 # ==============================================================================
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.17)
 
 # ★ Enable CMake 3.15+ MSVC clean runtime control policy
 cmake_policy(SET CMP0091 NEW)
@@ -316,7 +316,11 @@ endif()
 
 set(SYNC_CMD_TESTS "")
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/tests")
-    set(SYNC_CMD_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/tests")
+    # ★ 先删再拷：copy_directory 只增不删，源码里删除或改名过的测试会残留在
+    #   构建产物里，被 `jc2 test` 当成正式测试跑（曾实测到 19 个这样的幽灵测试）。
+    set(SYNC_CMD_TESTS
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:JunkCalculator2>/test/tests"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/tests")
 endif()
 
 # http_tests (vector/network tests + their fixtures) is synced to the build tree for
@@ -324,7 +328,19 @@ endif()
 # JunkCalculator2-<ver>-http_tests.zip on demand and unpack it at the package root.
 set(SYNC_CMD_HTTP_TESTS "")
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/http_tests")
-    set(SYNC_CMD_HTTP_TESTS COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/http_tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/http_tests")
+    # ★ 同上：先删再拷，避免陈旧夹具/测试残留
+    set(SYNC_CMD_HTTP_TESTS
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:JunkCalculator2>/test/http_tests"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/http_tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/http_tests")
+endif()
+
+# jit_tests 也只同步到构建产物供本地开发用，同样不打包（见下方 install 段的说明）。
+# 不同步的话，`jc2 --jit test test/jit_tests` 在安装后的产物里找不到该目录。
+set(SYNC_CMD_JIT_TESTS "")
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/test/jit_tests")
+    set(SYNC_CMD_JIT_TESTS
+        COMMAND ${CMAKE_COMMAND} -E rm -rf "$<TARGET_FILE_DIR:JunkCalculator2>/test/jit_tests"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${CMAKE_CURRENT_SOURCE_DIR}/test/jit_tests" "$<TARGET_FILE_DIR:JunkCalculator2>/test/jit_tests")
 endif()
 
 add_custom_target(SyncResources ALL
@@ -333,7 +349,8 @@ add_custom_target(SyncResources ALL
     ${SYNC_CMD_EXAMPLES}
     ${SYNC_CMD_TESTS}
     ${SYNC_CMD_HTTP_TESTS}
-    COMMENT "Syncing resource directories (data, modules, examples, test/tests, test/http_tests) to build output..."
+    ${SYNC_CMD_JIT_TESTS}
+    COMMENT "Syncing resource directories (data, modules, examples, test/tests, test/http_tests, test/jit_tests) to build output..."
 )
 add_dependencies(SyncResources JunkCalculator2)
 

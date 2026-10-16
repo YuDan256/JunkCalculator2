@@ -7,7 +7,7 @@
 ![Version](https://img.shields.io/badge/Version-v2.6.4.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
-![CMake](https://img.shields.io/badge/CMake-3.15+-064F8C.svg?style=flat-square&logo=cmake)
+![CMake](https://img.shields.io/badge/CMake-3.17+-064F8C.svg?style=flat-square&logo=cmake)
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)
 
 一个基于 C++20 实现的脚本语言及计算机代数系统 (CAS)。该方案采用自定义字节码编译器和基于寄存器的虚拟机执行，**完全无第三方依赖**。
@@ -103,7 +103,7 @@
 
 ## 构建指南
 
-本项目要求使用支持 C++20 的主流编译器，以及 CMake 3.15 或以上版本进行构建。
+本项目要求使用支持 C++20 的主流编译器，以及 CMake 3.17 或以上版本进行构建。
 
     cmake -B build -DCMAKE_BUILD_TYPE=Release
     cmake --build build --config Release

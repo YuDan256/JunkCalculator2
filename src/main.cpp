@@ -406,7 +406,10 @@ void deleteWorkspace(const std::string& arg, bool silent = false) {
 
 int runTestSuite(const std::string& testPath, const std::string& exeDir) {
     namespace fs = std::filesystem;
-    fs::path targetPath = testPath.empty() ? jc::to_path(exeDir) / "tests" : jc::to_path(testPath);
+    // 默认目录必须与 CMakeLists 的同步目标一致：测试被复制到
+    // <exe 旁>/test/tests（见 CMakeLists.txt 的 SYNC_CMD_TESTS 与 install 规则），
+    // 早前这里写成 <exe 旁>/tests（少一层 test/），导致 `jc2 test` 直接报目录不存在。
+    fs::path targetPath = testPath.empty() ? jc::to_path(exeDir) / "test" / "tests" : jc::to_path(testPath);
 
     if (!fs::exists(targetPath) || !fs::is_directory(targetPath)) {
         std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Test Error: Directory not found -> " << jc::from_path(targetPath) << jc::col(jc::Ansi::RESET) << std::endl;

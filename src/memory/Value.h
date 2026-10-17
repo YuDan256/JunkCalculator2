@@ -991,7 +991,18 @@ namespace jc {
                     if (!(*word & (1ull << (i % 64)))) continue;
                     const std::string& k = classDef->slotNames[static_cast<size_t>(i)];
                     if (properties.find(k) != properties.end()) continue; // 溢出表里那份单独走
-                    fn(k, PropertyDescriptor{ slots[i], false, false });
+                    // ★ 标志必须取自类模板。原先这里硬编码成 { slots[i], false, false }，
+                    //   只有当"私有/常量成员一定会镜像进溢出表"时才碰巧正确：私有方法由
+                    //   snapshotMembers 走 insertSlot 直接落槽、并不镜像，于是 is_local 被
+                    //   报成 false，getFields 与 print 就会把私有方法当公开成员列出来
+                    //   （名字还是内部 mangle 的 <classId::name>）。常量成员同理会丢掉 const
+                    //   保护。这里改成拷类模板描述符、只把值换成槽位里的实际值。
+                    PropertyDescriptor pd;
+                    if (const PropertyDescriptor* cm = classMember(k)) pd = *cm;
+                    pd.val = slots[i];
+                    pd.is_field_decl = false; // 槽位里这份是真实值，不是「只写名字」的声明登记
+                    pd.is_static = false;     // static 只住类袋子，不会出现在实例槽位
+                    fn(k, pd);
                 }
             }
                         for (const auto& kv : properties) fn(kv.first, kv.second);

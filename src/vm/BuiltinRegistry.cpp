@@ -50,14 +50,10 @@ static Value fieldsOfValue(const Value& self, const char* what) {
             auto inst = self.asInstance();
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            // ★ 不能用 ownForEach 递来的 PropertyDescriptor 判 is_local：它的槽位分支
-            //   硬编码成 { slots[i], false, false }，于是住在槽位里的【私有方法】会被当
-            //   公开成员列出来（名字还是内部 mangle 的 <classId::name>）。私有字段之所以
-            //   没漏，是因为它们镜像在溢出表 properties 里、走的是带真实标志的那条分支。
-            //   propFlags 对内层槽位会回查 classMember()，拿到的才是真实标志，与
-            //   hasField 用同一个判据。
-            inst->ownForEach([&](const std::string& k, const PropertyDescriptor&) {
-                if (!inst->propFlags(k).is_local) L->vec.push_back(Value(k));
+            // ownForEach 现在会把类模板上的真实标志带出来（含私有方法的 is_local），
+            // 这里只需按 is_local 过滤，无需再回查类链。
+            inst->ownForEach([&](const std::string& k, const PropertyDescriptor& v) {
+                if (!v.is_local) L->vec.push_back(Value(k));
             });
             return Value(L);
         }

@@ -346,3 +346,19 @@ test_instance_introspection_globals() = {
     assert(throws(() => hasField(42, "x")), "hasField rejects non-containers")
 }
 test_instance_introspection_globals()
+
+// ★ 住在槽位里的常量成员同样受 const 保护
+test_slot_const_member_is_protected() = {
+    class WithConstMethod {
+        init() = { }
+        const m() = return 1
+    }
+    assert(throws(() => clear(WithConstMethod())), "clear must refuse to delete a const member")
+
+    class NoConst {
+        init() = { }
+        m() = return 1
+    }
+    assert(!throws(() => clear(NoConst())), "clear works when no const member exists")
+}
+test_slot_const_member_is_protected()

@@ -7,7 +7,8 @@
 // ─── Stack (LIFO) ─────────────────────────────────────────────
 
 // ─── 迭代器（__iter__ 返回它；__next__ 耗尽时抛 StopIteration）──────────
-class _SeqIter {
+// local：仅供本模块内部使用，不导出（与 TreeNode / _LRUNode 一致）
+local class _SeqIter {
     init(items: list) = {
         self.items = items
         self.i = 0

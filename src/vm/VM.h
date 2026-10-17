@@ -226,8 +226,15 @@ public:
         builtinModules.clear();
         loadedModules.clear();
         builtinValues.clear();
-        compiledFunctions.clear();
         pendingCallRefs.clear();
+        // ★ 退出前先跑一轮 GC：clearGlobals() 已经断开 globals / openUpvalues / deferStack
+        //   这些用户根，此时仍然存活的 finalize 对象都已不可达，跑一轮就能把 close/free
+        //   补上（否则持有 FILE*/socket/裸指针的对象在正常退出时永远不会被 finalize）。
+        //   必须放在 compiledFunctions.clear() 之前：bytecode 的 finalize 方法要按
+        //   compiledFnIndex 取回函数体，提前清空会越界。残留帧若存在（异常退出路径），
+        //   GC 的 markCallback 会遍历它们，故此处不做帧相关清理。
+        GcHeap::get().collectGarbage();
+        compiledFunctions.clear();
     }
 
     void clearAllGlobalICs() {

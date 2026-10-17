@@ -2761,7 +2761,9 @@
       "    underscores. Be careful not to accidentally use these names for normal methods!",
       "      init(...)    → Constructor. Called automatically upon instance creation.",
       "      finalize()   → Destructor/Finalizer. Called by the GC when the instance",
-      "                     becomes unreachable. (Timing is unpredictable).",
+      "                     becomes unreachable, and once at normal process exit.",
+      "                     An instance whose init() threw still receives finalize(),",
+      "                     with only the fields assigned before the throw.",
       "",
       "    ★ Security & Encapsulation:",
       "    To prevent accidental state corruption or float-freeing, `init` and `finalize`",
@@ -5537,7 +5539,7 @@
     },
     "finalize": {
       "signature": "finalize()",
-      "desc": "Lifecycle method: Finalizer called by the Garbage Collector when the instance becomes unreachable. Guaranteed to be called exactly once per object lifecycle. Note: Because JC2 uses a Mark-and-Sweep GC, finalize is NOT called immediately when an object goes out of scope; its execution timing is unpredictable. Any exceptions thrown inside finalize are silently ignored.",
+      "desc": "Lifecycle method: Finalizer called by the Garbage Collector when the instance becomes unreachable. Guaranteed to be called exactly once per object lifecycle. Note: Because JC2 uses a Mark-and-Sweep GC, finalize is NOT called immediately when an object goes out of scope; its execution timing is unpredictable. Normal process exit runs a final GC cycle, so finalize also fires there. If init() throws the instance has already been allocated and is still finalized, with partially initialized fields. Any exceptions thrown inside finalize are silently ignored.",
       "examples": [
         "finalize() = print(\"Object destroyed\")"
       ]

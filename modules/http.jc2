@@ -711,11 +711,11 @@ local namespace _Read {
 
 // ─── 请求构造 / 连接调度 ───────────────────────────────────────
 
-_method_has_body(method: string) -> bool = {
+local _method_has_body(method: string) -> bool = {
     return method == "POST" || method == "PUT" || method == "PATCH"
 }
 
-_host_header(target: dict) -> string = {
+local _host_header(target: dict) -> string = {
     p = target["port"]
     if ((target["scheme"] == "http" && p == 80) || (target["scheme"] == "https" && p == 443)) {
         return target["host"]
@@ -723,19 +723,19 @@ _host_header(target: dict) -> string = {
     return target["host"] + ":" + str(p)
 }
 
-_options_flag(options: dict, key: string, fallback: bool) -> bool = {
+local _options_flag(options: dict, key: string, fallback: bool) -> bool = {
     if (key in options) return options[key] == true
     return fallback
 }
 
-_want_keep_alive(options: dict, user_headers: dict) -> bool = {
+local _want_keep_alive(options: dict, user_headers: dict) -> bool = {
     if (!_options_flag(options, "keepAlive", true)) return false
     if (_Http.header(user_headers, "Connection").lower() == "close") return false
     return true
 }
 
 // options["headers"] 里同名的头**覆盖**默认头（大小写不敏感）
-_build_request(method: string, target: dict, user_headers: dict, body: string, options: dict) -> string = {
+local _build_request(method: string, target: dict, user_headers: dict, body: string, options: dict) -> string = {
     decompress = _options_flag(options, "decompress", true)
     keep = _want_keep_alive(options, user_headers)
 
@@ -766,7 +766,7 @@ _build_request(method: string, target: dict, user_headers: dict, body: string, o
 }
 
 // 用完一条连接：可复用就入池，否则关掉
-_finish(conn: any, res: HttpResponse, method: string, keep: bool) = {
+local _finish(conn: any, res: HttpResponse, method: string, keep: bool) = {
     if (!keep) {
         conn.close()
         return none
@@ -785,7 +785,7 @@ _finish(conn: any, res: HttpResponse, method: string, keep: bool) = {
 }
 
 // 同一个源上的一次请求/响应往返（含一次换新连接重试）
-_exchange(method: string, url: string, target: dict, user_headers: dict, body: string,
+local _exchange(method: string, url: string, target: dict, user_headers: dict, body: string,
           options: dict) -> HttpResponse = {
     origin = _Http.origin_key(target)
     keep = _want_keep_alive(options, user_headers)

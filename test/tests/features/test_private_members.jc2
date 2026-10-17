@@ -1,0 +1,105 @@
+// 私有成员按声明它的类隔离
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+// ── 1. 不同类的同名私有互不干扰 ──
+class Alpha {
+    local v = "alpha"
+    init() = { }
+    read() = self.v
+}
+
+class Beta {
+    local v = "beta"
+    init() = { }
+    read() = self.v
+}
+
+test_same_private_name_across_classes() = {
+    assert(Alpha().read() == "alpha", "Alpha private must stay with Alpha")
+    assert(Beta().read() == "beta", "Beta private must stay with Beta")
+}
+
+// ── 2. 父子同名私有：按实例解析，最派生优先 ──
+class Parent {
+    local tag = "parent"
+    init() = { }
+    readFromParent() = self.tag
+}
+
+class ChildNoOwn extends Parent {
+    init() = { super.init() }
+}
+
+class ChildOwn extends Parent {
+    local tag = "child"
+    init() = { super.init() }
+    readFromChild() = self.tag
+}
+
+test_inherited_private_is_one_per_instance() = {
+    assert(ChildNoOwn().readFromParent() == "parent",
+           "without a subclass private, the inherited one is used")
+    assert(ChildOwn().readFromParent() == "child",
+           "a subclass private shadows the inherited one, most-derived first")
+    assert(ChildOwn().readFromChild() == "child", "subclass sees its own private")
+}
+
+// ── 3. 私有 static 按类隔离 ──
+class Counter1 {
+    local static const NAME = "c1"
+    init() = { }
+    name() = Counter1.NAME
+}
+
+class Counter2 {
+    local static const NAME = "c2"
+    init() = { }
+    name() = Counter2.NAME
+}
+
+test_private_static_isolation() = {
+    assert(Counter1().name() == "c1", "private static belongs to its own class")
+    assert(Counter2().name() == "c2", "same-named private static does not collide")
+}
+
+// ── 4. 私有成员不出现在反射里，也不能从外部访问 ──
+class Reflected {
+    local hidden = 1
+    local hiddenCall() = 2
+    shown = 3
+    init() = { }
+}
+
+test_private_is_not_reflected() = {
+    r = Reflected()
+    f = getFields(r)
+    assert("shown" in f, "public field must be listed")
+    assert(!("hidden" in f), "private field must not be listed")
+    assert(!("hiddenCall" in f), "private method must not be listed")
+    assert(!hasField(r, "hidden"), "private field is invisible to hasField")
+    assert(throws(() => r.hidden), "private field is not readable from outside")
+    assert(throws(() => r.hiddenCall()), "private method is not callable from outside")
+}
+
+// ── 5. 私有 const 不可改 ──
+class Locked {
+    local const limit = 10
+    init() = { }
+    tryBump() = self.limit = 11
+    read() = self.limit
+}
+
+test_private_const_is_protected() = {
+    l = Locked()
+    assert(l.read() == 10, "private const initial value")
+    assert(throws(() => l.tryBump()), "assigning a private const must throw")
+    assert(l.read() == 10, "private const keeps its value")
+}
+
+test_same_private_name_across_classes()
+test_inherited_private_is_one_per_instance()
+test_private_static_isolation()
+test_private_is_not_reflected()
+test_private_const_is_protected()

@@ -864,7 +864,8 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
     uint32_t magic = read32(is);
     if (magic != JCW_MAGIC) JC2_THROW(IOError, "MAGIC_MISMATCH");
     uint32_t version = read32(is);
-    if (version != VERSION) JC2_THROW(IOError, "VERSION_MISMATCH");
+    if (version != VERSION)
+        JC2_THROW(IOError, "This workspace was saved by an incompatible version and cannot be loaded; save it again.");
 
     uint32_t fnCount = read32(is);
     if (!merge && !infoOnly) vm->getCompiledFunctions().clear();

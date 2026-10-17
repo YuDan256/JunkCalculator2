@@ -1,0 +1,89 @@
+// finalize 的生命周期契约
+import sys
+
+events = @[]
+record(s) = { events.push(s) }
+
+class Tracked {
+    init(tag) = {
+        self.tag = tag
+        record("init:" + tag)
+    }
+    finalize() = record("fin:" + self.tag)
+}
+
+// ── 1. 不可达后被回收 ──
+events = @[]
+t1 = Tracked("a")
+t1 = none
+sys.gc()
+assert(events.join(",") == "init:a,fin:a", "unreachable instance must be finalized")
+
+// ── 2. 至多执行一次 ──
+events = @[]
+t2 = Tracked("b")
+t2 = none
+sys.gc()
+snapshot = events.join(",")
+sys.gc()
+assert(events.join(",") == snapshot, "finalize must run at most once")
+
+// ── 3. 仍可达时不回收 ──
+events = @[]
+t3 = Tracked("c")
+sys.gc()
+assert(events.join(",") == "init:c", "reachable instance must not be finalized")
+t3 = none
+sys.gc()
+assert(events.join(",") == "init:c,fin:c", "finalized after becoming unreachable")
+
+// ── 4. init 抛异常的对象仍会收到 finalize（半初始化状态）──
+class HalfBuilt {
+    init() = {
+        self.stage = "started"
+        undefinedHelperThatThrows()
+        self.stage = "finished"
+    }
+    finalize() = record("fin:half:" + self.stage)
+}
+
+events = @[]
+caught = false
+try {
+    h1 = HalfBuilt()
+} catch (e) {
+    caught = true
+}
+assert(caught, "init must propagate the error")
+sys.gc()
+assert(events.join(",") == "fin:half:started",
+       "instance whose init threw must still be finalized, with partially initialized state")
+
+// ── 5. finalize 抛异常不中断 GC，之后 GC 仍可用 ──
+class ThrowingFinalizer {
+    init() = record("init:throw")
+    finalize() = {
+        record("fin:throw")
+        undefinedHelperInFinalize()
+    }
+}
+
+events = @[]
+f1 = ThrowingFinalizer()
+f2 = Tracked("after")
+f1 = none
+f2 = none
+freed = sys.gc()
+assert(freed > 0, "gc must still report freed objects when a finalizer throws")
+joined = events.join(",")
+assert(joined == "init:throw,init:after,fin:after,fin:throw" ||
+       joined == "init:throw,init:after,fin:throw,fin:after",
+       "both finalizers must run even though one throws")
+
+// GC 之后仍可正常工作
+events = @[]
+f3 = Tracked("usable")
+f3 = none
+sys.gc()
+assert(events.join(",") == "init:usable,fin:usable",
+       "gc must remain usable after a finalizer threw")

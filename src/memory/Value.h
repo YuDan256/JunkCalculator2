@@ -1056,12 +1056,13 @@ namespace jc {
                     if (!(*word & (1ull << (i % 64)))) continue;
                     const std::string& k = classDef->slotNames[static_cast<size_t>(i)];
                     if (properties.find(k) != properties.end()) continue; // 溢出表里那份单独走
-                    // ★ 标志必须取自类模板。原先这里硬编码成 { slots[i], false, false }，
-                    //   只有当"私有/常量成员一定会镜像进溢出表"时才碰巧正确：私有方法由
-                    //   snapshotMembers 走 insertSlot 直接落槽、并不镜像，于是 is_local 被
-                    //   报成 false，getFields 与 print 就会把私有方法当公开成员列出来
-                    //   （名字还是内部 mangle 的 <classId::name>）。常量成员同理会丢掉 const
-                    //   保护。这里改成拷类模板描述符、只把值换成槽位里的实际值。
+                    // ★ 标志必须取自类模板：槽位里只存值，成员是否 const / 私有 /
+                    //   只是字段声明登记，都是**类**的性质。早期这里硬编码成
+                    //   { slots[i], false, false }，只要某个带标志的成员落进槽位却没镜像
+                    //   到溢出表，is_local / is_const 就会被报成 false —— getFields 与
+                    //   print 会把私有成员当公开成员列出来，const 保护也会失效。
+                    //   私有成员现在单独按声明类存放、不进槽位，但公开 const 成员仍走这里，
+                    //   所以标志必须照旧从类模板取。
                     PropertyDescriptor pd;
                     if (const PropertyDescriptor* cm = classMember(k)) pd = *cm;
                     pd.val = slots[i];

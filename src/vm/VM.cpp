@@ -3612,6 +3612,8 @@ VM::VM() {
     globalsDataPtr = globals.data();
     
     GcHeap::get().markCallback = [this]() {
+        // 每轮 GC 重建 finalize 查找缓存（见 VM.h 的 finalizerClassCache 注释）
+        finalizerClassCache.clear();
         for (size_t i = 0; i < globals.size(); ++i) {
             GcHeap::get().markValue(globals[i]);
         }
@@ -3711,8 +3713,18 @@ VM::VM() {
         if (obj->type != ObjType::INSTANCE) return false;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
         if (inst->is_finalized) return false;
-        auto [delMethod, owner] = findDunder(Value(inst), "<finalize>");
-        if (delMethod) {
+        ObjClass* cls = inst->classDef;
+        if (!cls) return false;
+        // 同一类的多个不可达实例共用一次查找结果（缓存每轮 GC 重建，不会陈旧）
+        bool has = false;
+        auto it = finalizerClassCache.find(cls);
+        if (it != finalizerClassCache.end()) {
+            has = it->second;
+        } else {
+            has = findDunder(Value(inst), "<finalize>").first != nullptr;
+            finalizerClassCache.emplace(cls, has);
+        }
+        if (has) {
             inst->is_finalized = true;
             return true;
         }

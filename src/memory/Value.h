@@ -973,11 +973,20 @@ namespace jc {
         size_t ownSize() const {
             size_t n = properties.size();
             if (slotMode()) {
-                if (slotsOwnedBig) {
-                    size_t words = static_cast<size_t>(classDef->slotNames.size() + 63) / 64;
-                    for (size_t w = 0; w < words; ++w) n += std::popcount(slotsOwnedBig[w]);
+                // ★ 必须与 ownForEach 同口径：私有/常量成员在 ownPut 里既落槽位、又在
+                //   溢出表留一份带标志的镜像，而 ownForEach 会跳过"溢出表里已有同名"的
+                //   槽位。原先这里用 popcount 把那些槽位也算进去，于是 ownSize 比实际
+                //   产出的成员数多，序列化器先写 ownSize 再按 ownForEach 写条目，加载器
+                //   就会多读一条直到越界：带 const 字段或私有字段的类存盘后读不回来
+                //   （IOError: Failed to read bytecode data）。
+                const int total = static_cast<int>(classDef->slotNames.size());
+                for (int i = 0; i < total; ++i) {
+                    const uint64_t* word = (i < SLOT_INLINE) ? &slotsOwned : slotsOwnedBig;
+                    if (!word) break;
+                    if (!(*word & (1ull << (i % 64)))) continue;
+                    if (properties.find(classDef->slotNames[static_cast<size_t>(i)]) != properties.end()) continue;
+                    ++n;
                 }
-                n += std::popcount(slotsOwned);
             }
             return n;
         }

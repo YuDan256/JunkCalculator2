@@ -114,3 +114,22 @@ test_native_container_truthiness() = {
     assert(bool(tensor.zeros(@[3])) == true, "non-empty Tensor is truthy")
 }
 test_native_container_truthiness()
+
+// getFields 只列出可访问的成员
+class Reflected {
+    shown = 7
+    local hidden() = return 1
+    init() = { }
+}
+
+test_getfields_lists_only_accessible() = {
+    r = Reflected()
+    f = getFields(r)
+    assert("shown" in f, "public field must be listed")
+    assert(!("hidden" in f), "private method must not be listed")
+    for (k in f) {
+        assert(hasField(r, k), "every listed field must be accessible: " + k)
+        assert(!k.startsWith("<"), "internal name must not be listed: " + k)
+    }
+}
+test_getfields_lists_only_accessible()

@@ -731,6 +731,16 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     write8(os, p.is_local ? 1 : 0);
                     write8(os, 0);
                 }
+                // ★ 本类自己的私有成员：键是纯名字（私有方法模板与私有 static 混存，
+                //   由 is_static 区分；省略初值的私有字段声明由 is_field_decl 标记）。
+                write32(os, static_cast<uint32_t>(cls->privateMembers.size()));
+                for (const auto& [k, p] : cls->privateMembers) {
+                    writeString(os, k);
+                    self(p.val, self);
+                    write8(os, p.is_const ? 1 : 0);
+                    write8(os, p.is_static ? 1 : 0);
+                    write8(os, p.is_field_decl ? 1 : 0);
+                }
                 break;
             }
             case ObjType::INSTANCE: {
@@ -746,6 +756,17 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     write8(os, p.is_local ? 1 : 0);
                     write8(os, p.is_static ? 1 : 0);
                 });
+                // ★ 私有成员按【声明类】分组写出：组数 → (声明类, 条目数 → (名字, 值, 是否 const))
+                write32(os, static_cast<uint32_t>(inst->privateMembers.size()));
+                for (const auto& [owner, table] : inst->privateMembers) {
+                    self(Value(const_cast<ObjClass*>(owner)), self);
+                    write32(os, static_cast<uint32_t>(table.size()));
+                    for (const auto& [k, p] : table) {
+                        writeString(os, k);
+                        self(p.val, self);
+                        write8(os, p.is_const ? 1 : 0);
+                    }
+                }
                 break;
             }
             case ObjType::NAMESPACE: {
@@ -1110,6 +1131,15 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         (void)read8(is);
                         cls->members[k] = {v, isConst, isLocal, false, false};
                     }
+                    uint32_t privCount = read32(is);
+                    for (uint32_t i = 0; i < privCount; ++i) {
+                        std::string k = readString(is);
+                        Value v = self(self);
+                        bool isConst = read8(is) != 0;
+                        bool isStatic = read8(is) != 0;
+                        bool isFieldDecl = read8(is) != 0;
+                        cls->privateMembers[k] = {v, isConst, true, false, isStatic, isFieldDecl};
+                    }
                     break;
                 }
                 case ObjType::INSTANCE: {
@@ -1129,6 +1159,18 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         (void)isStatic;
                         // ★ 反序列化走统一的写入入口：有槽位就进槽位，否则进溢出表
                         inst->ownPut(k, v, isConst, isLocal);
+                    }
+                    uint32_t groupCount = read32(is);
+                    for (uint32_t g = 0; g < groupCount; ++g) {
+                        Value ownerV = self(self);
+                        ObjClass* owner = ownerV.isClass() ? static_cast<ObjClass*>(ownerV.asObj()) : nullptr;
+                        uint32_t entryCount = read32(is);
+                        for (uint32_t i = 0; i < entryCount; ++i) {
+                            std::string k = readString(is);
+                            Value v = self(self);
+                            bool isConst = read8(is) != 0;
+                            if (owner) inst->putPrivate(owner, k, v, isConst);
+                        }
                     }
                     break;
                 }

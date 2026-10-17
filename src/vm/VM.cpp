@@ -99,10 +99,6 @@ extern bool g_enableJit;
         return; \
     }
 
-static std::string manglePrivate(uint64_t classId, const std::string& name) {
-    return "<" + std::to_string(classId) + "::" + name + ">";
-}
-
 namespace jc {
 
 // 判断值是否是 Exception（含子类）的实例（trait 组合也算）
@@ -365,10 +361,11 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
 }
 
 // ★ 私有成员查找（含 trait 定义、由类复制的 local 方法/字段）。
-// private 成员按「定义它的类的 classId」混淆存储，而派发点的 classContext 未必等于那个类
-// （trait 的 local 成员存在 trait 自己的表里，调用点 classContext 却是 with 它的类）。
-// 因此这里传入**未混淆的私有名**，按固定优先级枚举候选 owner 类，每个候选都用**它自己的
-// classId** 构造精确 mangled 名查找。两类私有语义不同，不能一刀切：
+// 私有成员按「声明它的类」分组存放：实例上是 `privateMembers[声明类][纯名字]`，类上是
+// `ObjClass::privateMembers[纯名字]`（方法模板 / 私有 static）。派发点的 classContext
+// 未必等于声明它的类（trait 的 local 成员存在 trait 自己的表里，调用点 classContext 却是
+// with 它的类），因此这里传入**纯私有名**，按固定优先级枚举候选 owner 类，每个候选都到
+// **它自己那一组**里精确匹配。两类私有语义不同，不能一刀切：
 //   • trait 的 local 是**词法**的：trait 方法永远看自己 trait 的私有，即使消费者类有同名
 //     私有成员也不受影响（trait 之间同名私有也各归其主）。
 //   • 类的 local 是**按实例**的：`self.x()` 要看最派生类的私有（父类方法里调用 `self.x()`
@@ -396,45 +393,24 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
     foundFlags = PropFlags{};
     if (foundIn) *foundIn = nullptr;
 
-    // ① 实例自身属性（私有**字段**会随类模板复制到实例上）。先看词法 trait，再按实例类链
-    //    最派生优先，保持与 ② 的候选顺序一致。
+    // ① 实例上的私有存储（私有字段、实例化的私有方法闭包），按候选 owner 顺序匹配
+    std::vector<ObjClass*> candidates;
+    collectPrivateCandidates(lexical, cls, inst ? inst->classDef : nullptr, candidates);
+
     if (inst) {
-        if (lexical && lexical->isTrait) {
-            if (inst->ownStorage(manglePrivate(lexical->classId, name), foundVal, foundFlags)) return true;
-
-        }
-        for (ObjClass* p = inst->classDef; p; p = p->parent) {
-            if (inst->ownStorage(manglePrivate(p->classId, name), foundVal, foundFlags)) return true;
-
-            for (auto* t : p->traits) {
-                if (inst->ownStorage(manglePrivate(t->classId, name), foundVal, foundFlags)) return true;
-
+        for (ObjClass* c : candidates) {
+            if (inst->ownStoragePrivate(c, name, foundVal, foundFlags)) {
+                if (foundIn) *foundIn = c;
+                return true;
             }
-        }
-        if (lexical && !lexical->isTrait) {
-            if (inst->ownStorage(manglePrivate(lexical->classId, name), foundVal, foundFlags)) return true;
-
-        }
-        if (cls) {
-            if (inst->ownStorage(manglePrivate(cls->classId, name), foundVal, foundFlags)) return true;
-
         }
     }
 
-    // ② 候选 owner 类自己的成员表（static 域 + 实例成员模板，顺序见 collectPrivateCandidates 注释）
-    std::vector<ObjClass*> candidates;
-    collectPrivateCandidates(lexical, cls, inst ? inst->classDef : nullptr, candidates);
+    // ② 候选 owner 类自己的私有成员表（私有方法模板、私有 static）
     for (ObjClass* c : candidates) {
-        std::string mangled = manglePrivate(c->classId, name);
-        PropertyDescriptor* pd = nullptr;
-        auto mit = c->members.find(mangled);
-        if (mit != c->members.end()) pd = &mit->second;
-        else {
-            auto pit = c->properties.find(mangled);
-            if (pit != c->properties.end()) pd = &pit->second;
-        }
+        const PropertyDescriptor* pd = c->ownPrivate(name);
         if (pd) {
-            foundVal = &pd->val;
+            foundVal = const_cast<Value*>(&pd->val);
             foundFlags = ObjInstance::toFlags(*pd);
             if (foundIn) *foundIn = c;
             return true;
@@ -514,31 +490,56 @@ ObjClosure* VM::copyClosureTemplate(const ObjClosure* src) {
 void VM::snapshotMembers(ObjClass* cls, const Value& self) {
     if (!cls || !self.isInstance()) return;
     ObjInstance* inst = self.asInstance();
-    if (cls->is_native || cls->slotNames.empty()) return;
-    const size_t n = cls->slotNames.size();
-    for (size_t i = 0; i < n; ++i) {
-        const std::string& name = cls->slotNames[i];
-        const PropertyDescriptor* pd = nullptr;
-        for (ObjClass* c = cls; c; c = c->parent) {
-            const PropertyDescriptor* pit = c->ownMember(name);
-            if (pit) { pd = pit; break; }
+    if (cls->is_native) return;
+
+    if (!cls->slotNames.empty()) {
+        const size_t n = cls->slotNames.size();
+        for (size_t i = 0; i < n; ++i) {
+            const std::string& name = cls->slotNames[i];
+            const PropertyDescriptor* pd = nullptr;
+            for (ObjClass* c = cls; c; c = c->parent) {
+                const PropertyDescriptor* pit = c->ownMember(name);
+                if (pit) { pd = pit; break; }
+            }
+            if (!pd) continue;
+            if (pd->is_static) continue;                        // static 只住类袋子（§2.7）
+            // 字段（含私有字段）的值由字段初始化器写，快照不碰：它的模板只带标志、
+            // 没有值，抄进去会变成一个"已存在"的成员，字段初始化器的 DEFINE_PROP 就会报重定义。
+            if (pd->is_field_decl || pd->val.isUninit()) continue;
+            Value val = pd->val;
+            if (val.isFunctionClosure()) {
+                ObjClosure* fn = val.asFunction();
+                if (fn->hasCaptures()) {
+                    ObjClosure* copy = copyClosureTemplate(fn);
+                    GcObjGuard copyGuard(copy);
+                    inst->insertSlot(static_cast<int>(i), Value(copy));
+                    continue;
+                }
+            }
+            inst->insertSlot(static_cast<int>(i), val);
         }
-        if (!pd) continue;
-        if (pd->is_static) continue;                        // static 只住类袋子（§2.7）
-        // 字段（含私有字段）的值由字段初始化器写，快照不碰：它的模板只带标志、
-        // 没有值，抄进去会变成一个"已存在"的成员，字段初始化器的 DEFINE_PROP 就会报重定义。
-        if (pd->is_field_decl || pd->val.isUninit()) continue;
-        Value val = pd->val;
-        if (val.isFunctionClosure()) {
-            ObjClosure* fn = val.asFunction();
+    }
+
+    // ★ 私有成员不参与槽位编号，这里按【声明类】把私有方法模板落到实例的私有表。
+    //   有捕获的方法必须每实例一份副本，否则不同实例会共享同一份捕获环境。
+    //   私有字段不抄：它们的值由字段初始化器经 DEFINE_PRIVATE 写进各自的私有表。
+    auto snapshotPrivateOf = [&](ObjClass* owner) {
+        for (const auto& [name, pd] : owner->privateMembers) {
+            if (pd.is_static || pd.is_field_decl || pd.val.isUninit()) continue;
+            if (!pd.val.isFunctionClosure()) continue;
+            ObjClosure* fn = pd.val.asFunction();
             if (fn->hasCaptures()) {
                 ObjClosure* copy = copyClosureTemplate(fn);
                 GcObjGuard copyGuard(copy);
-                inst->insertSlot(static_cast<int>(i), Value(copy));
-                continue;
+                inst->putPrivate(owner, name, Value(copy), pd.is_const);
+            } else {
+                inst->putPrivate(owner, name, pd.val, pd.is_const);
             }
         }
-        inst->insertSlot(static_cast<int>(i), val);
+    };
+    for (ObjClass* c = cls; c; c = c->parent) {
+        snapshotPrivateOf(c);
+        for (auto* t : c->traits) snapshotPrivateOf(t);
     }
 }
 
@@ -601,16 +602,7 @@ void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
 
     // 实例自有成员的「纯名」集合（只读；不解引用可疑对象、不触发任何 dunder）
     std::vector<std::string> ownPlain;
-    auto plainOf = [](const std::string& k) {
-        std::string n = k;
-        const size_t sep = n.rfind("::");
-        if (!n.empty() && n[0] == '<' && sep != std::string::npos) {
-            n = n.substr(sep + 2);
-            if (!n.empty() && n.back() == '>') n.pop_back();
-        }
-        return n;
-    };
-    inst->ownForEach([&](const std::string& k, const PropertyDescriptor&) { ownPlain.push_back(plainOf(k)); });
+    inst->ownForEach([&](const std::string& k, const PropertyDescriptor&) { ownPlain.push_back(k); });
 
     const size_t n = cls->slotNames.size();
     for (size_t i = 0; i < n; ++i) {
@@ -625,18 +617,29 @@ void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
         if (pd->is_static) continue;               // static 住类袋子
         if (pd->val.isFunctionClosure()) continue; // 方法不进实例
 
-        const std::string shown = plainOf(key);
+        const std::string& shown = key;
         bool assigned = false;
         for (const auto& op : ownPlain) {
             if (op == shown) { assigned = true; break; }
         }
         if (!assigned) {
             for (ObjClass* c = cls; c; c = c->parent) {
-                if (inst->ownHas(manglePrivate(c->classId, shown))) { assigned = true; break; }
+                if (inst->hasPrivate(c, shown)) { assigned = true; break; }
             }
         }
         if (assigned) continue;                    // 已赋值：<fieldinit> 或用户 init
         JC2_THROW(RuntimeError, "member '" + shown + "' was not initialized in init()");
+    }
+
+    // ★ 私有成员不参与槽位编号，因此"省略初值的私有字段"要在私有表里单独查：
+    //   漏了这里就等于把私有字段的必填校验放空。
+    for (ObjClass* c = cls; c; c = c->parent) {
+        for (const auto& [name, pd] : c->privateMembers) {
+            if (!pd.is_field_decl || pd.is_static) continue;
+            if (pd.val.isFunctionClosure()) continue;
+            if (!inst->hasPrivate(c, name))
+                JC2_THROW(RuntimeError, "member '" + name + "' was not initialized in init()");
+        }
     }
 }
 
@@ -2177,7 +2180,6 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
-            std::string mangledName = manglePrivate(owner->classId, methodName);
             Value* pdv = nullptr; PropFlags pdf;
             ObjClass* foundIn = nullptr;
             if (!findPrivateMember(owner, inst, methodName, pdv, pdf, lexical, &foundIn)) {
@@ -2197,7 +2199,6 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
             if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
             
-            std::string mangledName = manglePrivate(owner->classId, methodName);
             Value* pdv = nullptr; PropFlags pdf;
             ObjClass* foundIn = nullptr;
             if (!findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), methodName, pdv, pdf, lexical, &foundIn)) {
@@ -5936,11 +5937,11 @@ Value VM::run(int targetFrameDepth) {
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
-                            std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                            const PropFlags pdesc = inst->propFlags(mangledName);
-                            if (inst->ownHas(mangledName)) {result = *inst->ownGet(mangledName);
-                                foundPrivate = true;}
-
+                            Value* pv = nullptr; PropFlags pdesc;
+                            if (inst->ownStoragePrivate(ctxOwner, keyStr, pv, pdesc)) {
+                                result = *pv;
+                                foundPrivate = true;
+                            }
                         }
                         if (!foundPrivate) {
                             const PropFlags pdesc = inst->propFlags(keyStr);
@@ -6062,14 +6063,13 @@ Value VM::run(int targetFrameDepth) {
                                 bool foundStatic = false;
                                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                                 if (ctxOwner) {
-                                    std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                                    auto it = ctxOwner->properties.find(mangledName);
-                                    if (it != ctxOwner->properties.end()) {
-                                        if (it->second.val.isFunctionClosure()) {
-                                            auto rawMethod = it->second.val.asFunction();
+                                    const PropertyDescriptor* pd = ctxOwner->ownPrivate(key);
+                                    if (pd) {
+                                        if (pd->val.isFunctionClosure()) {
+                                            auto rawMethod = pd->val.asFunction();
                                             result = Value(rawMethod);
                                         } else {
-                                            result = it->second.val;
+                                            result = pd->val;
                                         }
                                         foundStatic = true;
                                     }
@@ -6182,12 +6182,13 @@ Value VM::run(int targetFrameDepth) {
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         bool foundPrivate = false;
                         if (ctxOwner) {
-                            std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                            if (inst->ownHas(mangledName)) {if (inst->propFlags(mangledName).is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
-                                invalidateJITOnContainerReplace(*inst->ownGetMut(mangledName), val);
-                                *inst->ownGetMut(mangledName) = val;
-                                foundPrivate = true;}
-
+                            Value* pv = nullptr; PropFlags pdesc;
+                            if (inst->ownStoragePrivate(ctxOwner, keyStr, pv, pdesc)) {
+                                if (pdesc.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
+                                invalidateJITOnContainerReplace(*pv, val);
+                                *pv = val;
+                                foundPrivate = true;
+                            }
                         }
                         if (!foundPrivate) {
                             Value oldVal = Value::none();
@@ -6250,12 +6251,11 @@ Value VM::run(int targetFrameDepth) {
                         bool found = false;
                         ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (ctxOwner) {
-                            std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                            auto it = ctxOwner->properties.find(mangledName);
-                            if (it != ctxOwner->properties.end()) {
-                                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
-                                invalidateJITOnContainerReplace(it->second.val, val);
-                                it->second.val = val;
+                            PropertyDescriptor* pd = ctxOwner->ownPrivateMut(key);
+                            if (pd) {
+                                if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
+                                invalidateJITOnContainerReplace(pd->val, val);
+                                pd->val = val;
                                 found = true;
                             }
                         }
@@ -6652,10 +6652,7 @@ Value VM::run(int targetFrameDepth) {
                             std::string key = needle.asString();
                             ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                             if (ctxOwner) {
-                                std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                                if (inst->ownHas(mangledName)) {
-                                    found = true;
-                                }
+                                if (inst->hasPrivate(ctxOwner, key)) found = true;
                             }
                             if (!found) {
                                 if (inst->ownHas(key) && !inst->propFlags(key).is_local) found = true;
@@ -6762,11 +6759,11 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::METHOD_PRIVATE || op == OpCode::METHOD_PRIVATE_CONST || op == OpCode::METHOD_ABSTRACT_PRIVATE) {
                         fn->is_local = true;
                         fn->owner_class = cls;
-                        std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
-                        if (methodName.empty() || methodName[0] != '<') cls->internSlot(mangledName);
+                        // ★ 私有方法进本类的私有表（纯名字）：既不进槽位编号表，也不进
+                        //   ownMembers —— 后者用于 trait 覆盖判定，私有成员按词法各归其主、
+                        //   本来就不参与覆盖。
                         if (cls) {
-                            bag[mangledName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
-                            cls->ownMembers.insert(mangledName);
+                            cls->privateMembers[methodName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
                         }
                     } else {
                         if (cls) {
@@ -6837,7 +6834,6 @@ Value VM::run(int targetFrameDepth) {
                     if (!owner) errAccessPrivateOutsideClass();
                     ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
-                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     Value* pdv = nullptr; PropFlags pdf;
                     ObjClass* foundIn = nullptr;
                     if (VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -6856,7 +6852,6 @@ Value VM::run(int targetFrameDepth) {
                     if (!owner) errAccessPrivateOutsideClass();
                     ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
-                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
                     Value* pdv = nullptr; PropFlags pdf;
                     ObjClass* foundIn = nullptr;
                     if (VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -7242,34 +7237,31 @@ Value VM::run(int targetFrameDepth) {
                     if (!owner) errAccessPrivateOutsideClass();
                     ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
-                    std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
+                    const std::string& pname = keyVal.asString();
                     if (op == OpCode::SET_PRIVATE) {
                         Value* pdv = nullptr; PropFlags pdf;
                         ObjClass* foundIn = nullptr;
-                        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
-                            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+                        if (!VM::findPrivateMember(owner, inst, pname, pdv, pdf, lexical, &foundIn)) {
+                            JC2_THROW(RuntimeError, "Private property '" + pname + "' not found.");
                         }
-                        if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
+                        if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + pname + "'.");
                         // ★ 省略初值的私有字段：类表里那份只是「声明登记」（is_field_decl），
                         //   实例上还没有对应存储。就地改写会写到类上、跨实例共享，故改为先在
                         //   实例上建立该字段再写入（带初值的字段由 <fieldinit> 建好，走不到这里）。
                         bool classFieldDecl = false;
-                        if (inst && foundIn) {
-                            const std::string kOther = manglePrivate(foundIn->classId, keyVal.asString());
-                            auto c1 = foundIn->properties.find(mangledName);
-                            auto c2 = foundIn->properties.find(kOther);
-                            classFieldDecl = (c1 != foundIn->properties.end() && c1->second.is_field_decl) ||
-                                             (c2 != foundIn->properties.end() && c2->second.is_field_decl);
+                        if (foundIn && !inst->hasPrivate(foundIn, pname)) {
+                            const PropertyDescriptor* ce = foundIn->ownPrivate(pname);
+                            classFieldDecl = (ce && ce->is_field_decl);
                         }
                         if (classFieldDecl) {
-                            inst->ownPut(mangledName, val, false, true);
+                            inst->putPrivate(foundIn, pname, val, false);
                         } else {
                             // 其余情形（实例属性 / 私有 static / trait 表）保持就地改写
                             *pdv = val;
                         }
                     } else {
-                        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
-                        inst->ownPut(mangledName, val, op == OpCode::DEFINE_PRIVATE_CONST, true);
+                        if (inst->hasPrivate(owner, pname)) JC2_THROW(RuntimeError, "Private property '" + pname + "' already defined.");
+                        inst->putPrivate(owner, pname, val, op == OpCode::DEFINE_PRIVATE_CONST);
                     }
                 } else if (obj.isClass()) {
                     auto cls = static_cast<ObjClass*>(obj.asObj());
@@ -7279,30 +7271,22 @@ Value VM::run(int targetFrameDepth) {
                         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                         if (!owner) errAccessPrivateOutsideClass();
                         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
-                        std::string mangledName = manglePrivate(owner->classId, keyStr);
                         Value* pdv = nullptr; PropFlags pdf;
                         ObjClass* foundIn = nullptr;
-                        if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
+                        if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyStr, pdv, pdf, lexical, &foundIn)) {
                             JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' not found.");
                         }
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
                         *pdv = val;
                     } else {
-                        std::string mangledName = manglePrivate(cls->classId, keyStr);
                         if (val.isNone()) {
                             // ★ local 字段声明登记（同 DEFINE_PROP 的声明分支）
-                            if (cls) {
-                                cls->properties[mangledName] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
-                                cls->internSlot(mangledName);
-                            }
+                            cls->privateMembers[keyStr] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
                             break;
                         }
-                        auto it = cls->properties.find(mangledName);
-                        if (it != cls->properties.end() && !it->second.is_field_decl) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
-                        if (cls) {
-                            cls->properties[mangledName] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true, false, true };
-                            cls->ownMembers.insert(mangledName);
-                        }
+                        auto it = cls->privateMembers.find(keyStr);
+                        if (it != cls->privateMembers.end() && !it->second.is_field_decl) JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' already defined.");
+                        cls->privateMembers[keyStr] = { val, op == OpCode::DEFINE_PRIVATE_CONST, true, false, true };
                     }
                 } else {
                     JC2_THROW(RuntimeError, "Cannot set private property on this type.");
@@ -9305,10 +9289,7 @@ bool VM::opIn(Value needle, Value haystack) {
                 std::string key = needle.asString();
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 if (ctxOwner) {
-                    std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                    if (inst->ownHas(mangledName)) {
-                        found = true;
-                    }
+                    if (inst->hasPrivate(ctxOwner, key)) found = true;
                 }
                 if (!found) {
                     if (inst->ownHas(key) && !inst->propFlags(key).is_local) found = true;
@@ -9439,6 +9420,7 @@ uint64_t jc2_jit_is_subset(uint64_t b_bits, uint64_t c_bits) {
 }
 
 uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -9471,11 +9453,11 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                 ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                 bool foundPrivate = false;
                 if (ctxOwner) {
-                    std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                    const PropFlags pdesc = inst->propFlags(mangledName);
-                    if (inst->ownHas(mangledName)) {result = *inst->ownGet(mangledName);
-                        foundPrivate = true;}
-
+                    Value* pv = nullptr; PropFlags pdesc;
+                    if (inst->ownStoragePrivate(ctxOwner, keyStr, pv, pdesc)) {
+                        result = *pv;
+                        foundPrivate = true;
+                    }
                 }
                 if (!foundPrivate) {
                     const PropFlags pdesc = inst->propFlags(keyStr);
@@ -9599,14 +9581,13 @@ uint64_t jc2_jit_index_get(uint64_t* values, uint32_t dims, uint32_t noThrow) {
                     bool foundStatic = false;
                     ObjClass* ctxOwner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (ctxOwner) {
-                        std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                        auto it = ctxOwner->properties.find(mangledName);
-                        if (it != ctxOwner->properties.end()) {
-                            if (it->second.val.isFunctionClosure()) {
-                                auto rawMethod = it->second.val.asFunction();
+                        const PropertyDescriptor* pd = ctxOwner->ownPrivate(key);
+                        if (pd) {
+                            if (pd->val.isFunctionClosure()) {
+                                auto rawMethod = pd->val.asFunction();
                                 result = Value(rawMethod);
                             } else {
-                                result = it->second.val;
+                                result = pd->val;
                             }
                             foundStatic = true;
                         }
@@ -9705,12 +9686,13 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             ObjClass* ctxOwner = vm->getCurrentFrame()->classContext.isClass() ? static_cast<ObjClass*>(vm->getCurrentFrame()->classContext.asObj()) : nullptr;
             bool foundPrivate = false;
             if (ctxOwner) {
-                std::string mangledName = manglePrivate(ctxOwner->classId, keyStr);
-                if (inst->ownHas(mangledName)) {if (inst->propFlags(mangledName).is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
-                    vm->invalidateJITOnContainerReplace(*inst->ownGetMut(mangledName), val);
-                    *inst->ownGetMut(mangledName) = val;
-                    foundPrivate = true;}
-
+                Value* pv = nullptr; PropFlags pdesc;
+                if (inst->ownStoragePrivate(ctxOwner, keyStr, pv, pdesc)) {
+                    if (pdesc.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyStr + "'.");
+                    vm->invalidateJITOnContainerReplace(*pv, val);
+                    *pv = val;
+                    foundPrivate = true;
+                }
             }
             if (!foundPrivate) {
                 Value oldVal = Value::none();
@@ -9770,12 +9752,11 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
             bool found = false;
             ObjClass* ctxOwner = vm->getCurrentFrame()->classContext.isClass() ? static_cast<ObjClass*>(vm->getCurrentFrame()->classContext.asObj()) : nullptr;
             if (ctxOwner) {
-                std::string mangledName = manglePrivate(ctxOwner->classId, key);
-                auto it = ctxOwner->properties.find(mangledName);
-                if (it != ctxOwner->properties.end()) {
-                    if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
-                    vm->invalidateJITOnContainerReplace(it->second.val, val);
-                    it->second.val = val;
+                PropertyDescriptor* pd = ctxOwner->ownPrivateMut(key);
+                if (pd) {
+                    if (pd->is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + key + "'.");
+                    vm->invalidateJITOnContainerReplace(pd->val, val);
+                    pd->val = val;
                     found = true;
                 }
             }
@@ -9827,6 +9808,7 @@ static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value v
 }
 
 uint64_t jc2_jit_index_set(uint64_t* values, uint32_t dims, uint32_t objReg) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     Value obj = Value::fromRawBits(values[0]);
@@ -10803,6 +10785,7 @@ void jc2_jit_delete_global(uint32_t bx, const Chunk* chunk) {
 }
 
 uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -10822,7 +10805,6 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -10837,7 +10819,6 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -10858,6 +10839,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
 }
 
 void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -10872,7 +10854,6 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -10884,7 +10865,6 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
@@ -10899,6 +10879,7 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
 }
 
 void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -10912,16 +10893,14 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+        if (inst->hasPrivate(owner, keyVal.asString())) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
 
-        inst->ownPut(mangledName, val, false, true);
+        inst->putPrivate(owner, keyVal.asString(), val, false);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
-        std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
-        auto it = cls->properties.find(mangledName);
-        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
-        cls->properties[mangledName] = {val, false, true, false, true};
+        auto it = cls->privateMembers.find(keyVal.asString());
+        if (it != cls->privateMembers.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
+        cls->privateMembers[keyVal.asString()] = {val, false, true, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
@@ -10929,6 +10908,7 @@ void jc2_jit_define_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx
 }
 
 void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, const Chunk* chunk) {
+
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
@@ -10942,16 +10922,14 @@ void jc2_jit_define_private_const(uint64_t obj_bits, uint64_t val_bits, uint32_t
         inst->checkModify();
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();
-        std::string mangledName = manglePrivate(owner->classId, keyVal.asString());
-        if (inst->ownHas(mangledName)) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
+        if (inst->hasPrivate(owner, keyVal.asString())) JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' already defined.");
 
-        inst->ownPut(mangledName, val, true, true);
+        inst->putPrivate(owner, keyVal.asString(), val, true);
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
-        std::string mangledName = manglePrivate(cls->classId, keyVal.asString());
-        auto it = cls->properties.find(mangledName);
-        if (it != cls->properties.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
-        cls->properties[mangledName] = {val, true, true, false, true};
+        auto it = cls->privateMembers.find(keyVal.asString());
+        if (it != cls->privateMembers.end()) JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' already defined.");
+        cls->privateMembers[keyVal.asString()] = {val, true, true, false, true};
     } else {
         JC2_THROW(RuntimeError, "Cannot set private property on this type.");
     }
@@ -11029,10 +11007,10 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
         if (isPrivate) {
             fn->is_local = true;
             fn->owner_class = cls;
-            std::string mangledName = manglePrivate(cls ? cls->classId : 0, methodName);
+            // ★ 与解释器的 METHOD_PRIVATE 同一落点：私有方法只进本类私有表（纯名字），
+            //   原先 JIT 写 properties、解释器写 members，两条路径的表都不一样。
             if (cls) {
-                cls->properties[mangledName] = {closureVal, isConst, true, isAbstract};
-                cls->ownMembers.insert(mangledName);
+                cls->privateMembers[methodName] = {closureVal, isConst, true, isAbstract};
             }
         } else {
             if (cls) {

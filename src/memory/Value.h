@@ -558,6 +558,19 @@ namespace jc {
         //   把同名的方法模板顶掉。
         std::unordered_map<std::string, PropertyDescriptor> properties;
         std::unordered_map<std::string, PropertyDescriptor> members;
+        // ★ 本类自身的私有成员（私有方法模板 + 私有 static），键是**纯名字**，不带 classId。
+        //   私有成员按【声明它的类】分组存放：`properties`/`members` 只放公开成员，
+        //   一个类的私有成员只属于它自己，查私有时由 VM 沿候选 owner 链到各自表里取。
+        //   这样键里不再嵌进程内自增的 classId，快照、反射、槽位编号都不再受它影响。
+        std::unordered_map<std::string, PropertyDescriptor> privateMembers;
+        const PropertyDescriptor* ownPrivate(const std::string& n) const {
+            auto it = privateMembers.find(n);
+            return it == privateMembers.end() ? nullptr : &it->second;
+        }
+        PropertyDescriptor* ownPrivateMut(const std::string& n) {
+            auto it = privateMembers.find(n);
+            return it == privateMembers.end() ? nullptr : &it->second;
+        }
         bool is_native = false;
         bool isTrait = false;                // ★ trait 标记
         bool is_frozen = false;              // ★ trait 定义后冻结
@@ -803,12 +816,55 @@ namespace jc {
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Instance."); }
 
         // ★ 实例袋子的统一访问器（docs/OOP_MODEL_DESIGN.md §六 第 8 步）：
-        //   成员先按类上的编号表进**扁平槽位**（O(1) 下标，无字符串哈希、无 map 节点），
-        //   编号表里没有的（运行期新挂的字段、私有名）落**溢出表**。
-        //   槽位里只存 Value：成员的 is_const / is_local 是**类**的性质，读的时候现取类里那份，
-        //   所以槽位化不会把标志弄丢。
+        //   公开成员先按类上的编号表进**扁平槽位**（O(1) 下标，无字符串哈希、无 map 节点），
+        //   编号表里没有的（运行期新挂的字段）落**溢出表**；私有成员单独按声明类分组
+        //   （见下方 privateMembers），既不进槽位编号表，也不与公开成员混存，
+        //   成员的 is_const / is_local 仍是**类**的性质，读的时候现取类里那份。
         using PropMap = std::unordered_map<std::string, PropertyDescriptor>;
         PropMap properties;                 // 溢出表 / 原生实例的存放地
+        // ★ 私有成员按【声明它的类】分组：外层键是声明类，内层键是纯名字。
+        //   私有成员不进槽位编号表（槽位只服务公开成员），因此不存在"同一成员既在槽位
+        //   又在溢出表"的重复计数问题，私有/公开的标志也不会互相污染。
+        std::unordered_map<const ObjClass*, PropMap> privateMembers;
+        const PropertyDescriptor* findPrivate(const ObjClass* owner, const std::string& name) const {
+            if (!owner) return nullptr;
+            auto it = privateMembers.find(owner);
+            if (it == privateMembers.end()) return nullptr;
+            auto mit = it->second.find(name);
+            return mit == it->second.end() ? nullptr : &mit->second;
+        }
+        PropertyDescriptor* findPrivateMut(const ObjClass* owner, const std::string& name) {
+            if (!owner) return nullptr;
+            auto it = privateMembers.find(owner);
+            if (it == privateMembers.end()) return nullptr;
+            auto mit = it->second.find(name);
+            return mit == it->second.end() ? nullptr : &mit->second;
+        }
+        bool hasPrivate(const ObjClass* owner, const std::string& name) const {
+            return findPrivate(owner, name) != nullptr;
+        }
+        bool ownStoragePrivate(const ObjClass* owner, const std::string& name,
+                               Value*& valOut, PropFlags& flagsOut) {
+            PropertyDescriptor* d = findPrivateMut(owner, name);
+            if (!d) return false;
+            valOut = &d->val;
+            flagsOut = toFlags(*d);
+            return true;
+        }
+        void putPrivate(const ObjClass* owner, const std::string& name, const Value& v, bool isConst) {
+            privateMembers[owner][name] = PropertyDescriptor{ v, isConst, true };
+        }
+        template <typename Fn>
+        void forEachPrivate(Fn&& fn) const {
+            for (const auto& [owner, table] : privateMembers) {
+                for (const auto& [name, desc] : table) fn(owner, name, desc);
+            }
+        }
+        size_t privateSize() const {
+            size_t n = 0;
+            for (const auto& [owner, table] : privateMembers) n += table.size();
+            return n;
+        }
         mutable Value* slots = nullptr;             // 脚本类实例的扁平槽位
         mutable uint64_t slotsOwned = 0;            // 前 64 个槽位哪些已被赋值
         mutable uint64_t* slotsOwnedBig = nullptr;  // 超过 64 个槽位时的位图（惰性）
@@ -1250,6 +1306,7 @@ namespace jc {
         c_bufferData = nullptr;
         c_bufferSize = 0;
         properties.clear();
+        privateMembers.clear();
         delete[] slots;
         slots = nullptr;
         delete[] slotsOwnedBig;
@@ -2238,6 +2295,10 @@ namespace jc {
                         if (!ok) return;
                         try { if (!prop.val.isHashable()) ok = false; } catch (...) { ok = false; }
                     });
+                    inst->forEachPrivate([&](const ObjClass*, const std::string&, const PropertyDescriptor& prop) {
+                        if (!ok) return;
+                        try { if (!prop.val.isHashable()) ok = false; } catch (...) { ok = false; }
+                    });
                     if (!ok) return false;
                     inst->is_hashable_cached = true;
                     return true;
@@ -2465,6 +2526,9 @@ namespace jc {
                     auto inst2 = static_cast<ObjInstance*>(robj);
                     if (inst1->is_frozen && inst2->is_frozen && inst1->classDef == inst2->classDef) {
                         if (inst1->ownSize() != inst2->ownSize()) return false;
+                        // ★ 私有成员也参与判等（与公开成员同一口径），否则"仅私有状态不同"
+                        //   的两个冻结实例会被误判相等。
+                        if (inst1->privateSize() != inst2->privateSize()) return false;
                         
                         auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                         if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
@@ -2476,6 +2540,14 @@ namespace jc {
                             const Value* other = inst2->ownGet(k);
                             if (!other) { same = false; return; }
                             try { if (!equals(prop1.val, *other)) same = false; }
+                            catch (...) { same = false; }
+                        });
+                        if (!same) return false;
+                        inst1->forEachPrivate([&](const ObjClass* owner, const std::string& name, const PropertyDescriptor& p1) {
+                            if (!same) return;
+                            const PropertyDescriptor* p2 = inst2->findPrivate(owner, name);
+                            if (!p2) { same = false; return; }
+                            try { if (!equals(p1.val, p2->val)) same = false; }
                             catch (...) { same = false; }
                         });
                         return same;
@@ -3387,10 +3459,20 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 if (inst->has_cached_hash) return inst->cached_hash;
                 std::string cname = inst->classDef ? inst->classDef->name : "";
                 size_t seed = sipHash24String(cname);
-                size_t sz = inst->ownSize();
+                size_t sz = inst->ownSize() + inst->privateSize();
                 size_t fields_hash = sipHash24(&sz, sizeof(size_t)) ^ 0xE7B2A4D8F1C56039ULL;
                 inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {
                     size_t k_hash = sipHash24String(k);
+                    size_t v_hash = ValueHasher{}(prop.val);
+                    size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
+                    kv_hash *= 0xBF58476D1CE4E5B9ULL;
+                    kv_hash ^= kv_hash >> 31;
+                    kv_hash *= 0x94D049BB133111EBULL;
+                    fields_hash += kv_hash;
+                });
+                // ★ 私有成员同样计入哈希（键 = 声明类 + 纯名字），与判等口径一致
+                inst->forEachPrivate([&](const ObjClass* owner, const std::string& k, const PropertyDescriptor& prop) {
+                    size_t k_hash = sipHash24String(k) ^ static_cast<size_t>(reinterpret_cast<uintptr_t>(owner));
                     size_t v_hash = ValueHasher{}(prop.val);
                     size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
                     kv_hash *= 0xBF58476D1CE4E5B9ULL;
@@ -3457,12 +3539,20 @@ inline void GcHeap::markObj(Obj* obj) {
             //   不 mark 就会在类本身存活时把方法当垃圾回收掉 —— 类的 refCount 恒为 0，
             //   而 CLASS 属于"容器"，sweep 里不会用 refCount 兜底。
             for (auto& [k, prop] : cls->members) markValue(prop.val);
+            // ★ 私有成员模板/私有 static 同理由本类独占持有，必须一并 mark
+            for (auto& [k, prop] : cls->privateMembers) markValue(prop.val);
             break;
         }
         case ObjType::INSTANCE: {
             auto inst = static_cast<ObjInstance*>(obj);
             markObj(inst->classDef);
             for (auto& [k, prop] : inst->properties) markValue(prop.val);
+            // ★ 私有子表的【键是声明类指针】，也是 GC 引用：漏了 mark 会让类对象在
+            //   实例仍存活时被回收（闸门 45：对象持有的 GC 引用必须落在显式边上）。
+            for (auto& [owner, table] : inst->privateMembers) {
+                markObj(const_cast<ObjClass*>(owner));
+                for (auto& [name, prop] : table) markValue(prop.val);
+            }
             if (inst->slots && inst->slotMode()) {
                 const int total = static_cast<int>(inst->classDef->slotNames.size());
                 for (int i = 0; i < total; ++i) {

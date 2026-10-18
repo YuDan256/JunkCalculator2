@@ -827,6 +827,72 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             }
         }
 
+    // 1b. 删除布局上不可达的块
+    //
+    //   判据（三条同时成立）：
+    //     1) 布局中的前一个块以无条件 JMP / 返回 / 抛出结束（顺序执行过不来）；
+    //     2) 没有任何跳转（含 TRY_BEGIN 的 handler）指向本块；
+    //     3) 不是函数入口。
+    //   这类块通常是空 else、return 之后的代码等，删掉可以省下整块指令（常见是一条 JMP）。
+    //   删除一个块可能让后面的块变成不可达，因此迭代到不动点。
+    {
+        std::vector<std::pair<int, int>> ranges;   // 每块在 insts 中的 [start, end)
+        ranges.reserve(graph->blocks.size());
+        for (size_t bbIdx = 0; bbIdx < graph->blocks.size(); ++bbIdx) {
+            int start = blockToInstIdx[graph->blocks[bbIdx].get()];
+            int end = (bbIdx + 1 < graph->blocks.size())
+                          ? blockToInstIdx[graph->blocks[bbIdx + 1].get()]
+                          : static_cast<int>(insts.size());
+            ranges.push_back({start, end});
+        }
+
+        bool removedAny = true;
+        while (removedAny) {
+            removedAny = false;
+            std::unordered_set<BasicBlock*> targeted;
+            for (const auto& inst : insts) {
+                if (inst.isJump && inst.jumpTarget) targeted.insert(inst.jumpTarget);
+            }
+            for (size_t k = 1; k < ranges.size(); ++k) {
+                BasicBlock* bb = graph->blocks[k].get();
+                if (targeted.count(bb)) continue;
+
+                auto [ps, pe] = ranges[k - 1];
+                int last = -1;
+                for (int i = pe - 1; i >= ps; --i) {
+                    if (!insts[i].words.empty() || insts[i].isJump) { last = i; break; }
+                }
+                if (last < 0) continue;   // 前块是空的：保守起见不删
+
+                bool noFallThrough = false;
+                const auto& pi = insts[last];
+                if (pi.isJump && pi.jumpOp == OpCode::JMP) {
+                    noFallThrough = true;
+                } else if (pi.node) {
+                    switch (pi.node->op) {
+                        case IROp::Return: case IROp::Throw: case IROp::ThrowTyped:
+                        case IROp::TailCall: case IROp::TailInvoke: case IROp::TailInvokePrivate:
+                        case IROp::TailInvokeFallback: case IROp::TailSuperInvoke:
+                            noFallThrough = true;
+                            break;
+                        default: break;
+                    }
+                }
+                if (!noFallThrough) continue;
+
+                auto [s, e] = ranges[k];
+                bool cleared = false;
+                for (int i = s; i < e; ++i) {
+                    if (!insts[i].words.empty() || insts[i].isJump) cleared = true;
+                    insts[i].words.clear();
+                    insts[i].isJump = false;
+                    insts[i].isTrampoline = false;
+                }
+                if (cleared) removedAny = true;
+            }
+        }
+    }
+
     // 2. Branch Relaxation
     bool changed = true;
     while (changed) {

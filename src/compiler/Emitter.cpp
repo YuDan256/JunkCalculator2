@@ -97,7 +97,22 @@ static int ensureReg(IRNode* in, std::vector<uint32_t>& preWords, Chunk& chunk, 
     return in->physicalReg;
 }
 
-static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& args, Chunk& chunk, int dynamicSpillBase) {
+static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& args, Chunk& chunk, int dynamicSpillBase,
+                    bool allowZeroMove = false) {
+    // ★ 零搬运快路径：参数块已经连续躺在 r..r+n-1 时直接以 r 为基址。
+    //   只对 CALL/TAIL_CALL 开放：INVOKE 会把解析出的方法闭包写回基址槽，
+    //   低基址会覆盖调用方仍存活的值；CALL 对基址只读。
+    if (allowZeroMove && !args.empty()) {
+        int r = args[0]->physicalReg;
+        bool contiguous = r >= 0;
+        for (size_t i = 0; i < args.size() && contiguous; ++i) {
+            bool unmaterializedConst = (args[i]->op == IROp::Constant && args[i]->physicalReg == -1);
+            if (unmaterializedConst || args[i]->physicalReg != r + static_cast<int>(i)) {
+                contiguous = false;
+            }
+        }
+        if (contiguous) return r;
+    }
     int base = dynamicSpillBase;
     for (size_t i = 0; i < args.size(); ++i) {
         if (args[i]->op == IROp::Constant && args[i]->physicalReg == -1) {
@@ -362,7 +377,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::Call:
                     case IROp::TailCall: {
-                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase);
+                        int spillBase = packArgs(inst.words, node->dataInputs, chunk, dynamicSpillBase, true);
                         if (node->payload2 > 0) {
                             inst.words.push_back(CREATE_Ax(OpCode::SET_KW_ARGC, node->payload2));
                         }

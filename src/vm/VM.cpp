@@ -1343,7 +1343,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             int posArgc = argc - 2 * kwArgc;
             
 
-            int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+            // ★ 帧基址与参数基址解耦：被调帧放在调用方窗口之上，参数可以待在任意寄存器。
+            int callerWindow = currentFrame->function
+                ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+            int newBase = isTailCall ? currentFrame->registerBase
+                                     : currentFrame->registerBase + callerWindow;
             int newTotalCount = fnDef->localCount + fnDef->refCount;
             PendingFrameGuard pfg(this, newBase, newTotalCount);
 
@@ -1609,7 +1613,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
                 
                 int posArgc = argc - 2 * kwArgc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+                // ★ 帧基址与参数基址解耦：被调帧放在调用方窗口之上，参数可以待在任意寄存器。
+            int callerWindow = currentFrame->function
+                ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+            int newBase = isTailCall ? currentFrame->registerBase
+                                     : currentFrame->registerBase + callerWindow;
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
@@ -1758,7 +1766,11 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 auto& fnDef = compiledFunctions[method->compiledFnIndex];
                 
                 int posArgc = argc - 2 * kwArgc;
-                int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + calleeReg + 1;
+                // ★ 帧基址与参数基址解耦：被调帧放在调用方窗口之上，参数可以待在任意寄存器。
+            int callerWindow = currentFrame->function
+                ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+            int newBase = isTailCall ? currentFrame->registerBase
+                                     : currentFrame->registerBase + callerWindow;
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
@@ -2478,7 +2490,11 @@ invoke_method:
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
         int posArgc = argc - 2 * kwArgc;
-        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+        // ★ 帧基址与参数基址解耦（同 execCall）。
+        int callerWindow = currentFrame->function
+            ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+        int newBase = isTailCall ? currentFrame->registerBase
+                                 : currentFrame->registerBase + callerWindow;
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 
@@ -2641,7 +2657,11 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
         auto& fnDef = compiledFunctions[method->compiledFnIndex];
         
         int totalArgc = argc;
-        int newBase = isTailCall ? currentFrame->registerBase : currentFrame->registerBase + a + 1;
+        // ★ 帧基址与参数基址解耦（同 execCall）。
+        int callerWindow = currentFrame->function
+            ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+        int newBase = isTailCall ? currentFrame->registerBase
+                                 : currentFrame->registerBase + callerWindow;
         int newTotalCount = fnDef->localCount + fnDef->refCount;
         PendingFrameGuard pfg(this, newBase, newTotalCount);
 

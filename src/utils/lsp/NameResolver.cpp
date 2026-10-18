@@ -128,6 +128,11 @@ namespace lsp {
         res.origin = NameRes::User;
         res.user = ptr;
         declaredAt[startPos] = res;
+        // 顶层块的直接声明（不含函数/命名空间/类内部）登记为文件级符号，供大纲视图使用
+        if (inserted && current->parent == &globalScope &&
+            !current->isFunction && !current->isNamespace && !current->isClass) {
+            fileSymbols.push_back(ptr);
+        }
         return ptr;
     }
 
@@ -259,9 +264,9 @@ namespace lsp {
     }
 
     std::vector<UserSymbol*> NameResolver::documentSymbols() const {
-        std::vector<UserSymbol*> out;
-        for (auto& [n, sym] : globalScope.symbols) out.push_back(const_cast<UserSymbol*>(&sym));
-        return out;
+        // 顶层块会为程序体另开一个作用域，globalScope 里只有内置常量；
+        // 大纲视图要列的是用户自己写的声明。
+        return fileSymbols;
     }
 
     // ---------- hoist ----------

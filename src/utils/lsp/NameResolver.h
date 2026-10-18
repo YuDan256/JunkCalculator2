@@ -102,6 +102,8 @@ namespace lsp {
         std::unordered_map<Expr*, NameRes> nameRes;
         std::map<int, NameRes> declaredAt;  // 声明位置（函数名/变量名等非 Expr 节点）→ 解析结果
         std::vector<ShadowWarning> shadowWarn;
+        // ★ 文件级（顶层块）声明的符号，供大纲视图使用；globalScope 里只有内置常量
+        std::vector<UserSymbol*> fileSymbols;
 
         // 作用域管理
         void enterScope(Scope* parent, Range range, bool isFunction = false, bool isNamespace = false, bool isClass = false);

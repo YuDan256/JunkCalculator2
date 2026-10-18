@@ -845,20 +845,20 @@ namespace lsp {
                     resolver.resolve(ast.get());
                     
                     std::vector<Json> symJsons;
-                    for (const auto& [name, sym] : resolver.globalSymbols()) {
+                    for (const UserSymbol* sym : resolver.documentSymbols()) {
                         Json ds;
                         ds.type = JsonType::Object;
-                        ds["name"] = Json(sym.name);
-                        ds["detail"] = Json(sym.typeHint);
+                        ds["name"] = Json(sym->name);
+                        ds["detail"] = Json(sym->typeHint);
                         int kind = 13; // Variable
-                        if (sym.kind == UserSymbol::Function) kind = 12;
-                        else if (sym.kind == UserSymbol::Class) kind = 5;
-                        else if (sym.kind == UserSymbol::Trait) kind = 11;
-                        else if (sym.kind == UserSymbol::Namespace) kind = 2;
+                        if (sym->kind == UserSymbol::Function) kind = 12;
+                        else if (sym->kind == UserSymbol::Class) kind = 5;
+                        else if (sym->kind == UserSymbol::Trait) kind = 11;
+                        else if (sym->kind == UserSymbol::Namespace) kind = 2;
                         ds["kind"] = Json((double)kind);
                         Range range;
-                        range.start = sym.defPos;
-                        range.end = sym.defEndPos;
+                        range.start = sym->defPos;
+                        range.end = sym->defEndPos;
                         ds["range"] = range.toJson();
                         ds["selectionRange"] = range.toJson();
                         symJsons.push_back(ds);

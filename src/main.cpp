@@ -854,7 +854,17 @@ int main(int argc, char* argv[]) {
 
             modFn->localCount = jc::Emitter::emit(&graph, modFn->chunk);
             fns.push_back(modFn);
-            
+
+            // ★ compile 模式下的 -d：只反汇编、不执行。
+            //   `run -d` 是"先执行再打印"，对含死循环或副作用的脚本不能拿来量字节码。
+            if (g_showDisasm) {
+                // 嵌套函数在 emit 期间已经追加进来，最后一个是 modFn 自己
+                for (size_t i = static_cast<size_t>(startIndex); i + 1 < fns.size(); ++i) {
+                    fns[i]->chunk.disassemble("Function: " + fns[i]->name);
+                }
+                modFn->chunk.disassemble(compileAsModule ? "Module Chunk" : "Script Chunk");
+            }
+
             int count = static_cast<int>(fns.size()) - startIndex;
             jc::BytecodeSerializer::saveJCB(compileOutput, &vm, startIndex, count, stripDebug);
             std::cout << "Successfully compiled '" << compileInput << "' to '" << compileOutput << "'." << std::endl;

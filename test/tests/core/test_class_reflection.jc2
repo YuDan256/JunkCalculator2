@@ -66,3 +66,14 @@ assert(getFieldInfo(C, "nope") == none, "unknown names return none")
 assert(getFieldInfo(c, "a")["isMethod"] == false, "instances are accepted")
 assert(getFieldInfo(c, "m")["isMethod"] == true, "instance methods are marked")
 assert(throws(() => getFieldInfo(42, "x")), "getFieldInfo rejects other values")
+// ── 名字 ──
+assert(getName(C) == "C", "class name")
+assert(getName(C()) == "C", "instance reports its class's name")
+assert(getName(Base) == "Base", "base class name")
+Anon = class { init() = { } }
+assert(getName(Anon) == "", "anonymous class has an empty name")
+NS = namespace "Geo" { origin = "0,0" }
+assert(getName(NS) == "Geo", "namespace name")
+import math
+assert(getName(math) == "math", "module namespace name")
+assert(throws(() => getName(42)), "getName rejects other values")

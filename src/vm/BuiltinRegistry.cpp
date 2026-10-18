@@ -110,6 +110,44 @@ static Value fieldsOfValue(const Value& self, const char* what) {
         for (const auto& [k, v] : d->elements) L->vec.push_back(k);
         return Value(L);
 }
+// ★ getFieldInfo(objOrClass, name)：公开属性的元信息，找不到或私有则返回 none。
+//   返回 dict：isMethod（值是不是闭包）/ isStatic / isConst / isAbstract。
+//   与 hasField 同一可见性口径：私有属性一律不可见。
+static Value fieldInfoOfValue(const Value& self, const Value& key, const char* what) {
+        if (!key.isString()) return Value::none();
+        const std::string& name = key.asString();
+        auto build = [](const Value& val, bool isStatic, bool isConst, bool isAbstract) -> Value {
+            ObjDict* d = GcHeap::get().allocate<ObjDict>();
+            GcObjGuard guard(d);
+            d->set(Value("isMethod"), Value(val.isFunctionClosure()));
+            d->set(Value("isStatic"), Value(isStatic));
+            d->set(Value("isConst"), Value(isConst));
+            d->set(Value("isAbstract"), Value(isAbstract));
+            return Value(d);
+        };
+        if (self.isClass()) {
+            auto cls = static_cast<ObjClass*>(self.asObj());
+            for (ObjClass* c = cls; c; c = c->parent) {
+                if (c->privateMembers.count(name)) return Value::none();
+                auto mit = c->members.find(name);
+                if (mit != c->members.end())
+                    return build(mit->second.val, false, mit->second.is_const, mit->second.is_abstract);
+                auto pit = c->properties.find(name);
+                if (pit != c->properties.end())
+                    return build(pit->second.val, pit->second.is_static, pit->second.is_const, pit->second.is_abstract);
+            }
+            return Value::none();
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!inst->ownHas(name)) return Value::none();
+            const PropFlags pf = inst->propFlags(name);
+            if (pf.is_local) return Value::none();
+            const Value* v = inst->ownGet(name);
+            return build(v ? *v : Value::none(), pf.is_static, pf.is_const, pf.is_abstract);
+        }
+        JC2_THROW(TypeError, std::string(what) + "() expects an Instance or Class.");
+}
 static Value hasFieldOfValue(const Value& self, const Value& key, const char* what) {
         if (self.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(self.asObj());
@@ -3364,6 +3402,65 @@ void BuiltinRegistry::registerDictFunctions() {
     regMethod(VM::activeVM->dictProto, "hasField", {"key"}, hasKeyFn);
     regMethod(VM::activeVM->dictProto, "has", {"key"}, hasKeyFn);
 
+    // ★ get(key[, default])：取不到时回退到默认值（默认 none），不抛错。
+    auto dictGetFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        // 可选参数省略时注册表用 uninit 占位，这里一律当作"未提供"，回退到 none。
+        Value fallback = (args.size() > 1 && !args[1].isUninit()) ? args[1] : Value::none();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!args[0].isString()) return fallback;
+            auto it = ns->fields.find(args[0].asString());
+            if (it == ns->fields.end()) return fallback;
+            return *(it->second.upval->location);
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!args[0].isString()) return fallback;
+            const std::string& k = args[0].asString();
+            if (!inst->ownHas(k) || inst->propFlags(k).is_local) return fallback;
+            return *inst->ownGet(k);
+        }
+        ObjDict* d = helpers::getDictMap(self, "get");
+        auto it = d->keyMap.find(args[0]);
+        if (it == d->keyMap.end()) return fallback;
+        return d->elements[it->second].second;
+    };
+    regMethod(VM::activeVM->dictProto, "get", {"key", "default"}, dictGetFn, 1);
+
+    // ★ pop(key)：删除并返回对应的值；键不存在时报错（与 removeKey 一致）。
+    auto dictPopFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!args[0].isString()) JC2_THROW(TypeError, "Namespace keys must be strings.");
+            auto it = ns->fields.find(args[0].asString());
+            if (it == ns->fields.end()) JC2_THROW(RuntimeError, "Key not found: " + args[0].toRepr());
+            Value out = *(it->second.upval->location);
+            GcValueGuard guard(out);
+            ns->removeField(args[0].asString());
+            return out;
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!args[0].isString()) JC2_THROW(TypeError, "Instance keys must be strings.");
+            const std::string& k = args[0].asString();
+            if (!inst->ownHas(k)) JC2_THROW(RuntimeError, "Key not found: " + args[0].toRepr());
+            Value out = *inst->ownGet(k);
+            GcValueGuard guard(out);
+            inst->removeProperty(k);
+            return out;
+        }
+        ObjDict* d = helpers::getDictMap(self, "pop");
+        auto it = d->keyMap.find(args[0]);
+        if (it == d->keyMap.end()) JC2_THROW(RuntimeError, "Key not found: " + args[0].toRepr());
+        Value out = d->elements[it->second].second;
+        GcValueGuard guard(out);
+        d->remove(args[0]);
+        return out;
+    };
+    regMethod(VM::activeVM->dictProto, "pop", {"key"}, dictPopFn);
+
     auto removeKeyFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isObjType(ObjType::NAMESPACE)) {
@@ -3965,6 +4062,9 @@ void BuiltinRegistry::registerIntrospection() {
     reg("hasField", { 2 }, [](const std::vector<Value>& args) -> Value {
         return hasFieldOfValue(args[0], args[1], "hasField");
     }, {"obj", "key"});
+    reg("getFieldInfo", { 2 }, [](const std::vector<Value>& args) -> Value {
+        return fieldInfoOfValue(args[0], args[1], "getFieldInfo");
+    }, {"obj", "name"});
     reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) JC2_THROW(TypeError, "getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
     reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else JC2_THROW(TypeError, "getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
 }

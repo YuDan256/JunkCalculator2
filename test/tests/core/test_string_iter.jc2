@@ -26,7 +26,7 @@ test_string_higher_order_methods() = {
     assert(s.any((c) => c == "a"), "any sees characters")
     assert(s.all((c) => c != "z"), "all sees characters")
     assert(s.countIf((c) => c == "a") == 1, "countIf counts characters")
-    assert(s.sort() == "abc", "sort returns a string")
+    assert(s.sorted() == "abc", "sorted returns a string")
     assert(str(s.groupBy((c) => c)) == '{"c": @["c"], "a": @["a"], "b": @["b"]}', "groupBy keys on characters")
 }
 test_string_higher_order_methods()
@@ -44,7 +44,7 @@ test_string_methods_handle_utf8() = {
     u = "中文a"
     assert(str(u.map((c) => c)) == '@["中", "文", "a"]', "map splits by code point")
     assert(u.filter((c) => c != "文") == "中a", "filter keeps code points")
-    assert(u.sort() == "a中文", "sort compares code points")
+    assert(u.sorted() == "a中文", "sorted compares code points")
     assert(u.count("中") == 1, "count works on non-ASCII")
     assert(u.join("|") == "中|文|a", "join works on non-ASCII")
 }
@@ -53,7 +53,7 @@ test_string_methods_handle_utf8()
 test_string_methods_handle_empty() = {
     assert(str("".map((c) => c)) == "@[]", "map of an empty string is an empty list")
     assert("".filter((c) => true) == "", "filter of an empty string is empty")
-    assert("".sort() == "", "sort of an empty string is empty")
+    assert("".sorted() == "", "sorted of an empty string is empty")
     assert("".join("-") == "", "join of an empty string is empty")
     assert("".reduce((acc, c) => acc + c, "S") == "S", "reduce of an empty string returns the init value")
 }

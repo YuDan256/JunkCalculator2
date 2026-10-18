@@ -345,7 +345,7 @@ test_bst_operations() = {
     b2 = collections.BST()
     model = @[]
     for (v in @[5, 2, 8, 1, 9, 3, 7, 4, 6]) { b2.insert(v); model.push(v) }
-    model = model.sort()          // sort() 返回排序后的新表，不改变原表
+    model = model.sorted()        // sorted() 返回副本，不改变原表
     got = @[]
     for (x in b2) { got.push(x) }
     assert(got == model, "insertion order does not affect in-order")

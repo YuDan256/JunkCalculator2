@@ -4521,7 +4521,9 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->stringProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->setProto, "countIf", {"f"}, countIfFn);
 
-    auto sortCore = [this](const Value& argList, const Value& cmp) -> Value {
+    // ★ sort / sorted 的分工：sort 只作用于可变容器（list），原地排序并返回自身；
+    //   sorted 一律返回副本（string → 新字符串，list → 新 list，matrix → 行数组）。
+    auto sortedCore = [this](const Value& argList, const Value& cmp) -> Value {
         Value arg = argList;
         // ★ 字符串：排序后仍返回字符串（与 reverse 一致）。
         //   摊成字符 list（GcObjGuard 护住全部元素）复用既有 list 排序，再拼回字符串。
@@ -4530,7 +4532,7 @@ void BuiltinRegistry::registerHigherOrder() {
             GcObjGuard charsGuard(chars);
             helpers::iterateIterable(arg, [&](const Value& ch) { chars->vec.push_back(ch); return true; });
             if (!cmp.isNone()) {
-                if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sort() comparator must be a 2-parameter function.");
+                if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sorted() comparator must be a 2-parameter function.");
                 std::stable_sort(chars->vec.begin(), chars->vec.end(), [&](const Value& a, const Value& b) {
                     return safeCallValue(cmp, { a, b }).truthy();
                 });
@@ -4543,48 +4545,69 @@ void BuiltinRegistry::registerHigherOrder() {
             for (const auto& v : chars->vec) out += v.asString();
             return Value(out);
         }
-        if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
-            ObjList* L = GcHeap::get().allocate<ObjList>();
-            GcObjGuard guard(L);
+
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        if (arg.isObjType(ObjType::LIST)) {
+            L->vec = static_cast<ObjList*>(arg.asObj())->vec;
+        } else if (arg.isObjType(ObjType::REAL_MATRIX)) {
+            const auto& m = static_cast<ObjRealMatrix*>(arg.asObj())->mat;
+            for (int r = 0; r < m.getRows(); ++r)
+                for (int c = 0; c < m.getCols(); ++c) L->vec.push_back(Value(m(r, c)));
+        } else if (arg.isObjType(ObjType::COMPLEX_MATRIX)) {
+            const auto& m = static_cast<ObjComplexMatrix*>(arg.asObj())->mat;
+            for (int r = 0; r < m.getRows(); ++r)
+                for (int c = 0; c < m.getCols(); ++c) L->vec.push_back(Value(m(r, c)));
+        } else if (arg.isInstance() && helpers::hasDunder(arg, DUNDER_ITER)) {
             helpers::iterateIterable(arg, [&](const Value& nextVal) {
                 L->vec.push_back(nextVal);
                 return true;
             });
-            arg = Value(L);
-        }
-        if (!cmp.isNone()) {
-            if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sort() comparator must be a 2-parameter function.");
-            if (arg.isObjType(ObjType::LIST)) {
-                ObjList* L = GcHeap::get().allocate<ObjList>();
-                GcObjGuard guard(L);
-                L->vec = static_cast<ObjList*>(arg.asObj())->vec;
-                std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
-                    return safeCallValue(cmp, { a, b }).truthy();
-                });
-                return Value(L);
-            }
-            JC2_THROW(TypeError, "sort() expects a vector or list.");
         } else {
-            if (arg.isObjType(ObjType::LIST)) {
-                ObjList* L = GcHeap::get().allocate<ObjList>();
-                GcObjGuard guard(L);
-                L->vec = static_cast<ObjList*>(arg.asObj())->vec;
-                std::stable_sort(L->vec.begin(), L->vec.end(), [](const Value& a, const Value& b) {
-                    return helpers::checkLess(a, b);
-                });
-                return Value(L);
-            }
-            JC2_THROW(TypeError, "sort() without comparator expects an array or list.");
+            JC2_THROW(TypeError, "sorted() expects a list, string or matrix.");
         }
+
+        if (!cmp.isNone()) {
+            if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sorted() comparator must be a 2-parameter function.");
+            std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
+                return safeCallValue(cmp, { a, b }).truthy();
+            });
+        } else {
+            std::stable_sort(L->vec.begin(), L->vec.end(), [](const Value& a, const Value& b) {
+                return helpers::checkLess(a, b);
+            });
+        }
+        return Value(L);
     };
 
-    auto sortFn = [sortCore](const std::vector<Value>& args) -> Value {
+    auto sortedFn = [sortedCore](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        Value cmp = !args[0].isUninit() ? args[0] : Value::none();
-        return sortCore(self, cmp);
+        return sortedCore(self, !args[0].isUninit() ? args[0] : Value::none());
     };
-    regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortFn, 1);
-    regMethod(VM::activeVM->stringProto, "sort", {"cmp"}, sortFn, 1);
+    regMethod(VM::activeVM->listProto, "sorted", {"cmp"}, sortedFn, 1);
+    regMethod(VM::activeVM->stringProto, "sorted", {"cmp"}, sortedFn, 1);
+    regMethod(VM::activeVM->matrixProto, "sorted", {"cmp"}, sortedFn, 1);
+
+    // ★ sort：仅 list 可变。原地排序，返回同一个 list（与 push/insert/merge 一致）。
+    auto sortInPlaceFn = [this](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::LIST)) JC2_THROW(TypeError, "sort() is only available on lists; use sorted() for a copy.");
+        ObjList* L = static_cast<ObjList*>(self.asObj());
+        L->checkModify();
+        Value cmp = !args[0].isUninit() ? args[0] : Value::none();
+        if (!cmp.isNone()) {
+            if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sort() comparator must be a 2-parameter function.");
+            std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
+                return safeCallValue(cmp, { a, b }).truthy();
+            });
+        } else {
+            std::stable_sort(L->vec.begin(), L->vec.end(), [](const Value& a, const Value& b) {
+                return helpers::checkLess(a, b);
+            });
+        }
+        return self;
+    };
+    regMethod(VM::activeVM->listProto, "sort", {"cmp"}, sortInPlaceFn, 1);
 
     // ==== dict 高阶函数（pair 优先：map/filter/reduce/any/all/countIf 回调收 @[k,v] frozen list）====
     auto makeDictPair = [](const Value& k, const Value& v) -> Value {

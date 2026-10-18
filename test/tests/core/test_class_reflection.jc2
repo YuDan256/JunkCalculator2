@@ -28,7 +28,7 @@ c = C()
 f = getFields(C)
 assert(f == @["a", "baseMethod", "k", "m", "shared", "z"],
        "class instance properties: inherited included, statics and private excluded")
-assert(f == f.sort(), "names come back sorted")
+assert(f == f.sorted(), "names come back sorted")
 assert(!("T" in f), "static is not an instance property")
 assert(!("S" in f), "inherited static is not an instance property")
 assert(!("p" in f), "private property is invisible")

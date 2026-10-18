@@ -123,7 +123,7 @@ test_dijkstra_heap() = {
     for (e in @[@["s","a",1], @["s","b",4], @["a","b",2], @["a","c",5], @["b","c",1], @["c","d",2], @["b","d",9]]) {
         g4.addEdge(e[0], e[1], e[2])
     }
-    vs = g4.vertices().sort()
+    vs = g4.vertices().sorted()
     n = vs.len()
     INF = 1000000
     M = @[]
@@ -233,7 +233,7 @@ test_scc() = {
     assert(comps.len() == 2, "two SCCs, got " + str(comps.len()))
     sizes = @[]
     for (c in comps) { sizes.push(c.len()) }
-    sizes = sizes.sort()
+    sizes = sizes.sorted()
     assert(sizes == @[3, 3], "sizes are 3 and 3, got " + str(sizes))
 
     // 每个分量内部两两双向可达

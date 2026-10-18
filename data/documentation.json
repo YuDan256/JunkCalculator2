@@ -1270,7 +1270,7 @@
       "  ──────────────────────",
       "    X.max(), X.min()    Extreme values",
       "    X.perc(p)           p-th percentile  (0 ≤ p ≤ 100)",
-      "    X.sort()            Sorted copy  (always returns a row array)",
+      "    X.sorted()          Sorted copy  (returns a row array)",
       "",
       "  Bivariate Analysis",
       "  ──────────────────────",
@@ -2202,14 +2202,18 @@
       "        float_all = map((x) => x*2)",
       "        float_all([1, 2, 3])                                   → [2,4,6]",
       "",
-      "  Sorting (Works on ALL container types)",
+      "  Sorting",
       "  ──────────────────────",
-      "    v.sort()            Stable natural sort (numeric or lexicographic)",
-      "                          [3,1,4].sort()                 → [1,3,4]",
-      "                          @[\"banana\",\"apple\"].sort()      → @[\"apple\",\"banana\"]",
-      "    v.sort(cmp)         Stable sort with custom comparator function",
-      "                          [3,1,4].sort((a,b) => a > b)   → [4,3,1]  (descending)",
-      "                          @[\"bb\",\"a\"].sort((a,b) => a.len() < b.len()) → @[\"a\",\"bb\"]",
+      "    v.sorted()          Sorted copy (list → new list, string → string, matrix → row array)",
+      "                          [3,1,4].sorted()               → [1,3,4]",
+      "                          @[\"banana\",\"apple\"].sorted()   → @[\"apple\",\"banana\"]",
+      "                          \"cba\".sorted()                 → \"abc\"",
+      "    v.sorted(cmp)       Copy sorted with a custom comparator function",
+      "                          [3,1,4].sorted((a,b) => a > b) → [4,3,1]  (descending)",
+      "    L.sort()            Sorts L in place and returns the same list (lists only)",
+      "                          L = @[3,1,4]; L.sort()         → L is @[1,3,4]",
+      "    L.sort(cmp)         In-place sort with a custom boolean comparator",
+      "                          L.sort((a,b) => a > b)",
       "",
       "  Accumulation",
       "  ──────────────────────",
@@ -2237,7 +2241,7 @@
       "  Pipe Operator",
       "  ──────────────────────",
       "    Chains data through multiple transformations left-to-right:",
-      "      [5,3,1,4,2] |> .sort() |> .reverse() |> .slice(0, 3)",
+      "      [5,3,1,4,2] |> .sorted() |> .reverse() |> .slice(0, 3)",
       "      // → [5, 4, 3]",
       "",
       "    See: `/help basic` (Pipe Operator section)"
@@ -2317,9 +2321,11 @@
       "",
       "  Sorting",
       "  ──────────────────────",
-      "    L.sort()                Stable natural sort (numeric or lexicographic)",
-      "    L.sort(cmp)             Stable sort with custom boolean comparator",
+      "    L.sort()                Sorts L in place; returns the same list",
+      "    L.sort(cmp)             In-place sort with a custom boolean comparator",
       "                              L.sort((a, b) => a < b)",
+      "    L.sorted()              Returns a sorted copy; L is unchanged",
+      "    L.sorted(cmp)           Sorted copy with a custom boolean comparator",
       "",
       "  Functional Programming (Full support — identical to arrays)",
       "  ──────────────────────",
@@ -6497,9 +6503,16 @@
     },
     "sort": {
       "signature": "v.sort([cmp])",
-      "desc": "Stably sorts a list, array, or string using natural ordering. Optionally accepts a custom comparator function.",
+      "desc": "Stably sorts a list in place and returns the same list. Lists only; use sorted() for a copy.",
       "examples": [
-        "@[3, 1, 2].sort()"
+        "L = @[3, 1, 2]; L.sort()"
+      ]
+    },
+    "sorted": {
+      "signature": "v.sorted([cmp])",
+      "desc": "Returns a sorted copy: list → new list, string → string, matrix → row array. Optionally accepts a custom comparator.",
+      "examples": [
+        "@[3, 1, 2].sorted()"
       ]
     },
     "first": {

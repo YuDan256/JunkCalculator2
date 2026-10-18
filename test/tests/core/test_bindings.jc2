@@ -157,8 +157,15 @@ test_optional_args_padded_containers() = {
     assert(str("ab".enumerate(5)) == '@[@[5, "a"], @[6, "b"]]', "enumerate(start)")
     assert(@[1, 2, 3].reduce((a, b) => a + b) == 6, "reduce(f) without init")
     assert(@[1, 2, 3].reduce((a, b) => a + b, 10) == 16, "reduce(f, init)")
-    assert(@[3, 1, 2].sort() == @[1, 2, 3], "sort() without comparator")
-    assert(@[3, 1, 2].sort((a, b) => a > b) == @[3, 2, 1], "sort(cmp)")
+    S = @[3, 1, 2]
+    assert(S.sort() == @[1, 2, 3] && S == @[1, 2, 3], "sort() in place")
+    assert(S.sort((a, b) => a > b) == @[3, 2, 1], "sort(cmp) in place")
+    C = @[3, 1, 2]
+    SC = C.sorted()
+    assert(SC == @[1, 2, 3] && C == @[3, 1, 2], "sorted() returns a copy")
+    assert(@[3, 1, 2].sorted((a, b) => a > b) == @[3, 2, 1], "sorted(cmp)")
+    assert("cba".sorted() == "abc", "string.sorted()")
+    assert([3, 1, 2].sorted() == @[1, 2, 3], "matrix.sorted() returns a row array")
 }
 test_optional_args_padded_containers()
 

@@ -232,12 +232,19 @@ public:
         loadedModules.clear();
         builtinValues.clear();
         pendingCallRefs.clear();
-        // ★ 退出前先跑一轮 GC：clearGlobals() 已经断开 globals / openUpvalues / deferStack
-        //   这些用户根，此时仍然存活的 finalize 对象都已不可达，跑一轮就能把 close/free
-        //   补上（否则持有 FILE*/socket/裸指针的对象在正常退出时永远不会被 finalize）。
+        // ★ 先清空寄存器与异常槽，再跑最后一轮 GC。GC 会释放"只被寄存器引用"的对象，
+        //   而寄存器数组要到 VM 析构时才 delete[]；若槽位里还留着指向已释放对象的 Value，
+        //   ~Value 就会对已释放内存做 releaseObj（实测 --jit 跑整套测试偶发 0xC0000005）。
+        if (registers) {
+            for (int i = 0; i < MAX_REGISTERS; ++i) registers[i] = Value::none();
+        }
+        jit_exception_value = Value::none();
+        // ★ 这一轮 GC 的目的：clearGlobals() 已断开 globals / openUpvalues / deferStack
+        //   这些用户根，仍然存活的 finalize 对象都已不可达，跑一轮就能把 close/free 补上
+        //   （否则持有 FILE*/socket/裸指针的对象在正常退出时永远不会被 finalize）。
         //   必须放在 compiledFunctions.clear() 之前：bytecode 的 finalize 方法要按
         //   compiledFnIndex 取回函数体，提前清空会越界。残留帧若存在（异常退出路径），
-        //   GC 的 markCallback 会遍历它们，故此处不做帧相关清理。
+        //   GC 的 markCallback 会照常遍历它们，故这里不动帧。
         GcHeap::get().collectGarbage();
         compiledFunctions.clear();
     }

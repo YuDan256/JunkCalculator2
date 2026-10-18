@@ -638,7 +638,17 @@ namespace jc {
             classId = nextId++;
             type = ObjType::CLASS; 
         }
-        void clearTotal() override { properties.clear(); members.clear(); }
+        // ★ 回收前的统一清理：漏掉任何一张持有 Value 的表，那些 Value 就会拖到对象内存
+        //   真正释放时才 releaseObj，而那时被引用的对象可能已经被回收（sweep 之后再触碰
+        //   就是 use-after-free）。私有表与生命周期槽位必须一并清。
+        void clearTotal() override {
+            properties.clear();
+            members.clear();
+            privateMembers.clear();
+            initFn = PropertyDescriptor{};
+            finalizeFn = PropertyDescriptor{};
+            fieldInitFn = PropertyDescriptor{};
+        }
 
         // ---- 类袋子的成员查找 ----------------------------------------------------
         // 沿 parent 链找 static 域（trait 成员在组合时就已复制进宿主的这两张表，

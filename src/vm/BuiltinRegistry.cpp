@@ -20,6 +20,7 @@
 #pragma warning(disable: 4702)
 #endif
 #include <algorithm>
+#include <set>
 #include <cctype>
 #include <chrono>               // ★ clock() — high_resolution_clock
 #include <cmath>
@@ -38,6 +39,39 @@ namespace jc {
 
 // ★ 共用实现（Dict 方法与全局函数唯一真值源）：接收者与错误消息里的名字都作为参数。
 //   Dict 方法传调用栈上的 self 与原名（行为逐字不变）；全局 getFields/hasField 传 args[0]/args[1]。
+// ★ 类级反射：把一个类（及其祖先）的公开成员名收集起来。
+//   实例成员 = members（方法/模板）+ properties 里非 static 的字段声明；
+//   静态成员 = properties 里 is_static 的条目；私有成员在 privateMembers，一律不可见。
+//   用 std::set 收集，天然去重并按字母序输出——顺序与存储形态无关（槽位 / 溢出表 /
+//   从工作区加载回来的类都一样），因此存档前后结果稳定。
+static void collectInstanceMemberNames(ObjClass* cls, std::set<std::string>& out) {
+    for (ObjClass* c = cls; c; c = c->parent) {
+        for (const auto& [k, pd] : c->members) {
+            if (!pd.is_local) out.insert(k);
+        }
+        for (const auto& [k, pd] : c->properties) {
+            if (!pd.is_static && !pd.is_local) out.insert(k);
+        }
+    }
+}
+static void collectStaticMemberNames(ObjClass* cls, std::set<std::string>& out) {
+    for (ObjClass* c = cls; c; c = c->parent) {
+        for (const auto& [k, pd] : c->properties) {
+            if (pd.is_static && !pd.is_local) out.insert(k);
+        }
+    }
+}
+static bool classHasMember(ObjClass* cls, const std::string& name) {
+    for (ObjClass* c = cls; c; c = c->parent) {
+        if (c->privateMembers.count(name)) return false;   // 私有同名成员对外不可见
+        auto mit = c->members.find(name);
+        if (mit != c->members.end()) return !mit->second.is_local;
+        auto pit = c->properties.find(name);
+        if (pit != c->properties.end()) return !pit->second.is_local;
+    }
+    return false;
+}
+
 static Value fieldsOfValue(const Value& self, const char* what) {
         if (self.isObjType(ObjType::NAMESPACE)) {
             auto ns = static_cast<ObjNamespace*>(self.asObj());
@@ -46,19 +80,29 @@ static Value fieldsOfValue(const Value& self, const char* what) {
             for (const auto& [k, v] : ns->fields) L->vec.push_back(Value(k));
             return Value(L);
         }
-        if (self.isInstance()) {
-            auto inst = self.asInstance();
+        if (self.isClass()) {
+            auto cls = static_cast<ObjClass*>(self.asObj());
+            std::set<std::string> names;
+            collectInstanceMemberNames(cls, names);
             ObjList* L = GcHeap::get().allocate<ObjList>();
             GcObjGuard guard(L);
-            // ownForEach 现在会把类模板上的真实标志带出来（含私有方法的 is_local），
-            // 这里只需按 is_local 过滤，无需再回查类链。
+            for (const auto& n : names) L->vec.push_back(Value(n));
+            return Value(L);
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            // ownForEach 会把类模板上的真实标志带出来（含私有属性的 is_local）。
+            std::set<std::string> names;
             inst->ownForEach([&](const std::string& k, const PropertyDescriptor& v) {
-                if (!v.is_local) L->vec.push_back(Value(k));
+                if (!v.is_local) names.insert(k);
             });
+            ObjList* L = GcHeap::get().allocate<ObjList>();
+            GcObjGuard guard(L);
+            for (const auto& n : names) L->vec.push_back(Value(n));
             return Value(L);
         }
         if (!self.isObjType(ObjType::DICT)) {
-            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, or Namespace.");
+            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, Namespace, or Class.");
         }
         ObjDict* d = helpers::getDictMap(self, what);
         ObjList* L = GcHeap::get().allocate<ObjList>();
@@ -72,6 +116,11 @@ static Value hasFieldOfValue(const Value& self, const Value& key, const char* wh
             if (!key.isString()) return Value(false);
             return Value(ns->fields.find(key.asString()) != ns->fields.end());
         }
+        if (self.isClass()) {
+            auto cls = static_cast<ObjClass*>(self.asObj());
+            if (!key.isString()) return Value(false);
+            return Value(classHasMember(cls, key.asString()));
+        }
         if (self.isInstance()) {
             auto inst = self.asInstance();
             if (!key.isString()) return Value(false);
@@ -79,10 +128,23 @@ static Value hasFieldOfValue(const Value& self, const Value& key, const char* wh
             return Value(inst->ownHas(key.asString()) && !pf.is_local);
         }
         if (!self.isObjType(ObjType::DICT)) {
-            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, or Namespace.");
+            JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, Namespace, or Class.");
         }
         ObjDict* d = helpers::getDictMap(self, what);
         return Value(d->keyMap.find(key) != d->keyMap.end());
+}
+// ★ getStatics(Class)：只列静态成员，字母序。私有静态不可见。
+static Value staticsOfValue(const Value& self, const char* what) {
+        if (!self.isClass()) {
+            JC2_THROW(TypeError, std::string(what) + "() expects a Class.");
+        }
+        auto cls = static_cast<ObjClass*>(self.asObj());
+        std::set<std::string> names;
+        collectStaticMemberNames(cls, names);
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        for (const auto& n : names) L->vec.push_back(Value(n));
+        return Value(L);
 }
     inline std::filesystem::path to_path(const std::string& utf8_str) {
         return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
@@ -3897,6 +3959,9 @@ void BuiltinRegistry::registerIntrospection() {
     reg("getFields", { 1 }, [](const std::vector<Value>& args) -> Value {
         return fieldsOfValue(args[0], "getFields");
     }, {"obj"});
+    reg("getStatics", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return staticsOfValue(args[0], "getStatics");
+    }, {"cls"});
     reg("hasField", { 2 }, [](const std::vector<Value>& args) -> Value {
         return hasFieldOfValue(args[0], args[1], "hasField");
     }, {"obj", "key"});

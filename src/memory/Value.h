@@ -558,10 +558,11 @@ namespace jc {
         //   把同名的方法模板顶掉。
         std::unordered_map<std::string, PropertyDescriptor> properties;
         std::unordered_map<std::string, PropertyDescriptor> members;
-        // ★ 本类自身的私有成员（私有方法模板 + 私有 static），键是**纯名字**，不带 classId。
-        //   私有成员按【声明它的类】分组存放：`properties`/`members` 只放公开成员，
-        //   一个类的私有成员只属于它自己，查私有时由 VM 沿候选 owner 链到各自表里取。
-        //   这样键里不再嵌进程内自增的 classId，快照、反射、槽位编号都不再受它影响。
+        // ★ 本类自身的私有属性，键是**纯名字**，不带 classId；方法模板与 static 混存，
+        //   由 is_static / is_field_decl 区分。私有属性按「声明它的类」分组存放：
+        //   `properties`/`members` 只放公开属性，一个类的私有属性只属于它自己，查私有时
+        //   由 VM 沿候选 owner 链到各自表里取。这样键里不再嵌进程内自增的 classId，
+        //   快照、反射、槽位编号都不再受它影响。
         std::unordered_map<std::string, PropertyDescriptor> privateMembers;
         const PropertyDescriptor* ownPrivate(const std::string& n) const {
             auto it = privateMembers.find(n);
@@ -816,14 +817,14 @@ namespace jc {
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Instance."); }
 
         // ★ 实例袋子的统一访问器（docs/OOP_MODEL_DESIGN.md §六 第 8 步）：
-        //   公开成员先按类上的编号表进**扁平槽位**（O(1) 下标，无字符串哈希、无 map 节点），
-        //   编号表里没有的（运行期新挂的字段）落**溢出表**；私有成员单独按声明类分组
-        //   （见下方 privateMembers），既不进槽位编号表，也不与公开成员混存，
+        //   公开属性先按类上的编号表进**扁平槽位**（O(1) 下标，无字符串哈希、无 map 节点），
+        //   编号表里没有的（运行期新挂的属性）落**溢出表**；私有属性单独按声明类分组
+        //   （见下方 privateMembers），既不进槽位编号表，也不与公开属性混存，
         //   成员的 is_const / is_local 仍是**类**的性质，读的时候现取类里那份。
         using PropMap = std::unordered_map<std::string, PropertyDescriptor>;
         PropMap properties;                 // 溢出表 / 原生实例的存放地
-        // ★ 私有成员按【声明它的类】分组：外层键是声明类，内层键是纯名字。
-        //   私有成员不进槽位编号表（槽位只服务公开成员），因此不存在"同一成员既在槽位
+        // ★ 私有属性按「声明它的类」分组：外层键是声明类，内层键是纯名字。
+        //   私有属性不进槽位编号表（槽位只服务公开属性），因此不存在"同一属性既在槽位
         //   又在溢出表"的重复计数问题，私有/公开的标志也不会互相污染。
         std::unordered_map<const ObjClass*, PropMap> privateMembers;
         const PropertyDescriptor* findPrivate(const ObjClass* owner, const std::string& name) const {
@@ -1033,7 +1034,7 @@ namespace jc {
                 //   溢出表留一份带标志的镜像，而 ownForEach 会跳过"溢出表里已有同名"的
                 //   槽位。原先这里用 popcount 把那些槽位也算进去，于是 ownSize 比实际
                 //   产出的成员数多，序列化器先写 ownSize 再按 ownForEach 写条目，加载器
-                //   就会多读一条直到越界：带 const 字段或私有字段的类存盘后读不回来
+                //   就会多读一条直到越界：带 const 属性或私有属性的类存盘后读不回来
                 //   （IOError: Failed to read bytecode data）。
                 const int total = static_cast<int>(classDef->slotNames.size());
                 for (int i = 0; i < total; ++i) {
@@ -1060,8 +1061,8 @@ namespace jc {
                     //   只是字段声明登记，都是**类**的性质。早期这里硬编码成
                     //   { slots[i], false, false }，只要某个带标志的成员落进槽位却没镜像
                     //   到溢出表，is_local / is_const 就会被报成 false —— getFields 与
-                    //   print 会把私有成员当公开成员列出来，const 保护也会失效。
-                    //   私有成员现在单独按声明类存放、不进槽位，但公开 const 成员仍走这里，
+                    //   print 会把私有属性当公开属性列出来，const 保护也会失效。
+                    //   私有属性现在单独按声明类存放、不进槽位，但公开 const 属性仍走这里，
                     //   所以标志必须照旧从类模板取。
                     PropertyDescriptor pd;
                     if (const PropertyDescriptor* cm = classMember(k)) pd = *cm;
@@ -2527,7 +2528,7 @@ namespace jc {
                     auto inst2 = static_cast<ObjInstance*>(robj);
                     if (inst1->is_frozen && inst2->is_frozen && inst1->classDef == inst2->classDef) {
                         if (inst1->ownSize() != inst2->ownSize()) return false;
-                        // ★ 私有成员也参与判等（与公开成员同一口径），否则"仅私有状态不同"
+                        // ★ 私有属性也参与判等（与公开属性同一口径），否则"仅私有状态不同"
                         //   的两个冻结实例会被误判相等。
                         if (inst1->privateSize() != inst2->privateSize()) return false;
                         
@@ -3471,7 +3472,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                     kv_hash *= 0x94D049BB133111EBULL;
                     fields_hash += kv_hash;
                 });
-                // ★ 私有成员同样计入哈希（键 = 声明类 + 纯名字），与判等口径一致
+                // ★ 私有属性同样计入哈希（键 = 声明类 + 纯名字），与判等口径一致
                 inst->forEachPrivate([&](const ObjClass* owner, const std::string& k, const PropertyDescriptor& prop) {
                     size_t k_hash = sipHash24String(k) ^ static_cast<size_t>(reinterpret_cast<uintptr_t>(owner));
                     size_t v_hash = ValueHasher{}(prop.val);
@@ -3540,7 +3541,7 @@ inline void GcHeap::markObj(Obj* obj) {
             //   不 mark 就会在类本身存活时把方法当垃圾回收掉 —— 类的 refCount 恒为 0，
             //   而 CLASS 属于"容器"，sweep 里不会用 refCount 兜底。
             for (auto& [k, prop] : cls->members) markValue(prop.val);
-            // ★ 私有成员模板/私有 static 同理由本类独占持有，必须一并 mark
+            // ★ 私有属性（方法模板 / static）同理由本类独占持有，必须一并 mark
             for (auto& [k, prop] : cls->privateMembers) markValue(prop.val);
             break;
         }

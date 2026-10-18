@@ -1,4 +1,4 @@
-// 私有成员按声明它的类隔离
+// 私有属性按声明它的类隔离
 throws(f) = {
     try { f(); return false } catch (e) { return true }
 }
@@ -38,14 +38,14 @@ class ChildOwn extends Parent {
     readFromChild() = self.tag
 }
 
-// 私有方法同样按词法解析
-class MethodParent {
+// 私有属性（可调用）同样按词法解析
+class CallableParent {
     local who() = "parent"
     init() = { }
     callWho() = self.who()
 }
 
-class MethodChild extends MethodParent {
+class CallableChild extends CallableParent {
     local who() = "child"
     init() = { super.init() }
     callWhoChild() = self.who()
@@ -57,9 +57,9 @@ test_inherited_private_is_lexical() = {
     assert(ChildOwn().readFromParent() == "parent",
            "a parent method always sees the parent's own private")
     assert(ChildOwn().readFromChild() == "child", "subclass sees its own private")
-    assert(MethodChild().callWho() == "parent",
-           "a parent method calling a private method sees its own, not the override")
-    assert(MethodChild().callWhoChild() == "child", "subclass sees its own private method")
+    assert(CallableChild().callWho() == "parent",
+           "a parent method calling a private property sees its own, not the override")
+    assert(CallableChild().callWhoChild() == "child", "subclass sees its own private property")
 }
 
 // ── 3. 私有 static 按类隔离 ──
@@ -80,7 +80,7 @@ test_private_static_isolation() = {
     assert(Counter2().name() == "c2", "same-named private static does not collide")
 }
 
-// ── 4. 私有成员不出现在反射里，也不能从外部访问 ──
+// ── 4. 私有属性不出现在反射里，也不能从外部访问 ──
 class Reflected {
     local hidden = 1
     local hiddenCall() = 2
@@ -91,12 +91,12 @@ class Reflected {
 test_private_is_not_reflected() = {
     r = Reflected()
     f = getFields(r)
-    assert("shown" in f, "public field must be listed")
-    assert(!("hidden" in f), "private field must not be listed")
-    assert(!("hiddenCall" in f), "private method must not be listed")
-    assert(!hasField(r, "hidden"), "private field is invisible to hasField")
-    assert(throws(() => r.hidden), "private field is not readable from outside")
-    assert(throws(() => r.hiddenCall()), "private method is not callable from outside")
+    assert("shown" in f, "public property must be listed")
+    assert(!("hidden" in f), "private property must not be listed")
+    assert(!("hiddenCall" in f), "private property must not be listed")
+    assert(!hasField(r, "hidden"), "private property is invisible to hasField")
+    assert(throws(() => r.hidden), "private property is not readable from outside")
+    assert(throws(() => r.hiddenCall()), "private property is not callable from outside")
 }
 
 // ── 5. 私有 const 不可改 ──

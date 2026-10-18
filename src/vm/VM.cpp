@@ -360,19 +360,22 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
     }
 }
 
-// ★ 私有成员查找（含 trait 定义、由类复制的 local 方法/字段）。
-// 私有成员按「声明它的类」分组存放：实例上是 `privateMembers[声明类][纯名字]`，类上是
-// `ObjClass::privateMembers[纯名字]`（方法模板 / 私有 static）。派发点的 classContext
-// 未必等于声明它的类（trait 的 local 成员存在 trait 自己的表里，调用点 classContext 却是
-// with 它的类），因此这里传入**纯私有名**，按固定优先级枚举候选 owner 类，每个候选都到
-// **它自己那一组**里精确匹配。
-//   • 私有成员是**词法**的：`self.x` 首先看定义"正在执行的这段代码"的类（也就是 closure 的
-//     owner_class），所以父类方法读到的永远是父类自己那份私有，子类声明同名私有只会遮蔽
-//     子类自己的访问点，不会把父类那份顶掉；不同类同名私有互不影响。
-//   • 词法类里没有该名字时才回退到实例类链（最派生 → 祖先，含各级 trait 表）与 classContext，
-//     用于"方法访问的是祖先声明的私有"或"调用的私有方法只在子类里定义"这类情形。
-// 因此顺序为：词法定义类自身 → 实例实际类链（最派生 → 祖先，含各自 trait 表）→
-// classContext。全程精确匹配，无后缀/模糊扫描。
+// ★ 私有属性查找（含 trait 定义、由类复制的 local 属性）。
+// 私有属性按「声明它的类」分组存放：实例上是 `privateMembers[声明类][纯名字]`，类上是
+// `ObjClass::privateMembers[纯名字]`。派发点的 classContext 未必等于声明它的类（trait 的
+// local 属性存在 trait 自己的表里，调用点 classContext 却是 with 它的类），因此这里传入
+// **纯私有名**，按固定优先级枚举候选 owner 类，每个候选都到**它自己那一组**里精确匹配。
+//   • 私有属性是**词法**的：`self.x` 只看定义"正在执行的这段代码"的类（closure 的
+//     owner_class），所以父类方法读到的永远是父类自己那份私有，子类声明同名私有只影响
+//     子类自己的访问点，不会把父类那份顶掉；不同类同名私有互不影响。反过来，子类方法
+//     不能引用祖先声明的私有属性——编译期在那个类里找不到声明，会按公开属性访问处理，
+//     运行期得到"属性不存在"的错误。
+//   • 词法类里没有该名字时才回退到 classContext 与实例类链（最派生 → 祖先，含各级 trait
+//     表）。回退服务于这几类情形：trait 的 local 属性存在 trait 自己的表里（调用点
+//     classContext 却是 with 它的类）、闭包在非方法上下文中执行时词法类为空、以及运行期
+//     才知道落在哪一层的私有属性派发。
+// 因此顺序为：词法定义类自身 → classContext → 实例实际类链（最派生 → 祖先，含各自 trait
+// 表）。全程精确匹配，无后缀/模糊扫描。
 static void collectPrivateCandidates(const ObjClass* lexical, ObjClass* ctx, ObjClass* instCls,
                                      std::vector<ObjClass*>& out) {
     auto add = [&out](ObjClass* c) {
@@ -394,7 +397,7 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
     foundFlags = PropFlags{};
     if (foundIn) *foundIn = nullptr;
 
-    // ① 实例上的私有存储（私有字段、实例化的私有方法闭包），按候选 owner 顺序匹配
+    // ① 实例上的私有存储（属性值、实例化的闭包），按候选 owner 顺序匹配
     std::vector<ObjClass*> candidates;
     collectPrivateCandidates(lexical, cls, inst ? inst->classDef : nullptr, candidates);
 
@@ -407,7 +410,7 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
         }
     }
 
-    // ② 候选 owner 类自己的私有成员表（私有方法模板、私有 static）
+    // ② 候选 owner 类自己的私有属性表（闭包模板、static）
     for (ObjClass* c : candidates) {
         const PropertyDescriptor* pd = c->ownPrivate(name);
         if (pd) {
@@ -521,9 +524,9 @@ void VM::snapshotMembers(ObjClass* cls, const Value& self) {
         }
     }
 
-    // ★ 私有成员不参与槽位编号，这里按【声明类】把私有方法模板落到实例的私有表。
+    // ★ 私有属性不参与槽位编号，这里按「声明类」把闭包模板落到实例的私有表。
     //   有捕获的方法必须每实例一份副本，否则不同实例会共享同一份捕获环境。
-    //   私有字段不抄：它们的值由字段初始化器经 DEFINE_PRIVATE 写进各自的私有表。
+    //   私有数据属性不抄：它们的值由初始化器经 DEFINE_PRIVATE 写进各自的私有表。
     auto snapshotPrivateOf = [&](ObjClass* owner) {
         for (const auto& [name, pd] : owner->privateMembers) {
             if (pd.is_static || pd.is_field_decl || pd.val.isUninit()) continue;
@@ -632,8 +635,8 @@ void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
         JC2_THROW(RuntimeError, "member '" + shown + "' was not initialized in init()");
     }
 
-    // ★ 私有成员不参与槽位编号，因此"省略初值的私有字段"要在私有表里单独查：
-    //   漏了这里就等于把私有字段的必填校验放空。
+    // ★ 私有属性不参与槽位编号，因此"省略初值的私有属性"要在私有表里单独查：
+    //   漏了这里就等于把私有属性的必填校验放空。
     for (ObjClass* c = cls; c; c = c->parent) {
         for (const auto& [name, pd] : c->privateMembers) {
             if (!pd.is_field_decl || pd.is_static) continue;
@@ -6761,14 +6764,14 @@ Value VM::run(int targetFrameDepth) {
                         fn->is_local = true;
                         fn->owner_class = cls;
                         // ★ 私有方法进本类的私有表（纯名字）：既不进槽位编号表，也不进
-                        //   ownMembers —— 后者用于 trait 覆盖判定，私有成员按词法各归其主、
+                        //   ownMembers —— 后者用于 trait 覆盖判定，私有属性按词法各归其主、
                         //   本来就不参与覆盖。
                         if (cls) {
                             cls->privateMembers[methodName] = {closureVal, op == OpCode::METHOD_PRIVATE_CONST, true, isAbstract};
                         }
                     } else {
                         if (cls) {
-                            // ★ 记录定义类：私有成员按词法解析时要用它判断"这段代码属于哪个类"。
+                            // ★ 记录定义类：私有属性按词法解析时要用它判断"这段代码属于哪个类"。
                             //   公开方法历史上不写 owner_class，于是父类方法与子类方法无法区分。
                             fn->owner_class = cls;
                             // ★ 子类覆盖从 trait 继承来的默认方法时，签名必须一致
@@ -10798,7 +10801,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
     Value keyVal = chunk->constants[ic.nameIdx];
     Value result;
 
-    // ★ 私有成员读取不再在读取时绑定接收者：调用点会把当前 self 交给它。
+    // ★ 私有属性读取不再在读取时绑定接收者：调用点会把当前 self 交给它。
     //   私有可见性由上面的 findPrivateMember 词法检查负责，与绑定无关。
     auto bindPrivate = [](ObjClosure* rawMethod, ObjClass*, Value) -> Value {
         return Value(rawMethod);
@@ -11018,7 +11021,7 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
             }
         } else {
             if (cls) {
-                fn->owner_class = cls;   // 与解释器一致：私有成员按词法解析要用定义类
+                fn->owner_class = cls;   // 与解释器一致：私有属性按词法解析要用定义类
                 // ★ 与解释器的 OpCode::METHOD 保持同一套校验：覆盖 trait 默认方法
                 //   必须签名一致。JIT 走的是独立实现，漏了这里就等于给 JIT 开后门。
                 checkTraitDefaultOverride(cls, methodName, fn);

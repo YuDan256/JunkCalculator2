@@ -1,0 +1,54 @@
+// 类级反射：实例属性、静态属性与可见性
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+class Base {
+    shared = 1
+    static S = 10
+    baseMethod() = 1
+    local basePriv = 0
+    init() = { }
+}
+
+class C extends Base {
+    z = 3
+    a = 1
+    const k = 2
+    static T = 20
+    static A = 30
+    m() = "m"
+    local p = 9
+    local pm() = 0
+    init() = { }
+}
+c = C()
+
+// ── 实例属性：含继承、含方法、含 const；排除静态与私有；字母序 ──
+f = getFields(C)
+assert(f == @["a", "baseMethod", "k", "m", "shared", "z"],
+       "class instance properties: inherited included, statics and private excluded")
+assert(f == f.sort(), "names come back sorted")
+assert(!("T" in f), "static is not an instance property")
+assert(!("S" in f), "inherited static is not an instance property")
+assert(!("p" in f), "private property is invisible")
+assert(!("pm" in f), "private method is invisible")
+
+// ── 静态属性：含继承、字母序 ──
+assert(getStatics(C) == @["A", "S", "T"], "statics: inherited included, sorted")
+assert(getStatics(Base) == @["S"], "base class has only its own static")
+
+// ── 类与实例给出同一组实例属性 ──
+assert(getFields(c) == f, "an instance reports the same instance properties")
+assert(getFields(Base) == @["baseMethod", "shared"], "base class view")
+
+// ── hasField 覆盖两个域，但看不到私有 ──
+assert(hasField(C, "m"), "hasField sees methods")
+assert(hasField(C, "T"), "hasField sees statics")
+assert(!hasField(C, "p"), "hasField hides private properties")
+assert(!hasField(C, "nope"), "unknown name is false")
+
+// ── 参数校验 ──
+assert(throws(() => getStatics(c)), "getStatics requires a class")
+assert(throws(() => getStatics(42)), "getStatics rejects other values")
+assert(throws(() => getFields(42)), "getFields rejects non-containers")

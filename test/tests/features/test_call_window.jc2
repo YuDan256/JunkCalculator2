@@ -54,6 +54,30 @@ b = 2
 c = 3
 
 assert(sum_tail(200, 0) == 20100, "tail-position call (200 frames)")
+// 真正的 TCO：这个深度远超 1024 帧上限，没有帧复用必然爆栈
+assert(sum_tail(20000, 0) == 200010000, "tail call must reuse the frame (TCO)")
+
+// ── 尾调用与异常：try 内不做 TCO，catch 必须还能接住 ──
+boom() = { throw "x" }
+safe() = {
+    try {
+        return boom()
+    } catch (e) {
+        return -1
+    }
+}
+assert(safe() == -1, "tail position inside try keeps the handler")
+
+// ── 尾调用到类构造：实例写在 dst 后再收尾，不能被 init 帧覆盖 ──
+class Point2 {
+    init(v) = { self.v = v }
+}
+make_point(v) = { return Point2(v) }
+assert(make_point(3).v == 3, "tail call to a class constructor")
+
+// ── 尾调用到原生函数 ──
+tail_native(x) = { return len(x) }
+assert(tail_native(@[1, 2, 3, 4]) == 4, "tail call to a native builtin")
 assert(fact(15) == 1307674368000, "non-tail recursion")
 assert(kw(a, b = b, c = c) == 6, "kwargs with all named")
 assert(kw(5) == 35, "kwargs defaults")

@@ -28,6 +28,9 @@ private:
     std::vector<std::unordered_map<std::string, IRNode*>> envStack;
     std::vector<int> deferCounts;
     int activeTryCount = 0;
+    // ★ 当前正在求值 `return f(...)` 的被调表达式：下一次 visitCall 若命中，
+    //   就把这次调用标成 TailCall（EOF 后由 VM 做帧复用）。
+    bool tailCallPosition = false;
 
     std::vector<std::unordered_set<std::string>> localVarsStack;
     std::vector<std::unordered_set<std::string>> constVarsStack;

@@ -1939,6 +1939,9 @@ void IRBuilder::visitUnary(Unary* expr) {
 }
 
 void IRBuilder::visitCall(Call* expr) {
+    // 本次调用是否处于尾位置（由 visitReturnExpr 设置）；立刻清掉，避免嵌套调用误判。
+    bool isTailCall = tailCallPosition;
+    tailCallPosition = false;
     graph->currentLine = expr->callee.line;
     std::string calleeName = expr->callee.lexeme;
     auto it = exprSymbols->find(expr);
@@ -2042,7 +2045,8 @@ void IRBuilder::visitCall(Call* expr) {
     }
     callNode->payload1 = static_cast<uint32_t>(argNodes.size());
     callNode->payload2 = static_cast<uint32_t>(kwArgc);
-    
+    if (isTailCall) callNode->op = IROp::TailCall;
+
     currentControl = callNode;
     lastValue = callNode;
 }
@@ -2138,8 +2142,16 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
 void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
     IRNode* retVal = nullptr;
     if (expr->value) {
+        // ★ 尾调用：`return f(args)` 且不在 try 内、没有返回类型断言时，把这次调用标成
+        //   TailCall。VM 的解释器路径会复用当前帧（真正的 TCO）；JIT 把 TAIL_CALL 当普通
+        //   调用处理，随后的 RETURN 仍然在（本函数照常生成），因此两条执行路径语义一致。
+        if (activeTryCount == 0 && !currentReturnTypeHint &&
+            dynamic_cast<Call*>(expr->value.get())) {
+            tailCallPosition = true;
+        }
         expr->value->accept(*this);
         retVal = lastValue;
+        tailCallPosition = false;
     } else {
         retVal = graph->createConstant(Value::none());
         retVal->setControl(currentControl);

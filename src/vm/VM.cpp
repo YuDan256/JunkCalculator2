@@ -64,6 +64,7 @@ static bool hasNativeStackHeadroom(size_t marginBytes = 256 * 1024) {
     uintptr_t limit = reinterpret_cast<uintptr_t>(tib->StackLimit);
     return sp > limit && (sp - limit) > marginBytes;
 }
+
 #undef IN
 #else
 #include <dlfcn.h>
@@ -1391,7 +1392,7 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             }
 
             if (jitEntryPoints.count(closure->compiledFnIndex) && jitEntryPoints[closure->compiledFnIndex] != nullptr
-                && hasNativeStackHeadroom()) {
+                && !isTailCall && hasNativeStackHeadroom()) {
                 CallFrame newFrame;
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;
@@ -1591,16 +1592,19 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
     } else if (callee.isClass()) {
         auto cls = static_cast<ObjClass*>(callee.asObj());
         if (cls->isTrait) JC2_THROW(TypeError, "'" + cls->name + "' is a trait and cannot be instantiated.");
-        
+
+        // ★ 先快照实参：下面为了 GC 安全会立刻把新实例写进 dstReg，而 CALL 的零搬运快路径
+        //   会让参数留在低寄存器——dst 完全可能与某个参数槽重合，晚读就会读到实例本身。
+        std::vector<Value> classArgs;
+        classArgs.reserve(argc);
+        for (int i = 0; i < argc; ++i) {
+            classArgs.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
+        }
+
         if (cls->native_allocator) {
             if (kwArgc > 0) JC2_THROW(TypeError, "Native class allocator does not support keyword arguments.");
-            std::vector<Value> args;
-            args.reserve(argc);
-            for (int i = 0; i < argc; ++i) {
-                args.push_back(registers[currentFrame->registerBase + calleeReg + 1 + i]);
-            }
             pendingCallRefs.clear();
-            registers[currentFrame->registerBase + dstReg] = cls->native_allocator(args);
+            registers[currentFrame->registerBase + dstReg] = cls->native_allocator(classArgs);
             return;
         }
 
@@ -1624,16 +1628,18 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 auto& fnDef = compiledFunctions[initMethod->compiledFnIndex];
                 
                 int posArgc = argc - 2 * kwArgc;
-                // ★ 帧基址与参数基址解耦：被调帧放在调用方窗口之上，参数可以待在任意寄存器。
-            int callerWindow = currentFrame->function
-                ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
-            int newBase = isTailCall ? currentFrame->registerBase
-                                     : currentFrame->registerBase + callerWindow;
+                // ★ 帧基址与参数基址解耦：非尾调用把被调帧放在调用方窗口之上。
+                //   尾调用则替换当前帧（下面的 isTailCall 分支），帧基址仍是 registerBase，
+                //   所以参数必须落在 registerBase..；实例通过 selfContext 带回，不会被覆盖。
+                int callerWindow = currentFrame->function
+                    ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+                int newBase = isTailCall ? currentFrame->registerBase
+                                         : currentFrame->registerBase + callerWindow;
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
                 int effectivePosArgc = posArgc;
-                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, &registers[currentFrame->registerBase + calleeReg + 1], initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault, &effectivePosArgc);
+                std::vector<Value> alignedArgs = alignArguments(posArgc, kwArgc, classArgs.data(), initMethod->paramNames, initMethod->restName, initMethod->kwargNames, initMethod->kwargsName, Value::none(), initMethod->kwargHasDefault, &effectivePosArgc);
                 
                 for (int i = 0; i < fnDef->arity; ++i) {
                     if (alignedArgs[i].isUninit()) {
@@ -1777,11 +1783,13 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 auto& fnDef = compiledFunctions[method->compiledFnIndex];
                 
                 int posArgc = argc - 2 * kwArgc;
-                // ★ 帧基址与参数基址解耦：被调帧放在调用方窗口之上，参数可以待在任意寄存器。
-            int callerWindow = currentFrame->function
-                ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
-            int newBase = isTailCall ? currentFrame->registerBase
-                                     : currentFrame->registerBase + callerWindow;
+                // ★ 帧基址与参数基址解耦：非尾调用把被调帧放在调用方窗口之上。
+                //   尾调用则替换当前帧（下面的 isTailCall 分支），帧基址仍是 registerBase，
+                //   所以参数必须落在 registerBase..；实例通过 selfContext 带回，不会被覆盖。
+                int callerWindow = currentFrame->function
+                    ? (currentFrame->function->localCount + currentFrame->function->refCount) : 0;
+                int newBase = isTailCall ? currentFrame->registerBase
+                                         : currentFrame->registerBase + callerWindow;
                 int newTotalCount = fnDef->localCount + fnDef->refCount;
                 PendingFrameGuard pfg(this, newBase, newTotalCount);
 
@@ -3529,7 +3537,9 @@ void VM::profileFrameStart(CallFrame* frame) {
                 bool supported = true;
                 for (Instruction inst : fn->chunk.code) {
                     OpCode op = GET_OPCODE(inst);
-                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
+                    // ★ 带 TAIL_CALL 的函数不参与 JIT：HIR 目前把 TAIL_CALL 当普通调用，
+                    //   深尾递归会在宿主栈上递归，反而绕过了帧复用（解释器路径才是真 TCO）。
+                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL) {
                         supported = false;
                         break;
                     }
@@ -8111,7 +8121,10 @@ Value VM::run(int targetFrameDepth) {
                     chunk = frame->chunk;
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
-                    
+                    // ★ 必须恢复调用方保存的 ip：尾调用到原生函数 / 类构造时被调方没有替换
+                    //   当前帧，这里弹回上一层后若不切回 ip，会拿旧偏移在新 chunk 里跑。
+                    ip = frame->ip;
+
                     if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
                     else getReg(targetReg) = res;
                 } else {

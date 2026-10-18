@@ -238,6 +238,18 @@ public:
         if (registers) {
             for (int i = 0; i < MAX_REGISTERS; ++i) registers[i] = Value::none();
         }
+        // ★ 帧数组同样要断根：markCallback 只遍历 [0, frameCount)，而 frames[] 里
+        //   已经弹出的槽位仍留着旧 Value（selfContext / classContext / jitReturnSlot）。
+        //   GC 释放这些对象后，~VM 的 delete[] frames 会再对已释放内存做 releaseObj。
+        //   与寄存器同理，必须在最后一轮 GC 之前清空。
+        if (frames) {
+            for (int i = 0; i < MAX_FRAMES; ++i) {
+                frames[i].selfContext = Value::none();
+                frames[i].classContext = Value::none();
+                frames[i].jitReturnSlot = Value::none();
+                frames[i].closure = nullptr;
+            }
+        }
         jit_exception_value = Value::none();
         // ★ 这一轮 GC 的目的：clearGlobals() 已断开 globals / openUpvalues / deferStack
         //   这些用户根，仍然存活的 finalize 对象都已不可达，跑一轮就能把 close/free 补上

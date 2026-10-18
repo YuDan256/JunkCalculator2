@@ -1570,7 +1570,7 @@ namespace jc {
             return withPos(std::make_unique<SelfExpr>(), startPos, endPos);
         }
         if (match({ TokenType::CLASS })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::EXTENDS) || check(TokenType::WITH)) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::EXTENDS) || check(TokenType::WITH)) {
                 return classDefExpr(false);
             }
             int startPos = previous().position;
@@ -1578,7 +1578,7 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
         }
         if (match({ TokenType::TRAIT })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::WITH)) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::WITH)) {
                 return classDefExpr(true);
             }
             int startPos = previous().position;
@@ -1586,7 +1586,7 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
         }
         if (match({ TokenType::NAMESPACE })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING)) {
                 return namespaceExpr();
             }
             int startPos = previous().position;
@@ -1594,7 +1594,7 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Namespace, previous()), startPos, endPos);
         }
         if (match({ TokenType::ENUM })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR)) {
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING)) {
                 return enumExpr();
             }
             JC2_THROW(SyntaxError, "'enum' cannot be self-referenced; enum members are compile-time constants.");
@@ -3453,13 +3453,19 @@ namespace jc {
         int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
+        bool bindsName = false;
 
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             isNamed = true;
+            bindsName = true;
         } else if (check(TokenType::IDENTIFIER)) {
             name = advance();
+            isNamed = true;
+            bindsName = true;
+        } else if (check(TokenType::STRING)) {
+            name = definitionNameFromString(advance(), "namespace");
             isNamed = true;
         }
 
@@ -3488,7 +3494,8 @@ namespace jc {
         consume(TokenType::RBRACE, "Parser Error: Expect '}' after namespace body.");
         int endPos = previous().position + static_cast<int>(previous().lexeme.length());
         auto nsExpr = withPos(std::make_unique<NamespaceDecl>(name, withPos(std::make_unique<Block>(std::move(stmts)), startPos, endPos)), startPos, endPos);
-        if (isNamed) {
+        nsExpr->bindsVariable = bindsName;
+        if (isNamed && bindsName) {
             return withPos(std::make_unique<Assign>(name, std::move(nsExpr), false, false, false, false), startPos, endPos);
         }
         return nsExpr;
@@ -3498,13 +3505,19 @@ namespace jc {
         int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
+        bool bindsName = false;
 
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             isNamed = true;
+            bindsName = true;
         } else if (check(TokenType::IDENTIFIER)) {
             name = advance();
+            isNamed = true;
+            bindsName = true;
+        } else if (check(TokenType::STRING)) {
+            name = definitionNameFromString(advance(), "enum");
             isNamed = true;
         }
 
@@ -3551,23 +3564,40 @@ namespace jc {
         int endPos = previous().position + static_cast<int>(previous().lexeme.length());
 
         auto enumExpr = withPos(std::make_unique<EnumDefExpr>(name, std::move(members)), startPos, endPos);
-        if (isNamed) {
+        enumExpr->bindsVariable = bindsName;
+        if (isNamed && bindsName) {
             return withPos(std::make_unique<Assign>(name, std::move(enumExpr), false, false, false, false), startPos, endPos);
         }
         return enumExpr;
+    }
+
+    // ★ 声明名字也可以用字符串字面量给出（class "N" {...}）：此时只命名、不绑定变量。
+    //   名字必须是**非空字面量**，空串直接报错。
+    Token Parser::definitionNameFromString(const Token& strTok, const char* kind) {
+        if (strTok.lexeme.empty()) {
+            JC2_THROW(ParserError, std::string("Parser Error: ") + kind + " name cannot be empty.");
+        }
+        return Token(TokenType::IDENTIFIER, strTok.lexeme, strTok.position, strTok.line);
     }
 
     std::unique_ptr<Expr> Parser::classDefExpr(bool isTrait) {
         int startPos = previous().position;
         Token name(TokenType::IDENTIFIER, "", previous().position, previous().line);
         bool isNamed = false;
+        // ★ 标识符 / $标识符 形式会绑定一个变量；字符串字面量形式只命名、不绑定
+        bool bindsName = false;
 
         if (match({ TokenType::DOLLAR })) {
             Token idTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect identifier after '$'.");
             name = Token(TokenType::IDENTIFIER, "$" + idTok.lexeme, idTok.position, idTok.line);
             isNamed = true;
+            bindsName = true;
         } else if (check(TokenType::IDENTIFIER)) {
             name = advance();
+            isNamed = true;
+            bindsName = true;
+        } else if (check(TokenType::STRING)) {
+            name = definitionNameFromString(advance(), "class");
             isNamed = true;
         }
 
@@ -3847,7 +3877,8 @@ namespace jc {
         auto classExpr = withPos(std::make_unique<ClassDefExpr>(name, std::move(superClassExpr), std::move(staticProperties), std::move(instanceProperties)), startPos, endPos);
         classExpr->isTrait = isTrait;
         classExpr->traitExprs = std::move(traitExprs);
-        if (isNamed) {
+        classExpr->bindsVariable = bindsName;
+        if (isNamed && bindsName) {
             return withPos(std::make_unique<Assign>(name, std::move(classExpr), false, false, false, false), startPos, endPos);
         }
         return classExpr;

@@ -76,6 +76,8 @@ namespace jc {
         std::unique_ptr<Expr> classDefExpr(bool isTrait = false);  // ★
         std::unique_ptr<Expr> namespaceExpr(); // ★ 新增
         std::unique_ptr<Expr> enumExpr();      // ★ 新增
+        // ★ 把字符串字面量的内容当作声明名字（class "N" {...} 这类只命名、不绑定的形式）
+        Token definitionNameFromString(const Token& strTok, const char* kind);
         std::unique_ptr<Expr> parseFString(const std::string& raw, int baseOffset);  // ★
         std::vector<CompClause> parseCompClauses();
         std::unique_ptr<Expr> parseComp(std::unique_ptr<Expr> valueExpr, bool forceList);  // ★

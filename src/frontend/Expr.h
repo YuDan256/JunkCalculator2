@@ -630,6 +630,8 @@ namespace jc {
     struct NamespaceDecl : public Expr {
         Token name;
         std::unique_ptr<Expr> body;
+        // ★ 名字用字符串字面量给出时（namespace "N" {...}）只命名、不绑定变量
+        bool bindsVariable = true;
         NamespaceDecl(Token name, std::unique_ptr<Expr> body)
             : name(std::move(name)), body(std::move(body)) {
         }
@@ -639,6 +641,8 @@ namespace jc {
     struct EnumDefExpr : public Expr {
         Token name;
         std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
+        // ★ 名字用字符串字面量给出时只命名、不绑定变量
+        bool bindsVariable = true;
         EnumDefExpr(Token name, std::vector<std::pair<Token, std::unique_ptr<Expr>>> members)
             : name(std::move(name)), members(std::move(members)) {
         }
@@ -650,6 +654,8 @@ namespace jc {
         std::unique_ptr<Expr> superClassExpr;
         std::vector<std::unique_ptr<Expr>> traitExprs;  // ★ with 组合的 trait 列表
         bool isTrait = false;                            // ★ 是否 trait 定义
+        // ★ 名字用字符串字面量给出时（class "N" {...}）只命名、不绑定变量
+        bool bindsVariable = true;
         struct PropertyDef {
             Token name;
             std::unique_ptr<Expr> value;

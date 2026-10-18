@@ -365,26 +365,27 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
 // `ObjClass::privateMembers[纯名字]`（方法模板 / 私有 static）。派发点的 classContext
 // 未必等于声明它的类（trait 的 local 成员存在 trait 自己的表里，调用点 classContext 却是
 // with 它的类），因此这里传入**纯私有名**，按固定优先级枚举候选 owner 类，每个候选都到
-// **它自己那一组**里精确匹配。两类私有语义不同，不能一刀切：
-//   • trait 的 local 是**词法**的：trait 方法永远看自己 trait 的私有，即使消费者类有同名
-//     私有成员也不受影响（trait 之间同名私有也各归其主）。
-//   • 类的 local 是**按实例**的：`self.x()` 要看最派生类的私有（父类方法里调用 `self.x()`
-//     应命中子类重写的私有），所以类链从实例实际类开始、最派生优先。
-// 因此顺序为：词法 trait 自身（仅当 owner 是 trait）→ 实例实际类链（最派生 → 祖先，含各自
-// trait 表）→ 词法定义类 → classContext。trait 表接在类链之后，使 trait 的私有只在类自身
-// 没有同名私有成员时才被解析到。全程精确匹配，无后缀/模糊扫描。
+// **它自己那一组**里精确匹配。
+//   • 私有成员是**词法**的：`self.x` 首先看定义"正在执行的这段代码"的类（也就是 closure 的
+//     owner_class），所以父类方法读到的永远是父类自己那份私有，子类声明同名私有只会遮蔽
+//     子类自己的访问点，不会把父类那份顶掉；不同类同名私有互不影响。
+//   • 词法类里没有该名字时才回退到实例类链（最派生 → 祖先，含各级 trait 表）与 classContext，
+//     用于"方法访问的是祖先声明的私有"或"调用的私有方法只在子类里定义"这类情形。
+// 因此顺序为：词法定义类自身 → 实例实际类链（最派生 → 祖先，含各自 trait 表）→
+// classContext。全程精确匹配，无后缀/模糊扫描。
 static void collectPrivateCandidates(const ObjClass* lexical, ObjClass* ctx, ObjClass* instCls,
                                      std::vector<ObjClass*>& out) {
     auto add = [&out](ObjClass* c) {
         if (c && std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
     };
-    if (lexical && lexical->isTrait) add(const_cast<ObjClass*>(lexical));
-    for (ObjClass* p = instCls; p; p = p->parent) {
-        add(p);                             // 类私有：最派生优先
-        for (auto* t : p->traits) add(t);   // trait 表：trait 自身的 local 成员存于此
-    }
+    // ★ 词法优先：lexical 是 closure->owner_class，即「定义正在执行的这段代码的类」；
+    //   classContext 是运行期的类上下文（方法调用时通常是被调用者的实际类），放在其后。
     add(const_cast<ObjClass*>(lexical));
     add(ctx);
+    for (ObjClass* p = instCls; p; p = p->parent) {
+        add(p);                             // 回退：实例类链，最派生优先
+        for (auto* t : p->traits) add(t);   // trait 表：trait 自身的 local 成员存于此
+    }
 }
 
 bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
@@ -6767,6 +6768,9 @@ Value VM::run(int targetFrameDepth) {
                         }
                     } else {
                         if (cls) {
+                            // ★ 记录定义类：私有成员按词法解析时要用它判断"这段代码属于哪个类"。
+                            //   公开方法历史上不写 owner_class，于是父类方法与子类方法无法区分。
+                            fn->owner_class = cls;
                             // ★ 子类覆盖从 trait 继承来的默认方法时，签名必须一致
                             //   （私有方法按词法作用域各归其主，不走这里）
                             checkTraitDefaultOverride(cls, methodName, fn);
@@ -11014,6 +11018,7 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
             }
         } else {
             if (cls) {
+                fn->owner_class = cls;   // 与解释器一致：私有成员按词法解析要用定义类
                 // ★ 与解释器的 OpCode::METHOD 保持同一套校验：覆盖 trait 默认方法
                 //   必须签名一致。JIT 走的是独立实现，漏了这里就等于给 JIT 开后门。
                 checkTraitDefaultOverride(cls, methodName, fn);

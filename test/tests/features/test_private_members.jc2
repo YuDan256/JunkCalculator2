@@ -21,7 +21,7 @@ test_same_private_name_across_classes() = {
     assert(Beta().read() == "beta", "Beta private must stay with Beta")
 }
 
-// ── 2. 父子同名私有：按实例解析，最派生优先 ──
+// ── 2. 父子同名私有：词法解析，各自看自己那份 ──
 class Parent {
     local tag = "parent"
     init() = { }
@@ -38,12 +38,28 @@ class ChildOwn extends Parent {
     readFromChild() = self.tag
 }
 
-test_inherited_private_is_one_per_instance() = {
+// 私有方法同样按词法解析
+class MethodParent {
+    local who() = "parent"
+    init() = { }
+    callWho() = self.who()
+}
+
+class MethodChild extends MethodParent {
+    local who() = "child"
+    init() = { super.init() }
+    callWhoChild() = self.who()
+}
+
+test_inherited_private_is_lexical() = {
     assert(ChildNoOwn().readFromParent() == "parent",
            "without a subclass private, the inherited one is used")
-    assert(ChildOwn().readFromParent() == "child",
-           "a subclass private shadows the inherited one, most-derived first")
+    assert(ChildOwn().readFromParent() == "parent",
+           "a parent method always sees the parent's own private")
     assert(ChildOwn().readFromChild() == "child", "subclass sees its own private")
+    assert(MethodChild().callWho() == "parent",
+           "a parent method calling a private method sees its own, not the override")
+    assert(MethodChild().callWhoChild() == "child", "subclass sees its own private method")
 }
 
 // ── 3. 私有 static 按类隔离 ──
@@ -99,7 +115,7 @@ test_private_const_is_protected() = {
 }
 
 test_same_private_name_across_classes()
-test_inherited_private_is_one_per_instance()
+test_inherited_private_is_lexical()
 test_private_static_isolation()
 test_private_is_not_reflected()
 test_private_const_is_protected()

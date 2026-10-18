@@ -268,6 +268,249 @@ namespace jc {
         SymExpr minPoly;   // 极小多项式 (仅代数扩张使用，如 t^2 - P(x))
     };
 
+    // =================================================================
+    // 扩张独立性判定：保证塔是代数无关的
+    //
+    //   exp(g) 只有当 g 在模常数下不是已有指数 h_i 的 Q-线性组合时，才是新的超越元；
+    //   否则 exp(g) = e^c · Π t_i^{c_i}，必须用已有生成元表示，不能再压入塔中。
+    //   log(g) 同理：若 g/h 为常数或 g 是已有对数参数的幂积，则 log(g) 是已有对数的线性组合
+    //   （相差一个常数，对不定积分无影响）。
+    //
+    //   判定在"塔的原始写法"（参数里还带 exp(...)）上进行，与 buildRischFieldRec 和
+    //   rewrite 共用，避免两处口径不一致。
+    // =================================================================
+    struct ExtDependence {
+        bool matched = false;
+        SymExpr constant;                                  // 乘性常数（exp 用）
+        std::vector<std::pair<size_t, Fraction>> powers;    // (塔下标, 有理指数)
+    };
+
+    static SymExpr normalizeExponentials(const SymExpr& e);
+
+    static SymExpr extSimplify(const SymExpr& e) {
+        return simplifyCore(normalizeExponentials(simplify(e)));
+    }
+
+    static bool extAsRational(const SymExpr& e, Fraction& out) {
+        if (!e.ptr || e.ptr->getType() != SymType::NUM) return false;
+        auto* n = static_cast<SymNum*>(e.ptr);
+        if (std::holds_alternative<Fraction>(n->value)) { out = std::get<Fraction>(n->value); return true; }
+        if (std::holds_alternative<BigInt>(n->value)) { out = Fraction(std::get<BigInt>(n->value)); return true; }
+        if (std::holds_alternative<int32_t>(n->value)) { out = Fraction(BigInt(std::get<int32_t>(n->value))); return true; }
+        return false;   // 浮点不参与判定，宁可不合并也不误判
+    }
+
+    static bool extHasVar(const SymExpr& e, const std::string& x,
+                          const std::vector<RischExtension>& tower) {
+        if (!e.ptr) return false;
+        if (containsVar(e.ptr, x)) return true;
+        for (const auto& ext : tower) {
+            if (containsVar(e.ptr, ext.name)) return true;
+        }
+        return false;
+    }
+
+    static void extSplitAdd(const SymExpr& e, std::vector<SymExpr>& out) {
+        if (e.ptr && e.ptr->getType() == SymType::ADD) {
+            for (auto& a : static_cast<SymAdd*>(e.ptr)->args) out.push_back(SymExpr(a));
+        } else {
+            out.push_back(e);
+        }
+    }
+
+    static void extSplitMul(const SymExpr& e, std::vector<SymExpr>& out) {
+        if (e.ptr && e.ptr->getType() == SymType::MUL) {
+            for (auto& a : static_cast<SymMul*>(e.ptr)->args) out.push_back(SymExpr(a));
+        } else {
+            out.push_back(e);
+        }
+    }
+
+    // ★ 指数规范形：把 exp(负系数 · rest) 统一写成 exp(正系数 · rest)^(-1)。
+    //   否则 exp(-x·i) 与 exp(x·i)^(-1) 在结构上不可比，化简器也不会把它们约掉，
+    //   依赖判定就会把同一个指数认成两个不同的生成元。
+    static SymExpr normalizeExponentials(const SymExpr& e) {
+        if (!e.ptr) return e;
+        switch (e.ptr->getType()) {
+            case SymType::ADD: {
+                SymExpr r(BigInt(0));
+                for (auto& a : static_cast<SymAdd*>(e.ptr)->args) r = r + normalizeExponentials(SymExpr(a));
+                return r;
+            }
+            case SymType::MUL: {
+                SymExpr r(BigInt(1));
+                for (auto& a : static_cast<SymMul*>(e.ptr)->args) r = r * normalizeExponentials(SymExpr(a));
+                return r;
+            }
+            case SymType::POW: {
+                auto* p = static_cast<SymPow*>(e.ptr);
+                return normalizeExponentials(SymExpr(p->base)) ^ normalizeExponentials(SymExpr(p->exp));
+            }
+            case SymType::FUNC: {
+                auto* f = static_cast<SymFunc*>(e.ptr);
+                std::vector<SymNode*> nArgs;
+                for (auto& a : f->args) nArgs.push_back(normalizeExponentials(SymExpr(a)).ptr);
+                SymExpr node = SymExpr::makeFunc(f->name, std::move(nArgs));
+                if (f->name != "exp" || f->args.size() != 1) return node;
+
+                SymExpr a = normalizeExponentials(SymExpr(f->args[0]));
+                std::vector<SymExpr> factors;
+                extSplitMul(a, factors);
+                Fraction coeff(BigInt(1));
+                SymExpr rest(BigInt(1));
+                bool anyRest = false;
+                for (auto& fac : factors) {
+                    Fraction c;
+                    if (extAsRational(fac, c)) coeff = coeff * c;
+                    else { rest = rest * fac; anyRest = true; }
+                }
+                if (!anyRest || !coeff.getNum().isNegative()) return node;
+
+                SymExpr positiveArg = anyRest ? (SymExpr(-coeff) * rest) : SymExpr(-coeff);
+                SymExpr inner = SymExpr::makeFunc("exp", std::vector<SymNode*>{positiveArg.ptr});
+                return inner ^ SymExpr(BigInt(-1));
+            }
+            default: return e;
+        }
+    }
+
+    // exp(g) 是否已被已有指数张成；被张成时给出常数因子与各生成元的有理指数。
+    static ExtDependence matchExponentialDep(const SymExpr& g_raw, const std::string& x,
+                                             const std::vector<RischExtension>& tower) {
+        ExtDependence dep;
+        SymExpr g = extSimplify(g_raw);
+        if (!extHasVar(g, x, tower)) {
+            // exp(常数)：不是扩张，本身就是一个常数因子
+            dep.matched = true;
+            dep.constant = SymExpr::makeFunc("exp", std::vector<SymNode*>{g.ptr});
+            return dep;
+        }
+
+        std::vector<Fraction> powers(tower.size(), Fraction(BigInt(0)));
+        auto commit = [&]() {
+            dep.matched = true;
+            for (size_t k = 0; k < powers.size(); ++k) {
+                if (powers[k].getNum() != BigInt(0)) dep.powers.push_back({k, powers[k]});
+            }
+        };
+
+        // 1) 整体是某个已有指数的有理倍数：exp(c·h) = t_h^c
+        for (size_t i = 0; i < tower.size(); ++i) {
+            if (tower[i].type != RischExtType::EXP) continue;
+            Fraction c;
+            SymExpr ratio = extSimplify(g / tower[i].arg);
+            if (extAsRational(ratio, c)) {
+                powers[i] = powers[i] + c;
+                dep.constant = SymExpr(BigInt(1));
+                commit();
+                return dep;
+            }
+        }
+
+        // 2) 加法分解：常数项进乘性常数，其余每项须是某个已有指数的有理倍数
+        std::vector<SymExpr> terms;
+        extSplitAdd(g, terms);
+        SymExpr constPart(BigInt(0));
+        for (auto& term : terms) {
+            if (!extHasVar(term, x, tower)) { constPart = constPart + term; continue; }
+            bool hit = false;
+            for (size_t i = 0; i < tower.size(); ++i) {
+                if (tower[i].type != RischExtType::EXP) continue;
+                Fraction c;
+                if (extAsRational(extSimplify(term / tower[i].arg), c)) {
+                    powers[i] = powers[i] + c;
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) return dep;   // 未张成 → 独立
+        }
+        dep.constant = constPart.isZero() ? SymExpr(BigInt(1))
+                                          : SymExpr::makeFunc("exp", std::vector<SymNode*>{constPart.ptr});
+        commit();
+        return dep;
+    }
+
+    // log(g) 是否已被已有对数张成（相差常数）。
+    static ExtDependence matchLogDep(const SymExpr& g_raw, const std::string& x,
+                                     const std::vector<RischExtension>& tower) {
+        ExtDependence dep;
+        SymExpr g = extSimplify(g_raw);
+        std::vector<Fraction> powers(tower.size(), Fraction(BigInt(0)));
+        auto commit = [&]() {
+            dep.matched = true;
+            for (size_t k = 0; k < powers.size(); ++k) {
+                if (powers[k].getNum() != BigInt(0)) dep.powers.push_back({k, powers[k]});
+            }
+        };
+
+        // 1) log(g) = log(h) + C  ⇔  g/h 为常数
+        for (size_t i = 0; i < tower.size(); ++i) {
+            if (tower[i].type != RischExtType::LOG) continue;
+            if (!extHasVar(extSimplify(g / tower[i].arg), x, tower)) {
+                powers[i] = powers[i] + Fraction(BigInt(1));
+                commit();
+                return dep;
+            }
+        }
+
+        // 2) 乘法分解：log(c·h1^k1·h2^k2) = k1·log(h1) + k2·log(h2) + 常数
+        //
+        //    常数项（log c）故意丢弃：rewrite 只服务于微分域内的求导与积分，
+        //    而不定积分本就相差一个常数，丢弃它不影响结果的正确性。
+        std::vector<SymExpr> factors;
+        extSplitMul(g, factors);
+        bool anyFactor = false;
+        for (auto& factor : factors) {
+            if (!extHasVar(factor, x, tower)) continue;   // 常数因子只贡献加法常数
+            anyFactor = true;
+            SymExpr base = factor;
+            Fraction e(BigInt(1));
+            if (factor.ptr->getType() == SymType::POW) {
+                auto* p = static_cast<SymPow*>(factor.ptr);
+                if (!extAsRational(SymExpr(p->exp), e)) return dep;
+                base = SymExpr(p->base);
+            }
+            bool hit = false;
+            for (size_t i = 0; i < tower.size(); ++i) {
+                if (tower[i].type != RischExtType::LOG) continue;
+                Fraction c;
+                if (extAsRational(extSimplify(base / tower[i].arg), c)) {
+                    powers[i] = powers[i] + c * e;
+                    hit = true;
+                    break;
+                }
+            }
+            if (!hit) return dep;
+        }
+        if (!anyFactor) return dep;
+        commit();
+        return dep;
+    }
+
+    static SymExpr dependenceToExponential(const ExtDependence& dep,
+                                           const std::vector<RischExtension>& tower) {
+        SymExpr r = dep.constant.ptr ? dep.constant : SymExpr(BigInt(1));
+        for (const auto& [idx, c] : dep.powers) {
+            if (c.getNum() == BigInt(0)) continue;
+            SymExpr factor = (c.getNum() == BigInt(1) && c.getDen() == BigInt(1))
+                                 ? tower[idx].t_var
+                                 : (tower[idx].t_var ^ SymExpr(c));
+            r = r * factor;
+        }
+        return simplifyCore(r);
+    }
+
+    static SymExpr dependenceToLogSum(const ExtDependence& dep,
+                                      const std::vector<RischExtension>& tower) {
+        SymExpr r(BigInt(0));
+        for (const auto& [idx, c] : dep.powers) {
+            if (c.getNum() == BigInt(0)) continue;
+            r = r + SymExpr(c) * tower[idx].t_var;   // log(h^c) = c·log(h)
+        }
+        return simplifyCore(r);
+    }
+
     struct RischDiffField {
         std::string x_var;
         std::vector<RischExtension> tower;
@@ -330,8 +573,49 @@ namespace jc {
                     default: return e;
                 }
             };
-            SymExpr res = preprocessPow(expr);
-            
+            SymExpr res = preprocessPow(normalizeExponentials(expr));
+
+            // ★ 规范化：把"被已有扩张张成"的 exp/log 展开成生成元的幂积 / 线性组合。
+            //   只做结构替换会漏掉 exp(-b) 这类与某个生成元差一个符号的写法。
+            std::function<SymExpr(const SymExpr&)> canon = [&](const SymExpr& e) -> SymExpr {
+                if (!e.ptr) return e;
+                if (e.ptr->getType() == SymType::FUNC) {
+                    auto* f = static_cast<SymFunc*>(e.ptr);
+                    if (f->args.size() == 1 && (f->name == "exp" || f->name == "log")
+                        && !tower.empty() && getAstNodeCount(SymExpr(f->args[0])) <= 400) {
+                        SymExpr arg(f->args[0]);
+                        if (f->name == "exp") {
+                            ExtDependence dep = matchExponentialDep(arg, x_var, tower);
+                            if (dep.matched) return dependenceToExponential(dep, tower);
+                        } else {
+                            ExtDependence dep = matchLogDep(arg, x_var, tower);
+                            if (dep.matched) return dependenceToLogSum(dep, tower);
+                        }
+                    }
+                    std::vector<SymNode*> nArgs;
+                    for (auto& a : f->args) nArgs.push_back(canon(SymExpr(a)).ptr);
+                    return SymExpr::makeFunc(f->name, std::move(nArgs));
+                }
+                switch (e.ptr->getType()) {
+                    case SymType::ADD: {
+                        SymExpr r(BigInt(0));
+                        for (auto& a : static_cast<SymAdd*>(e.ptr)->args) r = r + canon(SymExpr(a));
+                        return r;
+                    }
+                    case SymType::MUL: {
+                        SymExpr r(BigInt(1));
+                        for (auto& a : static_cast<SymMul*>(e.ptr)->args) r = r * canon(SymExpr(a));
+                        return r;
+                    }
+                    case SymType::POW: {
+                        auto* p = static_cast<SymPow*>(e.ptr);
+                        return canon(SymExpr(p->base)) ^ canon(SymExpr(p->exp));
+                    }
+                    default: return e;
+                }
+            };
+            res = canon(res);
+
             // 从塔顶向下替换，确保嵌套扩张被正确处理 (如 exp(exp(x)))
             for (auto it = tower.rbegin(); it != tower.rend(); ++it) {
                 if (it->type == RischExtType::LOG) {
@@ -413,6 +697,7 @@ namespace jc {
                 
                 if (f->name == "log" || f->name == "exp") {
                     SymExpr arg(f->args[0]);
+                    if (f->name == "exp") arg = normalizeExponentials(arg);
                     if (!containsVar(arg.ptr, x)) break; // 常数不构成扩张
                     
                     // 检查是否已在塔中
@@ -427,6 +712,14 @@ namespace jc {
                         }
                     }
                     
+                    if (!exists) {
+                        // ★ 独立性检查：若 exp(arg)/log(arg) 已被已有扩张张成，就不再压入新生成元
+                        ExtDependence dep = (f->name == "exp")
+                                                ? matchExponentialDep(arg, x, field.tower)
+                                                : matchLogDep(arg, x, field.tower);
+                        if (dep.matched) exists = true;
+                    }
+
                     if (!exists) {
                         RischExtension ext;
                         ext.type = (f->name == "exp") ? RischExtType::EXP : RischExtType::LOG;
@@ -635,6 +928,27 @@ namespace jc {
                 }
                 
                 return res;
+            }
+            // ★ 分母为常数：被积函数已化简成多项式/常数（例如依赖判定把
+            //   exp(exp(x))*exp(-exp(x)) 重写成 1）。逐项积分，别掉到最后的"不支持"。
+            SymExpr poly = simplifyCore(expand_core(rewritten, SymConfig::maxExpandTerms));
+            auto polyCoeffs = extractCoeffs(poly, var);
+            // 只有真正的多项式才能这样积：系数里若还含积分变量（如 atan(x) 被当成
+            // 零次项），说明它根本不是多项式，交回下面的流程处理。
+            bool polyOk = !polyCoeffs.empty();
+            for (auto& c : polyCoeffs) {
+                if (!c.isZero() && containsVar(c.ptr, var)) { polyOk = false; break; }
+            }
+            if (polyOk) {
+                SymExpr res(BigInt(0));
+                SymExpr xv = SymExpr::makeVar(var);
+                for (size_t d = 0; d < polyCoeffs.size(); ++d) {
+                    if (polyCoeffs[d].isZero()) continue;
+                    SymExpr n = SymExpr(BigInt(static_cast<int64_t>(d) + 1));
+                    res = res + polyCoeffs[d] * (xv ^ n) / n;
+                }
+                if (SymConfig::debugIntegration) std::cout << std::string(depth * 2, ' ') << "<- Risch Base Field (Polynomial) Success" << std::endl;
+                return simplifyCore(res);
             }
         }
         
@@ -1256,7 +1570,7 @@ namespace jc {
         }
 
         // Step -1 - 三角函数转复指数 (Trig to Exp)
-        SymExpr expExpr = trigToExp(expr);
+        SymExpr expExpr = normalizeExponentials(trigToExp(expr));
 
         SymExpr res = rischIntegrateCore(expExpr, var, depth);
 

@@ -291,6 +291,9 @@ namespace lsp {
                     // class Foo {...} 被 Parser 解析成 Assign(name, ClassDefExpr)，必须声明为 Class 而非 Function，
                     // 否则 hover/高亮会把类识别成函数。trait 同理声明为 Trait。
                     declare(a->name.lexeme, cde->isTrait ? UserSymbol::Trait : UserSymbol::Class, a->name.position, a->name.position + (int)a->name.lexeme.size());
+                } else if (dynamic_cast<EnumDefExpr*>(a->value.get())) {
+                    // enum 在运行期就是命名空间，符号种类按 Namespace 记
+                    declare(a->name.lexeme, UserSymbol::Namespace, a->name.position, a->name.position + (int)a->name.lexeme.size());
                 }
             } else if (auto* ld = dynamic_cast<LocalDecl*>(stmt.get())) {
                 declare(ld->name.lexeme, UserSymbol::Variable, ld->name.position, ld->name.position + (int)ld->name.lexeme.size());
@@ -301,9 +304,19 @@ namespace lsp {
             } else if (auto* cd = dynamic_cast<ConstDecl*>(stmt.get())) {
                 declare(cd->name.lexeme, UserSymbol::Variable, cd->name.position, cd->name.position + (int)cd->name.lexeme.size());
             } else if (auto* cls = dynamic_cast<ClassDefExpr*>(stmt.get())) {
-                declare(cls->name.lexeme, cls->isTrait ? UserSymbol::Trait : UserSymbol::Class, cls->name.position, cls->name.position + (int)cls->name.lexeme.size());
+                // ★ 具名但不绑定的形式（class "N" {...}）不会产生变量，不能登记为符号，
+                //   否则按名字查找/hover 会指向一个并不存在的变量。
+                if (cls->bindsVariable && !cls->name.lexeme.empty()) {
+                    declare(cls->name.lexeme, cls->isTrait ? UserSymbol::Trait : UserSymbol::Class, cls->name.position, cls->name.position + (int)cls->name.lexeme.size());
+                }
             } else if (auto* ns = dynamic_cast<NamespaceDecl*>(stmt.get())) {
-                declare(ns->name.lexeme, UserSymbol::Namespace, ns->name.position, ns->name.position + (int)ns->name.lexeme.size());
+                if (ns->bindsVariable && !ns->name.lexeme.empty()) {
+                    declare(ns->name.lexeme, UserSymbol::Namespace, ns->name.position, ns->name.position + (int)ns->name.lexeme.size());
+                }
+            } else if (auto* en = dynamic_cast<EnumDefExpr*>(stmt.get())) {
+                if (en->bindsVariable && !en->name.lexeme.empty()) {
+                    declare(en->name.lexeme, UserSymbol::Namespace, en->name.position, en->name.position + (int)en->name.lexeme.size());
+                }
             }
         }
         for (auto& stmt : e->statements) if (stmt) stmt->accept(*this);

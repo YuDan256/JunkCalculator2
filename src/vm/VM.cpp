@@ -54,6 +54,16 @@ extern bool g_enableJit;
 #if defined(_WIN32)
 #define NOMINMAX
 #include <windows.h>
+
+// ★ JIT 调用是宿主栈递归：进入前检查原生栈余量，余量不足就退回解释器（帧数组执行），
+//   否则深层递归会把原生栈耗尽，表现为 0xC0000005 而不是 CallFrame stack overflow。
+static bool hasNativeStackHeadroom(size_t marginBytes = 256 * 1024) {
+    char probe = 0;
+    uintptr_t sp = reinterpret_cast<uintptr_t>(&probe);
+    NT_TIB* tib = reinterpret_cast<NT_TIB*>(NtCurrentTeb());
+    uintptr_t limit = reinterpret_cast<uintptr_t>(tib->StackLimit);
+    return sp > limit && (sp - limit) > marginBytes;
+}
 #undef IN
 #else
 #include <dlfcn.h>
@@ -1380,7 +1390,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 registers[newBase + i] = Value::none();
             }
 
-            if (jitEntryPoints.count(closure->compiledFnIndex) && jitEntryPoints[closure->compiledFnIndex] != nullptr) {
+            if (jitEntryPoints.count(closure->compiledFnIndex) && jitEntryPoints[closure->compiledFnIndex] != nullptr
+                && hasNativeStackHeadroom()) {
                 CallFrame newFrame;
                 newFrame.function = fnDef.get();
                 newFrame.chunk = &fnDef->chunk;

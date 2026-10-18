@@ -564,6 +564,33 @@ namespace jc {
         //   由 VM 沿候选 owner 链到各自表里取。这样键里不再嵌进程内自增的 classId，
         //   快照、反射、槽位编号都不再受它影响。
         std::unordered_map<std::string, PropertyDescriptor> privateMembers;
+        // ★ 生命周期钩子单独存放，不占类成员表的键位：
+        //   initFn      —— 用户写的 `init`（编译期改名为 <init>）
+        //   finalizeFn  —— 用户写的 `finalize`（编译期改名为 <finalize>）
+        //   fieldInitFn —— 字段默认值初始化器（IRBuilder 合成，见 JC2_FIELD_INIT_NAME）
+        //   它们的 val 为 none() 表示「本类没有定义」，查找沿 parent 链取第一个非空的。
+        //   fieldInitFn 是**按声明类**执行的：不随 trait 平铺进宿主，否则会在构造时
+        //   与该 trait 自己那份重复执行（同一个初始化器跑两次）。
+        PropertyDescriptor initFn;
+        PropertyDescriptor finalizeFn;
+        PropertyDescriptor fieldInitFn;
+        bool hasInit() const { return initFn.val.isFunctionClosure(); }
+        bool hasFinalize() const { return finalizeFn.val.isFunctionClosure(); }
+        bool hasFieldInit() const { return fieldInitFn.val.isFunctionClosure(); }
+        ObjClosure* findInitUp() const {
+            for (const ObjClass* c = this; c; c = c->parent)
+                if (c->hasInit()) return c->initFn.val.asFunction();
+            return nullptr;
+        }
+        ObjClosure* findFinalizeUp(ObjClass** ownerOut = nullptr) const {
+            for (const ObjClass* c = this; c; c = c->parent) {
+                if (c->hasFinalize()) {
+                    if (ownerOut) *ownerOut = const_cast<ObjClass*>(c);
+                    return c->finalizeFn.val.asFunction();
+                }
+            }
+            return nullptr;
+        }
         const PropertyDescriptor* ownPrivate(const std::string& n) const {
             auto it = privateMembers.find(n);
             return it == privateMembers.end() ? nullptr : &it->second;
@@ -3543,6 +3570,10 @@ inline void GcHeap::markObj(Obj* obj) {
             for (auto& [k, prop] : cls->members) markValue(prop.val);
             // ★ 私有属性（方法模板 / static）同理由本类独占持有，必须一并 mark
             for (auto& [k, prop] : cls->privateMembers) markValue(prop.val);
+            // ★ 生命周期钩子同理：构造器与字段初始化器只由类持有
+            markValue(cls->initFn.val);
+            markValue(cls->finalizeFn.val);
+            markValue(cls->fieldInitFn.val);
             break;
         }
         case ObjType::INSTANCE: {

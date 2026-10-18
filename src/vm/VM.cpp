@@ -279,6 +279,12 @@ static void applyTrait(ObjClass* cls, ObjClass* tr, std::unordered_set<std::stri
         else cls->members[name] = pd;
     }
 
+    // ★ 生命周期钩子的平铺规则：init / finalize 作为默认实现传给宿主（宿主自己定义了就不覆盖），
+    //   字段初始化器**不平铺**——它按声明类执行，宿主构造时会单独遍历 traits 跑各自那份，
+    //   平铺过来会导致同一个初始化器执行两次。
+    if (tr->hasInit() && !cls->hasInit()) cls->initFn = tr->initFn;
+    if (tr->hasFinalize() && !cls->hasFinalize()) cls->finalizeFn = tr->finalizeFn;
+
     // ★ 记录 trait 方法的词法归属：非 local 方法的闭包在 METHOD 定义时不会写 owner_class，
     // 而经 trait 复制进类的方法需要知道「自己来自哪个 trait」，否则 trait 的 local 成员
     // 无法按词法作用域解析（owner_class 只在定义时设置一次，故只补 nullptr 的情形）。
@@ -441,11 +447,9 @@ bool VM::findPrivateMember(const Value& obj, const std::string& name,
 // 核心索引赋值（定义在下方 JIT callout 区域；解释器 INDEX_SET 也复用）
 static Value vmIndexSetCore(VM* vm, Value obj, std::vector<Value>& args, Value val);
 
-// ★ 用户构造函数查找（沿 parent 链）
+// ★ 用户构造函数查找（沿 parent 链，取第一个定义了 init 的类）
 ObjClosure* VM::findInitMethod(ObjClass* cls) {
-    const PropertyDescriptor* pit = cls->findMember(JC2_USER_INIT_NAME);
-    if (pit && pit->val.isFunctionClosure()) return pit->val.asFunction();
-    return nullptr;
+    return cls ? cls->findInitUp() : nullptr;
 }
 
 // ★ 拷贝一份闭包模板：共享字节码/函数对象/upvalue，只把"这一个实例"的身份独立出来。
@@ -553,9 +557,8 @@ void VM::snapshotMembers(ObjClass* cls, const Value& self) {
 void VM::runFieldInitializers(ObjClass* cls, const Value& self) {
     if (!cls) return;
     auto runOne = [&](ObjClass* declClass, ObjClass* ownerChain) {
-        const PropertyDescriptor* pit = declClass->ownMember(JC2_FIELD_INIT_NAME);
-        if (!pit || !pit->val.isFunctionClosure()) return;
-        ObjClosure* fn = pit->val.asFunction();
+        if (!declClass->hasFieldInit()) return;
+        ObjClosure* fn = declClass->fieldInitFn.val.asFunction();
         if (!fn->isBytecode()) return;
         callVMFunction(fn->compiledFnIndex, {}, fn, self, Value(ownerChain ? ownerChain : declClass));
     };
@@ -2614,15 +2617,23 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
     
     ObjClosure* method = nullptr;
     ObjClass* owningClass = nullptr;
-    auto c = parentClass;
-    while (c) {
-        const PropertyDescriptor* pit = c->ownMember(methodName);
-        if (pit && !pit->is_local && pit->val.isFunctionClosure()) {
-            method = pit->val.asFunction();
-            owningClass = c;
-            break;
+    // ★ 生命周期钩子不在成员表里：super.init / super.finalize 取父类链上的槽位
+    if (methodName == JC2_USER_INIT_NAME) {
+        method = parentClass->findInitUp();
+        owningClass = parentClass;
+    } else if (methodName == "<finalize>") {
+        method = parentClass->findFinalizeUp(&owningClass);
+    } else {
+        auto c = parentClass;
+        while (c) {
+            const PropertyDescriptor* pit = c->ownMember(methodName);
+            if (pit && !pit->is_local && pit->val.isFunctionClosure()) {
+                method = pit->val.asFunction();
+                owningClass = c;
+                break;
+            }
+            c = c->parent;
         }
-        c = c->parent;
     }
     if (!method) JC2_THROW(RuntimeError, "Parent class has no method '" + methodName + "'.");
     
@@ -3726,7 +3737,7 @@ VM::VM() {
         if (it != finalizerClassCache.end()) {
             has = it->second;
         } else {
-            has = findDunder(Value(inst), "<finalize>").first != nullptr;
+            has = cls->findFinalizeUp() != nullptr;
             finalizerClassCache.emplace(cls, has);
         }
         if (has) {
@@ -3739,7 +3750,9 @@ VM::VM() {
     GcHeap::get().executeFinalizerCallback = [this](Obj* obj) {
         if (obj->type != ObjType::INSTANCE) return;
         ObjInstance* inst = static_cast<ObjInstance*>(obj);
-        auto [delMethod, owner] = findDunder(Value(inst), "<finalize>");
+        if (!inst->classDef) return;
+        ObjClass* owner = nullptr;
+        ObjClosure* delMethod = inst->classDef->findFinalizeUp(&owner);
         if (delMethod) {
             try {
                 callDunder(Value(inst), delMethod, owner, {});
@@ -6757,6 +6770,18 @@ Value VM::run(int targetFrameDepth) {
                 if (closureVal.isFunctionClosure()) {
                     ObjClosure* fn = closureVal.asFunction();
                     bool isAbstract = (op == OpCode::METHOD_ABSTRACT || op == OpCode::METHOD_ABSTRACT_PRIVATE);
+                    // ★ 生命周期钩子不占类成员表的键位：init / finalize / 字段初始化器
+                    //   是类的生命周期，不是可继承、可反射的属性。修饰符（local/const）
+                    //   对它们没有意义，这里一律忽略，避免出现"写了 local init 就永远不执行"
+                    //   的静默陷阱。
+                    if (methodName == JC2_USER_INIT_NAME || methodName == "<finalize>" || methodName == JC2_FIELD_INIT_NAME) {
+                        fn->owner_class = cls;
+                        PropertyDescriptor pd{closureVal, false, false, isAbstract};
+                        if (methodName == JC2_USER_INIT_NAME) cls->initFn = pd;
+                        else if (methodName == "<finalize>") cls->finalizeFn = pd;
+                        else cls->fieldInitFn = pd;
+                        break;
+                    }
                     // ★ 实例方法进 members（模板表），不进 properties（static 域）：
                     //   `C.名字 = 值` 只写 static 域，写不到模板（§2.6 统一写规则）。
                     auto& bag = cls->members;
@@ -7926,15 +7951,22 @@ Value VM::run(int targetFrameDepth) {
                 
                 ObjClosure* rawMethod = nullptr;
                 ObjClass* ownerClass = nullptr;
-                auto cls = parentClass;
-                while (cls) {
-                    auto it = cls->properties.find(field);
-                    if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
-                        rawMethod = it->second.val.asFunction();
-                        ownerClass = cls;
-                        break;
+                // ★ 生命周期钩子不在成员表里：super.init / super.finalize 直接取父类链上的槽位
+                if (field == JC2_USER_INIT_NAME) {
+                    rawMethod = parentClass->findInitUp();
+                } else if (field == "<finalize>") {
+                    rawMethod = parentClass->findFinalizeUp(&ownerClass);
+                } else {
+                    auto cls = parentClass;
+                    while (cls) {
+                        auto it = cls->properties.find(field);
+                        if (it != cls->properties.end() && !it->second.is_local && it->second.val.isFunctionClosure()) {
+                            rawMethod = it->second.val.asFunction();
+                            ownerClass = cls;
+                            break;
+                        }
+                        cls = cls->parent;
                     }
-                    cls = cls->parent;
                 }
                 if (!rawMethod) JC2_THROW(RuntimeError, "Parent class has no method '" + field + "'.");
                 
@@ -11011,6 +11043,15 @@ void jc2_jit_method(uint64_t class_bits, uint64_t closure_bits, uint32_t nameIdx
         bool isPrivate = (kind & 1) != 0;
         bool isConst = (kind & 2) != 0;
         bool isAbstract = (kind & 4) != 0;
+        // ★ 与解释器的 METHOD 同一分流：生命周期钩子进专用槽位，不进成员表
+        if (methodName == JC2_USER_INIT_NAME || methodName == "<finalize>" || methodName == JC2_FIELD_INIT_NAME) {
+            fn->owner_class = cls;
+            PropertyDescriptor pd{closureVal, false, false, isAbstract};
+            if (methodName == JC2_USER_INIT_NAME) cls->initFn = pd;
+            else if (methodName == "<finalize>") cls->finalizeFn = pd;
+            else cls->fieldInitFn = pd;
+            return;
+        }
         if (isPrivate) {
             fn->is_local = true;
             fn->owner_class = cls;

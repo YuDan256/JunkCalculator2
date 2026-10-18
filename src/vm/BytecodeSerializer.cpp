@@ -741,6 +741,13 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                     write8(os, p.is_static ? 1 : 0);
                     write8(os, p.is_field_decl ? 1 : 0);
                 }
+                // ★ 生命周期钩子：不在成员表里，单独写（1 字节存在标志 + 闭包引用）
+                write8(os, cls->hasInit() ? 1 : 0);
+                if (cls->hasInit()) self(cls->initFn.val, self);
+                write8(os, cls->hasFinalize() ? 1 : 0);
+                if (cls->hasFinalize()) self(cls->finalizeFn.val, self);
+                write8(os, cls->hasFieldInit() ? 1 : 0);
+                if (cls->hasFieldInit()) self(cls->fieldInitFn.val, self);
                 break;
             }
             case ObjType::INSTANCE: {
@@ -1141,6 +1148,9 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                         bool isFieldDecl = read8(is) != 0;
                         cls->privateMembers[k] = {v, isConst, true, false, isStatic, isFieldDecl};
                     }
+                    if (read8(is) != 0) { Value v = self(self); cls->initFn = {v, false, false}; }
+                    if (read8(is) != 0) { Value v = self(self); cls->finalizeFn = {v, false, false}; }
+                    if (read8(is) != 0) { Value v = self(self); cls->fieldInitFn = {v, false, false}; }
                     break;
                 }
                 case ObjType::INSTANCE: {

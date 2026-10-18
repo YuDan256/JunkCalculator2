@@ -69,7 +69,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    rangeClass->properties["<init>"] = {Value(rangeInit), false, false};
+    rangeClass->initFn = {Value(rangeInit), false, false};
 
     // __len__()
     auto rangeLen = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__len__", nullptr);
@@ -203,7 +203,7 @@ void registerPredefinedClasses() {
         }
         return self;
     });
-    astNodeClass->properties["<init>"] = {Value(astInit), false, false};
+    astNodeClass->initFn = {Value(astInit), false, false};
 
     // --- Token Class (For Syntax Macros) ---
     ObjClass* tokenClass = GcHeap::get().allocate<ObjClass>();
@@ -226,7 +226,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    tokenClass->properties["<init>"] = {Value(tokenInit), false, false};
+    tokenClass->initFn = {Value(tokenInit), false, false};
 
     auto tokenRepr = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard tokenReprGuard(tokenRepr);
@@ -288,7 +288,7 @@ void registerPredefinedClasses() {
         inst->properties["cursor"] = {Value::fromInt32(0), false, false};
         return self;
     });
-    tokenStreamClass->properties["<init>"] = {Value(tsInit), false, false};
+    tokenStreamClass->initFn = {Value(tsInit), false, false};
 
     auto tsTokens = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "tokens", nullptr);
     GcObjGuard tsTokensGuard(tsTokens);
@@ -634,7 +634,7 @@ void registerPredefinedClasses() {
         
         return self;
     });
-    exceptionClass->properties["<init>"] = {Value(excInit), false, false};
+    exceptionClass->initFn = {Value(excInit), false, false};
 
     auto excRepl = GcHeap::get().allocate<ObjClosure>(std::vector<std::string>{}, std::vector<bool>{}, "__repr__", nullptr);
     GcObjGuard excReplGuard(excRepl);
@@ -765,7 +765,7 @@ void registerPredefinedClasses() {
             inst->is_frozen = true;
             return self;
         });
-        baseNumClass->properties["<init>"] = {Value(fn), false, false};
+        baseNumClass->initFn = {Value(fn), false, false};
     }
 
     // 二元算术/位运算

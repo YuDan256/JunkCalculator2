@@ -16,7 +16,8 @@ public:
     static constexpr uint32_t MAGIC_NUMBER = 0x4A434203; // JCB3（压缩）
     static constexpr uint32_t JCW_MAGIC = 0x4A435702;      // JCW2（压缩）
     // 9：私有成员改为按声明类分组持久化（键是纯名字，不再把 classId 编进键名）
-    static constexpr uint32_t VERSION = 9;
+    // 10：生命周期钩子（init / finalize / 字段初始化器）从成员表移出，随 CLASS 记录单写
+    static constexpr uint32_t VERSION = 10;
 
     // 将一组编译好的函数序列化为 .jcb 文件
     static void saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug = false);

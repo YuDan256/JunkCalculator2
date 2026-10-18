@@ -126,6 +126,34 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
     }
     int dynamicSpillBase = maxReg + 1;
 
+    // ★ 该 IR 指令是否会把自己的 physicalReg 写成结果（用于判定死写）。
+    //   只列纯取值类指令：控制流 / 存储 / 调用一律不算——调用的结果虽写 A，
+    //   但 nil 写可能承担"调用前释放引用"的职责，不能当死写删。
+    auto writesResultReg = [](IROp op) -> bool {
+        switch (op) {
+            case IROp::Constant: case IROp::Move: case IROp::LoadLocal:
+            case IROp::GetGlobal: case IROp::GetUpvalue: case IROp::GetRefParam:
+            case IROp::GetSelf: case IROp::GetCurrentClosure: case IROp::Closure:
+            case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty:
+            case IROp::GetSuper: case IROp::Import:
+            case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div:
+            case IROp::IDiv: case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
+            case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
+            case IROp::Gt: case IROp::Ge: case IROp::Is: case IROp::IsSubset:
+            case IROp::Not: case IROp::Neg: case IROp::ToBool:
+            case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
+            case IROp::Shl: case IROp::Shr: case IROp::IsUninit:
+            case IROp::BuildList: case IROp::BuildDict: case IROp::BuildSet:
+            case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::BuildSlice:
+            case IROp::IndexGet: case IROp::In: case IROp::Stringify:
+            case IROp::ConcatStrings: case IROp::FormatString:
+            case IROp::IterInit: case IROp::IterNext: case IROp::Class:
+                return true;
+            default:
+                return false;
+        }
+    };
+
     std::vector<EncodedInst> insts;
     std::unordered_map<BasicBlock*, int> blockToInstIdx;
 
@@ -826,6 +854,26 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 }
             }
         }
+
+    // 1a. FreeReg 的死写消除
+    //
+    //   FreeReg 在块尾为"已死寄存器"发一条 LOAD_NIL，让 GC 能提前回收。若紧接着的下一条
+    //   指令（跳过 label）就把同一个寄存器写成结果，这条 nil 写立刻被覆盖，属于死写：
+    //   删掉它不会改变任何可观察行为，GC 的差异也只有一条指令。
+    //   调用类指令不算覆盖（见 writesResultReg 的说明）。
+    for (size_t i = 0; i + 1 < insts.size(); ++i) {
+        auto& inst = insts[i];
+        if (!inst.node || inst.node->op != IROp::FreeReg) continue;
+        int freedReg = inst.node->physicalReg;
+        if (freedReg < 0) continue;
+        size_t j = i + 1;
+        while (j < insts.size() && insts[j].words.empty() && !insts[j].isJump) ++j;
+        if (j >= insts.size()) continue;
+        auto* next = insts[j].node;
+        if (!next || next->physicalReg != freedReg) continue;
+        if (!writesResultReg(next->op)) continue;
+        inst.words.clear();
+    }
 
     // 1b. 删除布局上不可达的块
     //

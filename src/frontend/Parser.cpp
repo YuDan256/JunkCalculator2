@@ -322,7 +322,12 @@ namespace jc {
                 }
             }
             if (stmts.empty()) return std::make_unique<Literal>("none", false, false, true);
-            return std::make_unique<Block>(std::move(stmts));
+            // ★ 程序块没有经过 withPos，位置默认是 0；LSP 的“某位置可见哪些符号”
+            //   依赖块的范围向下查找作用域，位置缺失会让顶层声明永远不可见。
+            auto program = std::make_unique<Block>(std::move(stmts));
+            program->startPos = 0;
+            program->endPos = tokens.empty() ? 0 : static_cast<int>(tokens.back().position);
+            return program;
         }
         catch (const jc::Jc2Error& e) {
             if (VM::activeVM) {

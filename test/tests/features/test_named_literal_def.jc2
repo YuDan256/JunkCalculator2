@@ -1,0 +1,66 @@
+// 具名但不绑定变量的定义形式：class "N" {...}
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+undefined(name) = {
+    try {
+        eval(name)
+        return false
+    } catch (e) {
+        return true
+    }
+}
+
+// ── 1. class "N"：有名字、但不产生变量 ──
+P = class "Point" {
+    init(x, y) = { self.x = x; self.y = y }
+    sum() = self.x + self.y
+}
+assert(P(1, 2).sum() == 3, "the value of a string-named class is usable")
+assert(str(P(1, 2)).startsWith("<Point "), "the class keeps its name")
+assert(undefined("Point"), "no variable is bound for class \"Point\"")
+
+// ── 2. 语句位置：值被丢弃，但定义本身合法 ──
+class Base {
+    init(v) = { self.v = v }
+    read() = self.v
+}
+class "Anonymous" extends Base {
+    init() = { super.init(7) }
+}
+assert(Base(3).read() == 3, "ordinary binding form still works")
+
+// ── 3. namespace "N" ──
+NS = namespace "Geo" {
+    origin = "0,0"
+}
+assert(NS.origin == "0,0", "the value of a string-named namespace is usable")
+assert(undefined("Geo"), "no variable is bound for namespace \"Geo\"")
+
+// ── 4. enum "N" ──
+E = enum "Color" { RED, GREEN, BLUE }
+assert(E.GREEN == 1, "the value of a string-named enum is usable")
+assert(undefined("Color"), "no variable is bound for enum \"Color\"")
+
+// ── 5. trait "N" ──
+D = trait "Drawable" {
+    draw() = "drawing"
+}
+class Widget with D {
+    init() = { }
+}
+assert(Widget().draw() == "drawing", "a string-named trait can be composed")
+assert(undefined("Drawable"), "no variable is bound for trait \"Drawable\"")
+
+// ── 6. 原有形式不受影响 ──
+class Bound { init() = { } }
+assert(!undefined("Bound"), "identifier form still binds")
+Anon = class { init() = { } }
+assert(str(Anon()) != "", "anonymous form still works")
+
+// ── 7. 空名字与修饰符报错 ──
+assert(throws(() => eval("class \"\" { }")), "empty class name is rejected")
+assert(throws(() => eval("namespace \"\" { }")), "empty namespace name is rejected")
+assert(throws(() => eval("enum \"\" { }")), "empty enum name is rejected")
+assert(throws(() => eval("local class \"X\" { }")), "a modifier needs a variable")

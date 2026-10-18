@@ -4754,6 +4754,14 @@
         "hasField(MyClass, \"method\")"
       ]
     },
+    "getFieldInfo": {
+      "signature": "getFieldInfo(obj, name)",
+      "desc": "Describes a public property: returns a Dict with the keys isMethod, isStatic, isConst and isAbstract. Accepts an instance or a class; returns none when the name is unknown or private.",
+      "examples": [
+        "getFieldInfo(instance, \"prop\")",
+        "getFieldInfo(MyClass, \"method\")"
+      ]
+    },
     "getFields": {
       "signature": "getFields(obj)",
       "desc": "The property names of an object, sorted alphabetically: a Dict's keys, an Instance's public properties (methods included), a Class's public instance properties (inherited ones included, statics excluded), or a Namespace's names.",
@@ -6758,6 +6766,21 @@
       ],
       "examples": [
         "{a: 1}.hasKey(\"a\")"
+      ]
+    },
+    "get": {
+      "signature": "d.get(key, default = none)",
+      "desc": "Returns the value for key, or default when the key is absent. Never throws for a missing key.",
+      "examples": [
+        "{a: 1}.get(\"a\")",
+        "{a: 1}.get(\"z\", 0)"
+      ]
+    },
+    "pop": {
+      "signature": "d.pop(key)",
+      "desc": "Removes key and returns its value. Throws if the key is absent.",
+      "examples": [
+        "{a: 1}.pop(\"a\")"
       ]
     },
     "merge": {

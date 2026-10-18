@@ -3671,6 +3671,19 @@ VM::VM() {
     GcHeap::get().markCallback = [this]() {
         // 每轮 GC 重建 finalize 查找缓存（见 VM.h 的 finalizerClassCache 注释）
         finalizerClassCache.clear();
+        // ★ 停机时把 chunk 常量也当根：正常执行中它们由活动帧的 chunk 标记；shutdown 里
+        //   清完寄存器/帧后再跑最后一轮 GC 时没有活动帧，常量引用的对象会被释放，随后
+        //   compiledFunctions.clear() 析构这些 Value 就会对已释放内存 releaseObj
+        //   （实测 --jit 跑整套测试偶发 0xC0000005）。停机时多标记一轮，代价可忽略。
+        if (shuttingDown) {
+            for (auto& fn : compiledFunctions) {
+                for (auto& v : fn->chunk.constants) GcHeap::get().markValue(v);
+                for (auto& ic : fn->chunk.inlineCaches) {
+                    if (ic.cachedMethod) GcHeap::get().markObj(ic.cachedMethod);
+                    if (ic.cachedClass) GcHeap::get().markObj(ic.cachedClass);
+                }
+            }
+        }
         for (size_t i = 0; i < globals.size(); ++i) {
             GcHeap::get().markValue(globals[i]);
         }

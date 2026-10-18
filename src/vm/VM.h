@@ -57,6 +57,7 @@ private:
     static constexpr int MAX_FRAMES = 1024;
 
     Value* registers = nullptr;
+    bool shuttingDown = false;   // ★ shutdown() 期间：chunk 常量也要作为 GC 根
     CallFrame* frames = nullptr;
 
     std::vector<Value> globals;
@@ -228,6 +229,8 @@ public:
 
     void shutdown() {
         clearGlobals();
+        // ★ 停机标记：最后一轮 GC 需要把 chunk 常量也当作根（见 VM.cpp 的 markCallback）
+        shuttingDown = true;
         builtinModules.clear();
         loadedModules.clear();
         builtinValues.clear();
@@ -257,6 +260,24 @@ public:
         //   必须放在 compiledFunctions.clear() 之前：bytecode 的 finalize 方法要按
         //   compiledFnIndex 取回函数体，提前清空会越界。残留帧若存在（异常退出路径），
         //   GC 的 markCallback 会照常遍历它们，故这里不动帧。
+        // 第一轮：常量仍完整，finalizer 里的 GET_GLOBAL 等指令能正常工作。
+        GcHeap::get().collectGarbage();
+
+        // ★ 显式析构 chunk 里的 Value。它们必须在对象被释放前断开：释放常量只减 refCount
+        //   （此时对象都还活着，安全）；否则第二轮 GC 释放对象后，compiledFunctions.clear()
+        //   析构这些 Value 就会对已释放内存 releaseObj。
+        for (auto& fn : compiledFunctions) {
+            for (auto& v : fn->chunk.constants) v = Value::none();
+            for (auto& ic : fn->chunk.inlineCaches) {
+                ic.cachedMethod = nullptr;
+                ic.cachedClass = nullptr;
+                ic.cachedGlobalSlot = -1;
+            }
+        }
+
+        // 第二轮：现在所有对象都已是垃圾，正常 sweep 把它们全部回收（含终结器队列里
+        //   上一轮被标记保活、已经跑过 finalize 的对象）。
+        shuttingDown = false;
         GcHeap::get().collectGarbage();
         compiledFunctions.clear();
     }

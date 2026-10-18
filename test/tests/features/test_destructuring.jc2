@@ -5,8 +5,10 @@ test_basic_1d() = {
     assert(a == 10 && b == 20 && c == 30, "1D Array Destructuring Failed")
     @[la, lb] = list("hello", "world")
     assert(la == "hello" && lb == "world", "List Destructuring Failed")
-    @[s1, s2, s3] = "ABC"
-    assert(s1 == "A" && s2 == "B" && s3 == "C", "String Destructuring Failed")
+    // 字符串不参与解构：历史遗留的"string 当 char 矩阵"分支已删除
+    threw = false
+    try { @[s1, s2, s3] = "ABC" } catch (e) { threw = true }
+    assert(threw, "String Destructuring should be rejected")
 }
 test_basic_1d()
 

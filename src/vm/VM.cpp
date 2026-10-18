@@ -7841,11 +7841,6 @@ Value VM::run(int targetFrameDepth) {
                         uint32_t len = static_cast<uint32_t>(static_cast<ObjList*>(val.asObj())->vec.size());
                         matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
                     }
-                } else if (val.isString()) {
-                    if (is1DPattern) {
-                        uint32_t len = static_cast<uint32_t>(val.asObjString()->charLength);
-                        matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
-                    }
                 } else if (val.isObjType(ObjType::REAL_MATRIX)) {
                     const auto& m = static_cast<ObjRealMatrix*>(val.asObj())->mat;
                     if (is1DPattern) {
@@ -11236,11 +11231,6 @@ uint64_t jc2_jit_match_shape(uint64_t b_bits, uint32_t shapeIdx, const Chunk* ch
     if (val.isObjType(ObjType::LIST)) {
         if (is1DPattern) {
             uint32_t len = static_cast<uint32_t>(static_cast<ObjList*>(val.asObj())->vec.size());
-            matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
-        }
-    } else if (val.isString()) {
-        if (is1DPattern) {
-            uint32_t len = static_cast<uint32_t>(val.asObjString()->charLength);
             matched = (len >= minCols && (maxCols == 0xFFFFFFFF || len <= maxCols));
         }
     } else if (val.isObjType(ObjType::REAL_MATRIX)) {

@@ -903,6 +903,18 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         }
                     }
                 } else {
+                    // ★ 条件跳转的目标就是紧接着的下一条指令：控制流无论如何都落到那里，
+                    //   跳转本身不改变语义（条件值在跳转之前已经算好），直接删掉。
+                    //   TRY_BEGIN 例外——它的"跳转"承载的是异常处理范围，不能删。
+                    if (relOffset == 0 && inst.jumpOp != OpCode::TRY_BEGIN) {
+                        if (!inst.words.empty()) {
+                            inst.words.clear();
+                            inst.isJump = false;
+                            inst.isTrampoline = false;
+                            changed = true;
+                        }
+                        continue;
+                    }
                     if (relOffset < -32767 || relOffset > 32767) {
                         if (!inst.isTrampoline) {
                             inst.isTrampoline = true;

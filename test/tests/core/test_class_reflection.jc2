@@ -52,3 +52,17 @@ assert(!hasField(C, "nope"), "unknown name is false")
 assert(throws(() => getStatics(c)), "getStatics requires a class")
 assert(throws(() => getStatics(42)), "getStatics rejects other values")
 assert(throws(() => getFields(42)), "getFields rejects non-containers")
+
+// ── 属性元信息 ──
+info = getFieldInfo(C, "a")
+assert(info["isMethod"] == false && info["isStatic"] == false && info["isConst"] == false,
+       "data property flags")
+assert(getFieldInfo(C, "m")["isMethod"] == true, "methods are marked")
+assert(getFieldInfo(C, "T")["isStatic"] == true, "statics are marked")
+assert(getFieldInfo(C, "k")["isConst"] == true, "const properties are marked")
+assert(getFieldInfo(C, "baseMethod")["isMethod"] == true, "inherited properties are described")
+assert(getFieldInfo(C, "p") == none, "private properties return none")
+assert(getFieldInfo(C, "nope") == none, "unknown names return none")
+assert(getFieldInfo(c, "a")["isMethod"] == false, "instances are accepted")
+assert(getFieldInfo(c, "m")["isMethod"] == true, "instance methods are marked")
+assert(throws(() => getFieldInfo(42, "x")), "getFieldInfo rejects other values")

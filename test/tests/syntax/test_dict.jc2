@@ -90,3 +90,20 @@ test_destructuring_modifiers() = {
     assert(f9() == 6 && y == 2, "Destructuring dict pattern with modifiers failed")
 }
 test_destructuring_modifiers()
+
+
+test_get_and_pop() = {
+    d = {"a": 1, "b": 2}
+    assert(d.get("a") == 1, "get returns the value")
+    assert(d.get("z") == none, "get returns none for a missing key")
+    assert(d.get("z", 42) == 42, "get returns the default for a missing key")
+    assert(d.size() == 2, "get does not modify the dict")
+
+    assert(d.pop("a") == 1, "pop returns the removed value")
+    assert(!d.has("a") && d.size() == 1, "pop removes the key")
+
+    threw = false
+    try { d.pop("a") } catch (e) { threw = true }
+    assert(threw, "pop throws for a missing key")
+}
+test_get_and_pop()

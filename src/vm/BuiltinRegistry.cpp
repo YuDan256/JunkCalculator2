@@ -4067,6 +4067,17 @@ void BuiltinRegistry::registerIntrospection() {
     }, {"obj", "name"});
     reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) JC2_THROW(TypeError, "getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
     reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else JC2_THROW(TypeError, "getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
+    // ★ getName：取类 / 实例所属类 / 命名空间的原始名字。匿名类为空串。
+    reg("getName", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (args[0].isClass()) return Value(static_cast<ObjClass*>(args[0].asObj())->name);
+        if (args[0].isInstance()) {
+            auto inst = args[0].asInstance();
+            return inst->classDef ? Value(inst->classDef->name) : Value::none();
+        }
+        if (args[0].isObjType(ObjType::NAMESPACE))
+            return Value(static_cast<ObjNamespace*>(args[0].asObj())->name);
+        JC2_THROW(TypeError, "getName() expects a Class, Instance, or Namespace.");
+    }, {"obj"});
 }
 
 // =================================================================

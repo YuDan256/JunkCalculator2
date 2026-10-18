@@ -2981,8 +2981,10 @@
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
       "    getClass(p)              The class definition object",
       "    getParent(Dog)           Parent class or none",
-      "    getFields(p)             Public field names as a list",
-      "    hasField(p, \"x\")         true if the public field exists (private fields are invisible)",
+      "    getFields(p)             Public property names as a sorted list",
+      "    getFields(C)             A class's instance property names (inherited included), sorted",
+      "    getStatics(C)            A class's static property names (inherited included), sorted",
+      "    hasField(p, \"x\")         true if the public property exists (private ones are invisible)",
       "",
       "  Type Predicates (see: /help type)",
       "  ──────────────────────",
@@ -4744,20 +4746,29 @@
     },
     "hasField": {
       "signature": "hasField(obj, key)",
-      "desc": "True if a Dict has this key (any hashable value) or an Instance/Namespace has this public member name.",
+      "desc": "True if a Dict has this key (any hashable value), or an Instance, Namespace or Class has this public property name. Private properties are invisible.",
       "examples": [
         "hasField({\"a\": 1}, \"a\")",
         "hasField({42: \"x\"}, 42)",
-        "hasField(instance, \"field\")"
+        "hasField(instance, \"prop\")",
+        "hasField(MyClass, \"method\")"
       ]
     },
     "getFields": {
       "signature": "getFields(obj)",
-      "desc": "The member names of an object: a Dict's keys, an Instance's public fields, or a Namespace's names.",
+      "desc": "The property names of an object, sorted alphabetically: a Dict's keys, an Instance's public properties (methods included), a Class's public instance properties (inherited ones included, statics excluded), or a Namespace's names.",
       "examples": [
         "getFields({\"a\": 1})",
         "getFields({42: \"x\"})",
-        "getFields(instance)"
+        "getFields(instance)",
+        "getFields(MyClass)"
+      ]
+    },
+    "getStatics": {
+      "signature": "getStatics(cls)",
+      "desc": "The static property names of a class, sorted alphabetically. Inherited statics are included; private statics are invisible. Throws if the argument is not a class.",
+      "examples": [
+        "getStatics(MyClass)"
       ]
     },
     "freeze": {
@@ -6409,6 +6420,13 @@
       "examples": [
         "[1, 2].vcat([3, 4])"
       ]
+    },
+    "item": {
+      "signature": "A.item()",
+      "desc": "Returns the single element of a 1x1 matrix as a scalar. Throws if the matrix has more than one element.",
+      "examples": [
+        "[5].item()"
+      ]
     }
   },
   "list_methods": {
@@ -6761,6 +6779,20 @@
       "desc": "Removes a key from a Dictionary. Throws an error if absent.",
       "examples": [
         "d.removeKey(\"a\")"
+      ]
+    },
+    "mapKeys": {
+      "signature": "d.mapKeys(fn)",
+      "desc": "Returns a new Dictionary whose keys are mapped through a single-parameter function; values are kept.",
+      "examples": [
+        "{a: 1}.mapKeys(k => k + \"!\")"
+      ]
+    },
+    "mapValues": {
+      "signature": "d.mapValues(fn)",
+      "desc": "Returns a new Dictionary whose values are mapped through a single-parameter function; keys are kept.",
+      "examples": [
+        "{a: 1}.mapValues(v => v * 10)"
       ]
     }
   },

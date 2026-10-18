@@ -2985,6 +2985,7 @@
       "    getFields(C)             A class's instance property names (inherited included), sorted",
       "    getStatics(C)            A class's static property names (inherited included), sorted",
       "    hasField(p, \"x\")         true if the public property exists (private ones are invisible)",
+      "    getName(C)               The class's name (\"\" for an anonymous class)",
       "",
       "  Type Predicates (see: /help type)",
       "  ──────────────────────",
@@ -4742,6 +4743,14 @@
       "desc": "Returns the parent class of a class definition.",
       "examples": [
         "getParent(Dog)"
+      ]
+    },
+    "getName": {
+      "signature": "getName(obj)",
+      "desc": "The name of a class, of an instance's class, or of a namespace. Returns \"\" for an anonymous class.",
+      "examples": [
+        "getName(MyClass)",
+        "getName(instance)"
       ]
     },
     "hasField": {

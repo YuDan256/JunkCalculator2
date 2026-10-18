@@ -1,0 +1,56 @@
+import cas
+
+// 微分域合法性回归
+//
+// 旧实现按"结构相等"给扩张去重：exp(-b) 与 exp(b)（b 本身已是某个生成元的指数）
+// 会被当成两个独立的超越元，塔里出现互为倒数的一对（t3·t4 = 1），Risch 的代数无关
+// 前提被破坏。现在依赖判定按"模常数 Q-线性"合并，exp(-b) 用 t_b^(-1) 表示。
+
+x = sym("x")
+
+check(label, f) = {
+    got = cas.integ(f, x)
+    residual = cas.simplify(cas.diff(got, x) - f)
+    assert(str(residual) == "0", label + " -> " + str(got) + " (residual " + str(residual) + ")")
+}
+
+test_simple_exponentials() = {
+    check("exp(x)", exp(x))
+    check("exp(-x)", exp(-x))
+    check("exp(2x)", exp(2 * x))
+    check("exp(x)+exp(-x)", exp(x) + exp(-x))
+    check("x*exp(x)", x * exp(x))
+}
+
+test_reciprocal_generators() = {
+    // 这些被积函数本质上等于 1：只应留下一个指数生成元，另一个用它的倒数表示
+    check("exp(x)*exp(-x)", exp(x) * exp(-x))
+    check("exp(exp(x))*exp(-exp(x))", exp(exp(x)) * exp(-exp(x)))
+    check("exp(sin(x))*exp(-sin(x))", exp(sin(x)) * exp(-sin(x)))
+}
+
+test_log_dependence() = {
+    // log(2x) 与 log(x) 只差常数，不应建第二个对数生成元
+    check("1/(x*log(x))", 1 / (x * log(x)))
+    check("1/(x*log(2x))", 1 / (x * log(2 * x)))
+    check("log(x)", log(x))
+}
+
+test_non_elementary_keeps_valid_tower() = {
+    threw = false
+    msg = ""
+    try {
+        cas.integ(cos(sin(x)), x)
+    } catch (e) {
+        threw = true
+        msg = e.message
+    }
+    assert(threw, "cos(sin(x)) has no elementary antiderivative")
+    // 合法的塔里不应再出现第四个生成元（旧实现把 exp(-b) 与 exp(b) 都建成了生成元）
+    assert(msg.find("_t4") < 0, "the reciprocal generator is gone")
+}
+
+test_simple_exponentials()
+test_reciprocal_generators()
+test_log_dependence()
+test_non_elementary_keeps_valid_tower()

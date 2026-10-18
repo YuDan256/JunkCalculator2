@@ -1,0 +1,117 @@
+// 构造与析构的契约
+import sys
+
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+class Base1 {
+    init(v) = { self.v = v }
+    read() = self.v
+}
+class Child1 extends Base1 { }
+assert(Child1(5).read() == 5, "subclass without init uses the inherited one")
+
+logB = @[]
+class Base2 {
+    init() = logB.push("base")
+}
+class Child2 extends Base2 {
+    init() = {
+        logB.push("before")
+        super.init()
+        logB.push("after")
+    }
+}
+_2 = Child2()
+assert(logB.join(",") == "before,base,after", "super.init runs where it is written")
+
+class Base3 { }
+class Child3 extends Base3 {
+    init() = super.init()
+}
+assert(throws(() => Child3()), "super.init requires the parent to define init")
+
+class Base4 {
+    tag = "default"
+    init() = { self.seen = self.tag }
+    readSeen() = self.seen
+}
+assert(Base4().readSeen() == "default", "field defaults are ready before init")
+
+log5 = @[]
+class Base5 {
+    init() = { }
+    finalize() = log5.push("base")
+}
+class Child5 extends Base5 {
+    init() = { }
+    finalize() = log5.push("child")
+}
+g5 = Child5()
+g5 = none
+sys.gc()
+assert(log5.join(",") == "child", "only the most derived finalize runs")
+
+log6 = @[]
+class Base6 {
+    init() = { }
+    finalize() = log6.push("base")
+}
+class Child6 extends Base6 { }
+g6 = Child6()
+g6 = none
+sys.gc()
+assert(log6.join(",") == "base", "finalize is inherited")
+
+log7 = @[]
+class Base7 {
+    init() = { }
+    finalize() = log7.push("base")
+}
+class Child7 extends Base7 {
+    init() = { }
+    finalize() = {
+        log7.push("child")
+        super.finalize()
+    }
+}
+g7 = Child7()
+g7 = none
+sys.gc()
+assert(log7.join(",") == "child,base", "super.finalize chains explicitly")
+
+log8 = @[]
+trait HasInit {
+    init() = log8.push("trait")
+}
+class WithInit with HasInit { }
+_8 = WithInit()
+assert(log8.join(",") == "trait", "a trait can provide the constructor")
+
+hits9 = @[]
+trait HasField {
+    tag = hits9.push("field")
+    init() = { }
+}
+class WithField with HasField { }
+_9 = WithField()
+assert(hits9.len() == 1, "a trait field initializer runs exactly once")
+
+class Reflected {
+    init() = { self.v = 1 }
+    finalize() = { }
+    local hidden = 2
+}
+r = Reflected()
+f = getFields(r)
+assert(!("init" in f), "init is not listed")
+assert(!("finalize" in f), "finalize is not listed")
+assert(!("hidden" in f), "private property is not listed")
+assert("v" in f, "ordinary properties are listed")
+
+class LocalInit {
+    local init() = { self.v = 7 }
+    read() = self.v
+}
+assert(LocalInit().read() == 7, "init still runs when written with a modifier")

@@ -271,7 +271,7 @@ test_ufcs() = {
     res = [1, 2, 3].sum()
     assert(res == 6, "UFCS basic failed")
     
-    res2 = "hello".upper().reverse()
+    res2 = "hello".upper().reversed()
     assert(res2 == "OLLEH", "UFCS chained failed")
 }
 test_ufcs()

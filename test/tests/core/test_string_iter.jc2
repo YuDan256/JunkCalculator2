@@ -11,7 +11,7 @@ test_string_iterates_by_code_point() = {
     assert(len(u) == 3, "len counts code points")
     assert(u[0] == "中", "indexing is code-point based")
     assert(u.charAt(1) == "文", "charAt is code-point based")
-    assert(u.reverse() == "a文中", "reverse is code-point based")
+    assert(u.reversed() == "a文中", "reversed is code-point based")
     seen = ""
     for (c in u) { seen = seen + c }
     assert(seen == u, "for-in walks code points")

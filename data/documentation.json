@@ -2171,7 +2171,7 @@
       "",
       "  Structure Operations",
       "  ──────────────────────",
-      "    v.reverse()         Reverse order (works on String, Matrix, List)",
+      "    v.reversed()        Reversed copy (List / String); lists also have in-place reverse()",
       "    M.flatten()         Flatten 2D matrix or nested list → 1D",
       "    v.unique()          Remove duplicates (exact equality)",
       "",
@@ -2262,7 +2262,7 @@
       "  Pipe Operator",
       "  ──────────────────────",
       "    Chains data through multiple transformations left-to-right:",
-      "      [5,3,1,4,2] |> .sorted() |> .reverse() |> .slice(0, 3)",
+      "      [5,3,1,4,2] |> .sorted() |> .reversed() |> .slice(0, 3)",
       "      // → [5, 4, 3]",
       "",
       "    See: `/help basic` (Pipe Operator section)"
@@ -2328,7 +2328,8 @@
       "",
       "  Structure",
       "  ──────────────────────",
-      "    L.reverse()             Returns a reversed copy",
+      "    L.reverse()             Reverses L in place; returns the same list",
+      "    L.reversed()            Returns a reversed copy",
       "    cat(L1, L2, ...)        Concatenate multiple lists",
       "    L.flatten()             Recursively flatten nested lists into 1D",
       "                              list(1, list(2, 3)).flatten() → @[1, 2, 3]",
@@ -6612,9 +6613,17 @@
     },
     "reverse": {
       "signature": "v.reverse()",
-      "desc": "Returns a reversed copy of the container or string.",
+      "desc": "Reverses a list in place and returns the same list. Lists only; use reversed() for a copy.",
       "examples": [
-        "@[1, 2, 3].reverse()"
+        "L = @[1, 2, 3]; L.reverse()"
+      ]
+    },
+    "reversed": {
+      "signature": "v.reversed()",
+      "desc": "Returns a reversed copy: list → new list, string → reversed string.",
+      "examples": [
+        "@[1, 2, 3].reversed()",
+        "\"abc\".reversed()"
       ]
     },
     "flatten": {

@@ -961,7 +961,7 @@ class Graph {
             path.push(curr)
             curr = (curr in r.prev) ? r.prev[curr] : none
         }
-        return {path: path.reverse(), dist: r.dist[end]}
+        return {path: path.reversed(), dist: r.dist[end]}
     }
 
 

@@ -3057,7 +3057,9 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     regMethod(VM::activeVM->listProto, "slice", {"start", "end"}, sliceFn, 1);
 
-    auto reverseFn = [expectContainer](const std::vector<Value>&) -> Value {
+    // ★ reverse / reversed：reverse 只作用于可变容器（list），原地反转并返回自身；
+    //   reversed 一律返回副本（string 仍是字符串，list 是新 list）。
+    auto reversedFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (self.isString()) {
             ObjString* objStr = self.asObjString();
@@ -3080,10 +3082,21 @@ void BuiltinRegistry::registerArrayFunctions() {
             std::reverse(L->vec.begin(), L->vec.end());
             return Value(L);
         }
-        return expectContainer("reverse");
+        return expectContainer("reversed");
     };
-    regMethod(VM::activeVM->listProto, "reverse", {}, reverseFn);
-    regMethod(VM::activeVM->stringProto, "reverse", {}, reverseFn);
+    regMethod(VM::activeVM->listProto, "reversed", {}, reversedFn);
+    regMethod(VM::activeVM->stringProto, "reversed", {}, reversedFn);
+
+    // ★ reverse：仅 list 可变。原地反转，返回同一个 list。
+    auto reverseInPlaceFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::LIST)) JC2_THROW(TypeError, "reverse() is only available on lists; use reversed() for a copy.");
+        ObjList* L = static_cast<ObjList*>(self.asObj());
+        L->checkModify();
+        std::reverse(L->vec.begin(), L->vec.end());
+        return self;
+    };
+    regMethod(VM::activeVM->listProto, "reverse", {}, reverseInPlaceFn);
 
     auto flattenFn = [expectContainer](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();

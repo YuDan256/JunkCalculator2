@@ -166,6 +166,12 @@ test_optional_args_padded_containers() = {
     assert(@[3, 1, 2].sorted((a, b) => b <=> a) == @[3, 2, 1], "sorted(cmp)")
     assert("cba".sorted() == "abc", "string.sorted()")
     assert([3, 1, 2].sorted() == @[1, 2, 3], "matrix.sorted() returns a row array")
+    R1 = @[1, 2, 3]
+    assert(R1.reverse() == @[3, 2, 1] && R1 == @[3, 2, 1], "reverse() in place")
+    R2 = @[1, 2, 3]
+    RR = R2.reversed()
+    assert(RR == @[3, 2, 1] && R2 == @[1, 2, 3], "reversed() returns a copy")
+    assert("abc".reversed() == "cba", "string.reversed()")
 }
 test_optional_args_padded_containers()
 

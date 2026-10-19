@@ -68,7 +68,7 @@ test_receiver_is_not_an_argument() = {
     assert(len(@[1, 2, 3]) == 3, "and via the global function")
     assert(@[1, 2, 3].sum() == 6, "prototype methods keep working")
     assert("ab".upper() == "AB", "string prototype methods keep working")
-    assert("ab".reverse() == "ba", "chained prototype calls keep working")
+    assert("ab".reversed() == "ba", "chained prototype calls keep working")
     assert(len({ x: 1 }.keys()) == 1, "dict prototype methods keep working")
     // §八 18：0 参原生方法不再静默吞掉多余实参
     assert(throws(() => @[1, 2, 3].sum(5)), "extra args to a 0-param native are rejected")

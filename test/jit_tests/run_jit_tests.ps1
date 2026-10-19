@@ -193,20 +193,18 @@ $replOk = ($replText -match 'JIT Compilation enabled\.') -and
 $replText | Out-File -FilePath (Join-Path $toolSamples 'tool_repl.txt') -Encoding utf8
 Write-Host ("REPL /jit /hir /mc toggles: ok={0}" -f $replOk)
 
-# -e vs --eval alias
-$e1 = Invoke-JC2Once @('-e', '1+2*3', '--jit') $TempRoot
-$e2 = Invoke-JC2Once @('--eval', '1+2*3', '--jit') $TempRoot
-$evalOk = ($e1.Output -eq $e2.Output) -and ($e1.ExitCode -eq $e2.ExitCode)
-Write-Host ("-e vs --eval: ok={0} out='{1}'" -f $evalOk, ($e1.Output -replace "`n", ' '))
+# eval subcommand
+$e1 = Invoke-JC2Once @('eval', '1+2*3', '--jit') $TempRoot
+Write-Host ("eval: exit={0} out='{1}'" -f $e1.ExitCode, ($e1.Output -replace "`n", ' '))
 
 # Debug introspection probes
 $probeCmds = @(
-    @{ Name = 'p1_nojit_basic';       Args = @('-e', 'f(x)=x*x; f(3); __dbg_is_jitted(f)') },
-    @{ Name = 'p2_jit_hotloop';       Args = @('-e', 'f(n) = { s=0; i=0; while (i<n) { s += i; i += 1 }; s }; f(5000000); __dbg_is_jitted(f)', '--jit') },
-    @{ Name = 'p3_jit_hotfunc_calls'; Args = @('-e', 'f(x)=x*x; g(n) = { s=0; i=0; while (i<n) { s += f(i); i += 1 }; s }; g(2000000); __dbg_is_jitted(f)', '--jit') },
-    @{ Name = 'p4_typefb_hotloop';    Args = @('-e', 'f(n) = { s=0; i=0; while (i<n) { s += i; i += 1 }; s }; f(5000000); __dbg_type_feedback(f)', '--jit') },
-    @{ Name = 'p5_typefb_hotfunc';    Args = @('-e', 'f(x)=x*x; g(n) = { s=0; i=0; while (i<n) { s += f(i); i += 1 }; s }; g(2000000); __dbg_type_feedback(f)', '--jit') },
-    @{ Name = 'p6_typefb_poly';       Args = @('-e', 'f(x)=x+1; g2(x)=x*2; h(n) = { s=0; i=0; while (i<n) { fn = if (i % 2 == 0) { f } else { g2 }; s += fn(i); i += 1 }; s }; h(1000000); __dbg_type_feedback(f)', '--jit') }
+    @{ Name = 'p1_nojit_basic';       Args = @('eval', 'f(x)=x*x; f(3); __dbg_is_jitted(f)') },
+    @{ Name = 'p2_jit_hotloop';       Args = @('eval', 'f(n) = { s=0; i=0; while (i<n) { s += i; i += 1 }; s }; f(5000000); __dbg_is_jitted(f)', '--jit') },
+    @{ Name = 'p3_jit_hotfunc_calls'; Args = @('eval', 'f(x)=x*x; g(n) = { s=0; i=0; while (i<n) { s += f(i); i += 1 }; s }; g(2000000); __dbg_is_jitted(f)', '--jit') },
+    @{ Name = 'p4_typefb_hotloop';    Args = @('eval', 'f(n) = { s=0; i=0; while (i<n) { s += i; i += 1 }; s }; f(5000000); __dbg_type_feedback(f)', '--jit') },
+    @{ Name = 'p5_typefb_hotfunc';    Args = @('eval', 'f(x)=x*x; g(n) = { s=0; i=0; while (i<n) { s += f(i); i += 1 }; s }; g(2000000); __dbg_type_feedback(f)', '--jit') },
+    @{ Name = 'p6_typefb_poly';       Args = @('eval', 'f(x)=x+1; g2(x)=x*2; h(n) = { s=0; i=0; while (i<n) { fn = if (i % 2 == 0) { f } else { g2 }; s += fn(i); i += 1 }; s }; h(1000000); __dbg_type_feedback(f)', '--jit') }
 )
 $probeLines = New-Object System.Collections.Generic.List[string]
 foreach ($p in $probeCmds) {

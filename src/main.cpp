@@ -12,6 +12,7 @@
 #include "memory/Value.h"
 #include "memory/SipHash.h"
 #include "vm/HelpRouter.h"
+#include "utils/RuntimeInfo.h"
 #include "frontend/Highlight.h"
 #include "utils/fmt/Formatter.h"
 #include "vm/BuiltinRegistry.h"
@@ -617,9 +618,12 @@ int main(int argc, char* argv[]) {
     bool lspMode = false;
     bool loadMode = false;
     std::string loadTarget = "";
+    bool afterDashDash = false;   // jc2 run script.jc2 -- args...
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
+
+        if (command == "run" && afterDashDash) { jc::g_scriptArgs.push_back(arg); continue; }
 
         // 1. 全局修饰符 (Flags)
         if (arg == "-q" || arg == "--quiet") { g_quiet = true; continue; }
@@ -632,13 +636,6 @@ int main(int argc, char* argv[]) {
         if (arg == "--profile") { g_profile = true; std::cout << "Profiler enabled.\n"; continue; }
         if (arg == "--jit") { g_enableJit = true; continue; }
 
-        // 2. 兼容旧版横杠主命令 (转换为子命令)
-        if (arg == "--help" || arg == "-h") { command = "help"; continue; }
-        if (arg == "--version" || arg == "-v") { command = "version"; continue; }
-        if (arg == "--compile" || arg == "-c") { command = "compile"; compileMode = true; continue; }
-        if (arg == "--test") { command = "test"; runTests = true; continue; }
-        if (arg == "-e" || arg == "--eval") { command = "eval"; continue; }
-        if (arg == "--run") { command = "run"; continue; }
         if (arg == "fmt") { command = "fmt"; fmtMode = true; continue; }
 
         // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
@@ -692,7 +689,8 @@ int main(int argc, char* argv[]) {
             }
         }
         else if (command == "run") {
-            if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
+            if (arg == "--") afterDashDash = true;
+            else if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
             else { std::cerr << "Unknown argument for run: " << arg << "\n"; return 1; }
         }
         else if (command == "fmt") {
@@ -714,7 +712,7 @@ int main(int argc, char* argv[]) {
 
     // 5. 执行无参数的立即命令
     if (command == "help") { printHelp(); return 0; }
-    if (command == "version") { std::cout << "Junk Calculator 2.6.4.0\n"; return 0; }
+    if (command == "version") { std::cout << jc::VERSION_FULL << "\n"; return 0; }
     if (command == "compile" && compileInput.empty()) { std::cerr << "Error: compile requires an input file.\n"; return 1; }
     if (command == "eval" && evalStr.empty()) { std::cerr << "Error: eval requires an argument.\n"; return 1; }
     if (command == "load" && loadTarget.empty()) { std::cerr << "Error: load requires a workspace name or path.\n"; return 1; }
@@ -915,7 +913,7 @@ int main(int argc, char* argv[]) {
     auto printBannerTop = []() {
         std::cout << jc::col(jc::Ansi::BRIGHT_CYAN)
             << "=================================================\n"
-            << "   Junk Calculator 2.6.4.0\n"
+            << "   " << jc::VERSION_FULL << "\n"
             << "   Developed by Yu Liangyang, Tsinghua University\n"
             << "=================================================\n" << jc::col(jc::Ansi::RESET);
     };
@@ -1140,7 +1138,7 @@ int main(int argc, char* argv[]) {
             if (input == "/debug off") { applySwitch("debug", false); std::cout << "Interactive Step-Debugger disabled.\n"; continue; }
             if (input == "/exit" || input == "/quit") break;
             if (input == "/help") { printHelp(); continue; }
-            if (input == "/version") { std::cout << "Junk Calculator 2.6.4.0\n"; continue; }
+            if (input == "/version") { std::cout << jc::VERSION_FULL << "\n"; continue; }
             if (input.substr(0, 6) == "/help ") { printHelpTopic(input.substr(6)); continue; }
             if (input == "/clear") { 
                 vm.clearGlobals(); 

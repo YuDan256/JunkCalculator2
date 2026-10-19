@@ -2820,6 +2820,7 @@ Value VM::execImport(const std::string& name) {
     std::string baseName = from_path(to_path(name).stem());
 
     if (loadedModules.count(name)) {
+        importedModules.insert(name);
         return loadedModules[name];
     }
 

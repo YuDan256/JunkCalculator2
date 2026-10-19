@@ -381,6 +381,12 @@ public:
         builtinModules[name] = moduleVal;
     }
     const std::unordered_map<std::string, Value>& getLoadedModules() const { return loadedModules; }
+    // 实际 import 过的模块名（不含仅注册的内建模块），已排序。
+    std::vector<std::string> getImportedModuleNames() const {
+        std::vector<std::string> names(importedModules.begin(), importedModules.end());
+        std::sort(names.begin(), names.end());
+        return names;
+    }
     Value getBuiltinValue(const std::string& name) const {
         auto it = builtinValues.find(name);
         return it != builtinValues.end() ? it->second : Value::none();

@@ -1,0 +1,28 @@
+// sys 模块的进程/环境/版本/内省函数
+import sys
+
+assert(len(sys.version()) > 0, "sys.version() should be non-empty")
+assert(sys.platform() in @["windows", "linux", "macos"], "unknown platform: " + sys.platform())
+assert(len(sys.cwd()) > 0, "sys.cwd() should be non-empty")
+
+// 测试运行器不传脚本参数
+assert(sys.args() == @[], "sys.args() should be empty without trailing args")
+
+t1 = sys.monotonic()
+sys.sleep(0.005)
+t2 = sys.monotonic()
+assert(t2 >= t1, "monotonic clock must not go backwards")
+
+st = sys.gcStats()
+assert(st["objects"] >= 0, "gcStats objects")
+assert(st["threshold"] > 0, "gcStats threshold")
+assert(st["allocations"] >= 0, "gcStats allocations")
+
+sys.setenv("JC2_TEST_ENV", "hello")
+assert(sys.getenv("JC2_TEST_ENV") == "hello", "getenv/setenv roundtrip")
+assert(sys.getenv("JC2_TEST_MISSING_12345", "dflt") == "dflt", "getenv default")
+
+mods = sys.loadedModules()
+assert("sys" in mods, "sys should be listed as imported")
+
+print("sys battery OK")

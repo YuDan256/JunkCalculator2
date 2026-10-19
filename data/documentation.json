@@ -54,6 +54,7 @@
       "    jc2 [path].jcw                     Auto-fallback to load workspace",
       "    jc2 script.jc2                     Run a script (fallback to 'run')",
       "    jc2 run script.jc2                 Run a script explicitly",
+      "    jc2 run script.jc2 -- a b          Pass trailing args, available as sys.args()",
       "    jc2 compile in.jc2 [out.jcb]       Compile script to bytecode",
       "    jc2 compile in.jc2 -m              Compile as a module (for 'import')",
       "    jc2 compile in.jc2 -s              Compile and strip debug info",
@@ -6972,6 +6973,83 @@
     }
   },
   "sys_methods": {
+    "args": {
+      "signature": "sys.args()",
+      "desc": "Returns the trailing command-line arguments passed after `--` (jc2 run script.jc2 -- a b).",
+      "examples": [
+        "sys.args()"
+      ]
+    },
+    "exit": {
+      "signature": "sys.exit([code])",
+      "desc": "Terminates the process with an optional integer exit code (default 0).",
+      "examples": [
+        "sys.exit(0)"
+      ]
+    },
+    "getenv": {
+      "signature": "sys.getenv(name, [default])",
+      "desc": "Returns the environment variable, the optional default, or none when unset.",
+      "examples": [
+        "sys.getenv(\"PATH\")"
+      ]
+    },
+    "setenv": {
+      "signature": "sys.setenv(name, value)",
+      "desc": "Sets an environment variable for the current process.",
+      "examples": [
+        "sys.setenv(\"JC2_MODE\", \"debug\")"
+      ]
+    },
+    "cwd": {
+      "signature": "sys.cwd()",
+      "desc": "Returns the process current working directory. Uses setWorkspace() to change the script workspace.",
+      "examples": [
+        "sys.cwd()"
+      ]
+    },
+    "chdir": {
+      "signature": "sys.chdir(path)",
+      "desc": "Changes the process current working directory.",
+      "examples": [
+        "sys.chdir(\"out\")"
+      ]
+    },
+    "version": {
+      "signature": "sys.version()",
+      "desc": "Returns the JC2 version string, e.g. \"2.6.4.0\".",
+      "examples": [
+        "sys.version()"
+      ]
+    },
+    "platform": {
+      "signature": "sys.platform()",
+      "desc": "Returns \"windows\", \"linux\" or \"macos\".",
+      "examples": [
+        "sys.platform()"
+      ]
+    },
+    "loadedModules": {
+      "signature": "sys.loadedModules()",
+      "desc": "Returns the sorted names of modules imported with import.",
+      "examples": [
+        "sys.loadedModules()"
+      ]
+    },
+    "gcStats": {
+      "signature": "sys.gcStats()",
+      "desc": "Returns a dict with tracked GC objects, the collection threshold and allocations since the last GC.",
+      "examples": [
+        "sys.gcStats()"
+      ]
+    },
+    "monotonic": {
+      "signature": "sys.monotonic()",
+      "desc": "Returns a monotonic clock in seconds (use clock() for wall-clock time).",
+      "examples": [
+        "sys.monotonic()"
+      ]
+    },
     "gc": {
       "signature": "sys.gc()",
       "desc": "Forces a Garbage Collection (clears 'ANS' first). Returns the number of freed objects.",

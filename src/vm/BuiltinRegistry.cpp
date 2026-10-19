@@ -23,6 +23,9 @@
 #include <set>
 #include <cctype>
 #include <chrono>               // ★ clock() — high_resolution_clock
+#include <filesystem>
+#include <cstdlib>
+#include "../utils/RuntimeInfo.h"
 #include <cmath>
 #include <functional>
 #include <iomanip>
@@ -2656,6 +2659,92 @@ void BuiltinRegistry::registerControlFlow() {
         if (ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(ms));
         return Value::none();
     }, {"seconds"});
+    regModule(sys_ns, "args", { 0 }, [](const std::vector<Value>&) -> Value {
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        for (const auto& a : jc::g_scriptArgs) L->vec.push_back(Value(a));
+        return Value(L);
+    }, {});
+    regModule(sys_ns, "exit", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+        int code = 0;
+        if (!args.empty() && !args[0].isUninit()) {
+            if (!args[0].isNumber()) JC2_THROW(TypeError, "exit() expects an integer code.");
+            code = static_cast<int>(args[0].asFloat());
+        }
+        std::cout.flush();
+        std::cerr.flush();
+        std::exit(code);
+    }, {"code"});
+    regModule(sys_ns, "getenv", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) JC2_THROW(TypeError, "getenv() expects a string name.");
+        const std::string name = args[0].asString();
+#ifdef _WIN32
+        char* buf = nullptr; size_t len = 0;
+        if (_dupenv_s(&buf, &len, name.c_str()) == 0 && buf) {
+            std::string out(buf);
+            std::free(buf);
+            return Value(out);
+        }
+#else
+        if (const char* v = std::getenv(name.c_str())) return Value(std::string(v));
+#endif
+        if (args.size() > 1 && !args[1].isUninit()) return args[1];
+        return Value::none();
+    }, {"name", "default"});
+    regModule(sys_ns, "setenv", { 2 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString() || !args[1].isString()) JC2_THROW(TypeError, "setenv() expects two strings.");
+#ifdef _WIN32
+        if (_putenv_s(args[0].asString().c_str(), args[1].asString().c_str()) != 0)
+#else
+        if (setenv(args[0].asString().c_str(), args[1].asString().c_str(), 1) != 0)
+#endif
+            JC2_THROW(IOError, "Failed to set environment variable.");
+        return Value::none();
+    }, {"name", "value"});
+    regModule(sys_ns, "cwd", { 0 }, [](const std::vector<Value>&) -> Value {
+        std::error_code ec;
+        auto dir = std::filesystem::current_path(ec);
+        if (ec) JC2_THROW(IOError, "Failed to read the current directory.");
+        return Value(dir.string());
+    }, {});
+    regModule(sys_ns, "chdir", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) JC2_THROW(TypeError, "chdir() expects a path string.");
+        std::error_code ec;
+        std::filesystem::current_path(args[0].asString(), ec);
+        if (ec) JC2_THROW(IOError, "Failed to change directory: " + args[0].asString());
+        return Value::none();
+    }, {"path"});
+    regModule(sys_ns, "version", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(std::string(jc::VERSION));
+    }, {});
+    regModule(sys_ns, "platform", { 0 }, [](const std::vector<Value>&) -> Value {
+#if defined(_WIN32)
+        return Value(std::string("windows"));
+#elif defined(__APPLE__)
+        return Value(std::string("macos"));
+#else
+        return Value(std::string("linux"));
+#endif
+    }, {});
+    regModule(sys_ns, "loadedModules", { 0 }, [](const std::vector<Value>&) -> Value {
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        for (const auto& name : VM::activeVM->getImportedModuleNames()) L->vec.push_back(Value(name));
+        return Value(L);
+    }, {});
+    regModule(sys_ns, "gcStats", { 0 }, [](const std::vector<Value>&) -> Value {
+        ObjDict* d = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(d);
+        d->set(Value(std::string("objects")), Value::fromInt32(static_cast<int32_t>(GcHeap::get().trackedCount())));
+        d->set(Value(std::string("threshold")), Value::fromInt32(static_cast<int32_t>(GcHeap::get().threshold())));
+        d->set(Value(std::string("allocations")), Value::fromInt32(static_cast<int32_t>(GcHeap::get().allocsSinceGc())));
+        return Value(d);
+    }, {});
+    regModule(sys_ns, "monotonic", { 0 }, [](const std::vector<Value>&) -> Value {
+        auto now = std::chrono::steady_clock::now();
+        auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(now.time_since_epoch()).count();
+        return Value(static_cast<double>(ns) / 1e9);
+    }, {});
     regModule(sys_ns, "highlight", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString()) JC2_THROW(TypeError, "highlight() expects a string.");
         return Value(jc::highlightCode(args[0].asString()));

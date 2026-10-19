@@ -25,7 +25,7 @@ only — no source changes are required.
   hot loops, recursion, closure state, complex arithmetic, f-string
   interpolation.
 - **Toolchain & introspection** — `--hir`/`--mc`/`--profile` output, REPL
-  `/jit|/hir|/mc` toggles, `-e` vs `--eval`, and the `__dbg_is_jitted` /
+  `/jit|/hir|/mc` toggles, the `eval` subcommand, and the `__dbg_is_jitted` /
   `__dbg_type_feedback` debug functions.
 
 ## Usage

@@ -1693,7 +1693,7 @@
       "    JC2 runs an automatic background Garbage Collector to track reference ",
       "    types (lists, dicts, instances, closures) and prevent cyclic memory leaks.",
       "    ",
-      "    sys.gcinfo()          Print current heap status (tracked objects, thresholds)",
+      "    sys.gcStats()         Heap status as a Dict {objects, threshold, allocations}",
       "    sys.gc()              Force a GC sweep (clears 'ANS' first), returning freed object count",
       "",
       "  CAS Configuration",
@@ -2396,7 +2396,7 @@
       "  Garbage Collection",
       "  ──────────────────────",
       "    lists are tracked by the VM's Mark-and-Sweep Garbage Collector.",
-      "      gcinfo()                  View tracked objects",
+      "      gcStats()                 Heap status as a Dict",
       "      gc()                      Force memory sweep",
       "",
       "  Immutability & Snapshots (Defensive Programming)",
@@ -5155,13 +5155,6 @@
       "desc": "Returns the residual vector r = b - A*x.",
       "examples": [
         "A.residual(x, b)"
-      ]
-    },
-    "gcinfo": {
-      "signature": "sys.gcinfo()",
-      "desc": "Prints the current status of the Garbage Collector.",
-      "examples": [
-        "sys.gcinfo()"
       ]
     },
     "bool": {

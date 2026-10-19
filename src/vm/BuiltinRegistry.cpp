@@ -2333,16 +2333,6 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::fromInt32(freed);
         }, {});
 
-    regModule(sys_ns, "gcinfo", { 0 }, [](const std::vector<Value>&) -> Value {
-        auto& heap = GcHeap::get();
-        std::cout << "--- GC Status ---\n"
-            << "  Tracked objects:     " << heap.trackedCount() << "\n"
-            << "  Allocs since GC:     " << heap.allocsSinceGc() << "\n"
-            << "  Next GC threshold:   " << heap.threshold() << "\n"
-            << "-----------------" << std::endl;
-        return Value::none();
-        }, {});
-
     reg("freeze", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::LIST)) {
             static_cast<ObjList*>(args[0].asObj())->is_frozen = true;

@@ -576,9 +576,6 @@
     "residual": {
       "signature": "A.residual(x, b)"
     },
-    "gcinfo": {
-      "signature": "sys.gcinfo()"
-    },
     "bool": {
       "signature": "bool(x)"
     },

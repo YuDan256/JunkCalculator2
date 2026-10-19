@@ -1,0 +1,33 @@
+// 不可约分母的有理函数积分：Rothstein-Trager 的对数因子必须是线性因子，
+// 否则自检会拒绝（旧实现从 Groebner 基取到带伪根的二次多项式，直接抛
+// "Function integration not supported or complex power"）。
+import cas
+x = sym("x")
+
+// ── 不可约三次：结果保留为 RootSum，但必须是正确的 x - _z 线性对数 ──
+I = cas.integ(1 / (x^3 + x + 1), x)
+s = str(I)
+assert("RootSum" in s, "irreducible cubic should return a RootSum, got: " + s)
+assert("log" in s, "RootSum should contain a log term, got: " + s)
+assert("_z^3 + _z + 1" in s, "RootSum should sum over the roots of the denominator, got: " + s)
+assert("3 * _z^2 + 1" in s, "log argument should be weighted by D'(_z), got: " + s)
+
+// 求导仍然是 RootSum（结构没被破坏），且不会抛错
+d = cas.diff(I, x)
+assert("RootSum" in str(d), "derivative of the RootSum should stay a RootSum, got: " + str(d))
+
+// ── 不可约四次 ──
+I4 = cas.integ(1 / (x^4 + x + 1), x)
+assert("RootSum" in str(I4), "irreducible quartic should return a RootSum, got: " + str(I4))
+
+// ── 有理根 / 二次因子：仍走原来的实数形式，不受兜底影响 ──
+assert(str(cas.integ(1 / (x^2 + 1), x)) == "atan(x)", "quadratic denominator should stay atan(x)")
+cubic_factored = str(cas.integ(1 / (x^3 + 1), x))
+assert("atan" in cubic_factored && "log" in cubic_factored,
+       "factorable cubic should keep the real atan/log form, got: " + cubic_factored)
+
+// ── 混合分母（二次因子 + 不可约三次）：不再报错 ──
+mixed = cas.integ(1 / ((x^2 + 1) * (x^3 + x + 1)), x)
+assert("RootSum" in str(mixed), "mixed denominator should still integrate, got: " + str(mixed))
+
+print("rational integration battery OK")

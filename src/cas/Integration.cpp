@@ -21,7 +21,25 @@ namespace jc {
     // Rothstein-Trager 算法 (Rothstein-Trager Algorithm)
     // 用于积分 A/D，其中 D 无平方，deg(A) < deg(D)
     // =================================================================
-    static SymExpr rothsteinTrager(SymExpr A, SymExpr D, const std::string& var) {
+    // ★ 部分分式 RootSum：对无平方因子分母 D，
+//   ∫ A/D dx = RootSum(A(_z)/D'(_z) * log(x - _z), _z, D(_z)).
+//   这是 Rothstein-Trager 对数因子的正确线性形式：每个极点 r 的留数
+//   是 A(r)/D'(r)，所以无需 Groebner 基去猜多项式因子。
+//   Q_k 次数 >= 3 时用它，避免“最小次数消元多项式”带入伪根。
+static SymExpr partialFractionRootSum(const SymExpr& A, const SymExpr& D, const std::string& var) {
+    std::string dummy = "_z";
+    while (containsVar(A.ptr, dummy) || containsVar(D.ptr, dummy)) dummy += "_";
+    SymExpr z = SymExpr::makeVar(dummy);
+    SymExpr x = SymExpr::makeVar(var);
+    SymExpr Az = subs(A, var, z);
+    SymExpr Dpz = subs(diff(D, var), var, z);
+    SymExpr Dz = subs(D, var, z);
+    SymExpr logTerm = SymExpr::makeFunc("log", std::vector<SymNode*>{ (x - z).ptr });
+    SymExpr term = simplifyCore((Az / Dpz) * logTerm);
+    return SymExpr::makeFunc("RootSum", std::vector<SymNode*>{ term.ptr, z.ptr, Dz.ptr });
+}
+
+static SymExpr rothsteinTrager(SymExpr A, SymExpr D, const std::string& var) {
         if (SymConfig::debugIntegration) std::cout << "   [RT] A: " << A.toString() << ", D: " << D.toString() << std::endl;
 
         SymExpr z = SymExpr::makeVar("_z");
@@ -94,6 +112,10 @@ namespace jc {
             
             for (const auto& Q_k : q_factors) {
                 if (getDegree(Q_k, "_z") <= 0) continue;
+                    if (getDegree(Q_k, "_z") >= 3) {
+                        if (SymConfig::debugIntegration) std::cout << "   [RT] factor degree >= 3, using partial-fraction RootSum" << std::endl;
+                        return partialFractionRootSum(A, D, var);
+                    }
                 if (SymConfig::debugIntegration) std::cout << "   [RT] Processing irreducible factor Q_k(z): " << Q_k.toString() << std::endl;
                 
                 // 对每个重数 k 的因子 Q_k(z)，计算 D(x) 和 P(x, z) 模 Q_k(z) 的 GCD
@@ -237,15 +259,7 @@ namespace jc {
                     continue;
                 }
             }
-            
-            SymExpr log_vz(new SymFunc("log", std::vector<SymNode*>{v_z.ptr}));
-            SymExpr expr_z = z * log_vz;
-            
-            SymExpr rootSum(new SymFunc("RootSum", std::vector<SymNode*>{
-                expr_z.ptr, z.ptr, Q_k.ptr
-            }));
-            
-            result = result + rootSum;
+                return partialFractionRootSum(A, D, var);
             }
         }
         if (SymConfig::debugIntegration) std::cout << "   [RT] Result before simplify: " << result.toString() << std::endl;
@@ -924,7 +938,17 @@ namespace jc {
                 }
                 
                 if (!cA.isZero()) {
-                    res = res + rothsteinTrager(cA, cD, var);
+                    SymExpr rtPart;
+        try {
+            rtPart = rothsteinTrager(cA, cD, var);
+        } catch (const EngineInterruptError&) {
+            throw;
+        } catch (...) {
+            // ★ RT 内部任何失败（如 0^0、因式分解异常）都退回部分分式 RootSum；
+            //   只要 cD 无平方因子，这个形式总是正确的。
+            rtPart = partialFractionRootSum(cA, cD, var);
+        }
+        res = res + rtPart;
                 }
                 
                 return res;
@@ -3430,7 +3454,14 @@ namespace jc {
                         }
                         
                         if (!cA.isZero()) {
-                            SymExpr rtRes = rothsteinTrager(cA, cD, var);
+                            SymExpr rtRes;
+        try {
+            rtRes = rothsteinTrager(cA, cD, var);
+        } catch (const EngineInterruptError&) {
+            throw;
+        } catch (...) {
+            rtRes = partialFractionRootSum(cA, cD, var);
+        }
                             if (SymConfig::debugIntegration) std::cout << std::string(current_depth * 2, ' ') << "   Rothstein-Trager result: " << rtRes.toString() << std::endl;
                             res = res + rtRes;
                         }

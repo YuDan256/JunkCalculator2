@@ -54,7 +54,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div: case IROp::IDiv:
         case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
         case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
-        case IROp::Gt: case IROp::Ge:
+        case IROp::Gt: case IROp::Ge: case IROp::Cmp:
         case IROp::Not: case IROp::Neg: case IROp::ToBool:
         case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
         case IROp::Shl: case IROp::Shr:
@@ -333,6 +333,16 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                     else if (node->op == IROp::Le) { node->constVal = Value(left <= right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Gt) { node->constVal = Value(left > right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::Ge) { node->constVal = Value(left >= right); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                    else if (node->op == IROp::Cmp) {
+                        auto orderable = [](const Value& v) {
+                            return v.isNumber() || v.isBigInt() || v.isObjType(ObjType::FRACTION) || v.isString();
+                        };
+                        if (orderable(left) && orderable(right) && left.isString() == right.isString()) {
+                            if (Value::equals(left, right)) { node->constVal = Value::fromInt32(0); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                            else if (left < right) { node->constVal = Value::fromInt32(-1); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                            else if (right < left) { node->constVal = Value::fromInt32(1); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
+                        }
+                    }
                     else if (node->op == IROp::Is) { node->constVal = Value(left.as_bits == right.as_bits); node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::BitAnd) { node->constVal = left & right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }
                     else if (node->op == IROp::BitOr) { node->constVal = left | right; node->op = IROp::Constant; node->dataInputs.clear(); changed = true; }

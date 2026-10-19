@@ -246,3 +246,32 @@ test_nested_defaults() = {
     assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
 }
 test_nested_defaults()
+
+// ── 管道、自动柯里化与 UFCS（原 syntax/test_pipe_curry） ──
+
+test_pipe() = {
+    res = [1, 2, 3] |> .sum()
+    assert(res == 6, "Basic pipe operator failed")
+    
+    res2 = @[3, 1, 2] |> .sorted() |> .first()
+    assert(res2 == 1, "Chained pipe operator failed")
+}
+test_pipe()
+
+test_curry() = {
+    my_add(a, b) = a + b
+    add_five = my_add(_, 5)
+    assert(add_five(10) == 15, "Auto-currying (placeholder) failed")
+}
+test_curry()
+
+test_ufcs() = {
+    // 点号调用：接收者进隐藏通道 self，实参就是实参（不再隐式当第 0 个实参）。
+    // 这里两个用例都是原生原型上的成员，所以形如 .sum() / .upper() 的链式调用照旧。
+    res = [1, 2, 3].sum()
+    assert(res == 6, "UFCS basic failed")
+    
+    res2 = "hello".upper().reverse()
+    assert(res2 == "OLLEH", "UFCS chained failed")
+}
+test_ufcs()

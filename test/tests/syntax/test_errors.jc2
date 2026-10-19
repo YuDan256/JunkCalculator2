@@ -1,3 +1,5 @@
+// try/catch 基础与类型化 catch（原 core/test_error + syntax/test_catch_chain）
+
 class MyError extends Exception {}
 class OtherError extends Exception {}
 
@@ -57,3 +59,35 @@ test_catch_shorthand_keeps_type() = {
     assert(r, "shorthand keeps exception type")
 }
 test_catch_shorthand_keeps_type()
+
+// ── try/catch 表达式与 assert ──
+
+test_try_catch() = {
+    res = try {
+        throw "custom error"
+        0
+    } catch (e) {
+        1
+    }
+    assert(res == 1, "try/catch expression failed")
+    
+    res2 = try {
+        42
+    } catch (e) {
+        -1
+    }
+    assert(res2 == 42, "try/catch success path failed")
+}
+test_try_catch()
+
+test_assert() = {
+    caught = false
+    try {
+        assert(1 == 2, "Math is broken")
+    } catch (e) {
+        caught = true
+        assert("Math is broken" in e.message, "assert message mismatch")
+    }
+    assert(caught, "assert failed to throw")
+}
+test_assert()

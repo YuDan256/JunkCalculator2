@@ -192,6 +192,9 @@ namespace jc {
                 "sys_methods", "math_methods", "cas_methods", "random_methods"
             };
             
+            // ★ 同一个名字可能同时存在于多个类别（如 sorted 在 matrix/string/list），
+            //   全部打印，而不是只返回第一个匹配。
+            bool printedAny = false;
             for (const auto& cat : categories) {
                 auto catIt = root.find(cat);
                 if (catIt != root.end() && catIt->second.isObject()) {
@@ -216,9 +219,10 @@ namespace jc {
                             if (targetFn) break;
                         }
                     }
-                    if (targetFn && printEntry(*targetFn)) return;
+                    if (targetFn && printEntry(*targetFn)) printedAny = true;
                 }
             }
+            if (printedAny) return;
 
             // 3.5 Search in "keywords" (case-insensitive)
             auto kwsIt = root.find("keywords");

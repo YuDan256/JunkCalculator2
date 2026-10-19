@@ -159,11 +159,11 @@ test_optional_args_padded_containers() = {
     assert(@[1, 2, 3].reduce((a, b) => a + b, 10) == 16, "reduce(f, init)")
     S = @[3, 1, 2]
     assert(S.sort() == @[1, 2, 3] && S == @[1, 2, 3], "sort() in place")
-    assert(S.sort((a, b) => a > b) == @[3, 2, 1], "sort(cmp) in place")
+    assert(S.sort((a, b) => b <=> a) == @[3, 2, 1], "sort(cmp) in place")
     C = @[3, 1, 2]
     SC = C.sorted()
     assert(SC == @[1, 2, 3] && C == @[3, 1, 2], "sorted() returns a copy")
-    assert(@[3, 1, 2].sorted((a, b) => a > b) == @[3, 2, 1], "sorted(cmp)")
+    assert(@[3, 1, 2].sorted((a, b) => b <=> a) == @[3, 2, 1], "sorted(cmp)")
     assert("cba".sorted() == "abc", "string.sorted()")
     assert([3, 1, 2].sorted() == @[1, 2, 3], "matrix.sorted() returns a row array")
 }

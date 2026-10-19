@@ -821,6 +821,7 @@ namespace jc {
         if (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                     TokenType::LESS, TokenType::LESS_EQUAL,
                     TokenType::GREATER, TokenType::GREATER_EQUAL,
+                    TokenType::CMP,
                     TokenType::IN, TokenType::IS, TokenType::SUBSET })) {
             Token op = previous();
             auto right = bitwiseOr();
@@ -828,7 +829,11 @@ namespace jc {
             if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                 check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
                 check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL) ||
+                check(TokenType::CMP) ||
                 check(TokenType::IN) || check(TokenType::IS) || check(TokenType::SUBSET)) {
+                if (op.type == TokenType::CMP) {
+                    JC2_THROW(ParserError, "'<=>' cannot be part of a chained comparison; add parentheses.");
+                }
                 
                 // 连续比较，为每个中间节点生成独立的临时变量
                 int chainIdx = 0;
@@ -845,13 +850,18 @@ namespace jc {
                 while (match({ TokenType::EQUAL, TokenType::BANG_EQUAL,
                                TokenType::LESS, TokenType::LESS_EQUAL,
                                TokenType::GREATER, TokenType::GREATER_EQUAL,
+                               TokenType::CMP,
                                TokenType::IN, TokenType::IS, TokenType::SUBSET })) {
                     Token nextOp = previous();
+                    if (nextOp.type == TokenType::CMP) {
+                        JC2_THROW(ParserError, "'<=>' cannot be part of a chained comparison; add parentheses.");
+                    }
                     auto nextRight = bitwiseOr();
                     
                     if (check(TokenType::EQUAL) || check(TokenType::BANG_EQUAL) ||
                         check(TokenType::LESS) || check(TokenType::LESS_EQUAL) ||
                         check(TokenType::GREATER) || check(TokenType::GREATER_EQUAL) ||
+                        check(TokenType::CMP) ||
                         check(TokenType::IN) || check(TokenType::IS) || check(TokenType::SUBSET)) {
                         
                         std::string nextTmpName = "<chain>_" + std::to_string(current) + "_" + std::to_string(chainIdx++);

@@ -295,8 +295,10 @@ namespace jc {
                 addToken(match('=') ? TokenType::SHIFT_LEFT_ASSIGN : TokenType::SHIFT_LEFT);
             } else if (match(':')) {
                 addToken(TokenType::SUBSET);   // ★ 子集运算符 <:
+            } else if (match('=')) {
+                addToken(match('>') ? TokenType::CMP : TokenType::LESS_EQUAL);
             } else {
-                addToken(match('=') ? TokenType::LESS_EQUAL : TokenType::LESS);
+                addToken(TokenType::LESS);
             }
             break;
         case '>':

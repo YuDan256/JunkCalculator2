@@ -1946,6 +1946,8 @@ static const std::string DUNDER_LT = "__lt__";
 static const std::string DUNDER_LE = "__le__";
 static const std::string DUNDER_GT = "__gt__";
 static const std::string DUNDER_GE = "__ge__";
+static const std::string DUNDER_CMP = "__cmp__";
+static const std::string DUNDER_RCMP = "__rcmp__";
 static const std::string DUNDER_GETITEM = "__getitem__";
 static const std::string DUNDER_SETITEM = "__setitem__";
 static const std::string DUNDER_GETATTR = "__getattr__";
@@ -5400,6 +5402,10 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) == 0);
+                    break;
+                }
                 getReg(a) = Value(Value::equals(vb, vc));
                 break;
             }
@@ -5421,6 +5427,10 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) != 0);
+                    break;
+                }
                 getReg(a) = Value(!Value::equals(vb, vc));
                 break;
             }
@@ -5437,6 +5447,10 @@ Value VM::run(int targetFrameDepth) {
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) < 0);
+                    break;
+                }
                 getReg(a) = Value(vb < vc);
                 break;
             }
@@ -5488,6 +5502,10 @@ Value VM::run(int targetFrameDepth) {
                             break;
                         }
                     }
+                }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) <= 0);
+                    break;
                 }
                 getReg(a) = Value(vb <= vc);
                 break;
@@ -5541,6 +5559,10 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) > 0);
+                    break;
+                }
                 getReg(a) = Value(vb > vc);
                 break;
             }
@@ -5579,7 +5601,21 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                 }
+                if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
+                    getReg(a) = Value(compareValues(vb, vc) >= 0);
+                    break;
+                }
                 getReg(a) = Value(vb >= vc);
+                break;
+            }
+            case OpCode::CMP: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
+                Value vb = GET_RK(b); Value vc = GET_RK(c);
+                if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
+                else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
+                getReg(a) = Value(compareValues(vb, vc));
                 break;
             }
             case OpCode::IS: {
@@ -10434,6 +10470,53 @@ done:
     JIT_CALLOUT_CATCH
 }
 
+// ★ 三向比较的返回值校验：必须是实数（bool 不算），NaN 视为非法。
+int VM::compareResultSign(const Value& r, const std::string& who) {
+    if (r.isBool() || !(r.isNumber() || r.isBigInt() || r.isObjType(ObjType::FRACTION)) || std::isnan(r.asFloat())) {
+        JC2_THROW(TypeError, who + " must return a real number (-1, 0 or 1).");
+    }
+    double d = r.asFloat();
+    return d < 0 ? -1 : (d > 0 ? 1 : 0);
+}
+
+bool VM::hasCmpProtocol(const Value& v) {
+    return v.isInstance() && (findDunder(v, DUNDER_CMP).first || findDunder(v, DUNDER_RCMP).first);
+}
+
+int VM::compareValues(const Value& a, const Value& b) {
+    if (a.isInstance()) {
+        auto [m, owner] = findDunder(a, DUNDER_CMP);
+        if (m) return compareResultSign(callDunder(a, m, owner, { b }), DUNDER_CMP);
+    }
+    if (b.isInstance()) {
+        auto [m, owner] = findDunder(b, DUNDER_RCMP);
+        if (m) return compareResultSign(callDunder(b, m, owner, { a }), DUNDER_RCMP);
+        auto [m2, o2] = findDunder(b, DUNDER_CMP);
+        if (m2) return -compareResultSign(callDunder(b, m2, o2, { a }), DUNDER_CMP);
+    }
+    auto orderable = [](const Value& v) {
+        return v.isNumber() || v.isBigInt() || v.isObjType(ObjType::FRACTION) || v.isString();
+    };
+    if (!orderable(a) || !orderable(b) || a.isString() != b.isString()) {
+        JC2_THROW(TypeError, "Values are not orderable with '<=>': " + a.typeName() + " and " + b.typeName() + ".");
+    }
+    if (Value::equals(a, b)) return 0;
+    if (a < b) return -1;
+    if (b < a) return 1;
+    JC2_THROW(TypeError, "Values are not orderable with '<=>': " + a.typeName() + " and " + b.typeName() + ".");
+}
+
+uint64_t jc2_jit_cmp(uint64_t lhs_bits, uint64_t rhs_bits) {
+    JIT_CALLOUT_TRY
+    VM* vm = VM::activeVM;
+    Value lhs = Value::fromRawBits(lhs_bits);
+    Value rhs = Value::fromRawBits(rhs_bits);
+    Value res = Value(vm->compareValues(lhs, rhs));
+    vm->getCurrentFrame()->jitReturnSlot = res;
+    return res.as_bits;
+    JIT_CALLOUT_CATCH
+}
+
 uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits) {
     JIT_CALLOUT_TRY
     VM* vm = VM::activeVM;
@@ -10442,7 +10525,7 @@ uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits) {
     Value res;
     if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__eq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
     if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__eq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
-    res = Value(Value::equals(lhs, rhs));
+    res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) == 0) : Value(Value::equals(lhs, rhs));
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -10459,7 +10542,7 @@ uint64_t jc2_jit_cmp_neq(uint64_t lhs_bits, uint64_t rhs_bits) {
     if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__eq__"); if (meth) { res = Value(!vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
     if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__neq__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
     if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__eq__"); if (meth) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
-    res = Value(!Value::equals(lhs, rhs));
+    res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) != 0) : Value(!Value::equals(lhs, rhs));
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -10474,7 +10557,7 @@ uint64_t jc2_jit_cmp_lt(uint64_t lhs_bits, uint64_t rhs_bits) {
     Value res;
     if (lhs.isInstance()) { auto [meth, owner] = vm->findDunder(lhs, "__lt__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(lhs, meth, owner, {rhs}))); goto done; } }
     if (rhs.isInstance()) { auto [meth, owner] = vm->findDunder(rhs, "__gt__"); if (meth) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, meth, owner, {lhs}))); goto done; } }
-    res = Value(lhs < rhs);
+        res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) < 0) : Value(lhs < rhs);
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -10507,7 +10590,7 @@ uint64_t jc2_jit_cmp_le(uint64_t lhs_bits, uint64_t rhs_bits) {
             if (methEq) { res = Value(vm->evaluateTruthiness(vm->callDunder(rhs, methEq, ownerEq, {lhs}))); goto done; }
         }
     }
-    res = Value(lhs <= rhs);
+        res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) <= 0) : Value(lhs <= rhs);
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -10540,7 +10623,7 @@ uint64_t jc2_jit_cmp_gt(uint64_t lhs_bits, uint64_t rhs_bits) {
             if (methEq) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, methEq, ownerEq, {lhs}))); goto done; }
         }
     }
-    res = Value(lhs > rhs);
+        res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) > 0) : Value(lhs > rhs);
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;
@@ -10565,7 +10648,7 @@ uint64_t jc2_jit_cmp_ge(uint64_t lhs_bits, uint64_t rhs_bits) {
         auto [methGt, ownerGt] = vm->findDunder(rhs, "__gt__");
         if (methGt) { res = Value(!vm->evaluateTruthiness(vm->callDunder(rhs, methGt, ownerGt, {lhs}))); goto done; }
     }
-    res = Value(lhs >= rhs);
+        res = (vm->hasCmpProtocol(lhs) || vm->hasCmpProtocol(rhs)) ? Value(vm->compareValues(lhs, rhs) >= 0) : Value(lhs >= rhs);
 done:
     vm->getCurrentFrame()->jitReturnSlot = res;
     return res.as_bits;

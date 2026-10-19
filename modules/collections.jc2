@@ -328,7 +328,7 @@ class Counter {
         n = round(n)
         L = @[]
         for (@[k, v] in self.data) L.push(@[k, v])
-        sorted = L.sort((a, b) => a[1] > b[1])
+        sorted = L.sort((a, b) => b[1] <=> a[1])
         return sorted.slice(0, n)
     }
     

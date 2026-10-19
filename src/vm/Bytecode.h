@@ -171,6 +171,7 @@ enum class OpCode : uint8_t {
     MATCH_TYPE,         // R(A) := match_type(R(B), typeObj = R(C)) [Ext]
     MATCH_SHAPE,        // R(A) := match_shape(R(B), shapeIdx = C) [Ext]
     MATCH_INIT,         // R(A) := match_init(R(B)) [Ext]
+    CMP,               // R(A) := sign(RK(B) <=> RK(C))
 };
 
 inline std::string opCodeToString(OpCode op) {
@@ -292,6 +293,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::ASSERT_TYPE: return "ASSERT_TYPE";
         case OpCode::MATCH_TYPE: return "MATCH_TYPE";
         case OpCode::MATCH_SHAPE: return "MATCH_SHAPE";
+        case OpCode::CMP: return "CMP";
         case OpCode::MATCH_INIT: return "MATCH_INIT";
         default: return "UNKNOWN";
     }
@@ -497,7 +499,7 @@ public:
             case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
             case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
             case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
-            case OpCode::GT: case OpCode::GE: case OpCode::IS:
+            case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS:
                 std::cout << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
                 break;
             

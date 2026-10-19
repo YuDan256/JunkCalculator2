@@ -350,7 +350,7 @@ public:
                     case OpCode::IDIV: case OpCode::MOD: case OpCode::POW: case OpCode::LDIV:
                     case OpCode::BAND: case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL:
                     case OpCode::SHR: case OpCode::EQ: case OpCode::NEQ: case OpCode::LT:
-                    case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::IS:
+                    case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (b == ESCAPE_KBIT_CONST) b = fetchExtra() | RK_ESCAPED_CONST;
                         else if (b == ESCAPE_KBIT_REG) b = fetchExtra() | RK_ESCAPED_REG;
@@ -601,6 +601,28 @@ public:
                             auto callout = builder_.createCallout(fnPtr, JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
                             setLocalSync(a, callout);
                         }
+                        break;
+                    }
+                    case OpCode::CMP: {
+                        uint8_t fb = chunk_.typeFeedback[currentIp];
+                        if (fb == 0x01) {
+                            // ★ 整数快路径：gt - lt 直接得到 -1/0/1（Setcc 输出是 0/1）。
+                            auto fs = captureFrameState(currentIp);
+                            HIRNode* lhs = getRKNode(b);
+                            HIRNode* rhs = getRKNode(c);
+                            auto guardL = builder_.createGuardIsInt32(lhs, fs);
+                            auto guardR = builder_.createGuardIsInt32(rhs, fs);
+                            auto unboxL = builder_.createUnboxInt32(lhs, guardL);
+                            auto unboxR = builder_.createUnboxInt32(rhs, guardR);
+                            auto lt = builder_.createCmpLtI32(unboxL, unboxR);
+                            auto gt = builder_.createCmpGtI32(unboxL, unboxR);
+                            auto diff = builder_.createSubI32(gt, lt, fs);
+                            setLocalSync(a, builder_.createBoxInt32(diff));
+                            break;
+                        }
+                        auto fs = captureFrameState(currentIp);
+                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_cmp), JITType::TaggedValue, 2, {getBoxedRKNode(b), getBoxedRKNode(c)}, fs);
+                        setLocalSync(a, callout);
                         break;
                     }
                     case OpCode::IS:

@@ -224,6 +224,10 @@ public:
     Value importModule(const std::string& name) { return execImport(name); }
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
+    // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。
+    int compareValues(const Value& a, const Value& b);
+    bool hasCmpProtocol(const Value& v);
+    static int compareResultSign(const Value& r, const std::string& who);
     VM();
     ~VM();
 
@@ -535,6 +539,7 @@ void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits);
 uint64_t jc2_jit_cmp_eq(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_neq(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_lt(uint64_t lhs_bits, uint64_t rhs_bits);
+uint64_t jc2_jit_cmp(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_le(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_gt(uint64_t lhs_bits, uint64_t rhs_bits);
 uint64_t jc2_jit_cmp_ge(uint64_t lhs_bits, uint64_t rhs_bits);

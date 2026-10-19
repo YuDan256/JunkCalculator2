@@ -497,7 +497,7 @@ class Raycaster3D extends engine.GameEngine {
             }
         }
 
-        entities.sort((a,b)=> a.dist > b.dist)
+        entities.sort((a,b)=> b.dist <=> a.dist)
         
         // 3. 渲染 Sprite 精灵 (适配独立缩放与地板对齐)
         for (e in entities) {

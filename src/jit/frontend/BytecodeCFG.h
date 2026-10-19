@@ -117,7 +117,7 @@ public:
                 case OpCode::IDIV: case OpCode::MOD: case OpCode::POW: case OpCode::LDIV:
                 case OpCode::BAND: case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL:
                 case OpCode::SHR: case OpCode::EQ: case OpCode::NEQ: case OpCode::LT:
-                case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::IS:
+                case OpCode::LE: case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     if (b == ESCAPE_KBIT_CONST || b == ESCAPE_KBIT_REG) fetchExtra();
                     if (c == ESCAPE_KBIT_CONST || c == ESCAPE_KBIT_REG) fetchExtra();

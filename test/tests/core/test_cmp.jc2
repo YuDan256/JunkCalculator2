@@ -1,0 +1,67 @@
+// <=> 三向比较：内建类型、__cmp__ / __rcmp__、与 < / == 的联动、排序与比较器校验
+
+// ── 内建类型 ──
+assert((1 <=> 2) == -1, "int ascending")
+assert((2 <=> 2) == 0, "int equal")
+assert((3 <=> 2) == 1, "int descending")
+assert((1 <=> 1.0) == 0, "int vs float equal")
+assert(("a" <=> "b") == -1, "string ordering")
+assert(("b" <=> "b") == 0, "string equal")
+assert((true <=> 1) == 0, "bool as 1")
+assert((true <=> 2) == -1, "bool ordering")
+assert(((1 <=> 2) < 0), "parenthesized result can be compared")
+
+// ── 不可排序：complex / NaN 一律 TypeError（相等也不返回 0）──
+threw = false
+try { x = complex(1, 2) <=> complex(1, 2) } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "complex is not orderable")
+threw = false
+try { x = nan <=> 1 } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "NaN is not orderable")
+
+// ── __cmp__ 驱动 <=> / < / == ──
+class Cmp {
+    init(x) = { self.x = x }
+    __cmp__(o) = self.x <=> (type(o) == Cmp ? o.x : o)
+}
+a = Cmp(1); b = Cmp(2)
+assert((a <=> b) == -1, "__cmp__ drives <=>")
+assert(a < b && !(b < a), "__cmp__ drives <")
+assert(a == a && !(a == b), "__cmp__ drives ==")
+assert((Cmp(3) <=> 2) == 1, "__cmp__ against a number")
+
+// ── 只有 __cmp__ 时，右侧实例自动取反 ──
+assert((2 <=> Cmp(3)) == -1, "right-hand __cmp__ is negated")
+
+// ── __rcmp__ 优先于自动取反 ──
+class RCmp {
+    init(x) = { self.x = x }
+    __cmp__(o) = self.x <=> (type(o) == RCmp ? o.x : o)
+    __rcmp__(o) = o <=> self.x
+}
+assert((2 <=> RCmp(3)) == -1, "__rcmp__ handles reflected compare")
+
+// ── __cmp__ 返回非法值 → TypeError ──
+class BadCmp {
+    init() = { }
+    __cmp__(o) = true
+}
+threw = false
+try { x = BadCmp() <=> BadCmp() } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "__cmp__ must return a real number")
+
+// ── 自然序 sort / min / max 接 __cmp__ ──
+L = @[Cmp(3), Cmp(1), Cmp(2)]
+L.sort()
+assert(L[0].x == 1 && L[1].x == 2 && L[2].x == 3, "natural sort uses __cmp__")
+assert(@[Cmp(3), Cmp(1), Cmp(2)].min().x == 1, "min uses __cmp__")
+assert(@[Cmp(3), Cmp(1), Cmp(2)].max().x == 3, "max uses __cmp__")
+
+// ── 比较器返回数值取符号；返回 bool 报错 ──
+assert(@[3, 1, 2].sorted((x, y) => x <=> y) == @[1, 2, 3], "sorted with <=>")
+assert(@[3, 1, 2].sorted((x, y) => y <=> x) == @[3, 2, 1], "sorted descending with <=>")
+threw = false
+try { @[3, 1, 2].sort((x, y) => x > y) } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "boolean comparator must be rejected")
+
+print("cmp battery OK")

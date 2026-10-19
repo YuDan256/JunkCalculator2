@@ -154,7 +154,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             case IROp::Add: case IROp::Sub: case IROp::Mul: case IROp::Div:
             case IROp::IDiv: case IROp::Mod: case IROp::Pow: case IROp::LeftDivide:
             case IROp::Eq: case IROp::Neq: case IROp::Lt: case IROp::Le:
-            case IROp::Gt: case IROp::Ge: case IROp::Is: case IROp::IsSubset:
+            case IROp::Gt: case IROp::Ge: case IROp::Cmp: case IROp::Is: case IROp::IsSubset:
             case IROp::Not: case IROp::Neg: case IROp::ToBool:
             case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
             case IROp::Shl: case IROp::Shr: case IROp::IsUninit:
@@ -220,6 +220,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::Le: inst.words = buildBinary(OpCode::LE); break;
                     case IROp::Gt: inst.words = buildBinary(OpCode::GT); break;
                     case IROp::Ge: inst.words = buildBinary(OpCode::GE); break;
+                    case IROp::Cmp: inst.words = buildBinary(OpCode::CMP); break;
                     case IROp::Is: inst.words = buildBinary(OpCode::IS); break;
                     case IROp::BitAnd: inst.words = buildBinary(OpCode::BAND); break;
                     case IROp::BitOr: inst.words = buildBinary(OpCode::BOR); break;

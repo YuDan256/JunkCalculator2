@@ -2018,7 +2018,7 @@ void BuiltinRegistry::registerStatistics() {
         bool first = true;
         if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mx = nextVal; first = false; }
-            else if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
+            else if (VM::activeVM->compareValues(nextVal, mx) > 0) mx = nextVal;
             return true;
         })) {
             if (first) JC2_THROW(MathError, "Cannot compute max of empty iterable.");
@@ -2031,7 +2031,7 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                if (helpers::checkGreater(v, listMx)) listMx = v;
+                if (VM::activeVM->compareValues(v, listMx) > 0) listMx = v;
             }
             return listMx;
         }
@@ -2042,7 +2042,7 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard setMxGuard(setMx);
             for (size_t i = 1; i < S.size(); ++i) {
                 Value v = S[i];
-                if (helpers::checkGreater(v, setMx)) setMx = v;
+                if (VM::activeVM->compareValues(v, setMx) > 0) setMx = v;
             }
             return setMx;
         }
@@ -2060,7 +2060,7 @@ void BuiltinRegistry::registerStatistics() {
         bool first = true;
         if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mn = nextVal; first = false; }
-            else if (helpers::checkLess(nextVal, mn)) mn = nextVal;
+            else if (VM::activeVM->compareValues(nextVal, mn) < 0) mn = nextVal;
             return true;
         })) {
             if (first) JC2_THROW(MathError, "Cannot compute min of empty iterable.");
@@ -2073,7 +2073,7 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard listMnGuard(listMn);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                if (helpers::checkLess(v, listMn)) listMn = v;
+                if (VM::activeVM->compareValues(v, listMn) < 0) listMn = v;
             }
             return listMn;
         }
@@ -2084,7 +2084,7 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard setMnGuard(setMn);
             for (size_t i = 1; i < S.size(); ++i) {
                 Value v = S[i];
-                if (helpers::checkLess(v, setMn)) setMn = v;
+                if (VM::activeVM->compareValues(v, setMn) < 0) setMn = v;
             }
             return setMn;
         }
@@ -2104,8 +2104,8 @@ void BuiltinRegistry::registerStatistics() {
         if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (first) { mn = nextVal; mx = nextVal; first = false; }
             else {
-                if (helpers::checkGreater(nextVal, mx)) mx = nextVal;
-                if (helpers::checkLess(nextVal, mn)) mn = nextVal;
+                if (VM::activeVM->compareValues(nextVal, mx) > 0) mx = nextVal;
+                if (VM::activeVM->compareValues(nextVal, mn) < 0) mn = nextVal;
             }
             return true;
         })) {
@@ -2121,8 +2121,8 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard listMxGuard(listMx);
             for (size_t i = 1; i < L.size(); ++i) {
                 Value v = L[i];
-                if (helpers::checkGreater(v, listMx)) listMx = v;
-                if (helpers::checkLess(v, listMn)) listMn = v;
+                if (VM::activeVM->compareValues(v, listMx) > 0) listMx = v;
+                if (VM::activeVM->compareValues(v, listMn) < 0) listMn = v;
             }
             return listMx - listMn;
         }
@@ -2135,8 +2135,8 @@ void BuiltinRegistry::registerStatistics() {
             GcValueGuard setSpanMxGuard(setMx);
             for (size_t i = 1; i < S.size(); ++i) {
                 Value v = S[i];
-                if (helpers::checkGreater(v, setMx)) setMx = v;
-                if (helpers::checkLess(v, setMn)) setMn = v;
+                if (VM::activeVM->compareValues(v, setMx) > 0) setMx = v;
+                if (VM::activeVM->compareValues(v, setMn) < 0) setMn = v;
             }
             return setMx - setMn;
         }
@@ -4521,9 +4521,15 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->stringProto, "countIf", {"f"}, countIfFn);
     regMethod(VM::activeVM->setProto, "countIf", {"f"}, countIfFn);
 
+    // ★ 三向比较器：返回实数，取符号；bool/其他类型直接报错，避免误用 >= 谓词。
+    auto cmpLess = [](const Value& f, const Value& a, const Value& b) -> bool {
+        Value r = safeCallValue(f, { a, b });
+        return VM::activeVM->compareResultSign(r, "sort() comparator") < 0;
+    };
+
     // ★ sort / sorted 的分工：sort 只作用于可变容器（list），原地排序并返回自身；
     //   sorted 一律返回副本（string → 新字符串，list → 新 list，matrix → 行数组）。
-    auto sortedCore = [this](const Value& argList, const Value& cmp) -> Value {
+    auto sortedCore = [this, cmpLess](const Value& argList, const Value& cmp) -> Value {
         Value arg = argList;
         // ★ 字符串：排序后仍返回字符串（与 reverse 一致）。
         //   摊成字符 list（GcObjGuard 护住全部元素）复用既有 list 排序，再拼回字符串。
@@ -4534,11 +4540,11 @@ void BuiltinRegistry::registerHigherOrder() {
             if (!cmp.isNone()) {
                 if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sorted() comparator must be a 2-parameter function.");
                 std::stable_sort(chars->vec.begin(), chars->vec.end(), [&](const Value& a, const Value& b) {
-                    return safeCallValue(cmp, { a, b }).truthy();
+                    return cmpLess(cmp, a, b);
                 });
             } else {
-                std::stable_sort(chars->vec.begin(), chars->vec.end(), [](const Value& a, const Value& b) {
-                    return helpers::checkLess(a, b);
+                std::stable_sort(chars->vec.begin(), chars->vec.end(), [this](const Value& a, const Value& b) {
+                    return VM::activeVM->compareValues(a, b) < 0;
                 });
             }
             std::string out;
@@ -4570,11 +4576,11 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!cmp.isNone()) {
             if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sorted() comparator must be a 2-parameter function.");
             std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
-                return safeCallValue(cmp, { a, b }).truthy();
+                return cmpLess(cmp, a, b);
             });
         } else {
-            std::stable_sort(L->vec.begin(), L->vec.end(), [](const Value& a, const Value& b) {
-                return helpers::checkLess(a, b);
+            std::stable_sort(L->vec.begin(), L->vec.end(), [this](const Value& a, const Value& b) {
+                return VM::activeVM->compareValues(a, b) < 0;
             });
         }
         return Value(L);
@@ -4589,7 +4595,7 @@ void BuiltinRegistry::registerHigherOrder() {
     regMethod(VM::activeVM->matrixProto, "sorted", {"cmp"}, sortedFn, 1);
 
     // ★ sort：仅 list 可变。原地排序，返回同一个 list（与 push/insert/merge 一致）。
-    auto sortInPlaceFn = [this](const std::vector<Value>& args) -> Value {
+    auto sortInPlaceFn = [this, cmpLess](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::LIST)) JC2_THROW(TypeError, "sort() is only available on lists; use sorted() for a copy.");
         ObjList* L = static_cast<ObjList*>(self.asObj());
@@ -4598,11 +4604,11 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!cmp.isNone()) {
             if (!callableAcceptsArgCount(cmp, 2)) JC2_THROW(RuntimeError, "sort() comparator must be a 2-parameter function.");
             std::stable_sort(L->vec.begin(), L->vec.end(), [&](const Value& a, const Value& b) {
-                return safeCallValue(cmp, { a, b }).truthy();
+                return cmpLess(cmp, a, b);
             });
         } else {
-            std::stable_sort(L->vec.begin(), L->vec.end(), [](const Value& a, const Value& b) {
-                return helpers::checkLess(a, b);
+            std::stable_sort(L->vec.begin(), L->vec.end(), [this](const Value& a, const Value& b) {
+                return VM::activeVM->compareValues(a, b) < 0;
             });
         }
         return self;

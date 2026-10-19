@@ -212,6 +212,7 @@ namespace jc {
             case TokenType::EQUAL: case TokenType::BANG_EQUAL:
             case TokenType::LESS: case TokenType::LESS_EQUAL:
             case TokenType::GREATER: case TokenType::GREATER_EQUAL:
+            case TokenType::CMP:
                 result += col(Ansi::CYAN) + srcText + col(Ansi::RESET);
                 break;
 

@@ -79,12 +79,12 @@ function runFile(filePath, cwd, extraFlags = "") {
                          defaultShell.toLowerCase().includes('pwsh');
 
     if (isPowerShell) {
-        terminal.sendText(`& "${exePath}" ${extraFlags} --run "${filePath}"`);
+        terminal.sendText(`& "${exePath}" ${extraFlags} run "${filePath}"`);
     } else if (isWin) {
         terminal.sendText(`chcp 65001 >nul`);
-        terminal.sendText(`"${exePath}" ${extraFlags} --run "${filePath}"`);
+        terminal.sendText(`"${exePath}" ${extraFlags} run "${filePath}"`);
     } else {
-        terminal.sendText(`"${exePath}" ${extraFlags} --run "${filePath}"`);
+        terminal.sendText(`"${exePath}" ${extraFlags} run "${filePath}"`);
     }
 }
 

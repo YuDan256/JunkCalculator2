@@ -420,11 +420,20 @@
     "getParent": {
       "signature": "getParent(cls)"
     },
+    "getName": {
+      "signature": "getName(obj)"
+    },
     "hasField": {
       "signature": "hasField(obj, key)"
     },
+    "getFieldInfo": {
+      "signature": "getFieldInfo(obj, name)"
+    },
     "getFields": {
       "signature": "getFields(obj)"
+    },
+    "getStatics": {
+      "signature": "getStatics(cls)"
     },
     "freeze": {
       "signature": "freeze(obj)"
@@ -705,6 +714,12 @@
     "__ge__": {
       "signature": "__ge__(other)"
     },
+    "__cmp__": {
+      "signature": "__cmp__(other)"
+    },
+    "__rcmp__": {
+      "signature": "__rcmp__(other)"
+    },
     "__contains__": {
       "signature": "__contains__(val)"
     },
@@ -961,6 +976,9 @@
     }
   },
   "matrix_methods": {
+    "sorted": {
+      "signature": "A.sorted([cmp])"
+    },
     "row": {
       "signature": "A.row()"
     },
@@ -975,6 +993,9 @@
     },
     "vcat": {
       "signature": "A.vcat(B)"
+    },
+    "item": {
+      "signature": "A.item()"
     },
     "rows": {
       "signature": "A.rows()"
@@ -1005,6 +1026,9 @@
     "sort": {
       "signature": "v.sort([cmp])"
     },
+    "sorted": {
+      "signature": "v.sorted([cmp])"
+    },
     "first": {
       "signature": "v.first()"
     },
@@ -1028,6 +1052,9 @@
     },
     "reverse": {
       "signature": "v.reverse()"
+    },
+    "reversed": {
+      "signature": "v.reversed()"
     },
     "flatten": {
       "signature": "v.flatten()"
@@ -1073,6 +1100,9 @@
     }
   },
   "string_methods": {
+    "sorted": {
+      "signature": "s.sorted([cmp])"
+    },
     "substr": {
       "signature": "s.substr(start, [length])"
     },
@@ -1126,6 +1156,12 @@
     "hasKey": {
       "signature": "d.hasKey(key)"
     },
+    "get": {
+      "signature": "d.get(key, default = none)"
+    },
+    "pop": {
+      "signature": "d.pop(key)"
+    },
     "merge": {
       "signature": "d1.merge(d2)"
     },
@@ -1134,6 +1170,12 @@
     },
     "removeKey": {
       "signature": "d.removeKey(key)"
+    },
+    "mapKeys": {
+      "signature": "d.mapKeys(fn)"
+    },
+    "mapValues": {
+      "signature": "d.mapValues(fn)"
     },
     "getFields": {
       "signature": "d.getFields()"
@@ -1175,6 +1217,39 @@
     }
   },
   "sys_methods": {
+    "args": {
+      "signature": "sys.args()"
+    },
+    "exit": {
+      "signature": "sys.exit([code])"
+    },
+    "getenv": {
+      "signature": "sys.getenv(name, [default])"
+    },
+    "setenv": {
+      "signature": "sys.setenv(name, value)"
+    },
+    "cwd": {
+      "signature": "sys.cwd()"
+    },
+    "chdir": {
+      "signature": "sys.chdir(path)"
+    },
+    "version": {
+      "signature": "sys.version()"
+    },
+    "platform": {
+      "signature": "sys.platform()"
+    },
+    "loadedModules": {
+      "signature": "sys.loadedModules()"
+    },
+    "gcStats": {
+      "signature": "sys.gcStats()"
+    },
+    "monotonic": {
+      "signature": "sys.monotonic()"
+    },
     "gc": {
       "signature": "sys.gc()"
     },

@@ -458,9 +458,26 @@
       "    • list / dict / set  — Deep by-value comparison (recursive)",
       "    • func / class / mod — By reference (pointer equality)",
       "    • instances          — By reference (unless both frozen, then by value)",
-      "    • <=>                Numbers, strings, and instances with __cmp__ / __rcmp__;",
-      "                         complex / matrix / list / dict / set / NaN → TypeError.",
-      "                         Chains with other comparisons are a syntax error; parenthesize.",
+      "    • <=>                Three-way compare → int -1 (a < b), 0 (a == b), 1 (a > b).",
+      "                         Domain: numbers, BigInt, Fraction, strings, and instances",
+      "                         defining __cmp__ / __rcmp__; complex, matrix, containers and",
+      "                         NaN raise TypeError. Not chainable: `a <=> b <=> c` is a",
+      "                         syntax error, use `(a <=> b) <=> c`.",
+      "",
+      "    ★ Three-way protocol (instances):",
+      "        __cmp__(other)    returns a real number; sign decides. bool / NaN rejected.",
+      "        __rcmp__(other)   reflected form; other is the left operand.",
+      "        Dispatch: left __cmp__ → right __rcmp__ → right __cmp__ negated.",
+      "        <, <=, >, >= fall back to it when the specific dunder is absent;",
+      "        == / != fall back to (a <=> b) == 0 when __eq__ / __neq__ is absent.",
+      "      class Money {",
+      "          init(c) = { self.c = c }",
+      "          __cmp__(o) = self.c <=> (type(o) == Money ? o.c : o)",
+      "          __rcmp__(o) = o <=> self.c",
+      "      }",
+      "      Money(2) <=> Money(1)    // 1",
+      "      Money(1) <  Money(2)    // true (via __cmp__)",
+      "      3 <=> Money(2)           // 1  (via __rcmp__)",
       "",
       "    ★ Chained Comparisons (Python-style):",
       "      0 <= x <= 10       Evaluates as (0 <= x) && (x <= 10).",
@@ -5461,6 +5478,20 @@
         "__ge__(o) = self.val >= o.val"
       ]
     },
+    "__cmp__": {
+      "signature": "__cmp__(other)",
+      "desc": "Dunder method: three-way comparison used by <=>, and as a fallback by <, <=, >, >=, ==, sort(), min() and max(). Must return a real number whose sign decides the order; bool and NaN are rejected.",
+      "examples": [
+        "__cmp__(o) = self.x <=> o.x"
+      ]
+    },
+    "__rcmp__": {
+      "signature": "__rcmp__(other)",
+      "desc": "Dunder method: reflected three-way comparison, called when the left operand has no __cmp__. other is the left operand and the return value is the result of other <=> self.",
+      "examples": [
+        "__rcmp__(o) = o <=> self.x"
+      ]
+    },
     "__contains__": {
       "signature": "__contains__(val)",
       "desc": "Dunder method: Overloads the 'in' operator (val in self).",
@@ -6414,6 +6445,13 @@
     }
   },
   "matrix_methods": {
+    "sorted": {
+      "signature": "A.sorted([cmp])",
+      "desc": "Returns the matrix elements sorted into a row array. Optionally accepts a comparator returning a number.",
+      "examples": [
+        "[3, 1, 2].sorted()"
+      ]
+    },
     "row": {
       "signature": "A.row()",
       "desc": "Returns the number of rows in a matrix.",
@@ -6672,6 +6710,13 @@
     }
   },
   "string_methods": {
+    "sorted": {
+      "signature": "s.sorted([cmp])",
+      "desc": "Returns the string with its characters sorted (code-point order). Optionally accepts a comparator returning a number.",
+      "examples": [
+        "\"cba\".sorted()"
+      ]
+    },
     "substr": {
       "signature": "s.substr(start, [length])",
       "desc": "Returns a substring starting at 'start'. If 'length' is provided, extracts that many characters.",

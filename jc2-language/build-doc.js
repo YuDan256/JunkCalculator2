@@ -34,8 +34,9 @@ try {
         }
     }
 
-    // 2. 删除不需要的 topics 节点以精简插件体积
+    // 2. 删除不需要的 topics / catalog 节点以精简插件体积
     if (doc.topics) delete doc.topics;
+    if (doc.catalog) delete doc.catalog;
     
     // 剔除描述与示例以精简体积，并将别名提升为独立的函数条目
     const categoriesToMinify = [

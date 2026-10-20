@@ -10,7 +10,6 @@
       "    basic       Core syntax and values",
       "    operators   Arithmetic, comparison, logical and ternary operators",
       "    elementary  Constants, elementary functions and conversions",
-      "    strings     String interpolation and raw strings",
       "    namespaces  Built-in namespaces and shadowing",
       "    repl        REPL session commands and workspace",
       "    cli         Command-line usage and global flags",
@@ -531,39 +530,6 @@
       "    input(\"prompt\")     Print prompt and read a line",
       "    clock()             High-resolution timer (seconds since epoch)",
       "    sleep(seconds)      Pause execution",
-      ""
-    ],
-    "strings": [
-      "═══ Strings & Interpolation ═══",
-      "",
-      "  String Interpolation (f-strings)",
-      "  ──────────────────────",
-      "    f\"text {expr} more text\"",
-      "    f\"x = {x}, y = {y}\"           →  \"x = 3, y = 4\"",
-      "    f\"pi = {pi()::.4f}\"             →  \"pi = 3.1416\"",
-      "    f\"hex = {255::x}\"             →  \"hex = ff\"",
-      "    f\"{name::>10}\"                →  \"     Alice\"",
-      "",
-      "    Format specs use :: separator: {expr::spec}",
-      "      spec = [[fill]align][sign][#][0][width][,][.precision][type]",
-      "        fill       Any character used for padding (must precede align)",
-      "        align      < left  > right  ^ center  = after sign",
-      "        sign       + plus  - minus  (space) leading space for positives",
-      "        #          Alternate form (0x/0b/0o prefix, keep trailing point)",
-      "        0          Zero-pad numbers instead of spaces",
-      "        width      Minimum field width (integer)",
-      "        , _        Thousands grouping separator",
-      "        .precision Digits after decimal (floats) / max chars (strings)",
-      "        type       b binary  o octal  x/X hex  d decimal  c char",
-      "                   e/E sci  f/F fixed  g/G general  % percent  s string",
-      "    No ambiguity with ternary operator:",
-      "      f\"{x > 0 ? x : -x}\"         Works perfectly (single : is part of ternary)",
-      "",
-      "  Raw Strings (r-strings)",
-      "  ──────────────────────",
-      "    r\"C:\\path\\to\\file\"          Backslashes are literal, no escaping.",
-      "    r\"(content with \"quotes\")\"   Custom delimiter (empty tag).",
-      "    r\"TAG(content)TAG\"             Named delimiter for maximum safety.",
       ""
     ],
     "namespaces": [
@@ -8279,9 +8245,6 @@
       "title": "Language",
       "summary": "Syntax, semantics and metaprogramming.",
       "children": [
-        {
-          "ref": "topic.strings"
-        },
         {
           "ref": "topic.namespaces"
         },

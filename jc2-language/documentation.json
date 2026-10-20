@@ -1560,6 +1560,12 @@
           "ref": "topic.basic"
         },
         {
+          "ref": "topic.elementary"
+        },
+        {
+          "ref": "topic.operators"
+        },
+        {
           "ref": "topic.function"
         },
         {
@@ -1567,6 +1573,12 @@
         },
         {
           "ref": "topic.error"
+        },
+        {
+          "ref": "topic.repl"
+        },
+        {
+          "ref": "topic.cli"
         }
       ]
     },
@@ -1574,6 +1586,12 @@
       "title": "Language",
       "summary": "Syntax, semantics and metaprogramming.",
       "children": [
+        {
+          "ref": "topic.strings"
+        },
+        {
+          "ref": "topic.namespaces"
+        },
         {
           "ref": "topic.scope"
         },

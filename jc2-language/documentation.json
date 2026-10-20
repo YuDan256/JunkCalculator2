@@ -612,7 +612,7 @@
       "signature": "match (expr) { pattern => body, ... }"
     },
     "namespace": {
-      "signature": "namespace [Name] { ... }  |  namespace"
+      "signature": "namespace [Name | \"Display Name\"] { ... }  |  namespace"
     },
     "class": {
       "signature": "class [Name] [extends Parent] { ... }  |  class"

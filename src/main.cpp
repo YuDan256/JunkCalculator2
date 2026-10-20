@@ -931,7 +931,7 @@ int main(int argc, char* argv[]) {
     };
 
     auto printBannerBottom = []() {
-        std::cout << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " for a list of commands." << std::endl;
+        std::cout << "Type " << jc::col(jc::Ansi::BRIGHT_YELLOW) << "'/help'" << jc::col(jc::Ansi::RESET) << " to browse the documentation." << std::endl;
     };
 
     auto printBanner = [&]() {
@@ -1337,7 +1337,7 @@ int main(int argc, char* argv[]) {
                 continue;
             }
 
-            std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Unknown command: " << input << jc::col(jc::Ansi::RESET) << "\nType '/help' for a list of commands.\n";
+            std::cerr << jc::col(jc::Ansi::BRIGHT_RED) << "Unknown command: " << input << jc::col(jc::Ansi::RESET) << "\nType '/help' to browse the documentation.\n";
             continue;
         }
 

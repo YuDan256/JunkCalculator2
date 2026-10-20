@@ -923,7 +923,7 @@ namespace jc {
                     for (const auto& cid : n.children) {
                         auto ci = ix.cat.find(cid);
                         if (ci == ix.cat.end()) continue;
-                        labels.push_back(ci->second.title);
+                        labels.push_back(ci->second.path);
                     }
                     for (size_t i = 0; i < labels.size(); ++i) { if (i) o << ", "; o << labels[i]; }
                     o << "\n";

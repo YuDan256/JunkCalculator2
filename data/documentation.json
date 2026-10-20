@@ -455,7 +455,7 @@
       "",
       "    Values available without any import:",
       "      pi()              → 3.14159265358979…  (also symbolic π inside CAS expressions)",
-      "      e()               → 2.71828182845904…",
+      "      math.e / math.E    → 2.71828182845904…  (requires import math)",
       "      1i / 3i           → imaginary unit via the literal suffix (1i * 1i == -1.0)",
       "      3 + 4i            → 3.0+4.0i",
       "",
@@ -1717,7 +1717,7 @@
       "",
       "    No import needed:",
       "      pi()    → 3.14159265358979…   (global factory function, permanent)",
-      "      e()     → 2.71828182845904…",
+      "      math.e  → 2.71828182845904…   (requires import math)",
       "      1i      → imaginary unit via the literal suffix (immune to shadowing)",
       "",
       "  Prime Engine (Block-Differential I/O)",
@@ -3850,13 +3850,6 @@
         "pi()"
       ]
     },
-    "e": {
-      "desc": "Returns Euler's number e (2.71828182...) as a plain float. The constant proper lives in the math namespace as math.E (requires `import math`); e() needs no import and participates in symbolic CAS expressions.",
-      "examples": [
-        "e()"
-      ],
-      "signature": "e()"
-    },
     "i": {
       "signature": "math.i",
       "desc": "The imaginary unit (0 + 1i). It is a constant in the math namespace (math.i, alias math.I), so `import math` is required; without an import use the imaginary literal suffix `1i` / `3i` instead. It is NOT a function -- `i()` does not exist.",
@@ -5238,7 +5231,7 @@
       "signature": "ln(x)",
       "desc": "Alias of log(); returns the natural logarithm of x.",
       "examples": [
-        "ln(e())"
+        "import math; ln(math.e)"
       ]
     }
   },
@@ -7978,6 +7971,14 @@
       "examples": [
         "math.BaseNum(255, 16).digits()"
       ]
+    },
+    "e": {
+      "signature": "math.e",
+      "desc": "Euler's number e (2.71828182...) as a plain float. Requires import math; the uppercase constant math.E is the same value.",
+      "examples": [
+        "import math; math.e",
+        "import math; math.e == math.E"
+      ]
     }
   },
   "cas_methods": {
@@ -8047,7 +8048,7 @@
     },
     "e": {
       "signature": "cas.e()",
-      "desc": "Returns the symbolic constant e, which is exp(1) (normalized on simplification; stays exact, unlike the floating-point e()).",
+      "desc": "Returns the symbolic constant e, which is exp(1) (normalized on simplification; stays exact, unlike the floating-point math.e).",
       "examples": [
         "import cas; cas.e() * cas.e()"
       ]

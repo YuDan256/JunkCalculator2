@@ -447,69 +447,6 @@
     "copy": {
       "signature": "copy(obj, freeze = none)"
     },
-    "addE": {
-      "signature": "A.addE(B)"
-    },
-    "subE": {
-      "signature": "A.subE(B)"
-    },
-    "mulE": {
-      "signature": "A.mulE(B)"
-    },
-    "divE": {
-      "signature": "A.divE(B)"
-    },
-    "idivE": {
-      "signature": "A.idivE(B)"
-    },
-    "powE": {
-      "signature": "A.powE(B)"
-    },
-    "modE": {
-      "signature": "A.modE(B)"
-    },
-    "eqE": {
-      "signature": "A.eqE(B)"
-    },
-    "neqE": {
-      "signature": "A.neqE(B)"
-    },
-    "ltE": {
-      "signature": "A.ltE(B)"
-    },
-    "leE": {
-      "signature": "A.leE(B)"
-    },
-    "gtE": {
-      "signature": "A.gtE(B)"
-    },
-    "geE": {
-      "signature": "A.geE(B)"
-    },
-    "maxE": {
-      "signature": "A.maxE(B)"
-    },
-    "minE": {
-      "signature": "A.minE(B)"
-    },
-    "andE": {
-      "signature": "A.andE(B)"
-    },
-    "orE": {
-      "signature": "A.orE(B)"
-    },
-    "xorE": {
-      "signature": "A.xorE(B)"
-    },
-    "atan2E": {
-      "signature": "Y.atan2E(X)"
-    },
-    "hypotE": {
-      "signature": "A.hypotE(B)"
-    },
-    "whereE": {
-      "signature": "mask.whereE(A, B)"
-    },
     "perm": {
       "signature": "A.perm()"
     },
@@ -973,6 +910,69 @@
     }
   },
   "matrix_methods": {
+    "addE": {
+      "signature": "A.addE(B)"
+    },
+    "subE": {
+      "signature": "A.subE(B)"
+    },
+    "mulE": {
+      "signature": "A.mulE(B)"
+    },
+    "divE": {
+      "signature": "A.divE(B)"
+    },
+    "idivE": {
+      "signature": "A.idivE(B)"
+    },
+    "powE": {
+      "signature": "A.powE(B)"
+    },
+    "modE": {
+      "signature": "A.modE(B)"
+    },
+    "eqE": {
+      "signature": "A.eqE(B)"
+    },
+    "neqE": {
+      "signature": "A.neqE(B)"
+    },
+    "ltE": {
+      "signature": "A.ltE(B)"
+    },
+    "leE": {
+      "signature": "A.leE(B)"
+    },
+    "gtE": {
+      "signature": "A.gtE(B)"
+    },
+    "geE": {
+      "signature": "A.geE(B)"
+    },
+    "maxE": {
+      "signature": "A.maxE(B)"
+    },
+    "minE": {
+      "signature": "A.minE(B)"
+    },
+    "andE": {
+      "signature": "A.andE(B)"
+    },
+    "orE": {
+      "signature": "A.orE(B)"
+    },
+    "xorE": {
+      "signature": "A.xorE(B)"
+    },
+    "atan2E": {
+      "signature": "Y.atan2E(X)"
+    },
+    "hypotE": {
+      "signature": "A.hypotE(B)"
+    },
+    "whereE": {
+      "signature": "mask.whereE(A, B)"
+    },
     "sorted": {
       "signature": "A.sorted([cmp])"
     },

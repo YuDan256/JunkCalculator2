@@ -1162,9 +1162,6 @@ void BuiltinRegistry::registerMatrixOps() {
 
     regMethod(VM::activeVM->matrixProto, "addE", {"B"}, [elementWiseOp](const std::vector<Value>& args) -> Value { 
         return elementWiseOp(helpers::nativeSelfStack.back(), args[0], "addE", [](const Value& a, const Value& b) { 
-            if (a.isString() || b.isString()) {
-                std::ostringstream oss; oss << a << b; return Value(oss.str());
-            }
             return a + b; 
         }); 
     });

@@ -66,14 +66,6 @@
       "    regex       High-performance Regular Expression engine (import regex)",
       "    io          Industrial I/O Engine (File streams, CSV, etc.) (import io)",
       "",
-      "  Standard Modules (require `import` before use, use `/help <module>` for details)",
-      "  ────────────────────────────────────────────────────────────────────",
-      "    discrete    Discrete math utilities standard library (import discrete)",
-      "    net         High-level TCP socket OOP wrapper (import net)",
-      "    http        Modern HTTP/1.1 Client with JSON support (import http)",
-      "    engine      Object-Oriented Game & GUI Framework (import engine)",
-      "    collections Data structures: stacks, queues, heaps, trees (import collections)",
-      "",
       "  Quick-Start Cheatsheet",
       "  ────────────────────────────────────────────────────────────────────",
       "    const G = 9.81                 immutable constant",
@@ -8377,21 +8369,6 @@
         {
           "title": "random",
           "auto": "random_methods"
-        },
-        {
-          "title": "collections"
-        },
-        {
-          "title": "discrete"
-        },
-        {
-          "title": "engine"
-        },
-        {
-          "title": "http"
-        },
-        {
-          "title": "net"
         }
       ]
     },

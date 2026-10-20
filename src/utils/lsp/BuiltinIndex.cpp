@@ -16,6 +16,15 @@ namespace lsp {
         return "";
     }
 
+    static std::vector<std::string> docExamples(const Json& entry) {
+        std::vector<std::string> examples;
+        if (!entry.isObject() || !entry.has("examples") || !entry["examples"].isArray()) return examples;
+        for (const auto& e : entry["examples"].arrVal) {
+            if (e.isString()) examples.push_back(e.strVal);
+        }
+        return examples;
+    }
+
     static std::vector<std::string> docAliases(const Json& entry) {
         std::vector<std::string> aliases;
         if (!entry.isObject() || !entry.has("aliases") || !entry["aliases"].isArray()) return aliases;
@@ -56,6 +65,7 @@ namespace lsp {
         buildGlobals();
         buildModules();
         buildMethods();
+        buildClassMethods();
         buildTypes();
         buildKeywords();
     }
@@ -100,6 +110,7 @@ namespace lsp {
                 const Json& e = (*funcsNode)[name];
                 sym.signatureText = docStr(e, "signature");
                 sym.desc = docStr(e, "desc");
+                sym.examples = docExamples(e);
                 for (auto& alias : docAliases(e)) {
                     BuiltinSymbol aliasSym = sym;
                     aliasSym.name = alias;
@@ -184,6 +195,7 @@ namespace lsp {
                 sym.owner = typeName;
                 sym.signatureText = docStr(entry, "signature");
                 sym.desc = docStr(entry, "desc");
+                sym.examples = docExamples(entry);
                 methodNameSet.insert(methodName);
                 methods[typeName][methodName] = sym;
                 for (auto& alias : docAliases(entry)) {
@@ -192,6 +204,38 @@ namespace lsp {
                     aliasSym.name = alias;
                     methods[typeName][alias] = std::move(aliasSym);
                 }
+            }
+        }
+    }
+
+    void BuiltinIndex::buildClassMethods() {
+        HelpRouter::init();
+        const Json& helpAst = HelpRouter::helpAst;
+        if (!helpAst.isObject()) return;
+
+        static const std::vector<std::string> categories = {
+            "matrix_methods", "list_methods", "string_methods", "dict_methods", "set_methods",
+            "sys_methods", "math_methods", "cas_methods", "random_methods"
+        };
+        for (const auto& catName : categories) {
+            if (!helpAst.has(catName)) continue;
+            const Json& cat = helpAst[catName];
+            if (!cat.isObject()) continue;
+            for (const auto& [key, entry] : cat.objVal) {
+                size_t dot = key.find('.');
+                if (dot == std::string::npos || dot == 0 || dot + 1 >= key.size()) continue;
+                if (!entry.isObject()) continue;
+                std::string owner = key.substr(0, dot);
+                std::string name = key.substr(dot + 1);
+                BuiltinSymbol sym;
+                sym.name = name;
+                sym.kind = BuiltinKind::Method;
+                sym.owner = owner;
+                sym.signatureText = docStr(entry, "signature");
+                sym.desc = docStr(entry, "desc");
+                sym.examples = docExamples(entry);
+                methodNameSet.insert(name);
+                classMethods[owner][name] = std::move(sym);
             }
         }
     }
@@ -252,6 +296,23 @@ namespace lsp {
         if (itT == methods.end()) return nullptr;
         auto it = itT->second.find(method);
         return it != itT->second.end() ? &it->second : nullptr;
+    }
+
+    const BuiltinSymbol* BuiltinIndex::findClassMethod(const std::string& owner, const std::string& method) const {
+        auto itC = classMethods.find(owner);
+        if (itC == classMethods.end()) return nullptr;
+        auto it = itC->second.find(method);
+        return it != itC->second.end() ? &it->second : nullptr;
+    }
+
+    bool BuiltinIndex::hasClassMethods(const std::string& owner) const {
+        return classMethods.count(owner) > 0;
+    }
+
+    const std::unordered_map<std::string, BuiltinSymbol>& BuiltinIndex::classMethodsOf(const std::string& owner) const {
+        static const std::unordered_map<std::string, BuiltinSymbol> empty;
+        auto it = classMethods.find(owner);
+        return it == classMethods.end() ? empty : it->second;
     }
 
     bool BuiltinIndex::isKeyword(const std::string& name) const {

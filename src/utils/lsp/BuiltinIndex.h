@@ -34,6 +34,7 @@ namespace lsp {
         int kwargDefaultCount = 0;
         std::string signatureText;        // 文档签名文本（hover 用）
         std::string desc;
+        std::vector<std::string> examples;  // 文档示例（hover 用）
         std::string owner;                // 所属模块名 / 类型名，空 = 全局
         std::vector<TypeSig> paramTypes;  // 参数类型签名
         TypeSig returnType;               // 返回类型签名
@@ -48,6 +49,9 @@ namespace lsp {
         const BuiltinSymbol* findGlobal(const std::string& name) const;
         const BuiltinSymbol* findModuleMember(const std::string& module, const std::string& name) const;
         const BuiltinSymbol* findMethod(const std::string& typeName, const std::string& method) const;
+        const BuiltinSymbol* findClassMethod(const std::string& owner, const std::string& method) const;
+        bool hasClassMethods(const std::string& owner) const;
+        const std::unordered_map<std::string, BuiltinSymbol>& classMethodsOf(const std::string& owner) const;
         bool isKeyword(const std::string& name) const;
         bool isTypeName(const std::string& name) const;
         bool isMethodName(const std::string& name) const;              // 任意类型的方法名
@@ -60,6 +64,7 @@ namespace lsp {
         std::unordered_map<std::string, BuiltinSymbol> globals;        // 全局函数 + 类型（含别名）
         std::unordered_map<std::string, std::unordered_map<std::string, BuiltinSymbol>> moduleMembers; // module -> name -> sym
         std::unordered_map<std::string, std::unordered_map<std::string, BuiltinSymbol>> methods;       // type -> method -> sym
+        std::unordered_map<std::string, std::unordered_map<std::string, BuiltinSymbol>> classMethods;  // class -> method -> sym
         std::unordered_set<std::string> keywordSet;
         std::unordered_set<std::string> typeNameSet;
         std::unordered_set<std::string> methodNameSet;
@@ -67,6 +72,7 @@ namespace lsp {
         void buildGlobals();    // VM 精确签名 + helpAst 文档
         void buildModules();    // VM builtinModules（namespace 闭包）+ helpAst 文档
         void buildMethods();    // helpAst matrix/list/string/dict/set_methods
+        void buildClassMethods(); // helpAst 中带点的类方法条目（math.BaseNum.*）
         void buildTypes();      // Value.h BuiltinType 枚举名 + complex（去 bigint）
         void buildKeywords();   // helpAst keywords
     };

@@ -21,6 +21,46 @@
 namespace jc {
 namespace lsp {
 
+    // 在 doc 文本里找 `var = <rhs>`，返回最后一个赋值右侧（用于内置类实例的类型推断兜底）
+    static std::string assignedRhs(const std::string& text, const std::string& var, int beforeOffset) {
+        std::string best;
+        size_t pos = 0;
+        while ((pos = text.find(var, pos)) != std::string::npos) {
+            if (pos >= static_cast<size_t>(beforeOffset)) break;
+            bool leftOk = (pos == 0) || !(std::isalnum(static_cast<unsigned char>(text[pos - 1])) || text[pos - 1] == '_');
+            size_t after = pos + var.size();
+            bool rightOk = (after >= text.size()) || !(std::isalnum(static_cast<unsigned char>(text[after])) || text[after] == '_');
+            if (leftOk && rightOk) {
+                size_t p = after;
+                while (p < text.size() && std::isspace(static_cast<unsigned char>(text[p]))) p++;
+                if (p < text.size() && text[p] == '=' && (p + 1 >= text.size() || text[p + 1] != '=')) {
+                    size_t e = text.find('\n', p);
+                    best = text.substr(p + 1, (e == std::string::npos ? text.size() : e) - (p + 1));
+                }
+            }
+            pos += var.size();
+        }
+        return best;
+    }
+
+    // 从右值扫描 `Class(`，返回在 BuiltinIndex 中确实有类方法的类名
+    static std::string classFromRhs(const std::string& rhs, const BuiltinIndex& index) {
+        for (size_t i = 0; i < rhs.size();) {
+            if (std::isalpha(static_cast<unsigned char>(rhs[i])) || rhs[i] == '_') {
+                size_t j = i;
+                while (j < rhs.size() && (std::isalnum(static_cast<unsigned char>(rhs[j])) || rhs[j] == '_')) j++;
+                std::string id = rhs.substr(i, j - i);
+                size_t k = j;
+                while (k < rhs.size() && std::isspace(static_cast<unsigned char>(rhs[k]))) k++;
+                if (k < rhs.size() && rhs[k] == '(' && index.hasClassMethods(id)) return id;
+                i = j;
+            } else {
+                i++;
+            }
+        }
+        return "";
+    }
+
     LspServer::LspServer() : isRunning(false) {
         // 确保标准输入输出以二进制模式运行，避免 \r\n 转换导致 Content-Length 计算错误
 #ifdef _WIN32
@@ -261,6 +301,64 @@ namespace lsp {
                     TypeInferrer inferrer(doc, resolver, builtinIndex);
                     inferrer.infer(ast.get());
                     
+                    // 先处理类方法（math.BaseNum.*）与类实例方法，避免解析器把它们当普通属性
+                    {
+                        int offset = doc->positionToOffset(pos);
+                        int start = offset, end = offset;
+                        while (start > 0 && (std::isalnum(static_cast<unsigned char>(doc->content[start - 1])) || doc->content[start - 1] == '_')) start--;
+                        while (end < static_cast<int>(doc->content.length()) && (std::isalnum(static_cast<unsigned char>(doc->content[end])) || doc->content[end] == '_')) end++;
+                        std::string word, qualifier;
+                        if (start < end) {
+                            word = doc->content.substr(start, end - start);
+                            int qpos = start - 1;
+                            while (qpos >= 0 && std::isspace(static_cast<unsigned char>(doc->content[qpos]))) qpos--;
+                            if (qpos >= 0 && doc->content[qpos] == '.') {
+                                int qe = qpos - 1;
+                                while (qe >= 0 && std::isspace(static_cast<unsigned char>(doc->content[qe]))) qe--;
+                                int qs = qe;
+                                while (qs >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[qs])) || doc->content[qs] == '_')) qs--;
+                                if (qs < qe) qualifier = doc->content.substr(qs + 1, qe - qs);
+                            }
+                        }
+                        std::string owner;
+                        if (!qualifier.empty()) {
+                            owner = qualifier;
+                            for (auto* sym : resolver.visibleSymbolsAt(pos)) {
+                                if (sym->name == qualifier) {
+                                    std::string t = sym->inferredType.toString();
+                                    if (t.empty()) t = sym->typeHint;
+                                    if (!t.empty()) owner = t;
+                                    break;
+                                }
+                            }
+                            if (!builtinIndex.hasClassMethods(owner)) {
+                                std::string guessed = classFromRhs(assignedRhs(doc->content, qualifier, offset), builtinIndex);
+                                if (!guessed.empty()) owner = guessed;
+                            }
+                        }
+                        if (!owner.empty() && builtinIndex.hasClassMethods(owner)) {
+                            if (const BuiltinSymbol* b = builtinIndex.findClassMethod(owner, word)) {
+                                std::string md = "```jc2\n(module_member) " + (b->signatureText.empty() ? owner + "." + word : b->signatureText) + "\n```";
+                                if (!b->desc.empty()) md += "\n---\n" + b->desc;
+                                if (!b->examples.empty()) {
+                                    md += "\n\n**Examples:**\n```jc2\n";
+                                    for (const auto& ex : b->examples) md += ex + "\n";
+                                    md += "```";
+                                }
+                                Json hover;
+                                hover.type = JsonType::Object;
+                                Json contents;
+                                contents.type = JsonType::Object;
+                                contents["kind"] = Json("markdown");
+                                contents["value"] = Json(md);
+                                hover["contents"] = contents;
+                                res.result = hover;
+                                sendMessage(res.toJson().serialize());
+                                return;
+                            }
+                        }
+                    }
+
                     const NameRes* nr = resolver.resolveAtPos(pos);
                     if (nr) {
                         Json hover;
@@ -289,6 +387,11 @@ namespace lsp {
                             std::string kindStr = (b.kind == BuiltinKind::Type) ? "type" : (b.kind == BuiltinKind::Class) ? "class" : "builtin_function";
                             md = "```jc2\n(" + kindStr + ") " + (b.signatureText.empty() ? b.name : b.signatureText) + "\n```";
                             if (!b.desc.empty()) md += "\n---\n" + b.desc;
+                            if (!b.examples.empty()) {
+                                md += "\n\n**Examples:**\n```jc2\n";
+                                for (const auto& ex : b.examples) md += ex + "\n";
+                                md += "```";
+                            }
                         } else if (nr->origin == NameRes::Imported && nr->member) {
                             md = "```jc2\n(module_member) " + nr->moduleName + "." + nr->member->name + "\n```";
                             if (!nr->member->desc.empty()) md += "\n---\n" + nr->member->desc;
@@ -312,9 +415,42 @@ namespace lsp {
                         }
                         if (start < end) {
                             word = doc->content.substr(start, end - start);
-                            
+
+                            std::string qualifier;
+                            int qpos = start - 1;
+                            while (qpos >= 0 && std::isspace(static_cast<unsigned char>(doc->content[qpos]))) qpos--;
+                            if (qpos >= 0 && doc->content[qpos] == '.') {
+                                int qe = qpos - 1;
+                                while (qe >= 0 && std::isspace(static_cast<unsigned char>(doc->content[qe]))) qe--;
+                                int qs = qe;
+                                while (qs >= 0 && (std::isalnum(static_cast<unsigned char>(doc->content[qs])) || doc->content[qs] == '_')) qs--;
+                                if (qs < qe) qualifier = doc->content.substr(qs + 1, qe - qs);
+                            }
+
                             jc::HelpRouter::init();
                             const Json& helpAst = jc::HelpRouter::helpAst;
+                            if (!qualifier.empty()) {
+                                if (const BuiltinSymbol* b = builtinIndex.findClassMethod(qualifier, word)) {
+                                    std::string md = "```jc2\n(module_member) " + qualifier + "." + word + "\n```";
+                                    if (!b->signatureText.empty()) md = "```jc2\n(module_member) " + b->signatureText + "\n```";
+                                    if (!b->desc.empty()) md += "\n---\n" + b->desc;
+                                    if (!b->examples.empty()) {
+                                        md += "\n\n**Examples:**\n```jc2\n";
+                                        for (const auto& ex : b->examples) md += ex + "\n";
+                                        md += "```";
+                                    }
+                                    Json hover;
+                                    hover.type = JsonType::Object;
+                                    Json contents;
+                                    contents.type = JsonType::Object;
+                                    contents["kind"] = Json("markdown");
+                                    contents["value"] = Json(md);
+                                    hover["contents"] = contents;
+                                    res.result = hover;
+                                    sendMessage(res.toJson().serialize());
+                                    return;
+                                }
+                            }
                             if (helpAst.isObject()) {
                                 Json targetData;
                                 std::string kindStr;
@@ -330,6 +466,20 @@ namespace lsp {
                                         targetData = helpAst[cat][word];
                                         kindStr = (cat == "global_functions") ? "builtin_function" : "builtin_method";
                                         break;
+                                    }
+                                }
+                                if (targetData.isNull()) {
+                                    for (const auto& cat : categories) {
+                                        if (!helpAst.has(cat) || !helpAst[cat].isObject()) continue;
+                                        for (const auto& [key, entry] : helpAst[cat].objVal) {
+                                            if (key.size() > word.size() + 1 && key.compare(key.size() - word.size(), word.size(), word) == 0
+                                                && key[key.size() - word.size() - 1] == '.') {
+                                                targetData = entry;
+                                                kindStr = "builtin_method";
+                                                break;
+                                            }
+                                        }
+                                        if (!targetData.isNull()) break;
                                     }
                                 }
                                 
@@ -510,8 +660,39 @@ namespace lsp {
                             }
                         }
                         
+                        // 类方法（math.BaseNum.* 这类带点的文档条目）
+                        std::string classOwner;
+                        if (builtinIndex.hasClassMethods(objectName)) classOwner = objectName;
+                        else if (!targetType.empty() && builtinIndex.hasClassMethods(targetType)) classOwner = targetType;
+                        if (classOwner.empty() && !objectName.empty()) {
+                            int cursor = doc->positionToOffset(pos);
+                            classOwner = classFromRhs(assignedRhs(doc->content, objectName, cursor), builtinIndex);
+                        }
+                        if (!classOwner.empty()) {
+                            for (const auto& [name, sym] : builtinIndex.classMethodsOf(classOwner)) {
+                                Json item;
+                                item.type = JsonType::Object;
+                                item["label"] = Json(name);
+                                item["kind"] = Json(2); // Method
+                                if (!sym.signatureText.empty()) item["detail"] = Json(sym.signatureText);
+                                if (!sym.desc.empty()) {
+                                    Json docJson;
+                                    docJson.type = JsonType::Object;
+                                    docJson["kind"] = Json("markdown");
+                                    std::string descStr = sym.desc;
+                                    if (!sym.examples.empty()) {
+                                        descStr += "\n\n**Examples:**\n```jc2\n";
+                                        for (const auto& ex : sym.examples) descStr += ex + "\n";
+                                        descStr += "```";
+                                    }
+                                    docJson["value"] = Json(descStr);
+                                    item["documentation"] = docJson;
+                                }
+                                items.push_back(item);
+                            }
+                        }
                         // 根据推导出的类型，直接读取对应的内置方法分类
-                        if (helpAst.isObject()) {
+                        else if (helpAst.isObject()) {
                             std::vector<std::string> targetCategories;
                             if (targetType == "matrix" || targetType == "realmatrix" || targetType == "complexmatrix" || targetType == "symmatrix") {
                                 targetCategories.push_back("matrix_methods");
@@ -543,6 +724,7 @@ namespace lsp {
                                         const Json& funcData = pair.second;
                                         
                                         if (funcName.length() > 4 && funcName.substr(0, 2) == "__" && funcName.substr(funcName.length()-2) == "__") continue;
+                                        if (funcName.find('.') != std::string::npos) continue;
                                         
                                         Json item;
                                         item.type = JsonType::Object;

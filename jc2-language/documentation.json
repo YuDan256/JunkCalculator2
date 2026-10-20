@@ -171,63 +171,6 @@
     "symmatrix": {
       "signature": "symmatrix(rows, cols, [elements...])"
     },
-    "det": {
-      "signature": "A.det()"
-    },
-    "inv": {
-      "signature": "A.inv()"
-    },
-    "trans": {
-      "signature": "A.trans()"
-    },
-    "ctrans": {
-      "signature": "A.ctrans()"
-    },
-    "gauss": {
-      "signature": "A.gauss()"
-    },
-    "rank": {
-      "signature": "A.rank()"
-    },
-    "tr": {
-      "signature": "A.tr()"
-    },
-    "norm": {
-      "signature": "A.norm()"
-    },
-    "cond": {
-      "signature": "A.cond()"
-    },
-    "adj": {
-      "signature": "A.adj()"
-    },
-    "sum": {
-      "signature": "A.sum()"
-    },
-    "prod": {
-      "signature": "A.prod()"
-    },
-    "null": {
-      "signature": "A.null()"
-    },
-    "orth": {
-      "signature": "A.orth()"
-    },
-    "mpow": {
-      "signature": "A.mpow(n)"
-    },
-    "charPoly": {
-      "signature": "A.charPoly(var)"
-    },
-    "kron": {
-      "signature": "A.kron(B)"
-    },
-    "jacobian": {
-      "signature": "A.jacobian(vars)"
-    },
-    "hessian": {
-      "signature": "A.hessian(vars)"
-    },
     "id": {
       "signature": "id(n)"
     },
@@ -236,99 +179,6 @@
     },
     "zeros": {
       "signature": "zeros(r, [c])"
-    },
-    "eig": {
-      "signature": "A.eig()"
-    },
-    "eigvec": {
-      "signature": "A.eigvec()"
-    },
-    "diag": {
-      "signature": "A.diag()"
-    },
-    "lsolve": {
-      "signature": "A.lsolve(b)"
-    },
-    "lstsq": {
-      "signature": "A.lstsq(b)"
-    },
-    "dim": {
-      "signature": "v.dim()"
-    },
-    "dot": {
-      "signature": "a.dot(b)"
-    },
-    "vnorm": {
-      "signature": "v.vnorm()"
-    },
-    "normalize": {
-      "signature": "v.normalize()"
-    },
-    "cross": {
-      "signature": "a.cross(b)"
-    },
-    "angle": {
-      "signature": "a.angle(b)"
-    },
-    "sproj": {
-      "signature": "a.sproj(b)"
-    },
-    "vproj": {
-      "signature": "a.vproj(b)"
-    },
-    "triple": {
-      "signature": "a.triple(b, c)"
-    },
-    "isperp": {
-      "signature": "a.isperp(b)"
-    },
-    "isparallel": {
-      "signature": "a.isparallel(b)"
-    },
-    "mean": {
-      "signature": "X.mean() / dist.mean()"
-    },
-    "var": {
-      "signature": "X.var() / dist.var()"
-    },
-    "svar": {
-      "signature": "X.svar()"
-    },
-    "std": {
-      "signature": "X.std() / dist.std()"
-    },
-    "sstd": {
-      "signature": "X.sstd()"
-    },
-    "max": {
-      "signature": "X.max()"
-    },
-    "min": {
-      "signature": "X.min()"
-    },
-    "span": {
-      "signature": "X.span()"
-    },
-    "perc": {
-      "signature": "X.perc(p)"
-    },
-    "median": {
-      "signature": "X.median()"
-    },
-    "mode": {
-      "signature": "X.mode()"
-    },
-    "cov": {
-      "signature": "X.cov(Y)"
-    },
-    "corr": {
-      "signature": "X.corr(Y)"
-    },
-    "rsq": {
-      "signature": "X.rsq(Y)"
-    },
-    "regress": {
-      "signature": "X.regress(Y)"
     },
     "str": {
       "signature": "str(x)"
@@ -447,72 +297,6 @@
     "copy": {
       "signature": "copy(obj, freeze = none)"
     },
-    "perm": {
-      "signature": "A.perm()"
-    },
-    "getElement": {
-      "signature": "A.getElement(r, c)"
-    },
-    "setElement": {
-      "signature": "A.setElement(r, c, val)"
-    },
-    "getSlice": {
-      "signature": "A.getSlice(sr, sc)"
-    },
-    "setSlice": {
-      "signature": "A.setSlice(sr, sc, val)"
-    },
-    "getR": {
-      "signature": "A.getR(r)"
-    },
-    "getC": {
-      "signature": "A.getC(c)"
-    },
-    "delR": {
-      "signature": "A.delR(r)"
-    },
-    "delC": {
-      "signature": "A.delC(c)"
-    },
-    "swapR": {
-      "signature": "A.swapR(r1, r2)"
-    },
-    "swapC": {
-      "signature": "A.swapC(c1, c2)"
-    },
-    "multiR": {
-      "signature": "A.multiR(r, scalar)"
-    },
-    "multiC": {
-      "signature": "A.multiC(c, scalar)"
-    },
-    "addR": {
-      "signature": "A.addR(r1, r2, scalar)"
-    },
-    "addC": {
-      "signature": "A.addC(c1, c2, scalar)"
-    },
-    "sub": {
-      "signature": "A.sub(r, c)"
-    },
-    "cof": {
-      "signature": "A.cof(r, c)"
-    },
-    "Acof": {
-      "signature": "A.Acof(r, c)"
-    },
-    "blkdiag": {
-      "signature": "A.blkdiag(B)"
-    },
-    "qr": {
-      "signature": "A.qr()"
-    },
-    "lu": {
-      "signature": "A.lu()"
-    },
-    "residual": {
-      "signature": "A.residual(x, b)"
-    },
     "bool": {
       "signature": "bool(x)"
     },
@@ -542,9 +326,6 @@
     },
     "toSet": {
       "signature": "toSet(v)"
-    },
-    "init": {
-      "signature": "init(...)"
     },
     "__add__": {
       "signature": "__add__(other)"
@@ -708,9 +489,6 @@
     "__mapping__": {
       "signature": "__mapping__()"
     },
-    "finalize": {
-      "signature": "finalize()"
-    },
     "gensym": {
       "signature": "gensym([prefix])"
     },
@@ -786,17 +564,20 @@
     "isapprox": {
       "signature": "isapprox(a, b, [rtol], [atol])"
     },
-    "ln": {
-      "signature": "ln(x) / ln(base, x)"
-    },
-    "string": {
-      "signature": "string(x)"
-    },
     "length": {
       "signature": "length(x)"
     },
     "size": {
       "signature": "size(x)"
+    },
+    "repr": {
+      "signature": "repr(x)"
+    },
+    "ln": {
+      "signature": "ln(x) / ln(base, x)"
+    },
+    "string": {
+      "signature": "string(x)"
     }
   },
   "keywords": {
@@ -994,11 +775,248 @@
     "item": {
       "signature": "A.item()"
     },
+    "det": {
+      "signature": "A.det()"
+    },
+    "inv": {
+      "signature": "A.inv()"
+    },
+    "trans": {
+      "signature": "A.trans()"
+    },
+    "ctrans": {
+      "signature": "A.ctrans()"
+    },
+    "gauss": {
+      "signature": "A.gauss()"
+    },
+    "rank": {
+      "signature": "A.rank()"
+    },
+    "tr": {
+      "signature": "A.tr()"
+    },
+    "norm": {
+      "signature": "A.norm()"
+    },
+    "cond": {
+      "signature": "A.cond()"
+    },
+    "adj": {
+      "signature": "A.adj()"
+    },
+    "sum": {
+      "signature": "A.sum()"
+    },
+    "prod": {
+      "signature": "A.prod()"
+    },
+    "null": {
+      "signature": "A.null()"
+    },
+    "orth": {
+      "signature": "A.orth()"
+    },
+    "mpow": {
+      "signature": "A.mpow(n)"
+    },
+    "charPoly": {
+      "signature": "A.charPoly(var)"
+    },
+    "kron": {
+      "signature": "A.kron(B)"
+    },
+    "jacobian": {
+      "signature": "A.jacobian(vars)"
+    },
+    "hessian": {
+      "signature": "A.hessian(vars)"
+    },
+    "eig": {
+      "signature": "A.eig()"
+    },
+    "eigvec": {
+      "signature": "A.eigvec()"
+    },
+    "diag": {
+      "signature": "A.diag()"
+    },
+    "lsolve": {
+      "signature": "A.lsolve(b)"
+    },
+    "lstsq": {
+      "signature": "A.lstsq(b)"
+    },
+    "dim": {
+      "signature": "v.dim()"
+    },
+    "dot": {
+      "signature": "a.dot(b)"
+    },
+    "vnorm": {
+      "signature": "v.vnorm()"
+    },
+    "normalize": {
+      "signature": "v.normalize()"
+    },
+    "cross": {
+      "signature": "a.cross(b)"
+    },
+    "angle": {
+      "signature": "a.angle(b)"
+    },
+    "sproj": {
+      "signature": "a.sproj(b)"
+    },
+    "vproj": {
+      "signature": "a.vproj(b)"
+    },
+    "triple": {
+      "signature": "a.triple(b, c)"
+    },
+    "isperp": {
+      "signature": "a.isperp(b)"
+    },
+    "isparallel": {
+      "signature": "a.isparallel(b)"
+    },
+    "mean": {
+      "signature": "X.mean() / dist.mean()"
+    },
+    "var": {
+      "signature": "X.var() / dist.var()"
+    },
+    "svar": {
+      "signature": "X.svar()"
+    },
+    "std": {
+      "signature": "X.std() / dist.std()"
+    },
+    "sstd": {
+      "signature": "X.sstd()"
+    },
+    "max": {
+      "signature": "X.max()"
+    },
+    "min": {
+      "signature": "X.min()"
+    },
+    "span": {
+      "signature": "X.span()"
+    },
+    "perc": {
+      "signature": "X.perc(p)"
+    },
+    "median": {
+      "signature": "X.median()"
+    },
+    "mode": {
+      "signature": "X.mode()"
+    },
+    "cov": {
+      "signature": "X.cov(Y)"
+    },
+    "corr": {
+      "signature": "X.corr(Y)"
+    },
+    "rsq": {
+      "signature": "X.rsq(Y)"
+    },
+    "regress": {
+      "signature": "X.regress(Y)"
+    },
+    "perm": {
+      "signature": "A.perm()"
+    },
+    "getElement": {
+      "signature": "A.getElement(r, c)"
+    },
+    "setElement": {
+      "signature": "A.setElement(r, c, val)"
+    },
+    "getSlice": {
+      "signature": "A.getSlice(sr, sc)"
+    },
+    "setSlice": {
+      "signature": "A.setSlice(sr, sc, val)"
+    },
+    "swapR": {
+      "signature": "A.swapR(r1, r2)"
+    },
+    "swapC": {
+      "signature": "A.swapC(c1, c2)"
+    },
+    "multiR": {
+      "signature": "A.multiR(r, scalar)"
+    },
+    "multiC": {
+      "signature": "A.multiC(c, scalar)"
+    },
+    "addR": {
+      "signature": "A.addR(r1, r2, scalar)"
+    },
+    "addC": {
+      "signature": "A.addC(c1, c2, scalar)"
+    },
+    "sub": {
+      "signature": "A.sub(r, c)"
+    },
+    "cof": {
+      "signature": "A.cof(r, c)"
+    },
+    "Acof": {
+      "signature": "A.Acof(r, c)"
+    },
+    "blkdiag": {
+      "signature": "A.blkdiag(B)"
+    },
+    "qr": {
+      "signature": "A.qr()"
+    },
+    "lu": {
+      "signature": "A.lu()"
+    },
+    "residual": {
+      "signature": "A.residual(x, b)"
+    },
+    "len": {
+      "signature": "x.len()"
+    },
+    "map": {
+      "signature": "x.map(f)"
+    },
+    "filter": {
+      "signature": "x.filter(f)"
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)"
+    },
+    "all": {
+      "signature": "x.all(f)"
+    },
+    "any": {
+      "signature": "x.any(f)"
+    },
+    "countIf": {
+      "signature": "x.countIf(f)"
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)"
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])"
+    },
     "rows": {
       "signature": "A.rows()"
     },
     "cols": {
       "signature": "A.cols()"
+    },
+    "apply": {
+      "signature": "x.apply(f)"
+    },
+    "find": {
+      "signature": "x.find(val)"
     }
   },
   "list_methods": {
@@ -1104,6 +1122,63 @@
     "countIf": {
       "signature": "v.countIf(f)"
     },
+    "sum": {
+      "signature": "A.sum()"
+    },
+    "prod": {
+      "signature": "A.prod()"
+    },
+    "dim": {
+      "signature": "v.dim()"
+    },
+    "mean": {
+      "signature": "X.mean() / dist.mean()"
+    },
+    "var": {
+      "signature": "X.var() / dist.var()"
+    },
+    "svar": {
+      "signature": "X.svar()"
+    },
+    "std": {
+      "signature": "X.std() / dist.std()"
+    },
+    "sstd": {
+      "signature": "X.sstd()"
+    },
+    "max": {
+      "signature": "X.max()"
+    },
+    "min": {
+      "signature": "X.min()"
+    },
+    "span": {
+      "signature": "X.span()"
+    },
+    "perc": {
+      "signature": "X.perc(p)"
+    },
+    "median": {
+      "signature": "X.median()"
+    },
+    "mode": {
+      "signature": "X.mode()"
+    },
+    "cov": {
+      "signature": "X.cov(Y)"
+    },
+    "corr": {
+      "signature": "X.corr(Y)"
+    },
+    "rsq": {
+      "signature": "X.rsq(Y)"
+    },
+    "regress": {
+      "signature": "X.regress(Y)"
+    },
+    "len": {
+      "signature": "x.len()"
+    },
     "append": {
       "signature": "v.append(val)"
     }
@@ -1153,6 +1228,45 @@
     },
     "parseNum": {
       "signature": "s.parseNum()"
+    },
+    "len": {
+      "signature": "x.len()"
+    },
+    "map": {
+      "signature": "x.map(f)"
+    },
+    "filter": {
+      "signature": "x.filter(f)"
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)"
+    },
+    "all": {
+      "signature": "x.all(f)"
+    },
+    "any": {
+      "signature": "x.any(f)"
+    },
+    "countIf": {
+      "signature": "x.countIf(f)"
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)"
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])"
+    },
+    "indexOf": {
+      "signature": "s.indexOf(val)"
+    },
+    "count": {
+      "signature": "s.count(val)"
+    },
+    "join": {
+      "signature": "s.join(delim)"
+    },
+    "reversed": {
+      "signature": "s.reversed()"
     }
   },
   "dict_methods": {
@@ -1186,14 +1300,38 @@
     "mapValues": {
       "signature": "d.mapValues(fn)"
     },
-    "getFields": {
-      "signature": "d.getFields()"
+    "len": {
+      "signature": "d.len()"
+    },
+    "size": {
+      "signature": "d.size()"
     },
     "has": {
       "signature": "d.has(key)"
     },
     "hasField": {
       "signature": "d.hasField(key)"
+    },
+    "getFields": {
+      "signature": "d.getFields()"
+    },
+    "map": {
+      "signature": "d.map(f)"
+    },
+    "filter": {
+      "signature": "d.filter(f)"
+    },
+    "reduce": {
+      "signature": "d.reduce(f, init)"
+    },
+    "all": {
+      "signature": "d.all(f)"
+    },
+    "any": {
+      "signature": "d.any(f)"
+    },
+    "countIf": {
+      "signature": "d.countIf(f)"
     }
   },
   "set_methods": {
@@ -1223,6 +1361,69 @@
     },
     "powerSet": {
       "signature": "s.powerSet()"
+    },
+    "sum": {
+      "signature": "A.sum()"
+    },
+    "prod": {
+      "signature": "A.prod()"
+    },
+    "max": {
+      "signature": "X.max()"
+    },
+    "min": {
+      "signature": "X.min()"
+    },
+    "span": {
+      "signature": "X.span()"
+    },
+    "len": {
+      "signature": "x.len()"
+    },
+    "map": {
+      "signature": "x.map(f)"
+    },
+    "filter": {
+      "signature": "x.filter(f)"
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)"
+    },
+    "all": {
+      "signature": "x.all(f)"
+    },
+    "any": {
+      "signature": "x.any(f)"
+    },
+    "countIf": {
+      "signature": "x.countIf(f)"
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)"
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])"
+    },
+    "add": {
+      "signature": "S.add(val)"
+    },
+    "remove": {
+      "signature": "S.remove(val)"
+    },
+    "discard": {
+      "signature": "S.discard(val)"
+    },
+    "clear": {
+      "signature": "S.clear()"
+    },
+    "pop": {
+      "signature": "S.pop()"
+    },
+    "apply": {
+      "signature": "S.apply(f)"
+    },
+    "join": {
+      "signature": "S.join(delim)"
     }
   },
   "sys_methods": {

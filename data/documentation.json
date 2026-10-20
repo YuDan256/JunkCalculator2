@@ -4261,139 +4261,6 @@
         "symmatrix(2, 2, 1, 2, 3, 4)"
       ]
     },
-    "det": {
-      "signature": "A.det()",
-      "desc": "Returns the determinant of a square matrix.",
-      "examples": [
-        "[1, 2; 3, 4].det()"
-      ]
-    },
-    "inv": {
-      "signature": "A.inv()",
-      "desc": "Returns the inverse of a square matrix.",
-      "examples": [
-        "[1, 2; 3, 4].inv()"
-      ]
-    },
-    "trans": {
-      "signature": "A.trans()",
-      "desc": "Returns the transpose of a matrix.",
-      "examples": [
-        "[1, 2, 3].trans()"
-      ]
-    },
-    "ctrans": {
-      "signature": "A.ctrans()",
-      "desc": "Returns the conjugate transpose (Hermitian transpose) of a complex matrix.",
-      "examples": [
-        "[1+1i, 2-1i].ctrans()"
-      ]
-    },
-    "gauss": {
-      "signature": "A.gauss()",
-      "desc": "Returns the reduced row echelon form (RREF) of a matrix via Gaussian elimination.",
-      "examples": [
-        "[1, 2, 3; 4, 5, 6].gauss()"
-      ]
-    },
-    "rank": {
-      "signature": "A.rank()",
-      "desc": "Returns the rank of a matrix.",
-      "examples": [
-        "[1, 2; 2, 4].rank()"
-      ]
-    },
-    "tr": {
-      "signature": "A.tr()",
-      "desc": "Returns the trace (sum of diagonal elements) of a square matrix.",
-      "examples": [
-        "[1, 2; 3, 4].tr()"
-      ]
-    },
-    "norm": {
-      "signature": "A.norm()",
-      "desc": "Returns the Frobenius norm of a matrix.",
-      "examples": [
-        "[3, 4].norm()"
-      ]
-    },
-    "cond": {
-      "signature": "A.cond()",
-      "desc": "Returns the condition number of a matrix.",
-      "examples": [
-        "[1, 2; 3, 4].cond()"
-      ]
-    },
-    "adj": {
-      "signature": "A.adj()",
-      "desc": "Returns the classical adjugate of a square matrix.",
-      "examples": [
-        "[1, 2; 3, 4].adj()"
-      ]
-    },
-    "sum": {
-      "signature": "A.sum()",
-      "desc": "Returns the sum of all elements in a matrix or list.",
-      "examples": [
-        "[1, 2, 3].sum()"
-      ]
-    },
-    "prod": {
-      "signature": "A.prod()",
-      "desc": "Returns the product of all elements in a matrix or list.",
-      "examples": [
-        "[1, 2, 3, 4].prod()"
-      ]
-    },
-    "null": {
-      "signature": "A.null()",
-      "desc": "Returns a basis for the null space of a matrix.",
-      "examples": [
-        "[1, 2; 2, 4].null()"
-      ]
-    },
-    "orth": {
-      "signature": "A.orth()",
-      "desc": "Returns an orthonormal basis for the range of a matrix.",
-      "examples": [
-        "[1, 1; 0, 1].orth()"
-      ]
-    },
-    "mpow": {
-      "signature": "A.mpow(n)",
-      "desc": "Raises a square matrix to an integer power n.",
-      "examples": [
-        "[1, 1; 0, 1].mpow(10)"
-      ]
-    },
-    "charPoly": {
-      "signature": "A.charPoly(var)",
-      "desc": "Returns the characteristic polynomial of a square matrix in the given variable.",
-      "examples": [
-        "[1, 2; 3, 4].charPoly(\"x\")"
-      ]
-    },
-    "kron": {
-      "signature": "A.kron(B)",
-      "desc": "Returns the Kronecker product of two matrices.",
-      "examples": [
-        "[1, 2].kron([3, 4])"
-      ]
-    },
-    "jacobian": {
-      "signature": "A.jacobian(vars)",
-      "desc": "Returns the Jacobian matrix of a symbolic matrix with respect to a list of variables.",
-      "examples": [
-        "M.jacobian(@[\"x\", \"y\"])"
-      ]
-    },
-    "hessian": {
-      "signature": "A.hessian(vars)",
-      "desc": "Returns the Hessian matrix of a scalar symbolic function with respect to a list of variables.",
-      "examples": [
-        "M.hessian(@[\"x\", \"y\"])"
-      ]
-    },
     "id": {
       "signature": "id(n)",
       "desc": "Returns an n x n identity matrix.",
@@ -4413,226 +4280,6 @@
       "desc": "Returns a matrix of all zeros. If c is omitted, returns an r x r square matrix.",
       "examples": [
         "zeros(3)"
-      ]
-    },
-    "eig": {
-      "signature": "A.eig()",
-      "desc": "Returns a column vector containing the eigenvalues of a square matrix.",
-      "examples": [
-        "[0, 1; -2, -3].eig()"
-      ]
-    },
-    "eigvec": {
-      "signature": "A.eigvec()",
-      "desc": "Returns a matrix whose columns are the eigenvectors of A.",
-      "examples": [
-        "[0, 1; -2, -3].eigvec()"
-      ]
-    },
-    "diag": {
-      "signature": "A.diag()",
-      "desc": "Returns a list @[P, D] containing the change-of-basis matrix P (eigenvectors) and diagonal eigenvalue matrix D such that A = P * D * inv(P).",
-      "examples": [
-        "[P, D] = [0, 1; -2, -3].diag()"
-      ]
-    },
-    "lsolve": {
-      "signature": "A.lsolve(b)",
-      "desc": "Solves the linear system Ax = b. Returns a dict with 'status' (\"unique\", \"infinite\", or \"least_squares\") and corresponding fields ('solution', or 'particular' and 'basis', or 'approx' and 'residual').",
-      "examples": [
-        "[1, 2; 3, 4].lsolve([5; 11])"
-      ]
-    },
-    "lstsq": {
-      "signature": "A.lstsq(b)",
-      "desc": "Solves the linear system Ax = b using the least-squares method (Normal Equations).",
-      "examples": [
-        "[1, 1; 1, 2; 1, 3].lstsq([1; 2; 2])"
-      ]
-    },
-    "dim": {
-      "signature": "v.dim()",
-      "desc": "Returns the number of components (rows) in a column vector, or elements in a list.",
-      "examples": [
-        "[1; 2; 3].dim()"
-      ]
-    },
-    "dot": {
-      "signature": "a.dot(b)",
-      "desc": "Returns the Hermitian inner product (dot product) of two vectors.",
-      "examples": [
-        "[1; 2].dot([3; 4])"
-      ]
-    },
-    "vnorm": {
-      "signature": "v.vnorm()",
-      "desc": "Returns the Euclidean length (magnitude) of a vector.",
-      "examples": [
-        "[3; 4].vnorm()"
-      ]
-    },
-    "normalize": {
-      "signature": "v.normalize()",
-      "desc": "Returns a unit vector in the same direction as v.",
-      "examples": [
-        "[3; 4].normalize()"
-      ]
-    },
-    "cross": {
-      "signature": "a.cross(b)",
-      "desc": "Returns the cross product of two 3D vectors.",
-      "examples": [
-        "[1; 0; 0].cross([0; 1; 0])"
-      ]
-    },
-    "angle": {
-      "signature": "a.angle(b)",
-      "desc": "Returns the angle between two vectors in radians.",
-      "examples": [
-        "[1; 0].angle([0; 1])"
-      ]
-    },
-    "sproj": {
-      "signature": "a.sproj(b)",
-      "desc": "Returns the scalar projection of vector a onto vector b.",
-      "examples": [
-        "[3; 4].sproj([1; 0])"
-      ]
-    },
-    "vproj": {
-      "signature": "a.vproj(b)",
-      "desc": "Returns the vector projection of vector a onto vector b.",
-      "examples": [
-        "[3; 4].vproj([1; 0])"
-      ]
-    },
-    "triple": {
-      "signature": "a.triple(b, c)",
-      "desc": "Returns the scalar triple product of three 3D vectors: a.dot(b.cross(c)).",
-      "examples": [
-        "[1; 0; 0].triple([0; 1; 0], [0; 0; 1])"
-      ]
-    },
-    "isperp": {
-      "signature": "a.isperp(b)",
-      "desc": "Returns true if vectors a and b are perpendicular (orthogonal), false otherwise.",
-      "examples": [
-        "[1; 0].isperp([0; 1])"
-      ]
-    },
-    "isparallel": {
-      "signature": "a.isparallel(b)",
-      "desc": "Returns true if vectors a and b are parallel, false otherwise.",
-      "examples": [
-        "[1; 2].isparallel([2; 4])"
-      ]
-    },
-    "mean": {
-      "signature": "X.mean() / dist.mean()",
-      "desc": "Returns the arithmetic mean of a dataset, or the theoretical mean of a Distribution.",
-      "examples": [
-        "[1, 2, 3, 4, 5].mean()",
-        "prob.Normal(0, 1).mean()"
-      ]
-    },
-    "var": {
-      "signature": "X.var() / dist.var()",
-      "desc": "Returns the population variance of a dataset (divided by N), or the theoretical variance of a Distribution.",
-      "examples": [
-        "[1, 2, 3, 4, 5].var()",
-        "prob.Normal(0, 1).var()"
-      ]
-    },
-    "svar": {
-      "signature": "X.svar()",
-      "desc": "Returns the sample variance of a dataset (divided by N-1).",
-      "examples": [
-        "[1, 2, 3, 4, 5].svar()"
-      ]
-    },
-    "std": {
-      "signature": "X.std() / dist.std()",
-      "desc": "Returns the population standard deviation of a dataset, or the theoretical standard deviation of a Distribution.",
-      "examples": [
-        "[1, 2, 3, 4, 5].std()",
-        "prob.Normal(0, 1).std()"
-      ]
-    },
-    "sstd": {
-      "signature": "X.sstd()",
-      "desc": "Returns the sample standard deviation of a dataset.",
-      "examples": [
-        "[1, 2, 3, 4, 5].sstd()"
-      ]
-    },
-    "max": {
-      "signature": "X.max()",
-      "desc": "Returns the maximum value in a dataset or list.",
-      "examples": [
-        "[1, 5, 3].max()"
-      ]
-    },
-    "min": {
-      "signature": "X.min()",
-      "desc": "Returns the minimum value in a dataset or list.",
-      "examples": [
-        "[1, 5, 3].min()"
-      ]
-    },
-    "span": {
-      "signature": "X.span()",
-      "desc": "Returns the statistical range (max - min) of a dataset.",
-      "examples": [
-        "[1, 5, 3].span()"
-      ]
-    },
-    "perc": {
-      "signature": "X.perc(p)",
-      "desc": "Returns the p-th percentile of a dataset (0 <= p <= 100).",
-      "examples": [
-        "[1, 2, 3, 4, 5].perc(90)"
-      ]
-    },
-    "median": {
-      "signature": "X.median()",
-      "desc": "Returns the median (50th percentile) of a dataset.",
-      "examples": [
-        "[1, 3, 10].median()"
-      ]
-    },
-    "mode": {
-      "signature": "X.mode()",
-      "desc": "Returns the mode(s) of a dataset. Returns a row vector if multimodal.",
-      "examples": [
-        "[1, 2, 2, 3].mode()"
-      ]
-    },
-    "cov": {
-      "signature": "X.cov(Y)",
-      "desc": "Returns the population covariance between two datasets.",
-      "examples": [
-        "[1, 2, 3].cov([2, 4, 5])"
-      ]
-    },
-    "corr": {
-      "signature": "X.corr(Y)",
-      "desc": "Returns the Pearson correlation coefficient (r) between two datasets.",
-      "examples": [
-        "[1, 2, 3].corr([2, 4, 5])"
-      ]
-    },
-    "rsq": {
-      "signature": "X.rsq(Y)",
-      "desc": "Returns the coefficient of determination (R^2) between two datasets.",
-      "examples": [
-        "[1, 2, 3].rsq([2, 4, 5])"
-      ]
-    },
-    "regress": {
-      "signature": "X.regress(Y)",
-      "desc": "Performs linear regression Y = a + bX. Prints the model and returns @[a, b].",
-      "examples": [
-        "[1, 2, 3].regress([2, 4, 5])"
       ]
     },
     "str": {
@@ -4935,160 +4582,6 @@
         "copy(myDict, false)"
       ]
     },
-    "perm": {
-      "signature": "A.perm()",
-      "desc": "Returns the permanent of a square matrix.",
-      "examples": [
-        "[1, 2; 3, 4].perm()"
-      ]
-    },
-    "getElement": {
-      "signature": "A.getElement(r, c)",
-      "desc": "Returns the element at row r and column c of a matrix.",
-      "examples": [
-        "A.getElement(0, 1)"
-      ]
-    },
-    "setElement": {
-      "signature": "A.setElement(r, c, val)",
-      "desc": "Returns a new matrix with the element at row r and column c set to val.",
-      "examples": [
-        "A.setElement(0, 1, 99)"
-      ]
-    },
-    "getSlice": {
-      "signature": "A.getSlice(sr, sc)",
-      "desc": "Returns the sub-matrix A[sr, sc] (slices or indices). Slices return zero-copy views.",
-      "examples": [
-        "A.getSlice(slice(1, 3), slice(1, 3))"
-      ]
-    },
-    "setSlice": {
-      "signature": "A.setSlice(sr, sc, val)",
-      "desc": "Returns a new matrix with the sub-matrix A[sr, sc] replaced by val (scalar, matrix, or list).",
-      "examples": [
-        "A.setSlice(slice(1, 3), slice(1, 3), [9, 8; 7, 6])"
-      ]
-    },
-    "getR": {
-      "signature": "A.getR(r)",
-      "desc": "Extracts row r from a matrix.",
-      "examples": [
-        "A.getR(0)"
-      ]
-    },
-    "getC": {
-      "signature": "A.getC(c)",
-      "desc": "Extracts column c from a matrix.",
-      "examples": [
-        "A.getC(0)"
-      ]
-    },
-    "delR": {
-      "signature": "A.delR(r)",
-      "desc": "Deletes row r from a matrix.",
-      "examples": [
-        "A.delR(0)"
-      ]
-    },
-    "delC": {
-      "signature": "A.delC(c)",
-      "desc": "Deletes column c from a matrix.",
-      "examples": [
-        "A.delC(0)"
-      ]
-    },
-    "swapR": {
-      "signature": "A.swapR(r1, r2)",
-      "desc": "Swaps row r1 and row r2 in a matrix.",
-      "examples": [
-        "A.swapR(0, 1)"
-      ]
-    },
-    "swapC": {
-      "signature": "A.swapC(c1, c2)",
-      "desc": "Swaps column c1 and column c2 in a matrix.",
-      "examples": [
-        "A.swapC(0, 1)"
-      ]
-    },
-    "multiR": {
-      "signature": "A.multiR(r, scalar)",
-      "desc": "Multiplies row r by a scalar.",
-      "examples": [
-        "A.multiR(0, 2)"
-      ]
-    },
-    "multiC": {
-      "signature": "A.multiC(c, scalar)",
-      "desc": "Multiplies column c by a scalar.",
-      "examples": [
-        "A.multiC(0, 2)"
-      ]
-    },
-    "addR": {
-      "signature": "A.addR(r1, r2, scalar)",
-      "desc": "Adds scalar * row r2 to row r1.",
-      "examples": [
-        "A.addR(0, 1, 2)"
-      ]
-    },
-    "addC": {
-      "signature": "A.addC(c1, c2, scalar)",
-      "desc": "Adds scalar * column c2 to column c1.",
-      "examples": [
-        "A.addC(0, 1, 2)"
-      ]
-    },
-    "sub": {
-      "signature": "A.sub(r, c)",
-      "desc": "Returns the submatrix with row r and column c removed.",
-      "examples": [
-        "A.sub(0, 0)"
-      ]
-    },
-    "cof": {
-      "signature": "A.cof(r, c)",
-      "desc": "Returns the cofactor of the element at row r and column c.",
-      "examples": [
-        "A.cof(0, 0)"
-      ]
-    },
-    "Acof": {
-      "signature": "A.Acof(r, c)",
-      "desc": "Returns the algebraic cofactor of the element at row r and column c.",
-      "examples": [
-        "A.Acof(0, 0)"
-      ]
-    },
-    "blkdiag": {
-      "signature": "A.blkdiag(B)",
-      "desc": "Returns the block diagonal concatenation of matrices A and B.",
-      "examples": [
-        "A.blkdiag(B)"
-      ]
-    },
-    "qr": {
-      "signature": "A.qr()",
-      "desc": "Returns a List @[Q, R] containing the orthogonal matrix Q and upper triangular matrix R from the QR decomposition of A.",
-      "examples": [
-        "[Q, R] = A.qr()"
-      ]
-    },
-    "lu": {
-      "signature": "A.lu()",
-      "desc": "Returns a List @[L, U, P] containing the lower triangular matrix L, upper triangular matrix U, and permutation matrix P from the LU decomposition of A.",
-      "examples": [
-        "[L, U, P] = A.lu()"
-      ]
-    },
-    "residual": {
-      "signature": "A.residual(x, b)",
-      "desc": "Returns the residual vector r = b - A*x.",
-      "examples": [
-        "A.residual(x, b)"
-      ]
-    },
     "bool": {
       "signature": "bool(x)",
       "desc": "Converts a value to its boolean equivalent (true or false).",
@@ -5158,13 +4651,6 @@
       "examples": [
         "toSet([3, 1, 4, 1, 5])",
         "toSet(\"hello\")"
-      ]
-    },
-    "init": {
-      "signature": "init(...)",
-      "desc": "Constructor method. Called automatically when a new class instance is created.",
-      "examples": [
-        "init(x, y) = { self.x = x; self.y = y }"
       ]
     },
     "__add__": {
@@ -5545,13 +5031,6 @@
         "__mapping__() = { \"x\": self.x, \"y\": self.y }"
       ]
     },
-    "finalize": {
-      "signature": "finalize()",
-      "desc": "Lifecycle method: Finalizer called by the Garbage Collector when the instance becomes unreachable. Guaranteed to be called exactly once per object lifecycle. Note: Because JC2 uses a Mark-and-Sweep GC, finalize is NOT called immediately when an object goes out of scope; its execution timing is unpredictable. Normal process exit runs a final GC cycle, so finalize also fires there. If init() throws the instance has already been allocated and is still finalized, with partially initialized fields. Any exceptions thrown inside finalize are silently ignored.",
-      "examples": [
-        "finalize() = print(\"Object destroyed\")"
-      ]
-    },
     "gensym": {
       "signature": "gensym([prefix])",
       "desc": [
@@ -5732,6 +5211,34 @@
       "desc": "Returns true if a and b are approximately equal within relative tolerance rtol (default 1e-9) and absolute tolerance atol (default 0.0).",
       "examples": [
         "isapprox(1.0000000001, 1.0)"
+      ]
+    },
+    "length": {
+      "signature": "length(x)",
+      "desc": "Alias of len(); returns the length or element count of x.",
+      "examples": [
+        "length(@[1, 2, 3])"
+      ]
+    },
+    "size": {
+      "signature": "size(x)",
+      "desc": "Alias of len(); returns the length or element count of x.",
+      "examples": [
+        "size([1, 2; 3, 4])"
+      ]
+    },
+    "repr": {
+      "signature": "repr(x)",
+      "desc": "Returns the string representation of x, the same text as str(x).",
+      "examples": [
+        "repr(frac(1, 2))"
+      ]
+    },
+    "ln": {
+      "signature": "ln(x)",
+      "desc": "Alias of log(); returns the natural logarithm of x.",
+      "examples": [
+        "ln(e())"
       ]
     }
   },
@@ -6574,6 +6081,537 @@
       "examples": [
         "[5].item()"
       ]
+    },
+    "det": {
+      "signature": "A.det()",
+      "desc": "Returns the determinant of a square matrix.",
+      "examples": [
+        "[1, 2; 3, 4].det()"
+      ]
+    },
+    "inv": {
+      "signature": "A.inv()",
+      "desc": "Returns the inverse of a square matrix.",
+      "examples": [
+        "[1, 2; 3, 4].inv()"
+      ]
+    },
+    "trans": {
+      "signature": "A.trans()",
+      "desc": "Returns the transpose of a matrix.",
+      "examples": [
+        "[1, 2, 3].trans()"
+      ]
+    },
+    "ctrans": {
+      "signature": "A.ctrans()",
+      "desc": "Returns the conjugate transpose (Hermitian transpose) of a complex matrix.",
+      "examples": [
+        "[1+1i, 2-1i].ctrans()"
+      ]
+    },
+    "gauss": {
+      "signature": "A.gauss()",
+      "desc": "Returns the reduced row echelon form (RREF) of a matrix via Gaussian elimination.",
+      "examples": [
+        "[1, 2, 3; 4, 5, 6].gauss()"
+      ]
+    },
+    "rank": {
+      "signature": "A.rank()",
+      "desc": "Returns the rank of a matrix.",
+      "examples": [
+        "[1, 2; 2, 4].rank()"
+      ]
+    },
+    "tr": {
+      "signature": "A.tr()",
+      "desc": "Returns the trace (sum of diagonal elements) of a square matrix.",
+      "examples": [
+        "[1, 2; 3, 4].tr()"
+      ]
+    },
+    "norm": {
+      "signature": "A.norm()",
+      "desc": "Returns the Frobenius norm of a matrix.",
+      "examples": [
+        "[3, 4].norm()"
+      ]
+    },
+    "cond": {
+      "signature": "A.cond()",
+      "desc": "Returns the condition number of a matrix.",
+      "examples": [
+        "[1, 2; 3, 4].cond()"
+      ]
+    },
+    "adj": {
+      "signature": "A.adj()",
+      "desc": "Returns the classical adjugate of a square matrix.",
+      "examples": [
+        "[1, 2; 3, 4].adj()"
+      ]
+    },
+    "sum": {
+      "signature": "A.sum()",
+      "desc": "Returns the sum of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3].sum()"
+      ]
+    },
+    "prod": {
+      "signature": "A.prod()",
+      "desc": "Returns the product of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3, 4].prod()"
+      ]
+    },
+    "null": {
+      "signature": "A.null()",
+      "desc": "Returns a basis for the null space of a matrix.",
+      "examples": [
+        "[1, 2; 2, 4].null()"
+      ]
+    },
+    "orth": {
+      "signature": "A.orth()",
+      "desc": "Returns an orthonormal basis for the range of a matrix.",
+      "examples": [
+        "[1, 1; 0, 1].orth()"
+      ]
+    },
+    "mpow": {
+      "signature": "A.mpow(n)",
+      "desc": "Raises a square matrix to an integer power n.",
+      "examples": [
+        "[1, 1; 0, 1].mpow(10)"
+      ]
+    },
+    "charPoly": {
+      "signature": "A.charPoly(var)",
+      "desc": "Returns the characteristic polynomial of a square matrix in the given variable.",
+      "examples": [
+        "[1, 2; 3, 4].charPoly(\"x\")"
+      ]
+    },
+    "kron": {
+      "signature": "A.kron(B)",
+      "desc": "Returns the Kronecker product of two matrices.",
+      "examples": [
+        "[1, 2].kron([3, 4])"
+      ]
+    },
+    "jacobian": {
+      "signature": "A.jacobian(vars)",
+      "desc": "Returns the Jacobian matrix of a symbolic matrix with respect to a list of variables.",
+      "examples": [
+        "M.jacobian(@[\"x\", \"y\"])"
+      ]
+    },
+    "hessian": {
+      "signature": "A.hessian(vars)",
+      "desc": "Returns the Hessian matrix of a scalar symbolic function with respect to a list of variables.",
+      "examples": [
+        "M.hessian(@[\"x\", \"y\"])"
+      ]
+    },
+    "eig": {
+      "signature": "A.eig()",
+      "desc": "Returns a column vector containing the eigenvalues of a square matrix.",
+      "examples": [
+        "[0, 1; -2, -3].eig()"
+      ]
+    },
+    "eigvec": {
+      "signature": "A.eigvec()",
+      "desc": "Returns a matrix whose columns are the eigenvectors of A.",
+      "examples": [
+        "[0, 1; -2, -3].eigvec()"
+      ]
+    },
+    "diag": {
+      "signature": "A.diag()",
+      "desc": "Returns a list @[P, D] containing the change-of-basis matrix P (eigenvectors) and diagonal eigenvalue matrix D such that A = P * D * inv(P).",
+      "examples": [
+        "[P, D] = [0, 1; -2, -3].diag()"
+      ]
+    },
+    "lsolve": {
+      "signature": "A.lsolve(b)",
+      "desc": "Solves the linear system Ax = b. Returns a dict with 'status' (\"unique\", \"infinite\", or \"least_squares\") and corresponding fields ('solution', or 'particular' and 'basis', or 'approx' and 'residual').",
+      "examples": [
+        "[1, 2; 3, 4].lsolve([5; 11])"
+      ]
+    },
+    "lstsq": {
+      "signature": "A.lstsq(b)",
+      "desc": "Solves the linear system Ax = b using the least-squares method (Normal Equations).",
+      "examples": [
+        "[1, 1; 1, 2; 1, 3].lstsq([1; 2; 2])"
+      ]
+    },
+    "dim": {
+      "signature": "v.dim()",
+      "desc": "Returns the number of components (rows) in a column vector, or elements in a list.",
+      "examples": [
+        "[1; 2; 3].dim()"
+      ]
+    },
+    "dot": {
+      "signature": "a.dot(b)",
+      "desc": "Returns the Hermitian inner product (dot product) of two vectors.",
+      "examples": [
+        "[1; 2].dot([3; 4])"
+      ]
+    },
+    "vnorm": {
+      "signature": "v.vnorm()",
+      "desc": "Returns the Euclidean length (magnitude) of a vector.",
+      "examples": [
+        "[3; 4].vnorm()"
+      ]
+    },
+    "normalize": {
+      "signature": "v.normalize()",
+      "desc": "Returns a unit vector in the same direction as v.",
+      "examples": [
+        "[3; 4].normalize()"
+      ]
+    },
+    "cross": {
+      "signature": "a.cross(b)",
+      "desc": "Returns the cross product of two 3D vectors.",
+      "examples": [
+        "[1; 0; 0].cross([0; 1; 0])"
+      ]
+    },
+    "angle": {
+      "signature": "a.angle(b)",
+      "desc": "Returns the angle between two vectors in radians.",
+      "examples": [
+        "[1; 0].angle([0; 1])"
+      ]
+    },
+    "sproj": {
+      "signature": "a.sproj(b)",
+      "desc": "Returns the scalar projection of vector a onto vector b.",
+      "examples": [
+        "[3; 4].sproj([1; 0])"
+      ]
+    },
+    "vproj": {
+      "signature": "a.vproj(b)",
+      "desc": "Returns the vector projection of vector a onto vector b.",
+      "examples": [
+        "[3; 4].vproj([1; 0])"
+      ]
+    },
+    "triple": {
+      "signature": "a.triple(b, c)",
+      "desc": "Returns the scalar triple product of three 3D vectors: a.dot(b.cross(c)).",
+      "examples": [
+        "[1; 0; 0].triple([0; 1; 0], [0; 0; 1])"
+      ]
+    },
+    "isperp": {
+      "signature": "a.isperp(b)",
+      "desc": "Returns true if vectors a and b are perpendicular (orthogonal), false otherwise.",
+      "examples": [
+        "[1; 0].isperp([0; 1])"
+      ]
+    },
+    "isparallel": {
+      "signature": "a.isparallel(b)",
+      "desc": "Returns true if vectors a and b are parallel, false otherwise.",
+      "examples": [
+        "[1; 2].isparallel([2; 4])"
+      ]
+    },
+    "mean": {
+      "signature": "X.mean() / dist.mean()",
+      "desc": "Returns the arithmetic mean of a dataset, or the theoretical mean of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].mean()",
+        "prob.Normal(0, 1).mean()"
+      ]
+    },
+    "var": {
+      "signature": "X.var() / dist.var()",
+      "desc": "Returns the population variance of a dataset (divided by N), or the theoretical variance of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].var()",
+        "prob.Normal(0, 1).var()"
+      ]
+    },
+    "svar": {
+      "signature": "X.svar()",
+      "desc": "Returns the sample variance of a dataset (divided by N-1).",
+      "examples": [
+        "[1, 2, 3, 4, 5].svar()"
+      ]
+    },
+    "std": {
+      "signature": "X.std() / dist.std()",
+      "desc": "Returns the population standard deviation of a dataset, or the theoretical standard deviation of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].std()",
+        "prob.Normal(0, 1).std()"
+      ]
+    },
+    "sstd": {
+      "signature": "X.sstd()",
+      "desc": "Returns the sample standard deviation of a dataset.",
+      "examples": [
+        "[1, 2, 3, 4, 5].sstd()"
+      ]
+    },
+    "max": {
+      "signature": "X.max()",
+      "desc": "Returns the maximum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].max()"
+      ]
+    },
+    "min": {
+      "signature": "X.min()",
+      "desc": "Returns the minimum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].min()"
+      ]
+    },
+    "span": {
+      "signature": "X.span()",
+      "desc": "Returns the statistical range (max - min) of a dataset.",
+      "examples": [
+        "[1, 5, 3].span()"
+      ]
+    },
+    "perc": {
+      "signature": "X.perc(p)",
+      "desc": "Returns the p-th percentile of a dataset (0 <= p <= 100).",
+      "examples": [
+        "[1, 2, 3, 4, 5].perc(90)"
+      ]
+    },
+    "median": {
+      "signature": "X.median()",
+      "desc": "Returns the median (50th percentile) of a dataset.",
+      "examples": [
+        "[1, 3, 10].median()"
+      ]
+    },
+    "mode": {
+      "signature": "X.mode()",
+      "desc": "Returns the mode(s) of a dataset. Returns a row vector if multimodal.",
+      "examples": [
+        "[1, 2, 2, 3].mode()"
+      ]
+    },
+    "cov": {
+      "signature": "X.cov(Y)",
+      "desc": "Returns the population covariance between two datasets.",
+      "examples": [
+        "[1, 2, 3].cov([2, 4, 5])"
+      ]
+    },
+    "corr": {
+      "signature": "X.corr(Y)",
+      "desc": "Returns the Pearson correlation coefficient (r) between two datasets.",
+      "examples": [
+        "[1, 2, 3].corr([2, 4, 5])"
+      ]
+    },
+    "rsq": {
+      "signature": "X.rsq(Y)",
+      "desc": "Returns the coefficient of determination (R^2) between two datasets.",
+      "examples": [
+        "[1, 2, 3].rsq([2, 4, 5])"
+      ]
+    },
+    "regress": {
+      "signature": "X.regress(Y)",
+      "desc": "Performs linear regression Y = a + bX. Prints the model and returns @[a, b].",
+      "examples": [
+        "[1, 2, 3].regress([2, 4, 5])"
+      ]
+    },
+    "perm": {
+      "signature": "A.perm()",
+      "desc": "Returns the permanent of a square matrix.",
+      "examples": [
+        "[1, 2; 3, 4].perm()"
+      ]
+    },
+    "getElement": {
+      "signature": "A.getElement(r, c)",
+      "desc": "Returns the element at row r and column c of a matrix.",
+      "examples": [
+        "A.getElement(0, 1)"
+      ]
+    },
+    "setElement": {
+      "signature": "A.setElement(r, c, val)",
+      "desc": "Returns a new matrix with the element at row r and column c set to val.",
+      "examples": [
+        "A.setElement(0, 1, 99)"
+      ]
+    },
+    "getSlice": {
+      "signature": "A.getSlice(sr, sc)",
+      "desc": "Returns the sub-matrix A[sr, sc] (slices or indices). Slices return zero-copy views.",
+      "examples": [
+        "A.getSlice(slice(1, 3), slice(1, 3))"
+      ]
+    },
+    "setSlice": {
+      "signature": "A.setSlice(sr, sc, val)",
+      "desc": "Returns a new matrix with the sub-matrix A[sr, sc] replaced by val (scalar, matrix, or list).",
+      "examples": [
+        "A.setSlice(slice(1, 3), slice(1, 3), [9, 8; 7, 6])"
+      ]
+    },
+    "swapR": {
+      "signature": "A.swapR(r1, r2)",
+      "desc": "Swaps row r1 and row r2 in a matrix.",
+      "examples": [
+        "A.swapR(0, 1)"
+      ]
+    },
+    "swapC": {
+      "signature": "A.swapC(c1, c2)",
+      "desc": "Swaps column c1 and column c2 in a matrix.",
+      "examples": [
+        "A.swapC(0, 1)"
+      ]
+    },
+    "multiR": {
+      "signature": "A.multiR(r, scalar)",
+      "desc": "Multiplies row r by a scalar.",
+      "examples": [
+        "A.multiR(0, 2)"
+      ]
+    },
+    "multiC": {
+      "signature": "A.multiC(c, scalar)",
+      "desc": "Multiplies column c by a scalar.",
+      "examples": [
+        "A.multiC(0, 2)"
+      ]
+    },
+    "addR": {
+      "signature": "A.addR(r1, r2, scalar)",
+      "desc": "Adds scalar * row r2 to row r1.",
+      "examples": [
+        "A.addR(0, 1, 2)"
+      ]
+    },
+    "addC": {
+      "signature": "A.addC(c1, c2, scalar)",
+      "desc": "Adds scalar * column c2 to column c1.",
+      "examples": [
+        "A.addC(0, 1, 2)"
+      ]
+    },
+    "sub": {
+      "signature": "A.sub(r, c)",
+      "desc": "Returns the submatrix with row r and column c removed.",
+      "examples": [
+        "A.sub(0, 0)"
+      ]
+    },
+    "cof": {
+      "signature": "A.cof(r, c)",
+      "desc": "Returns the cofactor of the element at row r and column c.",
+      "examples": [
+        "A.cof(0, 0)"
+      ]
+    },
+    "Acof": {
+      "signature": "A.Acof(r, c)",
+      "desc": "Returns the algebraic cofactor of the element at row r and column c.",
+      "examples": [
+        "A.Acof(0, 0)"
+      ]
+    },
+    "blkdiag": {
+      "signature": "A.blkdiag(B)",
+      "desc": "Returns the block diagonal concatenation of matrices A and B.",
+      "examples": [
+        "A.blkdiag(B)"
+      ]
+    },
+    "qr": {
+      "signature": "A.qr()",
+      "desc": "Returns a List @[Q, R] containing the orthogonal matrix Q and upper triangular matrix R from the QR decomposition of A.",
+      "examples": [
+        "[Q, R] = A.qr()"
+      ]
+    },
+    "lu": {
+      "signature": "A.lu()",
+      "desc": "Returns a List @[L, U, P] containing the lower triangular matrix L, upper triangular matrix U, and permutation matrix P from the LU decomposition of A.",
+      "examples": [
+        "[L, U, P] = A.lu()"
+      ]
+    },
+    "residual": {
+      "signature": "A.residual(x, b)",
+      "desc": "Returns the residual vector r = b - A*x.",
+      "examples": [
+        "A.residual(x, b)"
+      ]
+    },
+    "len": {
+      "signature": "x.len()",
+      "desc": "Returns the number of elements."
+    },
+    "map": {
+      "signature": "x.map(f)",
+      "desc": "Returns a new collection with f applied to each element."
+    },
+    "filter": {
+      "signature": "x.filter(f)",
+      "desc": "Returns the elements for which f is true."
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)",
+      "desc": "Folds the elements with f, starting from init."
+    },
+    "all": {
+      "signature": "x.all(f)",
+      "desc": "Returns true when every element satisfies f."
+    },
+    "any": {
+      "signature": "x.any(f)",
+      "desc": "Returns true when at least one element satisfies f."
+    },
+    "countIf": {
+      "signature": "x.countIf(f)",
+      "desc": "Counts the elements satisfying f."
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)",
+      "desc": "Groups elements into a dict keyed by f(element)."
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])",
+      "desc": "Returns (index, value) pairs starting at start (default 0)."
+    },
+    "rows": {
+      "signature": "x.rows()",
+      "desc": "Returns the number of rows."
+    },
+    "cols": {
+      "signature": "x.cols()",
+      "desc": "Returns the number of columns."
+    },
+    "apply": {
+      "signature": "x.apply(f)",
+      "desc": "Calls f with all elements as positional arguments and returns its result."
+    },
+    "find": {
+      "signature": "x.find(val)",
+      "desc": "Returns @[row, col] of the first occurrence of val, or -1 when absent."
     }
   },
   "list_methods": {
@@ -6625,7 +6663,9 @@
     "sort": {
       "signature": "v.sort([cmp])",
       "desc": "Stably sorts a list in place and returns the same list. Lists only; use sorted() for a copy.",
-        "see_also": ["list.sorted"],
+      "see_also": [
+        "list.sorted"
+      ],
       "examples": [
         "L = @[3, 1, 2]; L.sort()"
       ]
@@ -6633,7 +6673,9 @@
     "sorted": {
       "signature": "v.sorted([cmp])",
       "desc": "Returns a sorted copy: list → new list, string → string, matrix → row array. Optionally accepts a comparator returning a number (its sign decides the order).",
-        "see_also": ["list.sort"],
+      "see_also": [
+        "list.sort"
+      ],
       "examples": [
         "@[3, 1, 2].sorted()"
       ]
@@ -6690,7 +6732,9 @@
     "reverse": {
       "signature": "v.reverse()",
       "desc": "Reverses a list in place and returns the same list. Lists only; use reversed() for a copy.",
-        "see_also": ["reversed"],
+      "see_also": [
+        "reversed"
+      ],
       "examples": [
         "L = @[1, 2, 3]; L.reverse()"
       ]
@@ -6698,7 +6742,9 @@
     "reversed": {
       "signature": "v.reversed()",
       "desc": "Returns a reversed copy: list → new list, string → reversed string.",
-        "see_also": ["reverse"],
+      "see_also": [
+        "reverse"
+      ],
       "examples": [
         "@[1, 2, 3].reversed()",
         "\"abc\".reversed()"
@@ -6794,6 +6840,143 @@
       "examples": [
         "@[-1, 1, 2].countIf((x) => x > 0)"
       ]
+    },
+    "sum": {
+      "signature": "A.sum()",
+      "desc": "Returns the sum of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3].sum()"
+      ]
+    },
+    "prod": {
+      "signature": "A.prod()",
+      "desc": "Returns the product of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3, 4].prod()"
+      ]
+    },
+    "dim": {
+      "signature": "v.dim()",
+      "desc": "Returns the number of components (rows) in a column vector, or elements in a list.",
+      "examples": [
+        "[1; 2; 3].dim()"
+      ]
+    },
+    "mean": {
+      "signature": "X.mean() / dist.mean()",
+      "desc": "Returns the arithmetic mean of a dataset, or the theoretical mean of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].mean()",
+        "prob.Normal(0, 1).mean()"
+      ]
+    },
+    "var": {
+      "signature": "X.var() / dist.var()",
+      "desc": "Returns the population variance of a dataset (divided by N), or the theoretical variance of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].var()",
+        "prob.Normal(0, 1).var()"
+      ]
+    },
+    "svar": {
+      "signature": "X.svar()",
+      "desc": "Returns the sample variance of a dataset (divided by N-1).",
+      "examples": [
+        "[1, 2, 3, 4, 5].svar()"
+      ]
+    },
+    "std": {
+      "signature": "X.std() / dist.std()",
+      "desc": "Returns the population standard deviation of a dataset, or the theoretical standard deviation of a Distribution.",
+      "examples": [
+        "[1, 2, 3, 4, 5].std()",
+        "prob.Normal(0, 1).std()"
+      ]
+    },
+    "sstd": {
+      "signature": "X.sstd()",
+      "desc": "Returns the sample standard deviation of a dataset.",
+      "examples": [
+        "[1, 2, 3, 4, 5].sstd()"
+      ]
+    },
+    "max": {
+      "signature": "X.max()",
+      "desc": "Returns the maximum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].max()"
+      ]
+    },
+    "min": {
+      "signature": "X.min()",
+      "desc": "Returns the minimum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].min()"
+      ]
+    },
+    "span": {
+      "signature": "X.span()",
+      "desc": "Returns the statistical range (max - min) of a dataset.",
+      "examples": [
+        "[1, 5, 3].span()"
+      ]
+    },
+    "perc": {
+      "signature": "X.perc(p)",
+      "desc": "Returns the p-th percentile of a dataset (0 <= p <= 100).",
+      "examples": [
+        "[1, 2, 3, 4, 5].perc(90)"
+      ]
+    },
+    "median": {
+      "signature": "X.median()",
+      "desc": "Returns the median (50th percentile) of a dataset.",
+      "examples": [
+        "[1, 3, 10].median()"
+      ]
+    },
+    "mode": {
+      "signature": "X.mode()",
+      "desc": "Returns the mode(s) of a dataset. Returns a row vector if multimodal.",
+      "examples": [
+        "[1, 2, 2, 3].mode()"
+      ]
+    },
+    "cov": {
+      "signature": "X.cov(Y)",
+      "desc": "Returns the population covariance between two datasets.",
+      "examples": [
+        "[1, 2, 3].cov([2, 4, 5])"
+      ]
+    },
+    "corr": {
+      "signature": "X.corr(Y)",
+      "desc": "Returns the Pearson correlation coefficient (r) between two datasets.",
+      "examples": [
+        "[1, 2, 3].corr([2, 4, 5])"
+      ]
+    },
+    "rsq": {
+      "signature": "X.rsq(Y)",
+      "desc": "Returns the coefficient of determination (R^2) between two datasets.",
+      "examples": [
+        "[1, 2, 3].rsq([2, 4, 5])"
+      ]
+    },
+    "regress": {
+      "signature": "X.regress(Y)",
+      "desc": "Performs linear regression Y = a + bX. Prints the model and returns @[a, b].",
+      "examples": [
+        "[1, 2, 3].regress([2, 4, 5])"
+      ]
+    },
+    "len": {
+      "signature": "x.len()",
+      "desc": "Returns the number of elements."
+    },
+    "append": {
+      "signature": "L.append(val)",
+      "desc": "Appends val to the end of the list."
     }
   },
   "string_methods": {
@@ -6902,6 +7085,58 @@
       "examples": [
         "\"42.5\".parseNum()"
       ]
+    },
+    "len": {
+      "signature": "x.len()",
+      "desc": "Returns the number of elements."
+    },
+    "map": {
+      "signature": "x.map(f)",
+      "desc": "Returns a new collection with f applied to each element."
+    },
+    "filter": {
+      "signature": "x.filter(f)",
+      "desc": "Returns the elements for which f is true."
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)",
+      "desc": "Folds the elements with f, starting from init."
+    },
+    "all": {
+      "signature": "x.all(f)",
+      "desc": "Returns true when every element satisfies f."
+    },
+    "any": {
+      "signature": "x.any(f)",
+      "desc": "Returns true when at least one element satisfies f."
+    },
+    "countIf": {
+      "signature": "x.countIf(f)",
+      "desc": "Counts the elements satisfying f."
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)",
+      "desc": "Groups elements into a dict keyed by f(element)."
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])",
+      "desc": "Returns (index, value) pairs starting at start (default 0)."
+    },
+    "indexOf": {
+      "signature": "s.indexOf(val)",
+      "desc": "Returns the character index of val, or -1."
+    },
+    "count": {
+      "signature": "s.count(val)",
+      "desc": "Counts the occurrences of val."
+    },
+    "join": {
+      "signature": "s.join(delim)",
+      "desc": "Joins the elements with delim."
+    },
+    "reversed": {
+      "signature": "s.reversed()",
+      "desc": "Returns a reversed copy of the string."
     }
   },
   "dict_methods": {
@@ -6982,6 +7217,50 @@
       "examples": [
         "{a: 1}.mapValues(v => v * 10)"
       ]
+    },
+    "len": {
+      "signature": "d.len()",
+      "desc": "Returns the number of entries."
+    },
+    "size": {
+      "signature": "d.size()",
+      "desc": "Returns the number of entries."
+    },
+    "has": {
+      "signature": "d.has(key)",
+      "desc": "Returns true when key is present."
+    },
+    "hasField": {
+      "signature": "d.hasField(key)",
+      "desc": "Returns true when key is present."
+    },
+    "getFields": {
+      "signature": "d.getFields()",
+      "desc": "Returns the dict keys, sorted alphabetically."
+    },
+    "map": {
+      "signature": "d.map(f)",
+      "desc": "Returns a new dict with f applied to each key-value pair."
+    },
+    "filter": {
+      "signature": "d.filter(f)",
+      "desc": "Returns the entries for which f(pair) is true."
+    },
+    "reduce": {
+      "signature": "d.reduce(f, init)",
+      "desc": "Folds the key-value pairs with f, starting from init."
+    },
+    "all": {
+      "signature": "d.all(f)",
+      "desc": "Returns true when every key-value pair satisfies f."
+    },
+    "any": {
+      "signature": "d.any(f)",
+      "desc": "Returns true when at least one key-value pair satisfies f."
+    },
+    "countIf": {
+      "signature": "d.countIf(f)",
+      "desc": "Counts the key-value pairs satisfying f."
     }
   },
   "set_methods": {
@@ -7047,44 +7326,143 @@
       "examples": [
         "@{1, 2}.powerSet()"
       ]
+    },
+    "sum": {
+      "signature": "A.sum()",
+      "desc": "Returns the sum of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3].sum()"
+      ]
+    },
+    "prod": {
+      "signature": "A.prod()",
+      "desc": "Returns the product of all elements in a matrix or list.",
+      "examples": [
+        "[1, 2, 3, 4].prod()"
+      ]
+    },
+    "max": {
+      "signature": "X.max()",
+      "desc": "Returns the maximum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].max()"
+      ]
+    },
+    "min": {
+      "signature": "X.min()",
+      "desc": "Returns the minimum value in a dataset or list.",
+      "examples": [
+        "[1, 5, 3].min()"
+      ]
+    },
+    "span": {
+      "signature": "X.span()",
+      "desc": "Returns the statistical range (max - min) of a dataset.",
+      "examples": [
+        "[1, 5, 3].span()"
+      ]
+    },
+    "len": {
+      "signature": "x.len()",
+      "desc": "Returns the number of elements."
+    },
+    "map": {
+      "signature": "x.map(f)",
+      "desc": "Returns a new collection with f applied to each element."
+    },
+    "filter": {
+      "signature": "x.filter(f)",
+      "desc": "Returns the elements for which f is true."
+    },
+    "reduce": {
+      "signature": "x.reduce(f, init)",
+      "desc": "Folds the elements with f, starting from init."
+    },
+    "all": {
+      "signature": "x.all(f)",
+      "desc": "Returns true when every element satisfies f."
+    },
+    "any": {
+      "signature": "x.any(f)",
+      "desc": "Returns true when at least one element satisfies f."
+    },
+    "countIf": {
+      "signature": "x.countIf(f)",
+      "desc": "Counts the elements satisfying f."
+    },
+    "groupBy": {
+      "signature": "x.groupBy(f)",
+      "desc": "Groups elements into a dict keyed by f(element)."
+    },
+    "enumerate": {
+      "signature": "x.enumerate([start])",
+      "desc": "Returns (index, value) pairs starting at start (default 0)."
+    },
+    "add": {
+      "signature": "S.add(val)",
+      "desc": "Adds val to the set."
+    },
+    "remove": {
+      "signature": "S.remove(val)",
+      "desc": "Removes val, throwing when it is absent."
+    },
+    "discard": {
+      "signature": "S.discard(val)",
+      "desc": "Removes val when present, silently otherwise."
+    },
+    "clear": {
+      "signature": "S.clear()",
+      "desc": "Removes all elements."
+    },
+    "pop": {
+      "signature": "S.pop()",
+      "desc": "Removes and returns an arbitrary element."
+    },
+    "apply": {
+      "signature": "S.apply(f)",
+      "desc": "Calls f with all elements as positional arguments and returns its result."
+    },
+    "join": {
+      "signature": "S.join(delim)",
+      "desc": "Joins the elements with delim."
     }
   },
   "sys_methods": {
-      "registerHelp": {
-        "signature": "sys.registerHelp(path, text)",
-        "desc": "Registers or replaces the long-form help text at path. Dotted paths create intermediate directories.",
-        "examples": [
-          "sys.registerHelp(\"my.mod\", \"Module overview.\")"
-        ]
-      },
-      "registerEntry": {
-        "signature": "sys.registerEntry(path, spec)",
-        "desc": "Registers or merges a structured help entry. spec keys: kind, title, summary, signature, desc, examples, aliases, see_also. Re-registering merges: scalars replace, lists append without duplicates.",
-        "examples": [
-          "sys.registerEntry(\"my.mod.f\", {kind: \"function\", signature: \"f(x)\", desc: \"Doubles x.\"})"
-        ]
-      },
-      "registerDirectory": {
-        "signature": "sys.registerDirectory(path, spec)",
-        "desc": "Registers or updates a directory title and summary. spec keys: title, summary, order.",
-        "examples": [
-          "sys.registerDirectory(\"my.mod\", {title: \"my.mod\", summary: \"My module.\"})"
-        ]
-      },
-      "unregisterHelp": {
-        "signature": "sys.unregisterHelp(path) -> bool",
-        "desc": "Removes the dynamic help entries at path and below, revealing any builtin entry underneath. Returns true if something was removed.",
-        "examples": [
-          "sys.unregisterHelp(\"my.mod\")"
-        ]
-      },
-      "helpPaths": {
-        "signature": "sys.helpPaths([prefix]) -> list",
-        "desc": "Returns the sorted help paths under prefix, including builtin and dynamically registered entries.",
-        "examples": [
-          "sys.helpPaths(\"sys\")"
-        ]
-      },
+    "registerHelp": {
+      "signature": "sys.registerHelp(path, text)",
+      "desc": "Registers or replaces the long-form help text at path. Dotted paths create intermediate directories.",
+      "examples": [
+        "sys.registerHelp(\"my.mod\", \"Module overview.\")"
+      ]
+    },
+    "registerEntry": {
+      "signature": "sys.registerEntry(path, spec)",
+      "desc": "Registers or merges a structured help entry. spec keys: kind, title, summary, signature, desc, examples, aliases, see_also. Re-registering merges: scalars replace, lists append without duplicates.",
+      "examples": [
+        "sys.registerEntry(\"my.mod.f\", {kind: \"function\", signature: \"f(x)\", desc: \"Doubles x.\"})"
+      ]
+    },
+    "registerDirectory": {
+      "signature": "sys.registerDirectory(path, spec)",
+      "desc": "Registers or updates a directory title and summary. spec keys: title, summary, order.",
+      "examples": [
+        "sys.registerDirectory(\"my.mod\", {title: \"my.mod\", summary: \"My module.\"})"
+      ]
+    },
+    "unregisterHelp": {
+      "signature": "sys.unregisterHelp(path) -> bool",
+      "desc": "Removes the dynamic help entries at path and below, revealing any builtin entry underneath. Returns true if something was removed.",
+      "examples": [
+        "sys.unregisterHelp(\"my.mod\")"
+      ]
+    },
+    "helpPaths": {
+      "signature": "sys.helpPaths([prefix]) -> list",
+      "desc": "Returns the sorted help paths under prefix, including builtin and dynamically registered entries.",
+      "examples": [
+        "sys.helpPaths(\"sys\")"
+      ]
+    },
     "args": {
       "signature": "sys.args()",
       "desc": "Returns the trailing command-line arguments passed after `--` (run / eval / repl / load).",
@@ -7151,7 +7529,9 @@
     "gcStats": {
       "signature": "sys.gcStats()",
       "desc": "Returns a dict with tracked GC objects, the collection threshold and allocations since the last GC.",
-        "see_also": ["sys.gc"],
+      "see_also": [
+        "sys.gc"
+      ],
       "examples": [
         "sys.gcStats()"
       ]
@@ -7166,7 +7546,9 @@
     "gc": {
       "signature": "sys.gc()",
       "desc": "Forces a Garbage Collection (clears 'ANS' first). Returns the number of freed objects.",
-        "see_also": ["sys.gcStats"],
+      "see_also": [
+        "sys.gcStats"
+      ],
       "examples": [
         "import sys; sys.gc()"
       ]
@@ -7359,14 +7741,14 @@
     }
   },
   "math_methods": {
-      "BaseNum": {
-        "signature": "math.BaseNum(value, radix)",
-        "desc": "Wraps an integer in a radix shell (2 to 36+). Immutable; supports + - * / % ^ with base assimilation. Use math.BaseNum.fromString(s, r) to parse and changeBase(r) to re-display.",
-        "examples": [
-          "math.BaseNum(255, 16)",
-          "math.BaseNum.fromString(\"FF\", 16)"
-        ]
-      },
+    "BaseNum": {
+      "signature": "math.BaseNum(value, radix)",
+      "desc": "Wraps an integer in a radix shell (2 to 36+). Immutable; supports + - * / % ^ with base assimilation. Use math.BaseNum.fromString(s, r) to parse and changeBase(r) to re-display.",
+      "examples": [
+        "math.BaseNum(255, 16)",
+        "math.BaseNum.fromString(\"FF\", 16)"
+      ]
+    },
     "diff": {
       "signature": "cas.diff(expr, var) / math.diff(f, x0)",
       "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",

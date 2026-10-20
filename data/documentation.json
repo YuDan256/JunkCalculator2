@@ -1391,8 +1391,12 @@
       "    isnegative(n)        Is n < 0?",
       "    iszero(n)            Is n = 0?"
     ],
-    "base": [
-      "═══ Radix Arithmetic (math.BaseNum) ═══",
+    "math": [
+      "═══ Mathematics Module (math) ═══",
+      "",
+      "  The math module provides numeric routines, statistics, linear algebra",
+      "  helpers, and the radix wrapper math.BaseNum.",
+      "",
       "",
       "  math.BaseNum wraps a standard decimal int inside a radix shell (2 to 36+).",
       "  It is a standard class instance (immutable), not a native type.",
@@ -4673,10 +4677,11 @@
       ]
     },
     "help": {
-      "signature": "help([topic])",
-      "desc": "Prints the main help overview or details for a specific topic.",
+      "signature": "help([topic]) -> string",
+      "desc": "Returns the help text for the main menu or the given path as a plain string. It does not print; use print(help(...)), /help, or jc2 help to display it. Unknown paths return a not-found page with suggestions.",
       "examples": [
-        "help(\"matrix\")"
+        "print(help(\"matrix\"))",
+        "help(\"sys.gcStats\")"
       ]
     },
     "sym": {
@@ -7279,6 +7284,14 @@
     }
   },
   "math_methods": {
+      "BaseNum": {
+        "signature": "math.BaseNum(value, radix)",
+        "desc": "Wraps an integer in a radix shell (2 to 36+). Immutable; supports + - * / % ^ with base assimilation. Use math.BaseNum.fromString(s, r) to parse and changeBase(r) to re-display.",
+        "examples": [
+          "math.BaseNum(255, 16)",
+          "math.BaseNum.fromString(\"FF\", 16)"
+        ]
+      },
     "diff": {
       "signature": "cas.diff(expr, var) / math.diff(f, x0)",
       "desc": "Computes the exact symbolic derivative of an expression, or the numerical derivative of a function at x0.",
@@ -7701,5 +7714,193 @@
         "import random; random.magic(3)"
       ]
     }
-  }
+  },
+  "catalog": [
+    {
+      "title": "Getting Started",
+      "summary": "Language overview and the essentials.",
+      "children": [
+        {
+          "ref": "topic.main"
+        },
+        {
+          "ref": "topic.basic"
+        },
+        {
+          "ref": "topic.function"
+        },
+        {
+          "ref": "topic.control"
+        },
+        {
+          "ref": "topic.error"
+        }
+      ]
+    },
+    {
+      "title": "Language",
+      "summary": "Syntax, semantics and metaprogramming.",
+      "children": [
+        {
+          "ref": "topic.scope"
+        },
+        {
+          "ref": "topic.type"
+        },
+        {
+          "ref": "topic.enum"
+        },
+        {
+          "ref": "topic.class"
+        },
+        {
+          "ref": "topic.match"
+        },
+        {
+          "ref": "topic.macro"
+        },
+        {
+          "ref": "topic.import"
+        },
+        {
+          "title": "Keywords",
+          "auto": "keywords"
+        },
+        {
+          "title": "Dunders",
+          "auto": "dunders"
+        }
+      ]
+    },
+    {
+      "title": "Types",
+      "summary": "Built-in value and container types.",
+      "children": [
+        {
+          "title": "matrix",
+          "ref": "topic.matrix",
+          "auto": "matrix_methods",
+          "children": [
+            {
+              "ref": "topic.linalg"
+            },
+            {
+              "ref": "topic.lineq"
+            },
+            {
+              "ref": "topic.matfunc"
+            },
+            {
+              "ref": "topic.vector"
+            },
+            {
+              "ref": "topic.stat"
+            }
+          ]
+        },
+        {
+          "ref": "topic.array"
+        },
+        {
+          "title": "list",
+          "ref": "topic.list",
+          "auto": "list_methods"
+        },
+        {
+          "title": "string",
+          "ref": "topic.string",
+          "auto": "string_methods"
+        },
+        {
+          "title": "dict",
+          "ref": "topic.dict",
+          "auto": "dict_methods"
+        },
+        {
+          "title": "set",
+          "ref": "topic.set",
+          "auto": "set_methods"
+        },
+        {
+          "ref": "topic.complex"
+        },
+        {
+          "ref": "topic.fraction"
+        },
+        {
+          "ref": "topic.int"
+        }
+      ]
+    },
+    {
+      "title": "Modules",
+      "summary": "Built-in and imported modules.",
+      "children": [
+        {
+          "title": "sys",
+          "ref": "topic.sys",
+          "auto": "sys_methods"
+        },
+        {
+          "title": "math",
+          "ref": "topic.math",
+          "auto": "math_methods",
+          "children": [
+            {
+              "ref": "topic.poly"
+            }
+          ]
+        },
+        {
+          "title": "cas",
+          "ref": "topic.cas",
+          "auto": "cas_methods"
+        },
+        {
+          "title": "random",
+          "auto": "random_methods"
+        },
+        {
+          "title": "collections"
+        },
+        {
+          "title": "discrete"
+        },
+        {
+          "title": "engine"
+        },
+        {
+          "title": "http"
+        },
+        {
+          "title": "net"
+        }
+      ]
+    },
+    {
+      "title": "Global Functions",
+      "summary": "Every global builtin.",
+      "children": [
+        {
+          "title": "All functions",
+          "auto": "global_functions"
+        }
+      ]
+    },
+    {
+      "title": "Internals",
+      "summary": "Macros, tokens, AST and tooling.",
+      "children": [
+        {
+          "ref": "topic.token"
+        },
+        {
+          "ref": "topic.ast"
+        },
+        {
+          "ref": "topic.fmt"
+        }
+      ]
+    }
+  ]
 }

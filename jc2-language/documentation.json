@@ -358,7 +358,7 @@
       "signature": "assert(cond, [msg])"
     },
     "help": {
-      "signature": "help([topic])"
+      "signature": "help([topic]) -> string"
     },
     "sym": {
       "signature": "sym(name_or_value)"
@@ -1336,6 +1336,9 @@
     }
   },
   "math_methods": {
+    "BaseNum": {
+      "signature": "math.BaseNum(value, radix)"
+    },
     "diff": {
       "signature": "cas.diff(expr, var) / math.diff(f, x0)"
     },
@@ -1511,5 +1514,193 @@
     "magic": {
       "signature": "random.magic(n)"
     }
-  }
+  },
+  "catalog": [
+    {
+      "title": "Getting Started",
+      "summary": "Language overview and the essentials.",
+      "children": [
+        {
+          "ref": "topic.main"
+        },
+        {
+          "ref": "topic.basic"
+        },
+        {
+          "ref": "topic.function"
+        },
+        {
+          "ref": "topic.control"
+        },
+        {
+          "ref": "topic.error"
+        }
+      ]
+    },
+    {
+      "title": "Language",
+      "summary": "Syntax, semantics and metaprogramming.",
+      "children": [
+        {
+          "ref": "topic.scope"
+        },
+        {
+          "ref": "topic.type"
+        },
+        {
+          "ref": "topic.enum"
+        },
+        {
+          "ref": "topic.class"
+        },
+        {
+          "ref": "topic.match"
+        },
+        {
+          "ref": "topic.macro"
+        },
+        {
+          "ref": "topic.import"
+        },
+        {
+          "title": "Keywords",
+          "auto": "keywords"
+        },
+        {
+          "title": "Dunders",
+          "auto": "dunders"
+        }
+      ]
+    },
+    {
+      "title": "Types",
+      "summary": "Built-in value and container types.",
+      "children": [
+        {
+          "title": "matrix",
+          "ref": "topic.matrix",
+          "auto": "matrix_methods",
+          "children": [
+            {
+              "ref": "topic.linalg"
+            },
+            {
+              "ref": "topic.lineq"
+            },
+            {
+              "ref": "topic.matfunc"
+            },
+            {
+              "ref": "topic.vector"
+            },
+            {
+              "ref": "topic.stat"
+            }
+          ]
+        },
+        {
+          "ref": "topic.array"
+        },
+        {
+          "title": "list",
+          "ref": "topic.list",
+          "auto": "list_methods"
+        },
+        {
+          "title": "string",
+          "ref": "topic.string",
+          "auto": "string_methods"
+        },
+        {
+          "title": "dict",
+          "ref": "topic.dict",
+          "auto": "dict_methods"
+        },
+        {
+          "title": "set",
+          "ref": "topic.set",
+          "auto": "set_methods"
+        },
+        {
+          "ref": "topic.complex"
+        },
+        {
+          "ref": "topic.fraction"
+        },
+        {
+          "ref": "topic.int"
+        }
+      ]
+    },
+    {
+      "title": "Modules",
+      "summary": "Built-in and imported modules.",
+      "children": [
+        {
+          "title": "sys",
+          "ref": "topic.sys",
+          "auto": "sys_methods"
+        },
+        {
+          "title": "math",
+          "ref": "topic.math",
+          "auto": "math_methods",
+          "children": [
+            {
+              "ref": "topic.poly"
+            }
+          ]
+        },
+        {
+          "title": "cas",
+          "ref": "topic.cas",
+          "auto": "cas_methods"
+        },
+        {
+          "title": "random",
+          "auto": "random_methods"
+        },
+        {
+          "title": "collections"
+        },
+        {
+          "title": "discrete"
+        },
+        {
+          "title": "engine"
+        },
+        {
+          "title": "http"
+        },
+        {
+          "title": "net"
+        }
+      ]
+    },
+    {
+      "title": "Global Functions",
+      "summary": "Every global builtin.",
+      "children": [
+        {
+          "title": "All functions",
+          "auto": "global_functions"
+        }
+      ]
+    },
+    {
+      "title": "Internals",
+      "summary": "Macros, tokens, AST and tooling.",
+      "children": [
+        {
+          "ref": "topic.token"
+        },
+        {
+          "ref": "topic.ast"
+        },
+        {
+          "ref": "topic.fmt"
+        }
+      ]
+    }
+  ]
 }

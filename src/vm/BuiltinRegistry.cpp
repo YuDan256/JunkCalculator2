@@ -2571,16 +2571,14 @@ void BuiltinRegistry::registerSystemUtils() {
     // ★ 暴露给用户的原生 help() 内置函数
     reg("help", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {
-            jc::HelpRouter::printMainHelp();
-            return Value::none();
+            return Value(jc::HelpRouter::helpText(""));
         }
 
         if (!args[0].isString())
             JC2_THROW(TypeError, "help() expects a string topic.");
 
         std::string topic = args[0].asString();
-        jc::HelpRouter::printHelpTopic(topic);
-        return Value::none();
+        return Value(jc::HelpRouter::helpText(topic));
         }, {"topic"});
 }
 

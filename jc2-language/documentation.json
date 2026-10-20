@@ -1214,6 +1214,21 @@
     }
   },
   "sys_methods": {
+    "registerHelp": {
+      "signature": "sys.registerHelp(path, text)"
+    },
+    "registerEntry": {
+      "signature": "sys.registerEntry(path, spec)"
+    },
+    "registerDirectory": {
+      "signature": "sys.registerDirectory(path, spec)"
+    },
+    "unregisterHelp": {
+      "signature": "sys.unregisterHelp(path) -> bool"
+    },
+    "helpPaths": {
+      "signature": "sys.helpPaths([prefix]) -> list"
+    },
     "args": {
       "signature": "sys.args()"
     },

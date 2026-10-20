@@ -750,7 +750,7 @@ class IndexError extends Exception {
 }
 
 try {
-    sys.register_help("collections", r"DOC(
+    sys.registerHelp("collections", r"DOC(
 ═══ Collections (Standard Library) ═══
 
   Requires: import collections

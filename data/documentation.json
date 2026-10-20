@@ -7012,6 +7012,41 @@
     }
   },
   "sys_methods": {
+      "registerHelp": {
+        "signature": "sys.registerHelp(path, text)",
+        "desc": "Registers or replaces the long-form help text at path. Dotted paths create intermediate directories.",
+        "examples": [
+          "sys.registerHelp(\"my.mod\", \"Module overview.\")"
+        ]
+      },
+      "registerEntry": {
+        "signature": "sys.registerEntry(path, spec)",
+        "desc": "Registers or merges a structured help entry. spec keys: kind, title, summary, signature, desc, examples, aliases, see_also. Re-registering merges: scalars replace, lists append without duplicates.",
+        "examples": [
+          "sys.registerEntry(\"my.mod.f\", {kind: \"function\", signature: \"f(x)\", desc: \"Doubles x.\"})"
+        ]
+      },
+      "registerDirectory": {
+        "signature": "sys.registerDirectory(path, spec)",
+        "desc": "Registers or updates a directory title and summary. spec keys: title, summary, order.",
+        "examples": [
+          "sys.registerDirectory(\"my.mod\", {title: \"my.mod\", summary: \"My module.\"})"
+        ]
+      },
+      "unregisterHelp": {
+        "signature": "sys.unregisterHelp(path) -> bool",
+        "desc": "Removes the dynamic help entries at path and below, revealing any builtin entry underneath. Returns true if something was removed.",
+        "examples": [
+          "sys.unregisterHelp(\"my.mod\")"
+        ]
+      },
+      "helpPaths": {
+        "signature": "sys.helpPaths([prefix]) -> list",
+        "desc": "Returns the sorted help paths under prefix, including builtin and dynamically registered entries.",
+        "examples": [
+          "sys.helpPaths(\"sys\")"
+        ]
+      },
     "args": {
       "signature": "sys.args()",
       "desc": "Returns the trailing command-line arguments passed after `--` (run / eval / repl / load).",

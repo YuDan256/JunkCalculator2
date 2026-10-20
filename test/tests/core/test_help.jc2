@@ -1,0 +1,39 @@
+import sys
+
+// 帮助注册 API 的行为测试（动态层，结束后清理）
+sys.registerDirectory("zz_help_test", {
+    title: "ZZ Help Test",
+    summary: "temporary directory",
+    order: @["b", "a"]
+})
+sys.registerHelp("zz_help_test", "zz help body.")
+sys.registerEntry("zz_help_test.a", {
+    kind: "function",
+    signature: "a()",
+    desc: "Returns A.",
+    examples: @["a()"],
+    aliases: @["aa"],
+    see_also: @["zz_help_test.b"]
+})
+sys.registerEntry("zz_help_test.b", {
+    kind: "function",
+    signature: "b()",
+    desc: "Returns B."
+})
+
+s = help("zz_help_test")
+assert(len(s) > 0, "directory text")
+assert(help("zz_help_test.a") == help("zz_help_test.a"), "stable text")
+assert(len(help("zz_help_test.a")) > 0, "entry text")
+assert(len(help("nonsense_zz")) > 0, "not-found text is a string")
+
+p = sys.helpPaths("zz_help_test")
+assert(len(p) == 3, "three paths")
+assert(p[0] == "zz_help_test", "dir path")
+assert(p[1] == "zz_help_test.a", "a path")
+assert(p[2] == "zz_help_test.b", "b path")
+
+assert(sys.unregisterHelp("zz_help_test") == true, "unregister")
+assert(len(help("zz_help_test.a")) > 0, "entry gone but text returned")
+
+print("help API battery OK")

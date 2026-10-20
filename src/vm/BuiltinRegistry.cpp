@@ -40,6 +40,58 @@
 
 namespace jc {
 
+// ---- 帮助注册 API 的参数校验辅助 ----
+static std::string helpPathArg(const Value& v) {
+    if (!v.isString()) JC2_THROW(TypeError, "Help path must be a string.");
+    std::string p = v.asString();
+    if (!HelpRouter::isValidPath(p)) JC2_THROW(TypeError, "Invalid help path: '" + p + "'");
+    return p;
+}
+
+static Value helpDictGet(const Value& d, const std::string& key) {
+    if (!d.isObjType(ObjType::DICT)) return Value::none();
+    for (const auto& [k, v] : static_cast<ObjDict*>(d.asObj())->elements) {
+        if (k.isString() && k.asString() == key) return v;
+    }
+    return Value::none();
+}
+
+static std::string helpStringArg(const Value& v, const char* what) {
+    if (!v.isString()) JC2_THROW(TypeError, std::string(what) + " must be a string.");
+    return v.asString();
+}
+
+static std::vector<std::string> helpStringList(const Value& v, const char* what) {
+    std::vector<std::string> out;
+    if (v.isNone()) return out;
+    if (v.isString()) { out.push_back(v.asString()); return out; }
+    if (v.isObjType(ObjType::LIST)) {
+        for (const auto& x : static_cast<ObjList*>(v.asObj())->vec) {
+            if (!x.isString()) JC2_THROW(TypeError, std::string(what) + " must be strings.");
+            out.push_back(x.asString());
+        }
+        return out;
+    }
+    JC2_THROW(TypeError, std::string(what) + " must be a string or list of strings.");
+    return out;
+}
+
+static std::string helpDescValue(const Value& v) {
+    if (v.isNone()) return "";
+    if (v.isString()) return v.asString();
+    if (v.isObjType(ObjType::LIST)) {
+        std::string out;
+        for (const auto& x : static_cast<ObjList*>(v.asObj())->vec) {
+            if (!x.isString()) JC2_THROW(TypeError, "desc lines must be strings.");
+            if (!out.empty()) out += "\n";
+            out += x.asString();
+        }
+        return out;
+    }
+    JC2_THROW(TypeError, "desc must be a string or list of strings.");
+    return "";
+}
+
 // ★ 共用实现（Dict 方法与全局函数唯一真值源）：接收者与错误消息里的名字都作为参数。
 //   Dict 方法传调用栈上的 self 与原名（行为逐字不变）；全局 getFields/hasField 传 args[0]/args[1]。
 // ★ 类级反射：把一个类（及其祖先）的公开成员名收集起来。
@@ -2559,15 +2611,87 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value::none();
         }, {"key", "val"});
 
-    regModule(sys_ns, "register_help", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString() || !args[1].isString()) {
-            JC2_THROW(InternalError, "register_help expects two strings.");
-        }
-        std::string topic = args[0].asString();
-        std::string text = args[1].asString();
-        jc::DynamicHelp[topic] = text; // 存入 C++ 内存池
+    regModule(sys_ns, "registerHelp", { 2 }, [](const std::vector<Value>& args) -> Value {
+        std::string path = helpPathArg(args[0]);
+        if (!args[1].isString())
+            JC2_THROW(TypeError, "registerHelp expects a text string.");
+        HelpRouter::registerText(path, args[1].asString());
         return Value::none();
-        }, {"topic", "text"});
+        }, {"path", "text"});
+
+    regModule(sys_ns, "registerEntry", { 2 }, [](const std::vector<Value>& args) -> Value {
+        std::string path = helpPathArg(args[0]);
+        if (!args[1].isObjType(ObjType::DICT))
+            JC2_THROW(TypeError, "registerEntry expects a spec dict.");
+        static const std::set<std::string> allowed = {
+            "kind", "title", "summary", "signature", "desc", "examples", "aliases", "see_also"
+        };
+        for (const auto& [k, v] : static_cast<ObjDict*>(args[1].asObj())->elements) {
+            if (!k.isString() || !allowed.count(k.asString()))
+                JC2_THROW(TypeError, "Unknown help field: '" + (k.isString() ? k.asString() : k.toRepr()) + "'");
+        }
+        HelpRouter::DynEntry e;
+        e.path = path;
+        Value v = helpDictGet(args[1], "kind");
+        if (!v.isNone()) {
+            e.kind = helpStringArg(v, "kind");
+            static const std::set<std::string> kinds = {
+                "entry", "function", "method", "class", "topic", "keyword", "dunder"
+            };
+            if (!kinds.count(e.kind))
+                JC2_THROW(TypeError, "Invalid help kind: '" + e.kind + "'");
+        }
+        v = helpDictGet(args[1], "title");
+        if (!v.isNone()) e.title = helpStringArg(v, "title");
+        v = helpDictGet(args[1], "summary");
+        if (!v.isNone()) e.summary = helpStringArg(v, "summary");
+        v = helpDictGet(args[1], "signature");
+        if (!v.isNone()) e.signature = helpStringArg(v, "signature");
+        e.desc = helpDescValue(helpDictGet(args[1], "desc"));
+        e.examples = helpStringList(helpDictGet(args[1], "examples"), "examples");
+        e.aliases = helpStringList(helpDictGet(args[1], "aliases"), "aliases");
+        e.seeAlso = helpStringList(helpDictGet(args[1], "see_also"), "see_also");
+        HelpRouter::registerEntry(e);
+        return Value::none();
+        }, {"path", "spec"});
+
+    regModule(sys_ns, "registerDirectory", { 2 }, [](const std::vector<Value>& args) -> Value {
+        std::string path = helpPathArg(args[0]);
+        if (!args[1].isObjType(ObjType::DICT))
+            JC2_THROW(TypeError, "registerDirectory expects a spec dict.");
+        static const std::set<std::string> allowed = { "title", "summary", "order" };
+        for (const auto& [k, v] : static_cast<ObjDict*>(args[1].asObj())->elements) {
+            if (!k.isString() || !allowed.count(k.asString()))
+                JC2_THROW(TypeError, "Unknown help field: '" + (k.isString() ? k.asString() : k.toRepr()) + "'");
+        }
+        Value v = helpDictGet(args[1], "title");
+        std::string title = v.isNone() ? "" : helpStringArg(v, "title");
+        v = helpDictGet(args[1], "summary");
+        std::string summary = v.isNone() ? "" : helpStringArg(v, "summary");
+        auto order = helpStringList(helpDictGet(args[1], "order"), "order");
+        HelpRouter::registerDirectory(path, title, summary, order);
+        return Value::none();
+        }, {"path", "spec"});
+
+    regModule(sys_ns, "unregisterHelp", { 1 }, [](const std::vector<Value>& args) -> Value {
+        std::string path = helpPathArg(args[0]);
+        return Value(HelpRouter::unregisterHelp(path));
+        }, {"path"});
+
+    regModule(sys_ns, "helpPaths", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+        std::string prefix;
+        if (!args.empty()) {
+            if (!args[0].isString())
+                JC2_THROW(TypeError, "helpPaths expects a prefix string.");
+            prefix = args[0].asString();
+        }
+        ObjList* L = GcHeap::get().allocate<ObjList>();
+        GcObjGuard guard(L);
+        for (const auto& p : HelpRouter::helpPaths(prefix)) {
+            L->vec.push_back(Value(p));
+        }
+        return Value(L);
+        }, {"prefix"});
     // ★ 暴露给用户的原生 help() 内置函数
     reg("help", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
         if (args.empty()) {

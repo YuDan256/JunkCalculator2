@@ -1,5 +1,6 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "VM.h"
+#include "HelpRouter.h"
 #include "../memory/GcHeap.h"
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
@@ -2981,6 +2982,7 @@ Value VM::execImport(const std::string& name) {
             uv->location = &uv->closed;
             ns->fields[kv.first] = { uv, true };
         }
+        HelpRouter::ensureModuleHelp(baseName);
         return Value(ns);
     }
 
@@ -3126,6 +3128,7 @@ Value VM::execImport(const std::string& name) {
     ns = static_cast<ObjNamespace*>(nsVal.asObj());
     loadedModules[name] = Value(ns);
 
+    HelpRouter::ensureModuleHelp(baseName);
     return Value(ns);
 }
 

@@ -112,7 +112,7 @@ class TlsSocket {
 
 const local import sys
 try {
-    sys.register_help("net", r"DOC(
+    sys.registerHelp("net", r"DOC(
 ═══ Network (Standard Library) ═══
 
   Requires: import net

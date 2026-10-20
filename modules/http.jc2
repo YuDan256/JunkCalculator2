@@ -891,7 +891,7 @@ httpPost(url: string, body: string, options: dict = {}) -> HttpResponse = {
 
 const local import sys
 try {
-    sys.register_help("http", r"DOC(
+    sys.registerHelp("http", r"DOC(
 ═══ HTTP Client (Standard Library) ═══
 
   Requires: import http

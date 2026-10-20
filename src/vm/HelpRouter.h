@@ -19,6 +19,114 @@ namespace jc {
 
     class HelpRouter {
     public:
+        struct DynEntry {
+            std::string path, kind, title, summary, signature, desc, body;
+            std::vector<std::string> examples, aliases, seeAlso;
+        };
+        struct DirInfo {
+            std::string title;
+            std::string summary;
+            std::vector<std::string> order;
+        };
+        static inline std::map<std::string, DynEntry> DynamicEntries;
+        static inline std::map<std::string, DirInfo> DynamicDirs;
+
+        static bool isValidPath(const std::string& p) {
+            if (p.empty() || p.front() == '.' || p.back() == '.') return false;
+            if (p.find("..") != std::string::npos) return false;
+            for (char c : p) {
+                if (std::isspace(static_cast<unsigned char>(c))) return false;
+            }
+            return true;
+        }
+
+        static void registerText(const std::string& path, const std::string& text) {
+            std::string key = toLower(path);
+            auto it = DynamicEntries.find(key);
+            if (it != DynamicEntries.end()) {
+                it->second.body = text;
+                if (it->second.kind.empty()) it->second.kind = "topic";
+            } else {
+                DynEntry e;
+                e.path = path;
+                e.kind = "topic";
+                e.body = text;
+                DynamicEntries[key] = e;
+            }
+        }
+
+        static void registerEntry(const DynEntry& in) {
+            std::string key = toLower(in.path);
+            DynEntry& e = DynamicEntries[key];
+            if (e.path.empty()) e.path = in.path;
+            if (e.kind.empty()) e.kind = in.kind.empty() ? "entry" : in.kind;
+            if (!in.title.empty()) e.title = in.title;
+            if (!in.summary.empty()) e.summary = in.summary;
+            if (!in.signature.empty()) e.signature = in.signature;
+            if (!in.desc.empty()) e.desc = in.desc;
+            if (!in.body.empty()) e.body = in.body;
+            auto append = [](std::vector<std::string>& dst, const std::vector<std::string>& src) {
+                for (const auto& s : src) {
+                    if (std::find(dst.begin(), dst.end(), s) == dst.end()) dst.push_back(s);
+                }
+            };
+            append(e.examples, in.examples);
+            append(e.aliases, in.aliases);
+            append(e.seeAlso, in.seeAlso);
+        }
+
+        static void registerDirectory(const std::string& path, const std::string& title,
+                                      const std::string& summary,
+                                      const std::vector<std::string>& order = {}) {
+            DynamicDirs[toLower(path)] = DirInfo{title, summary, order};
+        }
+
+        static bool unregisterHelp(const std::string& path) {
+            std::string key = toLower(path);
+            bool removed = false;
+            for (auto it = DynamicEntries.begin(); it != DynamicEntries.end();) {
+                if (it->first == key || it->first.rfind(key + ".", 0) == 0) {
+                    it = DynamicEntries.erase(it);
+                    removed = true;
+                } else ++it;
+            }
+            for (auto it = DynamicDirs.begin(); it != DynamicDirs.end();) {
+                if (it->first == key || it->first.rfind(key + ".", 0) == 0) {
+                    it = DynamicDirs.erase(it);
+                    removed = true;
+                } else ++it;
+            }
+            for (auto it = DynamicHelp.begin(); it != DynamicHelp.end();) {
+                if (it->first == path || it->first.rfind(path + ".", 0) == 0) {
+                    it = DynamicHelp.erase(it);
+                    removed = true;
+                } else ++it;
+            }
+            return removed;
+        }
+
+        static std::vector<std::string> helpPaths(const std::string& prefix) {
+            init();
+            Index ix = buildIndex(helpAst);
+            std::string p = toLower(prefix);
+            std::vector<std::string> out;
+            for (const auto& [id, n] : ix.nodes) {
+                if (p.empty() || id == p || id.rfind(p + ".", 0) == 0) out.push_back(n.display);
+            }
+            std::sort(out.begin(), out.end());
+            return out;
+        }
+
+        static void ensureModuleHelp(const std::string& name) {
+            init();
+            Index ix = buildIndex(helpAst);
+            std::string key = toLower(name);
+            for (const auto& [id, n] : ix.nodes) {
+                if (id == key || id.rfind(key + ".", 0) == 0 || lastSeg(id) == key) return;
+            }
+            registerText(name, "No documentation registered for module '" + name + "'.");
+        }
+
         static inline Json helpAst;
         static inline bool initialized = false;
 
@@ -178,10 +286,15 @@ namespace jc {
         struct HNode {
             std::string id;
             std::string display;
-            std::string kind;   // topic / function / method / keyword / dunder
+            std::string kind;   // topic / function / method / keyword / dunder / entry
             const Json* payload = nullptr;
             std::string body;
             std::string summary;
+            std::string signature;
+            std::string desc;
+            std::vector<std::string> examples;
+            std::vector<std::string> aliases;
+            std::vector<std::string> seeAlso;
             bool dynamic = false;
         };
 
@@ -200,6 +313,7 @@ namespace jc {
             std::map<std::string, CNode> cat;
             std::map<std::string, std::string> catByPath;
             std::vector<std::string> catRoots;
+            std::map<std::string, DirInfo> dirs;
         };
 
         static std::string toLower(std::string s) {
@@ -327,10 +441,15 @@ namespace jc {
             n.payload = payload;
             n.body = body;
             n.dynamic = dynamic;
-            n.summary = payload ? firstLine(payloadStr(payload, "desc")) : firstLine(body);
+            n.signature = payloadStr(payload, "signature");
+            n.desc = payloadStr(payload, "desc");
+            n.examples = payloadList(payload, "examples");
+            n.aliases = payloadList(payload, "aliases");
+            n.seeAlso = payloadList(payload, "see_also");
+            n.summary = payload ? firstLine(n.desc) : firstLine(body);
             ix.nodes[n.id] = n;
             ix.shorts.emplace(lastSeg(n.id), n.id);
-            for (const auto& a : payloadList(payload, "aliases")) {
+            for (const auto& a : n.aliases) {
                 ix.shorts.emplace(toLower(a), n.id);
             }
         }
@@ -387,6 +506,21 @@ namespace jc {
             // 动态注册（脚本）
             for (const auto& [k, v] : DynamicHelp) {
                 addNode(ix, toLower(k), k, "topic", nullptr, v, true);
+            }
+            for (const auto& [k, e] : DynamicEntries) {
+                addNode(ix, k, e.path, e.kind.empty() ? "entry" : e.kind, nullptr, e.body, true);
+                HNode& n = ix.nodes[k];
+                n.signature = e.signature;
+                n.desc = e.desc;
+                n.examples = e.examples;
+                n.aliases = e.aliases;
+                n.seeAlso = e.seeAlso;
+                if (!e.summary.empty()) n.summary = e.summary;
+                else if (n.summary.empty() && !n.desc.empty()) n.summary = firstLine(n.desc);
+                for (const auto& a : n.aliases) ix.shorts.emplace(toLower(a), n.id);
+            }
+            for (const auto& [k, v] : DynamicDirs) {
+                ix.dirs[k] = v;
             }
 
             static const std::pair<const char*, const char*> cats[] = {
@@ -489,6 +623,9 @@ namespace jc {
             if (n.kind == "topic") {
                 o << n.body;
                 if (!n.body.empty() && n.body.back() != '\n') o << "\n";
+                if (hasChildren(ix, n.id)) {
+                    renderMembers(o, ix, n.id, "Members");
+                }
                 std::string g = lastSeg(n.id);
                 if (!shortMatches(ix, g, "function").empty()) {
                     o << "\n  Tip: '" << g << "' is also a builtin function; help('global." << g << "').\n";
@@ -496,27 +633,22 @@ namespace jc {
                 return o.str();
             }
             o << breadcrumb(n.display) << "\n";
-            std::string sig = payloadStr(n.payload, "signature");
-            if (!sig.empty()) o << "  " << sig << "\n";
-            std::string desc = payloadStr(n.payload, "desc");
-            if (!desc.empty()) {
-                for (const auto& line : splitLines(desc)) o << "  " << line << "\n";
+            if (!n.signature.empty()) o << "  " << n.signature << "\n";
+            if (!n.desc.empty()) {
+                for (const auto& line : splitLines(n.desc)) o << "  " << line << "\n";
             }
-            auto examples = payloadList(n.payload, "examples");
-            if (!examples.empty()) {
+            if (!n.examples.empty()) {
                 o << "\n  Examples:\n";
-                for (const auto& ex : examples) o << "    " << ex << "\n";
+                for (const auto& ex : n.examples) o << "    " << ex << "\n";
             }
-            auto aliases = payloadList(n.payload, "aliases");
-            if (!aliases.empty()) {
+            if (!n.aliases.empty()) {
                 o << "\n  Aliases: ";
-                for (size_t i = 0; i < aliases.size(); ++i) { if (i) o << ", "; o << aliases[i]; }
+                for (size_t i = 0; i < n.aliases.size(); ++i) { if (i) o << ", "; o << n.aliases[i]; }
                 o << "\n";
             }
-            auto see = payloadList(n.payload, "see_also");
-            if (!see.empty()) {
+            if (!n.seeAlso.empty()) {
                 o << "  See also: ";
-                for (size_t i = 0; i < see.size(); ++i) { if (i) o << ", "; o << see[i]; }
+                for (size_t i = 0; i < n.seeAlso.size(); ++i) { if (i) o << ", "; o << n.seeAlso[i]; }
                 o << "\n";
             }
             return o.str();
@@ -526,6 +658,20 @@ namespace jc {
                                   const std::string& label) {
             auto ids = directChildren(ix, prefix);
             if (ids.empty()) return;
+            auto di = ix.dirs.find(toLower(prefix));
+            if (di != ix.dirs.end() && !di->second.order.empty()) {
+                const auto& order = di->second.order;
+                auto rank = [&](const std::string& id) -> size_t {
+                    std::string seg = lastSeg(id);
+                    for (size_t i = 0; i < order.size(); ++i) if (order[i] == seg) return i;
+                    return order.size();
+                };
+                std::stable_sort(ids.begin(), ids.end(), [&](const std::string& a, const std::string& b) {
+                    size_t ra = rank(a), rb = rank(b);
+                    if (ra != rb) return ra < rb;
+                    return a < b;
+                });
+            }
             o << "  " << label << " (" << ids.size() << ")\n";
             for (const auto& id : ids) {
                 auto it = ix.nodes.find(id);
@@ -608,11 +754,24 @@ namespace jc {
 
         static std::string renderPrefixDir(const Index& ix, const std::string& path) {
             std::ostringstream o;
-            o << path << "\n";
+            auto di = ix.dirs.find(path);
+            if (di != ix.dirs.end() && !di->second.title.empty()) {
+                o << di->second.title;
+                if (!di->second.summary.empty()) o << " — " << di->second.summary;
+                o << "\n";
+            } else {
+                o << path << "\n";
+            }
             if (const HNode* tb = findNode(ix, "topic." + path)) {
                 if (tb->kind == "topic") {
                     o << "\n" << tb->body;
                     if (tb->body.empty() || tb->body.back() != '\n') o << "\n";
+                }
+            }
+            if (const HNode* eb = findNode(ix, path)) {
+                if (eb->kind == "topic") {
+                    o << "\n" << eb->body;
+                    if (eb->body.empty() || eb->body.back() != '\n') o << "\n";
                 }
             }
             renderMembers(o, ix, path, "Members");

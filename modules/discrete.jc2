@@ -1232,7 +1232,7 @@ class RelationError extends Exception {
 }
 
 try {
-    sys.register_help("discrete", r"DOC(
+    sys.registerHelp("discrete", r"DOC(
 ═══ Discrete Mathematics Standard Library ═══
 
   Requires: import discrete

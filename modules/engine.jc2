@@ -77,7 +77,7 @@ class GameEngine {
 // ─── Dynamic Help Registry ────────────────────────────────────
 
 try {
-    sys.register_help("engine", r"DOC(
+    sys.registerHelp("engine", r"DOC(
 ═══ Game Engine Framework (Standard Library) ═══
 
   Requires: import engine

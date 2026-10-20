@@ -123,4 +123,41 @@ try {
     self.setBackground(color)  Sets the auto-clear background color.
     self.quit()                Safely terminates the game loop.
 )DOC")
+
+    sys.registerDirectory("engine", {
+        title: "engine",
+        summary: "Pygame-like game framework: frame pacing, input and immediate-mode drawing."
+    })
+    sys.registerEntry("engine.GameEngine", {
+        kind: "class", signature: "GameEngine",
+        desc: "Base class for games. Subclass it, override init/update/draw, then call run()."
+    })
+    sys.registerEntry("engine.GameEngine.init", {
+        kind: "method", signature: "init()", desc: "Override to call super.init(title, width, height, fps) and set up state."
+    })
+    sys.registerEntry("engine.GameEngine.update", {
+        kind: "method", signature: "update(dt)", desc: "Called every frame; dt is the elapsed seconds since the last frame."
+    })
+    sys.registerEntry("engine.GameEngine.draw", {
+        kind: "method", signature: "draw(im)", desc: "Called every frame; draw state to the immediate-mode canvas."
+    })
+    sys.registerEntry("engine.GameEngine.run", {
+        kind: "method", signature: "run()", desc: "Starts the main loop."
+    })
+    sys.registerEntry("engine.GameEngine.onKeyDown", {
+        kind: "method", signature: "onKeyDown(key)", desc: "Called once when a key is pressed."
+    })
+    sys.registerEntry("engine.GameEngine.onMouseMove", {
+        kind: "method", signature: "onMouseMove(x, y)", desc: "Called when the mouse moves."
+    })
+    sys.registerEntry("engine.GameEngine.isKeyDown", {
+        kind: "method", signature: "isKeyDown(key)", desc: "Instantaneous key state check."
+    })
+    sys.registerEntry("engine.GameEngine.setBackground", {
+        kind: "method", signature: "setBackground(color)", desc: "Sets the color used by the automatic clear each frame."
+    })
+    sys.registerEntry("engine.GameEngine.quit", {
+        kind: "method", signature: "quit()", desc: "Terminates the main loop safely."
+    })
+
 }

@@ -6591,6 +6591,7 @@
     "sort": {
       "signature": "v.sort([cmp])",
       "desc": "Stably sorts a list in place and returns the same list. Lists only; use sorted() for a copy.",
+        "see_also": ["list.sorted"],
       "examples": [
         "L = @[3, 1, 2]; L.sort()"
       ]
@@ -6598,6 +6599,7 @@
     "sorted": {
       "signature": "v.sorted([cmp])",
       "desc": "Returns a sorted copy: list → new list, string → string, matrix → row array. Optionally accepts a comparator returning a number (its sign decides the order).",
+        "see_also": ["list.sort"],
       "examples": [
         "@[3, 1, 2].sorted()"
       ]
@@ -6654,6 +6656,7 @@
     "reverse": {
       "signature": "v.reverse()",
       "desc": "Reverses a list in place and returns the same list. Lists only; use reversed() for a copy.",
+        "see_also": ["reversed"],
       "examples": [
         "L = @[1, 2, 3]; L.reverse()"
       ]
@@ -6661,6 +6664,7 @@
     "reversed": {
       "signature": "v.reversed()",
       "desc": "Returns a reversed copy: list → new list, string → reversed string.",
+        "see_also": ["reverse"],
       "examples": [
         "@[1, 2, 3].reversed()",
         "\"abc\".reversed()"
@@ -7113,6 +7117,7 @@
     "gcStats": {
       "signature": "sys.gcStats()",
       "desc": "Returns a dict with tracked GC objects, the collection threshold and allocations since the last GC.",
+        "see_also": ["sys.gc"],
       "examples": [
         "sys.gcStats()"
       ]
@@ -7127,6 +7132,7 @@
     "gc": {
       "signature": "sys.gc()",
       "desc": "Forces a Garbage Collection (clears 'ANS' first). Returns the number of freed objects.",
+        "see_also": ["sys.gcStats"],
       "examples": [
         "import sys; sys.gc()"
       ]

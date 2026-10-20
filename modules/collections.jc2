@@ -815,4 +815,123 @@ try {
     same sequence. toList() returns that same snapshot order as a plain list.
     clear() replaces the internal storage, so it is O(1).
 )DOC")
+
+    sys.registerDirectory("collections", {
+        title: "collections",
+        summary: "Standard containers: stacks, queues, heaps, trees and caches.",
+        order: @["Stack", "Queue", "Deque", "DefaultDict", "Counter", "PriorityQueue", "BST", "UnionFind", "LRU", "IndexError"]
+    })
+    sys.registerEntry("collections.Stack", {
+        kind: "class", signature: "Stack()",
+        desc: "LIFO container. push/pop are O(1); iteration is top-down."
+    })
+    sys.registerEntry("collections.Stack.push", {
+        kind: "method", signature: "push(x)", desc: "Pushes x onto the top of the stack."
+    })
+    sys.registerEntry("collections.Stack.pop", {
+        kind: "method", signature: "pop()", desc: "Removes and returns the top element; throws IndexError when empty."
+    })
+    sys.registerEntry("collections.Stack.peek", {
+        kind: "method", signature: "peek()", desc: "Returns the top element without removing it."
+    })
+    sys.registerEntry("collections.Stack.isEmpty", {
+        kind: "method", signature: "isEmpty()", desc: "Returns true when the stack has no elements."
+    })
+    sys.registerEntry("collections.Stack.size", {
+        kind: "method", signature: "size()", desc: "Returns the number of elements."
+    })
+    sys.registerEntry("collections.Queue", {
+        kind: "class", signature: "Queue()",
+        desc: "FIFO container implemented as two stacks; amortized O(1) enqueue/dequeue."
+    })
+    sys.registerEntry("collections.Queue.enqueue", {
+        kind: "method", signature: "enqueue(x)", desc: "Appends x to the back of the queue."
+    })
+    sys.registerEntry("collections.Queue.dequeue", {
+        kind: "method", signature: "dequeue()", desc: "Removes and returns the front element; throws IndexError when empty."
+    })
+    sys.registerEntry("collections.Queue.peek", {
+        kind: "method", signature: "peek()", desc: "Returns the front element without removing it."
+    })
+    sys.registerEntry("collections.Deque", {
+        kind: "class", signature: "Deque()",
+        desc: "Double-ended queue with amortized O(1) operations at both ends."
+    })
+    sys.registerEntry("collections.Deque.pushLeft", {
+        kind: "method", signature: "pushLeft(x)", desc: "Pushes x onto the left end."
+    })
+    sys.registerEntry("collections.Deque.pushRight", {
+        kind: "method", signature: "pushRight(x)", desc: "Pushes x onto the right end."
+    })
+    sys.registerEntry("collections.Deque.popLeft", {
+        kind: "method", signature: "popLeft()", desc: "Removes and returns the leftmost element."
+    })
+    sys.registerEntry("collections.Deque.popRight", {
+        kind: "method", signature: "popRight()", desc: "Removes and returns the rightmost element."
+    })
+    sys.registerEntry("collections.DefaultDict", {
+        kind: "class", signature: "DefaultDict(factory)",
+        desc: "Dict that creates missing values with factory, e.g. DefaultDict(() => @[])."
+    })
+    sys.registerEntry("collections.Counter", {
+        kind: "class", signature: "Counter(iterable)",
+        desc: "Frequency map over an iterable."
+    })
+    sys.registerEntry("collections.Counter.update", {
+        kind: "method", signature: "update(iter)", desc: "Adds counts from another iterable."
+    })
+    sys.registerEntry("collections.Counter.mostCommon", {
+        kind: "method", signature: "mostCommon(n)", desc: "Returns the n most common items, sorted by count."
+    })
+    sys.registerEntry("collections.PriorityQueue", {
+        kind: "class", signature: "PriorityQueue([cmp])",
+        desc: "Binary heap; min-heap by default. cmp(a, b) returning true makes it a max-heap."
+    })
+    sys.registerEntry("collections.PriorityQueue.push", {
+        kind: "method", signature: "push(x)", desc: "Inserts x; O(log n)."
+    })
+    sys.registerEntry("collections.PriorityQueue.pop", {
+        kind: "method", signature: "pop()", desc: "Removes and returns the top element; O(log n)."
+    })
+    sys.registerEntry("collections.BST", {
+        kind: "class", signature: "BST()",
+        desc: "Unbalanced binary search tree; ignores duplicate keys."
+    })
+    sys.registerEntry("collections.BST.insert", {
+        kind: "method", signature: "insert(x)", desc: "Inserts x; O(h) for tree height h."
+    })
+    sys.registerEntry("collections.BST.contains", {
+        kind: "method", signature: "contains(x)", desc: "Returns true when x is present."
+    })
+    sys.registerEntry("collections.BST.inorder", {
+        kind: "method", signature: "inorder()", desc: "Returns the elements in ascending order."
+    })
+    sys.registerEntry("collections.UnionFind", {
+        kind: "class", signature: "UnionFind()",
+        desc: "Disjoint-set forest with path compression and union by rank."
+    })
+    sys.registerEntry("collections.UnionFind.find", {
+        kind: "method", signature: "find(x)", desc: "Returns the representative of the set containing x."
+    })
+    sys.registerEntry("collections.UnionFind.union", {
+        kind: "method", signature: "union(a, b)", desc: "Merges the sets containing a and b."
+    })
+    sys.registerEntry("collections.UnionFind.connected", {
+        kind: "method", signature: "connected(a, b)", desc: "Returns true when a and b are in the same set."
+    })
+    sys.registerEntry("collections.LRU", {
+        kind: "class", signature: "LRU([capacity])",
+        desc: "Least-recently-used cache; capacity defaults to 16."
+    })
+    sys.registerEntry("collections.LRU.get", {
+        kind: "method", signature: "get(k)", desc: "Returns the value for k and marks it most recently used."
+    })
+    sys.registerEntry("collections.LRU.put", {
+        kind: "method", signature: "put(k, v)", desc: "Inserts or updates k, evicting the least recently used entry."
+    })
+    sys.registerEntry("collections.IndexError", {
+        kind: "class", signature: "IndexError",
+        desc: "Raised by pop, peek or dequeue on an empty container."
+    })
+
 }

@@ -163,4 +163,43 @@ try {
     NetworkError    Connection closed while reading, socket not connected,
                     or a TCP server that is not bound to a port.
 )DOC")
+
+    sys.registerDirectory("net", {
+        title: "net",
+        summary: "Zero-dependency TCP and TLS 1.3 sockets."
+    })
+    sys.registerEntry("net.TcpSocket", {
+        kind: "class", signature: "TcpSocket(host, port)",
+        desc: "Outbound TCP client. Chain connect(), then send/recv."
+    })
+    sys.registerEntry("net.TcpSocket.connect", {
+        kind: "method", signature: "connect()", desc: "Dials the remote host and returns the connected socket."
+    })
+    sys.registerEntry("net.TcpSocket.send", {
+        kind: "method", signature: "send(data)", desc: "Writes a string payload to the stream."
+    })
+    sys.registerEntry("net.TcpSocket.recv", {
+        kind: "method", signature: "recv([max_bytes])", desc: "Reads up to max_bytes (default 4096); returns an empty string on EOF."
+    })
+    sys.registerEntry("net.TcpSocket.close", {
+        kind: "method", signature: "close()", desc: "Closes the connection."
+    })
+    sys.registerEntry("net.TcpServer", {
+        kind: "class", signature: "TcpServer(host, port)",
+        desc: "Inbound TCP listener. Chain bind(), then accept() connections."
+    })
+    sys.registerEntry("net.TcpServer.bind", {
+        kind: "method", signature: "bind()", desc: "Binds and listens on the configured address."
+    })
+    sys.registerEntry("net.TcpServer.accept", {
+        kind: "method", signature: "accept()", desc: "Blocks until a client connects and returns the socket."
+    })
+    sys.registerEntry("net.TlsSocket", {
+        kind: "class", signature: "TlsSocket(host, port)",
+        desc: "TLS 1.3 client; verifies the certificate chain against the system trust store."
+    })
+    sys.registerEntry("net.TlsSocket.certificate", {
+        kind: "method", signature: "certificate()", desc: "Returns the peer leaf certificate as hex-encoded DER."
+    })
+
 }

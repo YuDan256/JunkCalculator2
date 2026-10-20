@@ -1021,10 +1021,16 @@
       "signature": "v.reduce(f, [init])"
     },
     "sort": {
-      "signature": "v.sort([cmp])"
+      "signature": "v.sort([cmp])",
+      "see_also": [
+        "list.sorted"
+      ]
     },
     "sorted": {
-      "signature": "v.sorted([cmp])"
+      "signature": "v.sorted([cmp])",
+      "see_also": [
+        "list.sort"
+      ]
     },
     "first": {
       "signature": "v.first()"
@@ -1048,10 +1054,16 @@
       "signature": "slice([start], [end], [step]) / v.slice(start, [end])"
     },
     "reverse": {
-      "signature": "v.reverse()"
+      "signature": "v.reverse()",
+      "see_also": [
+        "reversed"
+      ]
     },
     "reversed": {
-      "signature": "v.reversed()"
+      "signature": "v.reversed()",
+      "see_also": [
+        "reverse"
+      ]
     },
     "flatten": {
       "signature": "v.flatten()"
@@ -1257,13 +1269,19 @@
       "signature": "sys.loadedModules()"
     },
     "gcStats": {
-      "signature": "sys.gcStats()"
+      "signature": "sys.gcStats()",
+      "see_also": [
+        "sys.gc"
+      ]
     },
     "monotonic": {
       "signature": "sys.monotonic()"
     },
     "gc": {
-      "signature": "sys.gc()"
+      "signature": "sys.gc()",
+      "see_also": [
+        "sys.gcStats"
+      ]
     },
     "run": {
       "signature": "sys.run(path)"

@@ -999,4 +999,34 @@ try {
     net.NetworkError  Thrown when the peer closes the connection while a body is
                       being read (defined by the net module, as its name implies).
 )DOC")
+
+    sys.registerDirectory("http", {
+        title: "http",
+        summary: "HTTP/1.1 client with TLS, redirects, decompression and connection reuse."
+    })
+    sys.registerEntry("http.httpGet", {
+        kind: "method", signature: "httpGet(url, [options])",
+        desc: "GET request; follows up to five redirects by default."
+    })
+    sys.registerEntry("http.httpPost", {
+        kind: "method", signature: "httpPost(url, body, [options])",
+        desc: "POST request with a request body and Content-Length."
+    })
+    sys.registerEntry("http.httpRequest", {
+        kind: "method", signature: "httpRequest(method, url, [options])",
+        desc: "Sends an arbitrary method with the same framing and reuse logic."
+    })
+    sys.registerEntry("http.parseResponse", {
+        kind: "method", signature: "parseResponse(raw_bytes, [url, options])",
+        desc: "Parses one complete response offline."
+    })
+    sys.registerEntry("http.planRead", {
+        kind: "method", signature: "planRead(status, headers, method)",
+        desc: "Pure framing plan: returns {mode, length} where mode is none, length, chunked or eof."
+    })
+    sys.registerEntry("http.HttpResponse", {
+        kind: "class", signature: "HttpResponse",
+        desc: "Response value with status, headers, body and URL metadata."
+    })
+
 }

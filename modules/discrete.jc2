@@ -1352,4 +1352,55 @@ try {
                                                             still exponential, but
                                                             pruning skips most of it
 )DOC")
+
+    sys.registerDirectory("discrete", {
+        title: "discrete",
+        summary: "Combinatorics, propositional logic, relations and graphs."
+    })
+    sys.registerEntry("discrete.Prop", {
+        kind: "class", signature: "Prop",
+        desc: "Propositional formula with operator overloading. Build with Var(\"p\"), A & B, A | B, -A."
+    })
+    sys.registerEntry("discrete.Prop.implies", {
+        kind: "method", signature: "implies(other)", desc: "Material implication A -> B."
+    })
+    sys.registerEntry("discrete.Prop.eval", {
+        kind: "method", signature: "eval(env)", desc: "Evaluates under a variable binding dict."
+    })
+    sys.registerEntry("discrete.Prop.isTautology", {
+        kind: "method", signature: "isTautology()", desc: "True when the formula holds for every assignment."
+    })
+    sys.registerEntry("discrete.Prop.isSatisfiable", {
+        kind: "method", signature: "isSatisfiable()", desc: "True when at least one assignment satisfies the formula."
+    })
+    sys.registerEntry("discrete.Prop.satisfiableDpll", {
+        kind: "method", signature: "satisfiableDpll()", desc: "Returns a witness binding from the DPLL engine, or none."
+    })
+    sys.registerEntry("discrete.Prop.parse", {
+        kind: "method", signature: "Prop.parse(text)", desc: "Builds a Prop from text; discrete.parseProp does the same."
+    })
+    sys.registerEntry("discrete.Relation", {
+        kind: "class", signature: "Relation(set)",
+        desc: "Binary relation over a base set, with closure and order checks."
+    })
+    sys.registerEntry("discrete.Relation.addPair", {
+        kind: "method", signature: "addPair(a, b)", desc: "Adds (a, b); both endpoints must belong to the base set."
+    })
+    sys.registerEntry("discrete.Relation.transitiveClosure", {
+        kind: "method", signature: "transitiveClosure()", desc: "Returns the transitive closure of the relation."
+    })
+    sys.registerEntry("discrete.Graph", {
+        kind: "class", signature: "Graph(directed)",
+        desc: "Directed graph by default; pass false for an undirected graph."
+    })
+    sys.registerEntry("discrete.Graph.addVertex", {
+        kind: "method", signature: "addVertex(v)", desc: "Adds a vertex."
+    })
+    sys.registerEntry("discrete.Graph.addEdge", {
+        kind: "method", signature: "addEdge(a, b)", desc: "Adds an edge between two existing vertices."
+    })
+    sys.registerEntry("discrete.truthTable", {
+        kind: "method", signature: "truthTable(n, fn)", desc: "Returns truth table data for an n-ary boolean function."
+    })
+
 }

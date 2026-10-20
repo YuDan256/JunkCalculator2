@@ -1,0 +1,14 @@
+import sys
+import collections
+import net
+
+p = sys.helpPaths("collections")
+assert(len(p) >= 20, "collections entries registered")
+assert(len(help("collections.Stack.push")) > 0, "stack push entry")
+assert(len(help("collections.LRU.put")) > 0, "lru put entry")
+
+n = sys.helpPaths("net")
+assert(len(n) >= 5, "net entries registered")
+assert(len(help("net.TcpSocket.send")) > 0, "tcp send entry")
+
+print("help module battery OK")

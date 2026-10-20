@@ -1505,9 +1505,6 @@
     "color": {
       "signature": "sys.color(state)"
     },
-    "imgPlot": {
-      "signature": "sys.imgPlot(inst, f, xMin, xMax, yMin, yMax, color, [thick])"
-    },
     "resetConst": {
       "signature": "sys.resetConst()"
     },
@@ -1574,19 +1571,19 @@
       "signature": "math.BaseNum(value, radix)"
     },
     "diff": {
-      "signature": "cas.diff(expr, var) / math.diff(f, x0)"
+      "signature": "math.diff(f, x0)"
     },
     "integ": {
-      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])"
+      "signature": "math.integ(f, a, b, [n])"
     },
     "limit": {
-      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])"
+      "signature": "math.limit(f, x0, [dir])"
     },
     "factor": {
-      "signature": "cas.factor(expr) / math.factor(n)"
+      "signature": "math.factor(n)"
     },
     "solve": {
-      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0) / cas.solve(expr, var)"
+      "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0)"
     },
     "factorial": {
       "signature": "math.factorial(n)"
@@ -1666,13 +1663,13 @@
   },
   "cas_methods": {
     "diff": {
-      "signature": "cas.diff(expr, var) / math.diff(f, x0)"
+      "signature": "cas.diff(expr, var)"
     },
     "integ": {
-      "signature": "cas.integ(expr, var, [a, b]) / math.integ(f, a, b, [n])"
+      "signature": "cas.integ(expr, var, [a, b])"
     },
     "limit": {
-      "signature": "cas.limit(expr, var, val, [dir]) / math.limit(f, x0, [dir])"
+      "signature": "cas.limit(expr, var, val, [dir])"
     },
     "expand": {
       "signature": "cas.expand(expr)"
@@ -1726,7 +1723,7 @@
       "signature": "cas.resultant(A, B, var)"
     },
     "factor": {
-      "signature": "cas.factor(expr) / math.factor(n)"
+      "signature": "cas.factor(expr)"
     },
     "factorReal": {
       "signature": "cas.factorReal(expr)"
@@ -1736,6 +1733,18 @@
     },
     "verifyInteg": {
       "signature": "cas.verifyInteg(expr, var)"
+    },
+    "solve": {
+      "signature": "cas.solve(expr, var)"
+    },
+    "assume": {
+      "signature": "cas.assume(var, [assumption])"
+    },
+    "assumptions": {
+      "signature": "cas.assumptions()"
+    },
+    "clearAssumptions": {
+      "signature": "cas.clearAssumptions()"
     }
   },
   "random_methods": {

@@ -75,7 +75,6 @@ JC2_EXTENSION_INIT
 *   **`jc2::Set`**：对应 JC2 的 `set`。支持 `add(val)`, `remove(val)`, `has(val)`, `size()`。
 *   **`jc2::RealMatrix`**：对应 JC2 的 `realmatrix`。支持 `get(row, col)`, `set(row, col, val)`, `rows()`, `cols()`。
 *   **`jc2::ComplexMatrix`**：对应 JC2 的 `complexmatrix`。支持 `get_real(row, col)`, `get_imag(row, col)`, `set(row, col, r, i)`, `rows()`, `cols()`。
-*   **`jc2::StringMatrix`**：对应 JC2 的 `stringmatrix`。支持 `get(row, col)`, `set(row, col, str)`, `rows()`, `cols()`。
 *   **`jc2::Function`**：对应 JC2 的函数闭包。支持 `call(args_vector)`，允许你从 C++ 侧直接回调 JC2 脚本中的函数！
 
 ```cpp

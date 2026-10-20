@@ -4937,10 +4937,9 @@
     },
     "addE": {
       "signature": "A.addE(B)",
-      "desc": "Element-wise addition. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix. Also supports string concatenation.",
+      "desc": "Element-wise addition. Supports scalar-scalar, scalar-matrix broadcasting, and matrix-matrix.",
       "examples": [
-        "[1, 2].addE(3)",
-        "\"ID_\".addE([1, 2])"
+        "[1, 2].addE(3)"
       ]
     },
     "subE": {

@@ -5194,7 +5194,6 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("symbolic", VM::activeVM->getBuiltinValue("symbolic"));
             VM::activeVM->setGlobal("realmatrix", VM::activeVM->getBuiltinValue("realmatrix"));
             VM::activeVM->setGlobal("complexmatrix", VM::activeVM->getBuiltinValue("complexmatrix"));
-            VM::activeVM->setGlobal("stringmatrix", VM::activeVM->getBuiltinValue("stringmatrix"));
             VM::activeVM->setGlobal("symmatrix", VM::activeVM->getBuiltinValue("symmatrix"));
             VM::activeVM->setGlobal("matrix", VM::activeVM->getBuiltinValue("matrix"));
             VM::activeVM->setGlobal("function", VM::activeVM->getBuiltinValue("function"));
@@ -6097,7 +6096,7 @@ void BuiltinRegistry::registerCAS() {
             }
         }
         else {
-            JC2_THROW(TypeError, "subs() second argument must be a string, symbol, string matrix, or list.");
+            JC2_THROW(TypeError, "subs() second argument must be a string, symbol, or list.");
         }
 
         if (vars.size() == 1) {

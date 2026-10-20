@@ -296,7 +296,7 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
             varNames.push_back(v.as_string());
         }
     }
-    else throw_error(jc2::ErrorType::TypeError, "2nd argument must be a List or Matrix of variable strings.");
+    else throw_error(jc2::ErrorType::TypeError, "2nd argument must be a list of variable strings.");
 
     LatexParser parser;
     std::string exprCode = parser.compile(latex_str);
@@ -366,7 +366,7 @@ int jc2_init(jc2::Module& mod) {
         "    latex.compile(\"formula\", variable_names)\n"
         "        Dynamically compiles a parameterized LaTeX formula into an executable \n"
         "        JC2 abstract syntax tree, returning a true JC2 function closure.\n"
-        "        `variable_names` must be a list or stringmatrix.\n\n"
+        "        `variable_names` must be a list of strings.\n\n"
         "        // 1. Compile the LaTeX math into a native callable function f(x, \\theta)\n"
         "        f = latex.compile(r\"\\frac{\\sin(\\theta)}{x^2}\", [\"x\", r\"\\theta\"])\n"
         "        \n"

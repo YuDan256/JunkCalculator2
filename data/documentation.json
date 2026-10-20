@@ -589,7 +589,15 @@
       "    Using `delete sin` only removes your shadowing variable, which instantly",
       "    restores the original built-in function underneath:",
       "      delete sin",
-      "      sin(1)                     → 0.841... (built-in restored)"
+      "      sin(1)                     → 0.841... (built-in restored)",
+      "",
+      "  User Namespaces",
+      "  ──────────────────────",
+      "    Namespaces are fully dynamic: members can be added, modified, or",
+      "    deleted at runtime, and they support dict operations (keys, values,",
+      "    for-in). Exported `const` members stay immutable; `freeze()` locks",
+      "    the whole namespace and makes it hashable.",
+      "    See also: namespace"
     ],
     "complex": [
       "═══ Complex Numbers ═══",
@@ -5427,26 +5435,17 @@
       "signature": "namespace [Name] { ... }  |  namespace",
       "desc": [
         "Creates a namespace, or refers to the current namespace.",
-        "• `namespace Name { ... }` names the namespace itself; `Name = namespace { ... }` does not (prints `<anonymous namespace>`).",
-        "• Inside the block, the `namespace` keyword evaluates to the namespace object itself.",
-        "• Variables declared with `local` are private and will not be exported.",
+        "• `namespace Name { ... }` names the namespace itself; `Name = namespace { ... }` stays anonymous.",
+        "• Inside a namespace block, bare `namespace` evaluates to that namespace object.",
+        "• `local` members are private; `const` members are exported immutable.",
         "",
-        "★ Dynamic & Dict-Like:",
-        "Namespaces are fully dynamic. You can add, modify, or delete members",
-        "at runtime. They support all dict operations (keys, values, for-in).",
-        "",
-        "★ True Singleton & Freezing:",
-        "Namespaces share state perfectly. Exported `const` variables remain",
-        "strictly immutable. You can lock the entire namespace with `freeze()`",
-        "to make it hashable."
+        "See also: namespaces"
       ],
       "examples": [
-        "const Math = namespace {",
-        "    const PI = 3.14",
-        "    add(a, b) = a + b",
-        "    register() = Global.add(namespace) // Self-reference",
+        "namespace Geometry {",
+        "    area(r) = 3.14 * r * r",
         "}",
-        "Math.E = 2.718"
+        "Geometry.area(2)"
       ]
     },
     "class": {

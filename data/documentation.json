@@ -7940,6 +7940,35 @@
       "examples": [
         "import math; math.catalan(5)"
       ]
+    },
+    "BaseNum.fromString": {
+      "signature": "math.BaseNum.fromString(s, radix)",
+      "desc": "Parses a string as a base-radix number. For radix <= 36 the digits are 0-9/A-Z; for larger radixes, underscores separate base-10 digit groups.",
+      "examples": [
+        "math.BaseNum.fromString(\"FF\", 16)",
+        "math.BaseNum.fromString(\"45_63_2\", 64)"
+      ]
+    },
+    "BaseNum.changeBase": {
+      "signature": "b.changeBase(radix)",
+      "desc": "Returns a new BaseNum re-displayed in the given radix.",
+      "examples": [
+        "math.BaseNum(255, 16).changeBase(2)"
+      ]
+    },
+    "BaseNum.data": {
+      "signature": "b.data()",
+      "desc": "Returns the underlying plain integer.",
+      "examples": [
+        "math.BaseNum(255, 16).data()"
+      ]
+    },
+    "BaseNum.digits": {
+      "signature": "b.digits()",
+      "desc": "Returns the digit count in the number's own radix.",
+      "examples": [
+        "math.BaseNum(255, 16).digits()"
+      ]
     }
   },
   "cas_methods": {

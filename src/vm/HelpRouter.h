@@ -673,6 +673,9 @@ namespace jc {
                 for (size_t i = 0; i < n.seeAlso.size(); ++i) { if (i) o << ", "; o << n.seeAlso[i]; }
                 o << "\n";
             }
+            if (hasChildren(ix, n.id)) {
+                renderMembers(o, ix, n.id, "Members");
+            }
             return o.str();
         }
 

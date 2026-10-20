@@ -1650,6 +1650,18 @@
     },
     "catalan": {
       "signature": "math.catalan(n)"
+    },
+    "BaseNum.fromString": {
+      "signature": "math.BaseNum.fromString(s, radix)"
+    },
+    "BaseNum.changeBase": {
+      "signature": "b.changeBase(radix)"
+    },
+    "BaseNum.data": {
+      "signature": "b.data()"
+    },
+    "BaseNum.digits": {
+      "signature": "b.digits()"
     }
   },
   "cas_methods": {

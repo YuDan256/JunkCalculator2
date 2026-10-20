@@ -471,6 +471,14 @@ namespace jc {
             }
             if (n.title.empty()) n.title = (!n.ref.empty()) ? lastSeg(n.ref) : n.path;
 
+            // 挂在有成员表的节点下时，子主题使用父路径限定（matrix.linalg / math.poly）
+            if (!parent.empty() && !n.ref.empty()) {
+                auto pit = ix.cat.find(parent);
+                if (pit != ix.cat.end() && !pit->second.autoCat.empty()) {
+                    n.path = parent + "." + lastSeg(n.path);
+                }
+            }
+
             if (ix.cat.count(n.path)) {
                 CNode& old = ix.cat[n.path];
                 if (!n.title.empty()) old.title = n.title;
@@ -707,7 +715,7 @@ namespace jc {
                 if (leaf) return renderNode(ix, *leaf);
             }
             std::ostringstream o;
-            o << n.title;
+            o << (path.find('.') != std::string::npos ? path : n.title);
             if (!n.summary.empty()) o << " — " << n.summary;
             o << "\n";
 
@@ -732,8 +740,8 @@ namespace jc {
             if (!subtopics.empty()) {
                 o << "  Subtopics\n";
                 for (const CNode* c : subtopics) {
-                    o << "    " << c->title;
-                    o << (c->title.size() < 22 ? std::string(22 - c->title.size(), ' ') : "  ");
+                    o << "    " << c->path;
+                    o << (c->path.size() < 22 ? std::string(22 - c->path.size(), ' ') : "  ");
                     o << truncate(childSummary(ix, *c), 62) << "\n";
                 }
                 o << "\n";

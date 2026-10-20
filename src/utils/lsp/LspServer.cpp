@@ -416,6 +416,17 @@ namespace lsp {
                         if (start < end) {
                             word = doc->content.substr(start, end - start);
 
+                            // 该名字在当前位置有用户/局部绑定（参数、match 模式等）时，
+                            // 不再回退到内置函数文档。
+                            bool shadowed = false;
+                            for (auto* sym : resolver.visibleSymbolsAt(pos)) {
+                                if (sym->name == word) { shadowed = true; break; }
+                            }
+                            if (shadowed) {
+                                sendMessage(res.toJson().serialize());
+                                return;
+                            }
+
                             std::string qualifier;
                             int qpos = start - 1;
                             while (qpos >= 0 && std::isspace(static_cast<unsigned char>(doc->content[qpos]))) qpos--;

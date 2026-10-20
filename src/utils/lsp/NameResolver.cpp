@@ -654,11 +654,53 @@ namespace lsp {
     void NameResolver::visitSequenceExpr(SequenceExpr* e) {
         for (auto& x : e->expressions) if (x) x->accept(*this);
     }
+    // 收集 match 模式里绑定的变量（含嵌套模式），它们只在该分支的 guard/body 内可见
+    static void collectPatternBindings(const Pattern* p, std::vector<std::pair<Token, std::string>>& out) {
+        if (!p) return;
+        if (auto* vp = dynamic_cast<const VariablePattern*>(p)) {
+            std::string hint;
+            if (vp->typeHint) {
+                if (auto* v = dynamic_cast<const Variable*>(vp->typeHint.get())) hint = v->name.lexeme;
+            }
+            out.push_back({vp->name, hint});
+        } else if (auto* rp = dynamic_cast<const RestPattern*>(p)) {
+            std::string hint;
+            if (rp->typeHint) {
+                if (auto* v = dynamic_cast<const Variable*>(rp->typeHint.get())) hint = v->name.lexeme;
+            }
+            out.push_back({rp->name, hint});
+        } else if (auto* lp = dynamic_cast<const ListPattern*>(p)) {
+            for (const auto& el : lp->elements) collectPatternBindings(el.get(), out);
+            if (lp->rest) collectPatternBindings(lp->rest.get(), out);
+        } else if (auto* mp = dynamic_cast<const MatrixPattern*>(p)) {
+            for (const auto& row : mp->rows)
+                for (const auto& el : row) collectPatternBindings(el.get(), out);
+            if (mp->restRow) collectPatternBindings(mp->restRow.get(), out);
+        } else if (auto* dp = dynamic_cast<const DictPattern*>(p)) {
+            for (const auto& [key, el] : dp->entries) collectPatternBindings(el.get(), out);
+            if (dp->rest) collectPatternBindings(dp->rest.get(), out);
+        } else if (auto* defp = dynamic_cast<const DefaultPattern*>(p)) {
+            collectPatternBindings(defp->inner.get(), out);
+        }
+    }
+
     void NameResolver::visitMatchExpr(MatchExpr* e) {
         if (e->subject) e->subject->accept(*this);
         for (auto& b : e->branches) {
+            Range range;
+            int startPos = b.patterns.empty() ? e->startPos : b.patterns.front()->startPos;
+            int endPos = b.body ? b.body->endPos : e->endPos;
+            range.start = doc->offsetToPosition(startPos);
+            range.end = doc->offsetToPosition(endPos);
+            enterScope(current, range, true);
+            std::vector<std::pair<Token, std::string>> bindings;
+            for (const auto& pattern : b.patterns) collectPatternBindings(pattern.get(), bindings);
+            for (const auto& [tok, hint] : bindings) {
+                declare(tok.lexeme, UserSymbol::Variable, tok.position, tok.position + static_cast<int>(tok.lexeme.size()), hint);
+            }
             if (b.guard) b.guard->accept(*this);
             if (b.body) b.body->accept(*this);
+            leaveScope();
         }
     }
     void NameResolver::visitGroupingExpr(GroupingExpr* e) {

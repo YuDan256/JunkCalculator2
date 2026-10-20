@@ -623,7 +623,7 @@ int main(int argc, char* argv[]) {
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
-        if (command == "run" && afterDashDash) { jc::g_scriptArgs.push_back(arg); continue; }
+        if (afterDashDash) { jc::g_scriptArgs.push_back(arg); continue; }
 
         // 1. 全局修饰符 (Flags)
         if (arg == "-q" || arg == "--quiet") { g_quiet = true; continue; }
@@ -637,6 +637,17 @@ int main(int argc, char* argv[]) {
         if (arg == "--jit") { g_enableJit = true; continue; }
 
         if (arg == "fmt") { command = "fmt"; fmtMode = true; continue; }
+
+        // 2.5 `--` 之后的参数交给 sys.args()（run / eval / repl；裸 -- 进入 REPL）
+        if (arg == "--") {
+            if (command.empty()) command = "repl";
+            if (command == "run" || command == "eval" || command == "repl" || command == "load") {
+                afterDashDash = true;
+                continue;
+            }
+            std::cerr << "-- is only supported for run/eval/repl/load.\n";
+            return 1;
+        }
 
         // 3. 识别子命令 (如果尚未确定 command 且当前参数不是横杠开头)
         if (command.empty() && arg[0] != '-') {
@@ -689,8 +700,7 @@ int main(int argc, char* argv[]) {
             }
         }
         else if (command == "run") {
-            if (arg == "--") afterDashDash = true;
-            else if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
+            if (scriptPath.empty() && arg[0] != '-') scriptPath = arg;
             else { std::cerr << "Unknown argument for run: " << arg << "\n"; return 1; }
         }
         else if (command == "fmt") {

@@ -51,6 +51,7 @@
       "  ────────────────────────────────────────────────────────────────────",
       "    jc2                                Interactive REPL (default)",
       "    jc2 load [name/path]               Load a workspace and enter REPL",
+      "    jc2 load [name/path] -- a b        Pass trailing args, available as sys.args()",
       "    jc2 [path].jcw                     Auto-fallback to load workspace",
       "    jc2 script.jc2                     Run a script (fallback to 'run')",
       "    jc2 run script.jc2                 Run a script explicitly",
@@ -62,6 +63,8 @@
       "    jc2 fmt --check [path]             Check if scripts are formatted (returns 1 if not)",
       "    jc2 test [dir]                     Run test scripts in directory",
       "    jc2 eval \"expr\"                    Evaluate expression and exit",
+      "    jc2 eval \"expr\" -- a b               Pass trailing args, available as sys.args()",
+      "    jc2 repl -- a b                     Start the REPL with sys.args() preset",
       "    jc2 help [topic]                   Show help overview or specific topic",
       "    jc2 version                        Show current version",
       "    jc2 lsp                            Start the LSP server (stdio)",
@@ -6968,7 +6971,7 @@
   "sys_methods": {
     "args": {
       "signature": "sys.args()",
-      "desc": "Returns the trailing command-line arguments passed after `--` (jc2 run script.jc2 -- a b).",
+      "desc": "Returns the trailing command-line arguments passed after `--` (run / eval / repl / load).",
       "examples": [
         "sys.args()"
       ]

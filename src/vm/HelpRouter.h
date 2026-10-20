@@ -187,8 +187,22 @@ namespace jc {
             return prevCol[len2];
         }
 
-        // 对外：返回整段帮助文本（纯文本，不含 ANSI）
-        static std::string helpText(const std::string& query, bool* found = nullptr) {
+        static inline bool s_color = false;
+
+        static std::string paint(const char* code, const std::string& text) {
+            if (!s_color) return text;
+            return col(code) + text + col(Ansi::RESET);
+        }
+
+        struct ColorScope {
+            bool old;
+            explicit ColorScope(bool c) { old = s_color; s_color = c; }
+            ~ColorScope() { s_color = old; }
+        };
+
+        // 对外：返回整段帮助文本（默认纯文本，不含 ANSI）
+        static std::string helpText(const std::string& query, bool* found = nullptr, bool color = false) {
+            ColorScope scope(color);
             init();
             if (found) *found = true;
             if (helpAst.isNull() || !helpAst.isObject()) {
@@ -253,11 +267,11 @@ namespace jc {
         }
 
         static void printHelpTopic(const std::string& topic) {
-            std::cout << helpText(topic) << "\n";
+            std::cout << helpText(topic, nullptr, true) << "\n";
         }
 
         static void printMainHelp() {
-            std::cout << helpText("") << "\n";
+            std::cout << helpText("", nullptr, true) << "\n";
         }
 
         static void addFunctionHelp(const std::string& name, const std::string& sig,
@@ -640,14 +654,14 @@ namespace jc {
                 }
                 return o.str();
             }
-            o << breadcrumb(n.display) << "\n";
-            if (!n.signature.empty()) o << "  " << n.signature << "\n";
+            o << paint(Ansi::BRIGHT_CYAN, breadcrumb(n.display)) << "\n";
+            if (!n.signature.empty()) o << "  " << paint(Ansi::BRIGHT_GREEN, n.signature) << "\n";
             if (!n.desc.empty()) {
                 for (const auto& line : splitLines(n.desc)) o << "  " << line << "\n";
             }
             if (!n.examples.empty()) {
-                o << "\n  Examples:\n";
-                for (const auto& ex : n.examples) o << "    " << ex << "\n";
+                o << "\n  " << paint(Ansi::BRIGHT_CYAN, "Examples:") << "\n";
+                for (const auto& ex : n.examples) o << "    " << paint(Ansi::BRIGHT_YELLOW, ex) << "\n";
             }
             if (!n.aliases.empty()) {
                 o << "\n  Aliases: ";
@@ -680,7 +694,7 @@ namespace jc {
                     return a < b;
                 });
             }
-            o << "  " << label << " (" << ids.size() << ")\n";
+            o << "  " << paint(Ansi::BRIGHT_CYAN, label) << " (" << ids.size() << ")\n";
             for (const auto& id : ids) {
                 auto it = ix.nodes.find(id);
                 if (it == ix.nodes.end()) continue;
@@ -715,7 +729,7 @@ namespace jc {
                 if (leaf) return renderNode(ix, *leaf);
             }
             std::ostringstream o;
-            o << (path.find('.') != std::string::npos ? path : n.title);
+            o << paint(Ansi::BRIGHT_CYAN, path.find('.') != std::string::npos ? path : n.title);
             if (!n.summary.empty()) o << " — " << n.summary;
             o << "\n";
 
@@ -738,7 +752,7 @@ namespace jc {
             }
 
             if (!subtopics.empty()) {
-                o << "  Subtopics\n";
+                o << "  " << paint(Ansi::BRIGHT_CYAN, "Subtopics") << "\n";
                 for (const CNode* c : subtopics) {
                     o << "    " << c->path;
                     o << (c->path.size() < 22 ? std::string(22 - c->path.size(), ' ') : "  ");
@@ -790,7 +804,7 @@ namespace jc {
         static std::string renderAmbiguous(const Index& ix, const std::string& q,
                                            const std::vector<std::string>& ids) {
             std::ostringstream o;
-            o << "'" << q << "' matches " << ids.size() << " entries:\n";
+            o << paint(Ansi::BRIGHT_CYAN, "'" + q + "' matches " + std::to_string(ids.size()) + " entries:") << "\n";
             for (const auto& id : ids) {
                 auto it = ix.nodes.find(id);
                 if (it == ix.nodes.end()) continue;
@@ -865,7 +879,7 @@ namespace jc {
                 return a.display < b.display;
             });
             std::ostringstream o;
-            o << "No help entry for '" << trim(raw) << "'.\n";
+            o << paint(Ansi::BRIGHT_RED, "No help entry for '" + trim(raw) + "'.") << "\n";
             if (!cands.empty()) {
                 o << "  Did you mean: ";
                 int count = 0;
@@ -885,7 +899,7 @@ namespace jc {
 
         static std::string renderMain(const Index& ix) {
             std::ostringstream o;
-            o << "JC2 Help\n";
+            o << paint(Ansi::BRIGHT_CYAN, "JC2 Help") << "\n";
             if (ix.catRoots.empty()) {
                 o << "  Topics: ";
                 std::vector<std::string> topics;

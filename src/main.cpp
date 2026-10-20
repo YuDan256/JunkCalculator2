@@ -696,7 +696,7 @@ int main(int argc, char* argv[]) {
         else if (command == "help") {
             if (arg[0] != '-') {
                 bool found = true;
-                std::string text = jc::HelpRouter::helpText(arg, &found);
+                std::string text = jc::HelpRouter::helpText(arg, &found, true);
                 std::cout << text << "\n";
                 return found ? 0 : 1;
             }

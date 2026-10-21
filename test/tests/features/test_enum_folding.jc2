@@ -1,0 +1,17 @@
+import sys
+
+// 全局常量枚举
+const enum Color { RED = 3, GREEN, BLUE }
+
+// 函数内常量枚举
+pick(x) = {
+    const enum Local { OK = 10, ERR }
+    return Color.BLUE + Local.OK + x
+}
+
+assert(Color.RED == 3, "global enum value")
+assert(Color.BLUE == 5, "global enum auto increment")
+assert(pick(0) == 15, "local + global enum values")
+assert(pick(2) == 17, "enum member in expression")
+
+print("enum folding battery OK")

@@ -192,6 +192,7 @@ IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunctio
     : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), deleteSyms(deleteSyms), currentControl(graph->startNode), lastValue(nullptr) {
     if (parent) {
         classStack = parent->classStack;
+        globalEnumFields = parent->globalEnumFields;
         isInitMethod = parent->isInitMethod;
         instancePropertiesToInit = parent->instancePropertiesToInit;
     }
@@ -1769,6 +1770,15 @@ void IRBuilder::visitAssign(Assign* expr) {
 
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
+
+    if (sym.scope == VarScope::Global && dynamic_cast<EnumDefExpr*>(expr->value.get())
+        && valNode->op == IROp::Constant && valNode->constVal.isObjType(ObjType::NAMESPACE)) {
+        auto* enumNs = static_cast<ObjNamespace*>(valNode->constVal.asObj());
+        auto& fields = globalEnumFields[expr->name.lexeme];
+        for (const auto& [fieldName, field] : enumNs->fields) {
+            if (field.isConst && field.upval) fields[fieldName] = field.upval->closed;
+        }
+    }
     
     // ★ 匿名 class / trait / namespace 一律不继承变量名。
     //   曾在此把赋值目标名写进 Class / BuildNamespace 节点，于是 A = class {}
@@ -4243,8 +4253,36 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
         return;
     }
     
+    // 顶层 const enum：G.A 直接折成常量，绕开 GetGlobal + GetProperty
+    if (auto* gv = dynamic_cast<Variable*>(expr->object.get())) {
+        auto sit = exprSymbols->find(gv);
+        if (sit != exprSymbols->end() && sit->second.scope == VarScope::Global) {
+            auto eit = globalEnumFields.find(gv->name.lexeme);
+            if (eit != globalEnumFields.end()) {
+                auto fit = eit->second.find(fieldName);
+                if (fit != eit->second.end()) {
+                    lastValue = graph->createConstant(fit->second);
+                    lastValue->setControl(currentControl);
+                    return;
+                }
+            }
+        }
+    }
+
     expr->object->accept(*this);
     IRNode* objNode = lastValue;
+
+    // 编译期枚举：const enum A { OK, ERROR } 的 A.OK 直接折成常量 0
+    if (objNode && objNode->op == IROp::Constant && objNode->constVal.isObjType(ObjType::NAMESPACE)) {
+        auto* enumNs = static_cast<ObjNamespace*>(objNode->constVal.asObj());
+        auto fieldIt = enumNs->fields.find(fieldName);
+        if (fieldIt != enumNs->fields.end() && fieldIt->second.isConst && fieldIt->second.upval) {
+            IRNode* folded = graph->createConstant(fieldIt->second.upval->closed);
+            folded->setControl(currentControl);
+            lastValue = folded;
+            return;
+        }
+    }
         
     IROp op = IROp::GetProperty;
     if (!classStack.empty()) {

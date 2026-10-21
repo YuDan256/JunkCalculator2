@@ -143,6 +143,9 @@ public:
     const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols = nullptr;
     const std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>>* deleteSyms = nullptr;
 
+    // 顶层 const enum 的成员值：A.OK 可直接折叠成常量
+    std::unordered_map<std::string, std::unordered_map<std::string, Value>> globalEnumFields;
+
     // 宏定义等 VM 内部生成的 AST 编译时置 true，跳过 <...> 保留名检查（<macro_temp_xxx> 等）。
     bool allowInternalNames = false;
 

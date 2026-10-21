@@ -1,0 +1,46 @@
+import cre
+
+// 动力学
+assert(abs(cre.kT(1.0, 300, 50000, 300) - 1.0) < 1e-12, "kT at reference T")
+fit = cre.arrfit(@[300, 320, 340, 360], @[3.33e-4, 7.67e-3, 0.120, 1.39])
+assert(abs(fit["Ea"] - 1.2473e5) < 200, "arrfit Ea")
+assert(abs(fit["R2"] - 1.0) < 1e-4, "arrfit R2")
+assert(abs(cre.delta(2, 1, 4, 0) - 0.5) < 1e-12, "delta")
+assert(abs(cre.eps(0.5, 0.5) - 0.25) < 1e-12, "eps")
+
+negR = cre.rate(2, 3, 0.5)
+assert(abs(negR(0.5) - 0.1875) < 1e-12, "power law rate")
+rev = cre.rate(1, 1, 1, {Keq: 4})
+assert(abs(rev(0.8)) < 1e-12, "equilibrium rate at Xe")
+
+// 反应器设计
+quad = (X) => 3 * 0.5 ^ 2 * (1 - X) ^ 2
+assert(abs(cre.cstr(quad, 5, 0.99) - 66000) < 1e-6, "CSTR volume")
+assert(abs(cre.pfr(quad, 5, 0.99) - 660) < 1e-3, "PFR volume")
+assert(abs(cre.batch(quad, 0.5, 0.99) - 66) < 1e-4, "batch time")
+
+lev = cre.lev(quad, 5, 0.99)
+assert(abs(lev["Vp"] - 660) < 1e-3, "lev Vp")
+
+ser = cre.series(quad, 5, 0.99, 2)
+assert(abs(ser["Vtotal"] - 5230.66) < 20, "two CSTRs")
+assert(len(ser["Xs"]) == 3, "series stages")
+
+assert(abs(cre.findX("pfr", quad, 5, 660) - 0.99) < 1e-4, "findX pfr")
+assert(abs(cre.equil((X) => (1 - X) - X / 4) - 0.8) < 1e-9, "equilibrium conversion")
+assert(cre.recycle(quad, 5, 3, 0.99) > 0, "recycle volume")
+
+// 压降床
+negRW = cre.rateDp(1, 0.1, 1, 0.05)
+target = cre.pbrDp(negRW, 1, 0.7, 100)
+assert(target["reached"], "W for X = 0.7")
+assert(abs(target["W"] - 15.777) < 0.1, "required W")
+assert(abs(cre.findXPbr(negRW, 1, 20) - 0.7363) < 1e-3, "X at W = 20")
+
+// 非等温 PFR
+m = cre.noniso((X, T) => 0.08 * exp(-6000 * (1 / T - 1 / 350)) * (1 - X),
+               1, 6, 1.5e5, 1000, 350, {Ua: 250, Ta: 340})
+assert(m.cols() == 3, "noniso columns")
+assert(abs(m.max() - 446.3) < 2, "hot spot")
+
+print("cre battery OK")

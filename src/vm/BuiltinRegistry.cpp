@@ -1139,14 +1139,93 @@ void BuiltinRegistry::registerPolySolver() {
     regModule(math_ns, "solve", { 2, 3, 4, 5 }, [evalFunc](const std::vector<Value>& args) -> Value {
         if (isCallableValue(args[0])) {
             if (args.size() != 2) JC2_THROW(MathError, "solve(f, x0) expects exactly 2 arguments.");
-            Value f = args[0]; double x = args[1].asFloat(); double h = 1e-5;
+            Value f = args[0];
+            const double x0 = args[1].asFloat();
+            double x = x0;
+            double h = 1e-5;
+            auto evalSafe = [&](double xx, double& out) -> bool {
+                try {
+                    out = evalFunc(f, xx);
+                    return true;
+                } catch (const EngineInterruptError&) {
+                    throw;
+                } catch (...) {
+                    return false;
+                }
+            };
+            double y = 0.0;
+            if (!evalSafe(x, y))
+                JC2_THROW(MathError, "solve(): f is undefined at the initial guess.");
+
+            // 牛顿失败后，围绕初值向外扫描变号区间并用二分法兜底。
+            auto bracketRoot = [&](double& root) -> bool {
+                double y0 = 0.0;
+                if (!evalSafe(x0, y0)) return false;
+                const double dx = std::max(1e-3, 0.05 * (std::abs(x0) + 1.0));
+                for (int dir : {1, -1}) {
+                    double prevX = x0, prevY = y0;
+                    for (int k = 1; k <= 2000; ++k) {
+                        double cur = x0 + dir * dx * k;
+                        double yc = 0.0;
+                        if (!evalSafe(cur, yc)) continue;
+                        if (prevY == 0.0) { root = prevX; return true; }
+                        if ((prevY < 0.0) != (yc < 0.0)) {
+                            double a = prevX, b = cur, fa = prevY;
+                            for (int j = 0; j < 200; ++j) {
+                                double mid = (a + b) / 2.0;
+                                double fm = 0.0;
+                                if (!evalSafe(mid, fm)) return false;
+                                if (std::abs(fm) < 1e-12 * (1.0 + std::abs(mid))) { root = mid; return true; }
+                                if ((fa < 0.0) != (fm < 0.0)) { b = mid; }
+                                else { a = mid; fa = fm; }
+                            }
+                            root = (a + b) / 2.0;
+                            return true;
+                        }
+                        prevX = cur;
+                        prevY = yc;
+                    }
+                }
+                return false;
+            };
+
             for (int i = 0; i < 1000; ++i) {
                 jc::checkInterrupt();
-                double y = evalFunc(f, x);
                 if (Tol::clean(y, std::max(1.0, std::abs(x)), 1e7) == 0.0) return Value(x);
-                double df = (evalFunc(f, x + h) - evalFunc(f, x - h)) / (2 * h);
-                if (df == 0.0) x += 1e-4; else x -= y / df;
+                double yp = 0.0, ym = 0.0;
+                bool okp = evalSafe(x + h, yp);
+                bool okm = evalSafe(x - h, ym);
+                double df = 0.0;
+                if (okp && okm) df = (yp - ym) / (2 * h);
+                else if (okp) df = (yp - y) / h;
+                else if (okm) df = (y - ym) / h;
+                else {
+                    double root = 0.0;
+                    if (bracketRoot(root)) return Value(root);
+                    JC2_THROW(MathError, "solve(): f is undefined around the current iterate.");
+                }
+                if (df == 0.0) { x += 1e-4; if (!evalSafe(x, y)) { double root = 0.0; if (bracketRoot(root)) return Value(root); JC2_THROW(MathError, "solve(): f is undefined near the current iterate."); } continue; }
+
+                double step = -y / df;
+                double cand = x + step;
+                double yc = 0.0;
+                bool ok = false;
+                for (int back = 0; back < 60; ++back) {
+                    if (evalSafe(cand, yc)) { ok = true; break; }
+                    step *= 0.5;
+                    cand = x + step;
+                    if (std::abs(step) < 1e-15) break;
+                }
+                if (!ok) {
+                    double root = 0.0;
+                    if (bracketRoot(root)) return Value(root);
+                    JC2_THROW(MathError, "solve(): f is defined only on a limited interval near the root.");
+                }
+                x = cand;
+                y = yc;
             }
+            double root = 0.0;
+            if (bracketRoot(root)) return Value(root);
             JC2_THROW(MathError, "Equation solver did not converge.");
         }
         std::vector<Complex> roots;

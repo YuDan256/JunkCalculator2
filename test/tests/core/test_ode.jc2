@@ -38,4 +38,16 @@ mid = syssol(math.PI / 4)
 assert(abs(mid[0, 0] - sqrt(2.0) / 2) < 1e-5, "dense system cos")
 assert(abs(mid[1, 0] + sqrt(2.0) / 2) < 1e-5, "dense system -sin")
 
+
+// 有限区间上的根：初值远离热点时 Newton 会失败，应回退到变号扫描
+hotf = (V, y) => {
+    [X; T] = y
+    r = 0.08 * exp(-6000.0 * (1.0 / T - 1.0 / 350.0)) * (1.0 - X)
+    return [r; (1.5e5 * r - 250.0 * (T - 340.0)) / 1000.0]
+}
+hotsol = math.ode(hotf, 0, [0.0; 350.0], 6.0, {dense: true})
+Twrap = (V) => hotsol(V)[1, 0]
+Vhot = math.solve((V) => math.diff(Twrap, V), 1.2)
+assert(abs(Vhot - 3.9312) < 1e-2, "bracketed solve finds the hot spot")
+
 print("ode battery OK")

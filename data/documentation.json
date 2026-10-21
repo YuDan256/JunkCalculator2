@@ -7770,7 +7770,7 @@
     },
     "solve": {
       "signature": "math.solve(a, b, [c, d, e]) / math.solve(f, x0)",
-      "desc": "Solves numerically: with polynomial coefficients it returns all complex roots up to degree 4; with a callable and a starting point it runs Newton method for f(x) = 0. For symbolic equations use cas.solve.",
+      "desc": "Solves numerically: with polynomial coefficients it returns all complex roots up to degree 4; with a callable and a starting point it runs Newton method for f(x) = 0. If Newton leaves the function domain or fails, it scans outward for a sign change and bisects. For symbolic equations use cas.solve.",
       "examples": [
         "import cas; import math; math.solve(1, 0, -1)",
         "import cas; import math; math.solve((x) => x^2 - 4, 3)"

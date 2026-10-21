@@ -582,6 +582,69 @@ void BuiltinRegistry::populateMathConstants() {
     math_ns->setField("I", Value(Complex(0.0, 1.0)));
 }
 
+// ---- ODE 解的可调用插值（math.ode dense / math.odeInterp） ----
+struct OdeSolution {
+    std::vector<double> t;
+    std::vector<std::vector<double>> y;
+    std::vector<std::vector<double>> d;
+    int dim = 1;
+    bool scalar = true;
+    bool hermite = true;
+
+    Value eval(double x) const {
+        if (t.empty()) JC2_THROW(MathError, "ode solution is empty.");
+        const double lo = std::min(t.front(), t.back());
+        const double hi = std::max(t.front(), t.back());
+        if (x < lo - 1e-12 || x > hi + 1e-12)
+            JC2_THROW(MathError, "ode solution evaluated outside its interval.");
+        const bool ascending = t.back() >= t.front();
+        const size_t n = t.size();
+        size_t i = 0;
+        if (n > 1) {
+            size_t a = 0, b = n - 1;
+            while (b - a > 1) {
+                size_t mid = (a + b) / 2;
+                bool before = ascending ? (t[mid] <= x) : (t[mid] >= x);
+                if (before) a = mid; else b = mid;
+            }
+            i = a;
+            if (i + 1 >= n) i = n - 2;
+        }
+        std::vector<double> out(dim);
+        if (n == 1 || x == t[i]) {
+            for (int j = 0; j < dim; ++j) out[j] = y[i][j];
+        } else {
+            double h = t[i + 1] - t[i];
+            double th = (x - t[i]) / h;
+            if (!hermite) {
+                for (int j = 0; j < dim; ++j) out[j] = y[i][j] + th * (y[i + 1][j] - y[i][j]);
+            } else {
+                double th2 = th * th, th3 = th2 * th;
+                double h00 = 2 * th3 - 3 * th2 + 1;
+                double h10 = th3 - 2 * th2 + th;
+                double h01 = -2 * th3 + 3 * th2;
+                double h11 = th3 - th2;
+                for (int j = 0; j < dim; ++j)
+                    out[j] = h00 * y[i][j] + h10 * h * d[i][j]
+                           + h01 * y[i + 1][j] + h11 * h * d[i + 1][j];
+            }
+        }
+        if (scalar) return Value(out[0]);
+        return Value(RealMatrix(dim, 1, out));
+    }
+};
+
+static Value makeOdeSolutionFunction(std::shared_ptr<OdeSolution> sol) {
+    ObjClosure* cls = GcHeap::get().allocate<ObjClosure>(
+        std::vector<std::string>{"t"}, std::vector<bool>{false}, "<ode_solution>", nullptr);
+    cls->nativeFn = std::make_any<NativeCallable>([sol](const std::vector<Value>& args) -> Value {
+        if (args.size() != 1 || !args[0].isNumber())
+            JC2_THROW(TypeError, "ode solution expects one numeric argument t.");
+        return sol->eval(args[0].asFloat());
+    });
+    return Value(cls);
+}
+
 void BuiltinRegistry::registerAll() {
     sys_ns = GcHeap::get().allocate<ObjNamespace>(); sys_ns->name = "sys";
     cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
@@ -5147,11 +5210,12 @@ void BuiltinRegistry::registerCalculus() {
         double rtol = 1e-8, atol = 1e-10;
         int maxSteps = 100000;
         std::string method = "rk45";
+        bool dense = false;
         if (args.size() == 5) {
             if (!args[4].isObjType(ObjType::DICT))
                 JC2_THROW(TypeError, "ode() options must be a dict.");
             static const std::set<std::string> allowed = {
-                "h", "rtol", "atol", "maxSteps", "method"
+                "h", "rtol", "atol", "maxSteps", "method", "dense"
             };
             for (const auto& [k, v] : static_cast<ObjDict*>(args[4].asObj())->elements) {
                 if (!k.isString() || !allowed.count(k.asString()))
@@ -5170,6 +5234,8 @@ void BuiltinRegistry::registerCalculus() {
                 if (!v.isString()) JC2_THROW(TypeError, "ode() method must be a string.");
                 method = v.asString();
             }
+            v = helpDictGet(args[4], "dense");
+            if (!v.isNone()) dense = v.truthy();
         }
         if (h == 0.0) JC2_THROW(MathError, "ode() step h cannot be zero.");
         if (rtol <= 0.0 || atol < 0.0) JC2_THROW(MathError, "ode() tolerances must be positive.");
@@ -5209,6 +5275,7 @@ void BuiltinRegistry::registerCalculus() {
         };
 
         std::vector<std::vector<double>> trail;
+        std::vector<std::vector<double>> ders;
         auto record = [&](double t, const std::vector<double>& yy) {
             std::vector<double> row;
             row.reserve(1 + dim);
@@ -5225,6 +5292,7 @@ void BuiltinRegistry::registerCalculus() {
             if (steps < 1) steps = 1;
             H = (t1 - t0) / steps;
             double t = t0;
+            if (dense) ders.push_back(callDeriv(t0, y));
             for (int s = 0; s < steps; ++s) {
                 jc::checkInterrupt();
                 auto k1 = callDeriv(t, y);
@@ -5235,6 +5303,7 @@ void BuiltinRegistry::registerCalculus() {
                     y[i] += H / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
                 t += H;
                 record(t, y);
+                if (dense) ders.push_back(callDeriv(t, y));
             }
         } else {
             // Dormand–Prince 5(4)
@@ -5281,15 +5350,30 @@ void BuiltinRegistry::registerCalculus() {
                 }
                 double err = std::sqrt(err2 / dim);
                 if (err <= 1.0 || std::abs(h) <= 1e-14 * (1.0 + std::abs(t))) {
+                    if (dense && ders.empty()) ders.push_back(k1);
                     t += h;
                     y = y5;
                     record(t, y);
+                    if (dense) ders.push_back(k7);
                     double factor = (err == 0.0) ? 5.0 : std::min(5.0, std::max(0.2, 0.9 * std::pow(err, -0.2)));
                     h *= factor;
                 } else {
                     h *= std::max(0.1, 0.9 * std::pow(err, -0.2));
                 }
             }
+        }
+
+        if (dense) {
+            auto sol = std::make_shared<OdeSolution>();
+            sol->dim = dim;
+            sol->scalar = scalar;
+            sol->hermite = true;
+            for (const auto& row : trail) {
+                sol->t.push_back(row[0]);
+                sol->y.emplace_back(row.begin() + 1, row.end());
+            }
+            sol->d = ders;
+            return makeOdeSolutionFunction(sol);
         }
 
         const int rows = static_cast<int>(trail.size());
@@ -5302,6 +5386,75 @@ void BuiltinRegistry::registerCalculus() {
         }
         return Value(RealMatrix(rows, cols, flat));
         }, {"f", "t0", "y0", "t1", "options"});
+
+    regModule(math_ns, "odeInterp", { 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isObjType(ObjType::REAL_MATRIX))
+            JC2_THROW(TypeError, "odeInterp() expects a real matrix from math.ode().");
+        const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat;
+        if (m.getRows() < 1 || m.getCols() < 2)
+            JC2_THROW(MathError, "odeInterp() expects a matrix with t and at least one state column.");
+
+        std::string method = "linear";
+        if (args.size() >= 2) {
+            if (!args[1].isString()) JC2_THROW(TypeError, "odeInterp() method must be a string.");
+            method = args[1].asString();
+        }
+        if (method != "linear" && method != "hermite")
+            JC2_THROW(ValueError, "odeInterp() method must be 'linear' or 'hermite'.");
+
+        const int rows = m.getRows();
+        const int dim = m.getCols() - 1;
+        auto sol = std::make_shared<OdeSolution>();
+        sol->dim = dim;
+        sol->scalar = (dim == 1);
+        sol->hermite = (method == "hermite");
+        for (int r = 0; r < rows; ++r) {
+            sol->t.push_back(m(r, 0));
+            std::vector<double> state(dim);
+            for (int c = 0; c < dim; ++c) state[c] = m(r, 1 + c);
+            sol->y.push_back(std::move(state));
+        }
+        for (int r = 1; r < rows; ++r) {
+            if ((sol->t[1] > sol->t[0]) ? !(sol->t[r] > sol->t[r - 1])
+                                        : !(sol->t[r] < sol->t[r - 1]))
+                JC2_THROW(MathError, "odeInterp() time column must be monotonic.");
+        }
+
+        sol->d.assign(rows, std::vector<double>(dim, 0.0));
+        if (sol->hermite) {
+            const bool hasF = args.size() >= 3 && !args[2].isNone();
+            if (hasF) {
+                Value f = args[2];
+                if (!callableAcceptsArgCount(f, 2))
+                    JC2_THROW(TypeError, "odeInterp() f(t, y) must take two parameters.");
+                for (int r = 0; r < rows; ++r) {
+                    Value yv = sol->scalar ? Value(sol->y[r][0]) : Value(RealMatrix(dim, 1, sol->y[r]));
+                    GcValueGuard yGuard(yv);
+                    Value out = safeCallValue(f, { Value(sol->t[r]), yv });
+                    GcValueGuard outGuard(out);
+                    if (sol->scalar) {
+                        if (!out.isNumber()) JC2_THROW(TypeError, "odeInterp() f must return a number for a scalar state.");
+                        sol->d[r][0] = out.asFloat();
+                    } else {
+                        if (!out.isObjType(ObjType::REAL_MATRIX))
+                            JC2_THROW(TypeError, "odeInterp() f must return a real column vector.");
+                        const auto& fm = static_cast<ObjRealMatrix*>(out.asObj())->mat;
+                        if (fm.getCols() != 1 || fm.getRows() != dim)
+                            JC2_THROW(MathError, "odeInterp() f returned a state with the wrong shape.");
+                        for (int c = 0; c < dim; ++c) sol->d[r][c] = fm(c, 0);
+                    }
+                }
+            } else if (rows >= 2) {
+                for (int r = 0; r < rows; ++r) {
+                    int a = (r == 0) ? 0 : r - 1;
+                    int b = (r == rows - 1) ? rows - 1 : r + 1;
+                    double h = sol->t[b] - sol->t[a];
+                    for (int c = 0; c < dim; ++c) sol->d[r][c] = (sol->y[b][c] - sol->y[a][c]) / h;
+                }
+            }
+        }
+        return makeOdeSolutionFunction(sol);
+        }, {"res", "method", "f"});
 }
 
 // =================================================================

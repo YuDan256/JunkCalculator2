@@ -7966,10 +7966,18 @@
     },
     "ode": {
       "signature": "math.ode(f, t0, y0, t1, [options])",
-      "desc": "Numerically integrates dy/dt = f(t, y) from t0 to t1. y0 is a scalar or a real column vector; f(t, y) must return the same shape. Returns a matrix with one row per accepted step: t followed by the state. options: h (initial step), rtol (1e-8), atol (1e-10), maxSteps (100000), method (rk45 adaptive default, or rk4 fixed step).",
+      "desc": "Numerically integrates dy/dt = f(t, y) from t0 to t1. y0 is a scalar or a real column vector; f(t, y) must return the same shape. By default returns a matrix with one row per accepted step: t followed by the state. options: h (initial step), rtol (1e-8), atol (1e-10), maxSteps (100000), method (rk45 adaptive default, or rk4 fixed step), dense (when true, returns a callable y(t) instead of the matrix).",
       "examples": [
         "import math; math.ode((t, y) => y, 0, 1, 1)",
         "import math; math.ode((t, y) => [y[1, 0]; -y[0, 0]], 0, [1; 0], math.PI / 2)"
+      ]
+    },
+    "odeInterp": {
+      "signature": "math.odeInterp(res, [method], [f])",
+      "desc": "Builds a callable y(t) from a math.ode() result matrix. method is \"linear\" (default) or \"hermite\"; hermite uses f(t, y) derivatives when f is supplied, otherwise finite-difference slopes. Evaluating outside the sampled interval throws, and systems return a column vector.",
+      "examples": [
+        "import math; r = math.ode((t, y) => y, 0, 1, 1); f = math.odeInterp(r, \"hermite\"); f(0.5)",
+        "import math; sol = math.ode((t, y) => y, 0, 1, 1, {dense: true}); sol(0.5)"
       ]
     }
   },

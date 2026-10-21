@@ -1662,6 +1662,9 @@
     },
     "ode": {
       "signature": "math.ode(f, t0, y0, t1, [options])"
+    },
+    "odeInterp": {
+      "signature": "math.odeInterp(res, [method], [f])"
     }
   },
   "cas_methods": {

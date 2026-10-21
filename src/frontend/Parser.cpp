@@ -1585,7 +1585,9 @@ namespace jc {
             return withPos(std::make_unique<SelfExpr>(), startPos, endPos);
         }
         if (match({ TokenType::CLASS })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::EXTENDS) || check(TokenType::WITH)) {
+            if (check(TokenType::FSTRING))
+                JC2_THROW(ParserError, "Parser Error: f-string is not allowed as a definition name.");
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::RSTRING) || check(TokenType::EXTENDS) || check(TokenType::WITH)) {
                 return classDefExpr(false);
             }
             int startPos = previous().position;
@@ -1593,7 +1595,9 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
         }
         if (match({ TokenType::TRAIT })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::WITH)) {
+            if (check(TokenType::FSTRING))
+                JC2_THROW(ParserError, "Parser Error: f-string is not allowed as a definition name.");
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::RSTRING) || check(TokenType::WITH)) {
                 return classDefExpr(true);
             }
             int startPos = previous().position;
@@ -1601,7 +1605,9 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Class, previous()), startPos, endPos);
         }
         if (match({ TokenType::NAMESPACE })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING)) {
+            if (check(TokenType::FSTRING))
+                JC2_THROW(ParserError, "Parser Error: f-string is not allowed as a definition name.");
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::RSTRING)) {
                 return namespaceExpr();
             }
             int startPos = previous().position;
@@ -1609,7 +1615,9 @@ namespace jc {
             return withPos(std::make_unique<ContextKeywordExpr>(ContextKeywordExpr::Kind::Namespace, previous()), startPos, endPos);
         }
         if (match({ TokenType::ENUM })) {
-            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING)) {
+            if (check(TokenType::FSTRING))
+                JC2_THROW(ParserError, "Parser Error: f-string is not allowed as a definition name.");
+            if (check(TokenType::LBRACE) || check(TokenType::IDENTIFIER) || check(TokenType::DOLLAR) || check(TokenType::STRING) || check(TokenType::RSTRING)) {
                 return enumExpr();
             }
             JC2_THROW(SyntaxError, "'enum' cannot be self-referenced; enum members are compile-time constants.");
@@ -3479,7 +3487,7 @@ namespace jc {
             name = advance();
             isNamed = true;
             bindsName = true;
-        } else if (check(TokenType::STRING)) {
+        } else if (check(TokenType::STRING) || check(TokenType::RSTRING)) {
             name = definitionNameFromString(advance(), "namespace");
             isNamed = true;
         }
@@ -3531,7 +3539,7 @@ namespace jc {
             name = advance();
             isNamed = true;
             bindsName = true;
-        } else if (check(TokenType::STRING)) {
+        } else if (check(TokenType::STRING) || check(TokenType::RSTRING)) {
             name = definitionNameFromString(advance(), "enum");
             isNamed = true;
         }
@@ -3611,7 +3619,7 @@ namespace jc {
             name = advance();
             isNamed = true;
             bindsName = true;
-        } else if (check(TokenType::STRING)) {
+        } else if (check(TokenType::STRING) || check(TokenType::RSTRING)) {
             name = definitionNameFromString(advance(), "class");
             isNamed = true;
         }

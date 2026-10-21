@@ -2750,6 +2750,7 @@
       "",
       "    • By default, the first item is assigned 0, and subsequent items auto-increment.",
       "    • State.IDLE == 0, State.RUNNING == 1, State.ERROR == 2.",
+      "    • `enum \"Name\" { ... }` (or `r\"Name\"`) names it without binding; f-strings are rejected.",
       "",
       "    ★ Keywords as Enum Members:",
       "    Inside an `enum` definition block, you can directly use language keywords",
@@ -2799,10 +2800,11 @@
       "  ──────────────────────",
       "    class ClassName { ... }             // Named class (name stored on the class)",
       "    const ClassName = class { ... }     // Anonymous class assigned to variable",
+      "    P = class r\"Raw\\Name\" { ... } // Raw-string name, no escapes; still no binding",
       "",
       "    • `class Name {}` names the class itself; `Name = class {}` does not —",
       "      it is anonymous and prints as `<anonymous class>`. Same for trait / namespace.",
-      "    • `class \"Name\" { ... }` (a string literal as the name) keeps that name but binds",
+      "    • `class \"Name\" { ... }` (or `r\"Name\"`; f-strings are rejected) keeps that name but binds",
       "      no variable. Use it for a named type without adding a name to the scope; bind it",
       "      yourself if you need a variable: `P = class \"Point\" { ... }`. Same for trait,",
       "      namespace and enum. Outer forms unchanged: `class Name {}` still binds `Name`.",
@@ -5407,6 +5409,7 @@
       "desc": [
         "Creates a namespace, or refers to the current namespace.",
         "• `namespace Name { ... }` names and binds `Name`.",
+        "• `namespace r\"Display Name\" { ... }` is accepted; f-strings are rejected as names.",
         "• `namespace \"Display Name\" { ... }` names it without binding; assign the result to keep it: `ns = namespace \"Display Name\" { ... }`.",
         "• `namespace { ... }` is anonymous (prints `<anonymous namespace>`).",
         "• Inside a namespace block, bare `namespace` evaluates to that namespace object itself.",
@@ -5427,10 +5430,12 @@
       ]
     },
     "class": {
-      "signature": "class [Name] [extends Parent] { ... }  |  class",
+      "signature": "class [Name | \"Name\"] [extends Parent] { ... }  |  class",
       "desc": [
         "Defines a new class, or refers to the current class.",
-        "• `class Name { ... }` names the class itself; `Point = class { ... }` does not (prints `<anonymous class>`).",
+        "• `class Name { ... }` names and binds `Name`; `Point = class { ... }` stays anonymous.",
+        "• `class \"Name\" { ... }` (or `r\"Name\"`) names it without binding; assign it to keep it.",
+        "• f-strings are rejected as definition names.",
         "• Inside methods, the `class` keyword evaluates to the current class object.",
         "• `init(...)` is the constructor, called on instantiation.",
         "• `self` refers to the current instance inside methods.",
@@ -5446,10 +5451,11 @@
       ]
     },
     "trait": {
-      "signature": "trait Name [with A, B] { ... }  |  trait",
+      "signature": "trait [Name | \"Name\"] [with A, B] { ... }  |  trait",
       "desc": [
         "Defines an interface (trait): abstract methods (contract) + default methods (mixin).",
-        "• `trait Name { ... }` names the trait itself; `T = trait { ... }` does not (prints `<anonymous class>`).",
+        "• `trait Name { ... }` names and binds `Name`; `T = trait { ... }` stays anonymous.",
+        "• `trait \"Name\"` (or `r\"Name\"`) names it without binding; f-strings are rejected.",
         "• Abstract methods have no '=' implementation; classes must implement them.",
         "• Default methods have an implementation and may be overridden.",
         "• Traits cannot be instantiated and are frozen after definition.",
@@ -5485,10 +5491,11 @@
       ]
     },
     "enum": {
-      "signature": "enum Name { A, B, C }  |  enum { A, B, C }",
+      "signature": "enum [Name | \"Name\"] { A, B, C }  |  enum { A, B, C }",
       "desc": [
         "Defines a zero-overhead, compile-time enumeration.",
         "• Compiles directly into a frozen namespace of named constants.",
+        "• `enum Name { ... }` binds `Name`; `\"Name\"` (or `r\"Name\"`) only names it; f-strings are rejected.",
         "• First member defaults to 0, subsequent members auto-increment.",
         "• Explicit values must be compile-time constants.",
         "• Supports scope modifiers: `local enum`, `const enum`.",

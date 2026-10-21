@@ -64,3 +64,16 @@ assert(throws(() => eval("class \"\" { }")), "empty class name is rejected")
 assert(throws(() => eval("namespace \"\" { }")), "empty namespace name is rejected")
 assert(throws(() => eval("enum \"\" { }")), "empty enum name is rejected")
 assert(throws(() => eval("local class \"X\" { }")), "a modifier needs a variable")
+
+// ── 8. 定义名字：raw string 可用，f-string 拒绝 ──
+Raw = class r"Raw\Name" { init() = { } }
+assert(str(Raw()).startsWith(r"<Raw\Name"), "raw-string class name keeps backslashes")
+RawNS = namespace r"Raw\NS" { x = 1 }
+assert(RawNS.x == 1, "raw-string namespace name")
+RawE = enum r"Raw\E" { A }
+assert(RawE.A == 0, "raw-string enum name")
+RawT = trait r"Raw\T" { m() = 1 }
+assert(!undefined("RawT"), "raw-string trait name value")
+assert(throws(() => eval("class f\"X\" { }")), "f-string class name rejected")
+assert(throws(() => eval("namespace f\"X\" { }")), "f-string namespace name rejected")
+assert(throws(() => eval("enum f\"X\" { A }")), "f-string enum name rejected")

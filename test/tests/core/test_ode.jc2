@@ -1,0 +1,23 @@
+import math
+
+// 标量初值问题：y' = y, y(0)=1
+r = math.ode((t, y) => y, 0, 1, 1)
+assert(r.cols() == 2, "scalar ODE has two columns")
+assert(abs(r[-1, 0] - 1) < 1e-12, "final time")
+assert(abs(r[-1, 1] - math.e) < 1e-6, "exp(1) accuracy")
+
+// 固定步长 RK4
+r4 = math.ode((t, y) => y, 0, 1, 1, {method: "rk4", h: 0.01})
+assert(abs(r4[-1, 1] - math.e) < 1e-6, "rk4 accuracy")
+
+// 一阶系统：谐振子 y'' = -y
+s = math.ode((t, y) => [y[1, 0]; -y[0, 0]], 0, [1; 0], math.PI / 2)
+assert(s.cols() == 3, "system has t + two states")
+assert(abs(s[-1, 1]) < 1e-5, "cos(pi/2) ~ 0")
+assert(abs(s[-1, 2] + 1) < 1e-5, "sin(pi/2) = 1")
+
+// 反向积分
+b = math.ode((t, y) => y, 1, math.e, 0)
+assert(abs(b[-1, 1] - 1) < 1e-5, "backward integration")
+
+print("ode battery OK")

@@ -5116,6 +5116,192 @@ void BuiltinRegistry::registerCalculus() {
         }
         JC2_THROW(RuntimeError, "Argument count mismatch.");
         }, {"f"}, "args");
+
+    // ---- 数值常微分方程：math.ode(f, t0, y0, t1, [options]) ----
+    regModule(math_ns, "ode", { 4, 5 }, [](const std::vector<Value>& args) -> Value {
+        Value f = args[0];
+        if (!callableAcceptsArgCount(f, 2))
+            JC2_THROW(TypeError, "ode() expects f(t, y) with two parameters.");
+        if (!args[1].isNumber() || !args[3].isNumber())
+            JC2_THROW(TypeError, "ode() t0 and t1 must be numbers.");
+
+        const double t0 = args[1].asFloat();
+        double t1 = args[3].asFloat();
+        bool scalar = false;
+        std::vector<double> y;
+        if (args[2].isNumber()) {
+            scalar = true;
+            y.push_back(args[2].asFloat());
+        } else if (args[2].isObjType(ObjType::REAL_MATRIX)) {
+            const auto& m = static_cast<ObjRealMatrix*>(args[2].asObj())->mat;
+            if (m.getCols() != 1)
+                JC2_THROW(MathError, "ode() y0 matrix must be a column vector.");
+            for (int i = 0; i < m.getRows(); ++i) y.push_back(m(i, 0));
+            if (y.empty()) JC2_THROW(MathError, "ode() y0 cannot be empty.");
+        } else {
+            JC2_THROW(TypeError, "ode() y0 must be a number or a real column vector.");
+        }
+        const int dim = static_cast<int>(y.size());
+
+        double h = (t1 - t0) / 100.0;
+        double rtol = 1e-8, atol = 1e-10;
+        int maxSteps = 100000;
+        std::string method = "rk45";
+        if (args.size() == 5) {
+            if (!args[4].isObjType(ObjType::DICT))
+                JC2_THROW(TypeError, "ode() options must be a dict.");
+            static const std::set<std::string> allowed = {
+                "h", "rtol", "atol", "maxSteps", "method"
+            };
+            for (const auto& [k, v] : static_cast<ObjDict*>(args[4].asObj())->elements) {
+                if (!k.isString() || !allowed.count(k.asString()))
+                    JC2_THROW(TypeError, "Unknown ode option: '" + k.toRepr() + "'");
+            }
+            Value v = helpDictGet(args[4], "h");
+            if (!v.isNone()) h = v.asFloat();
+            v = helpDictGet(args[4], "rtol");
+            if (!v.isNone()) rtol = v.asFloat();
+            v = helpDictGet(args[4], "atol");
+            if (!v.isNone()) atol = v.asFloat();
+            v = helpDictGet(args[4], "maxSteps");
+            if (!v.isNone()) maxSteps = static_cast<int>(std::round(v.asFloat()));
+            v = helpDictGet(args[4], "method");
+            if (!v.isNone()) {
+                if (!v.isString()) JC2_THROW(TypeError, "ode() method must be a string.");
+                method = v.asString();
+            }
+        }
+        if (h == 0.0) JC2_THROW(MathError, "ode() step h cannot be zero.");
+        if (rtol <= 0.0 || atol < 0.0) JC2_THROW(MathError, "ode() tolerances must be positive.");
+        if (maxSteps <= 0) JC2_THROW(MathError, "ode() maxSteps must be positive.");
+        if (method != "rk45" && method != "rk4")
+            JC2_THROW(ValueError, "ode() method must be 'rk45' or 'rk4'.");
+
+        const double dir = (t1 >= t0) ? 1.0 : -1.0;
+
+        auto callDeriv = [&](double t, const std::vector<double>& state) -> std::vector<double> {
+            Value yv = scalar ? Value(state[0]) : Value(RealMatrix(dim, 1, state));
+            GcValueGuard yGuard(yv);
+            Value out = safeCallValue(f, { Value(t), yv });
+            GcValueGuard outGuard(out);
+            if (scalar) {
+                if (!out.isNumber())
+                    JC2_THROW(TypeError, "ode() f must return a number for a scalar state.");
+                return { out.asFloat() };
+            }
+            if (!out.isObjType(ObjType::REAL_MATRIX))
+                JC2_THROW(TypeError, "ode() f must return a real column vector.");
+            const auto& m = static_cast<ObjRealMatrix*>(out.asObj())->mat;
+            if (m.getCols() != 1 || m.getRows() != dim)
+                JC2_THROW(MathError, "ode() f returned a state with the wrong shape.");
+            std::vector<double> r(dim);
+            for (int i = 0; i < dim; ++i) r[i] = m(i, 0);
+            return r;
+        };
+
+        auto addScaled = [&](const std::vector<double>& base, double ht,
+                             std::initializer_list<std::pair<double, const std::vector<double>*>> terms) {
+            std::vector<double> out = base;
+            for (const auto& [c, k] : terms) {
+                for (int i = 0; i < dim; ++i) out[i] += ht * c * (*k)[i];
+            }
+            return out;
+        };
+
+        std::vector<std::vector<double>> trail;
+        auto record = [&](double t, const std::vector<double>& yy) {
+            std::vector<double> row;
+            row.reserve(1 + dim);
+            row.push_back(t);
+            for (double v : yy) row.push_back(v);
+            trail.push_back(std::move(row));
+        };
+        record(t0, y);
+
+        if (method == "rk4") {
+            double H = std::abs(h);
+            if (H <= 0.0) H = std::abs(t1 - t0) / 100.0;
+            int steps = static_cast<int>(std::ceil(std::abs(t1 - t0) / H));
+            if (steps < 1) steps = 1;
+            H = (t1 - t0) / steps;
+            double t = t0;
+            for (int s = 0; s < steps; ++s) {
+                jc::checkInterrupt();
+                auto k1 = callDeriv(t, y);
+                auto k2 = callDeriv(t + H / 2.0, addScaled(y, H / 2.0, { {1.0, &k1} }));
+                auto k3 = callDeriv(t + H / 2.0, addScaled(y, H / 2.0, { {1.0, &k2} }));
+                auto k4 = callDeriv(t + H, addScaled(y, H, { {1.0, &k3} }));
+                for (int i = 0; i < dim; ++i)
+                    y[i] += H / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]);
+                t += H;
+                record(t, y);
+            }
+        } else {
+            // Dormand–Prince 5(4)
+            const double c2 = 1.0 / 5.0, c3 = 3.0 / 10.0, c4 = 4.0 / 5.0, c5 = 8.0 / 9.0;
+            const double a21 = 1.0 / 5.0;
+            const double a31 = 3.0 / 40.0, a32 = 9.0 / 40.0;
+            const double a41 = 44.0 / 45.0, a42 = -56.0 / 15.0, a43 = 32.0 / 9.0;
+            const double a51 = 19372.0 / 6561.0, a52 = -25360.0 / 2187.0,
+                         a53 = 64448.0 / 6561.0, a54 = -212.0 / 729.0;
+            const double a61 = 9017.0 / 3168.0, a62 = -355.0 / 33.0,
+                         a63 = 46732.0 / 5247.0, a64 = 49.0 / 176.0, a65 = -5103.0 / 18656.0;
+            const double b1 = 35.0 / 384.0, b3 = 500.0 / 1113.0, b4 = 125.0 / 192.0,
+                         b5 = -2187.0 / 6784.0, b6 = 11.0 / 84.0;
+            const double d1 = 5179.0 / 57600.0, d3 = 7571.0 / 16695.0, d4 = 393.0 / 640.0,
+                         d5 = -92097.0 / 339200.0, d6 = 187.0 / 2100.0, d7 = 1.0 / 40.0;
+
+            double t = t0;
+            h = dir * std::abs(h);
+            int steps = 0;
+            while (dir * (t1 - t) > 1e-14) {
+                if (++steps > maxSteps)
+                    JC2_THROW(MathError, "ode() exceeded maxSteps; the system may be stiff.");
+                jc::checkInterrupt();
+                if (dir * (t + h - t1) > 0.0) h = t1 - t;
+
+                auto k1 = callDeriv(t, y);
+                auto k2 = callDeriv(t + c2 * h, addScaled(y, h, { {a21, &k1} }));
+                auto k3 = callDeriv(t + c3 * h, addScaled(y, h, { {a31, &k1}, {a32, &k2} }));
+                auto k4 = callDeriv(t + c4 * h, addScaled(y, h, { {a41, &k1}, {a42, &k2}, {a43, &k3} }));
+                auto k5 = callDeriv(t + c5 * h, addScaled(y, h, { {a51, &k1}, {a52, &k2}, {a53, &k3}, {a54, &k4} }));
+                auto k6 = callDeriv(t + h, addScaled(y, h, { {a61, &k1}, {a62, &k2}, {a63, &k3}, {a64, &k4}, {a65, &k5} }));
+                std::vector<double> y5 = addScaled(y, h, {
+                    {b1, &k1}, {b3, &k3}, {b4, &k4}, {b5, &k5}, {b6, &k6}
+                });
+                auto k7 = callDeriv(t + h, y5);
+
+                double err2 = 0.0;
+                for (int i = 0; i < dim; ++i) {
+                    double y4 = y[i] + h * (d1 * k1[i] + d3 * k3[i] + d4 * k4[i]
+                        + d5 * k5[i] + d6 * k6[i] + d7 * k7[i]);
+                    double scale = atol + rtol * std::max(std::abs(y[i]), std::abs(y5[i]));
+                    double e = (y5[i] - y4) / (scale == 0.0 ? 1e-300 : scale);
+                    err2 += e * e;
+                }
+                double err = std::sqrt(err2 / dim);
+                if (err <= 1.0 || std::abs(h) <= 1e-14 * (1.0 + std::abs(t))) {
+                    t += h;
+                    y = y5;
+                    record(t, y);
+                    double factor = (err == 0.0) ? 5.0 : std::min(5.0, std::max(0.2, 0.9 * std::pow(err, -0.2)));
+                    h *= factor;
+                } else {
+                    h *= std::max(0.1, 0.9 * std::pow(err, -0.2));
+                }
+            }
+        }
+
+        const int rows = static_cast<int>(trail.size());
+        const int cols = 1 + dim;
+        std::vector<double> flat;
+        flat.reserve(static_cast<size_t>(rows) * cols);
+        // Matrix 底层是列主序：按列填充，行 = 时间点，列 = t, y1...
+        for (int c = 0; c < cols; ++c) {
+            for (int r = 0; r < rows; ++r) flat.push_back(trail[r][c]);
+        }
+        return Value(RealMatrix(rows, cols, flat));
+        }, {"f", "t0", "y0", "t1", "options"});
 }
 
 // =================================================================

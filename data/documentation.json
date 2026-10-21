@@ -7963,6 +7963,14 @@
         "import math; math.e",
         "import math; math.e == math.E"
       ]
+    },
+    "ode": {
+      "signature": "math.ode(f, t0, y0, t1, [options])",
+      "desc": "Numerically integrates dy/dt = f(t, y) from t0 to t1. y0 is a scalar or a real column vector; f(t, y) must return the same shape. Returns a matrix with one row per accepted step: t followed by the state. options: h (initial step), rtol (1e-8), atol (1e-10), maxSteps (100000), method (rk45 adaptive default, or rk4 fixed step).",
+      "examples": [
+        "import math; math.ode((t, y) => y, 0, 1, 1)",
+        "import math; math.ode((t, y) => [y[1, 0]; -y[0, 0]], 0, [1; 0], math.PI / 2)"
+      ]
     }
   },
   "cas_methods": {

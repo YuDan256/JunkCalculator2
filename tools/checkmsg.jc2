@@ -1,0 +1,68 @@
+// tools/checkmsg.jc2 — validate a commit message file
+// Usage: jc2 tools/checkmsg.jc2 <message-file>
+
+import io
+import regex
+import sys
+
+TYPES = @["feat", "fix", "perf", "refactor", "math", "docs", "test", "chore", "revert"]
+SCOPES = @["frontend", "compiler", "jit", "vm", "memory", "math", "cas", "mod", "lib",
+           "lang", "utils", "lsp", "test", "docs", "examples", "pkg"]
+
+args = sys.args()
+if (args.len() < 1) {
+    print("usage: jc2 tools/checkmsg.jc2 <message-file>")
+    sys.exit(2)
+}
+
+raw = io.readFile(args[0])
+lines = raw.replace("\r\n", "\n").split("\n")
+subj = lines[0].trim()
+body = ""
+for (i in range(1, lines.len())) {
+    if (i > 1) body += "\n"
+    body += lines[i]
+}
+body = body.trim()
+
+probs = @[]
+titleRe = regex.compile(r"^([a-z]+)\(([^)]*)\)(!)?: (\S.*)$")
+m = titleRe.search(subj)
+if (m == 0) {
+    probs.push("title must be <type>(<scope>): <subject>")
+} else {
+    typ = m.groups[0]
+    scope = m.groups[1]
+    desc = m.groups[3]
+    if (!(typ in TYPES)) probs.push("bad type: " + typ)
+    if (!(scope in SCOPES)) probs.push("bad scope: " + scope)
+    if (subj.len() > 50) probs.push("subject is " + str(subj.len()) + " chars > 50")
+    if (desc.len() == 0 || desc[0] < "a" || desc[0] > "z")
+        probs.push("subject must start lowercase (imperative)")
+    if (subj.endsWith(".")) probs.push("subject must not end with a period")
+    printable = regex.compile(r"^[ -~]*$")
+    if (!printable.test(subj)) probs.push("subject must be ASCII English")
+}
+
+secs = @[]
+pos = 0
+while (true) {
+    a = body.find("【", pos)
+    if (a < 0) break
+    b = body.find("】", a + 1)
+    if (b < 0) break
+    secs.push(body[a + 1 : b])
+    pos = b + 1
+}
+if (secs.len() != 2 || secs[0] != "动机" || secs[1] != "原理") {
+    probs.push("body sections must be exactly 【动机】 then 【原理】")
+} else if (!body.startsWith("【动机】")) {
+    probs.push("body must start with the motive section")
+}
+
+if (probs.len() > 0) {
+    print("FAIL  " + subj)
+    for (p in probs) print("  - " + p)
+    sys.exit(1)
+}
+print("PASS  " + subj)

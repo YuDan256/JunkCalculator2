@@ -7729,6 +7729,21 @@
       "examples": [
         "sys.loadPrimes()"
       ]
+    },
+    "system": {
+      "signature": "sys.system(command) -> int",
+      "desc": "Runs a command through the platform shell, inheriting stdio, and returns its exit code. Use sys.exec() when you need captured output and arguments without shell quoting.",
+      "examples": [
+        "import sys; sys.system(\"echo hello\")"
+      ]
+    },
+    "exec": {
+      "signature": "sys.exec(program, [args], [options]) -> dict",
+      "desc": "Runs an external program without a shell. args is a list of strings. options: cwd, env (merged into the inherited environment), stdin (string), timeoutMs, shell (false by default). Returns {code, stdout, stderr, timedOut}. Non-zero exit codes are returned, not thrown.",
+      "examples": [
+        "import sys; sys.exec(\"git\", @[\"--version\"])[\"stdout\"]",
+        "import sys; sys.exec(\"cmd\", @[\"/c\", \"echo hello\"])"
+      ]
     }
   },
   "math_methods": {

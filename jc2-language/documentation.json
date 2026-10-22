@@ -1561,6 +1561,12 @@
     },
     "loadPrimes": {
       "signature": "sys.loadPrimes()"
+    },
+    "system": {
+      "signature": "sys.system(command) -> int"
+    },
+    "exec": {
+      "signature": "sys.exec(program, [args], [options]) -> dict"
     }
   },
   "math_methods": {

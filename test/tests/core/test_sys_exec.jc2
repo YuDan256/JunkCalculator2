@@ -1,0 +1,40 @@
+import sys
+
+if (sys.platform() == "windows") {
+    r = sys.exec("cmd", @["/c", "echo hello"])
+    assert(r["code"] == 0, "exit code")
+    assert(r["stdout"].contains("hello"), "stdout")
+    assert(r["stderr"] == "", "stderr empty")
+    assert(!r["timedOut"], "not timed out")
+
+    e = sys.exec("cmd", @["/c", "echo err 1>&2"])
+    assert(e["stderr"].contains("err"), "stderr captured")
+
+    c = sys.exec("cmd", @["/c", "exit 3"])
+    assert(c["code"] == 3, "non-zero exit code")
+
+    i = sys.exec("cmd", @["/c", "more"], {stdin: "hello\n"})
+    assert(i["stdout"].contains("hello"), "stdin")
+
+    w = sys.exec("cmd", @["/c", "cd"], {cwd: "C:\\Windows"})
+    assert(w["stdout"].contains("Windows"), "cwd")
+
+    s = sys.exec("echo hi", @[], {shell: true})
+    assert(s["stdout"].contains("hi"), "shell mode")
+
+    t = sys.exec("cmd", @["/c", "ping -n 5 127.0.0.1 >nul"], {timeoutMs: 200})
+    assert(t["timedOut"], "timeout")
+
+    assert(sys.system("exit 0") == 0, "sys.system")
+} else {
+    r = sys.exec("sh", @["-c", "echo hello"])
+    assert(r["code"] == 0, "exit code")
+    assert(r["stdout"].contains("hello"), "stdout")
+
+    c = sys.exec("sh", @["-c", "exit 3"])
+    assert(c["code"] == 3, "non-zero exit code")
+
+    assert(sys.system("exit 0") == 0, "sys.system")
+}
+
+print("sys.exec battery OK")

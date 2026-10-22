@@ -34,6 +34,18 @@
 #include <random>
 #include <sstream>
 #include <thread>               // ★ sleep() — std::this_thread::sleep_for
+
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#else
+#include <sys/wait.h>
+#include <unistd.h>
+#include <signal.h>
+#endif
+
 #include <filesystem>           // ★ Phase 2: file I/O
 #include <fstream>              // ★ Phase 2: file I/O
 #include <cstdlib>              // ★ std::system
@@ -5576,7 +5588,317 @@ void BuiltinRegistry::registerErrorHandling() {
 // =================================================================
 // [Phase 3] 终极系统 Shell 与绘图 (取代 Evaluator 专属函数)
 // =================================================================
+struct ExecOutcome {
+    int code = -1;
+    std::string out;
+    std::string err;
+    bool timedOut = false;
+};
+
+#ifdef _WIN32
+static std::wstring utf8ToWide(const std::string& text) {
+    return to_path(text).wstring();
+}
+
+static std::wstring execQuoteArg(const std::wstring& arg) {
+    if (arg.empty()) return L"\"\"";
+    bool need = false;
+    for (wchar_t c : arg) if (c == L' ' || c == L'\t' || c == L'"') need = true;
+    if (!need) return arg;
+    std::wstring out = L"\"";
+    int backslashes = 0;
+    for (wchar_t c : arg) {
+        if (c == L'\\') { ++backslashes; }
+        else if (c == L'"') {
+            out.append(static_cast<size_t>(backslashes * 2 + 1), L'\\');
+            out += L'"';
+            backslashes = 0;
+        } else {
+            out.append(static_cast<size_t>(backslashes), L'\\');
+            backslashes = 0;
+            out += c;
+        }
+    }
+    out.append(static_cast<size_t>(backslashes * 2), L'\\');
+    out += L'"';
+    return out;
+}
+
+static ExecOutcome execProcess(const std::string& program, const std::vector<std::string>& args,
+                               const std::string& cwd, const std::map<std::string, std::string>& env,
+                               const std::string& input, int timeoutMs, bool useShell) {
+    ExecOutcome result;
+    SECURITY_ATTRIBUTES sa{};
+    sa.nLength = sizeof(sa);
+    sa.bInheritHandle = TRUE;
+    HANDLE inR = nullptr, inW = nullptr, outR = nullptr, outW = nullptr, errR = nullptr, errW = nullptr;
+    auto closeAll = [&]() {
+        auto c = [](HANDLE& h) { if (h) { CloseHandle(h); h = nullptr; } };
+        c(inR); c(inW); c(outR); c(outW); c(errR); c(errW);
+    };
+    if (!CreatePipe(&inR, &inW, &sa, 0) || !CreatePipe(&outR, &outW, &sa, 0) || !CreatePipe(&errR, &errW, &sa, 0)) {
+        closeAll();
+        JC2_THROW(IOError, "sys.exec(): failed to create pipes.");
+    }
+    SetHandleInformation(inW, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(outR, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(errR, HANDLE_FLAG_INHERIT, 0);
+
+    std::wstring cmdLine;
+    if (useShell) {
+        cmdLine = L"cmd.exe /C ";
+        cmdLine += utf8ToWide(program);
+        for (const auto& a : args) { cmdLine += L' '; cmdLine += utf8ToWide(a); }
+    } else {
+        cmdLine = execQuoteArg(utf8ToWide(program));
+        for (const auto& a : args) { cmdLine += L' '; cmdLine += execQuoteArg(utf8ToWide(a)); }
+    }
+    std::vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
+    cmdBuf.push_back(L'\0');
+
+    std::wstring cwdW;
+    if (!cwd.empty()) cwdW = utf8ToWide(cwd);
+
+    std::vector<wchar_t> envBlock;
+    if (!env.empty()) {
+        std::map<std::wstring, std::wstring> merged;
+        LPWCH cur = GetEnvironmentStringsW();
+        if (cur) {
+            for (wchar_t* p = cur; *p; p += wcslen(p) + 1) {
+                std::wstring entry(p);
+                size_t eq = entry.find(L'=');
+                if (eq != std::wstring::npos && eq > 0) merged[entry.substr(0, eq)] = entry.substr(eq + 1);
+            }
+            FreeEnvironmentStringsW(cur);
+        }
+        for (const auto& [k, v] : env) merged[utf8ToWide(k)] = utf8ToWide(v);
+        std::vector<std::pair<std::wstring, std::wstring>> sorted(merged.begin(), merged.end());
+        std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+            return _wcsicmp(a.first.c_str(), b.first.c_str()) < 0;
+        });
+        for (const auto& [k, v] : sorted) {
+            std::wstring entry = k + L'=' + v + L'\0';
+            envBlock.insert(envBlock.end(), entry.begin(), entry.end());
+        }
+        envBlock.push_back(L'\0');
+    }
+
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdInput = inR;
+    si.hStdOutput = outW;
+    si.hStdError = errW;
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cmdBuf.data(), nullptr, nullptr, TRUE,
+                             CREATE_NO_WINDOW | (envBlock.empty() ? 0 : CREATE_UNICODE_ENVIRONMENT),
+                             envBlock.empty() ? nullptr : envBlock.data(),
+                             cwdW.empty() ? nullptr : cwdW.c_str(), &si, &pi);
+    if (!ok) {
+        DWORD e = GetLastError();
+        closeAll();
+        JC2_THROW(IOError, "sys.exec(): failed to start '" + program + "' (Win32 error " + std::to_string(e) + ").");
+    }
+    CloseHandle(inR); inR = nullptr;
+    CloseHandle(outW); outW = nullptr;
+    CloseHandle(errW); errW = nullptr;
+
+    if (!input.empty()) {
+        DWORD written = 0;
+        WriteFile(inW, input.data(), static_cast<DWORD>(input.size()), &written, nullptr);
+    }
+    CloseHandle(inW); inW = nullptr;
+
+    std::thread outThread([&]() {
+        char buf[4096];
+        DWORD n = 0;
+        while (ReadFile(outR, buf, sizeof(buf), &n, nullptr) && n > 0) result.out.append(buf, n);
+    });
+    std::thread errThread([&]() {
+        char buf[4096];
+        DWORD n = 0;
+        while (ReadFile(errR, buf, sizeof(buf), &n, nullptr) && n > 0) result.err.append(buf, n);
+    });
+
+    DWORD wait = WaitForSingleObject(pi.hProcess, timeoutMs > 0 ? static_cast<DWORD>(timeoutMs) : INFINITE);
+    if (wait == WAIT_TIMEOUT) {
+        TerminateProcess(pi.hProcess, 1);
+        WaitForSingleObject(pi.hProcess, 5000);
+        result.timedOut = true;
+    }
+    DWORD code = 0;
+    GetExitCodeProcess(pi.hProcess, &code);
+    result.code = result.timedOut ? -1 : static_cast<int>(code);
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+    outThread.join();
+    errThread.join();
+    CloseHandle(outR); outR = nullptr;
+    CloseHandle(errR); errR = nullptr;
+    closeAll();
+    return result;
+}
+#else
+static ExecOutcome execProcess(const std::string& program, const std::vector<std::string>& args,
+                               const std::string& cwd, const std::map<std::string, std::string>& env,
+                               const std::string& input, int timeoutMs, bool useShell) {
+    ExecOutcome result;
+    int inPipe[2], outPipe[2], errPipe[2];
+    if (pipe(inPipe) != 0 || pipe(outPipe) != 0 || pipe(errPipe) != 0) {
+        JC2_THROW(IOError, "sys.exec(): failed to create pipes.");
+    }
+    std::vector<std::string> argvStore;
+    if (useShell) { argvStore = {"/bin/sh", "-c", program}; }
+    else { argvStore.push_back(program); for (const auto& a : args) argvStore.push_back(a); }
+    std::vector<char*> argv;
+    for (auto& a : argvStore) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        JC2_THROW(IOError, "sys.exec(): fork failed.");
+    }
+    if (pid == 0) {
+        dup2(inPipe[0], STDIN_FILENO);
+        dup2(outPipe[1], STDOUT_FILENO);
+        dup2(errPipe[1], STDERR_FILENO);
+        close(inPipe[0]); close(inPipe[1]);
+        close(outPipe[0]); close(outPipe[1]);
+        close(errPipe[0]); close(errPipe[1]);
+        if (!cwd.empty()) { if (chdir(cwd.c_str()) != 0) _exit(127); }
+        for (const auto& [k, v] : env) setenv(k.c_str(), v.c_str(), 1);
+        execvp(argv[0], argv.data());
+        _exit(127);
+    }
+    close(inPipe[0]); close(outPipe[1]); close(errPipe[1]);
+    if (!input.empty()) {
+        size_t off = 0;
+        while (off < input.size()) {
+            ssize_t n = write(inPipe[1], input.data() + off, input.size() - off);
+            if (n <= 0) break;
+            off += static_cast<size_t>(n);
+        }
+    }
+    close(inPipe[1]);
+
+    std::thread outThread([&]() {
+        char buf[4096];
+        ssize_t n = 0;
+        while ((n = read(outPipe[0], buf, sizeof(buf))) > 0) result.out.append(buf, static_cast<size_t>(n));
+    });
+    std::thread errThread([&]() {
+        char buf[4096];
+        ssize_t n = 0;
+        while ((n = read(errPipe[0], buf, sizeof(buf))) > 0) result.err.append(buf, static_cast<size_t>(n));
+    });
+
+    int status = 0;
+    if (timeoutMs > 0) {
+        int waited = 0;
+        while (waited < timeoutMs) {
+            pid_t r = waitpid(pid, &status, WNOHANG);
+            if (r == pid) break;
+            usleep(10000);
+            waited += 10;
+        }
+        if (waited >= timeoutMs) {
+            kill(pid, SIGKILL);
+            waitpid(pid, &status, 0);
+            result.timedOut = true;
+        }
+    } else {
+        waitpid(pid, &status, 0);
+    }
+    result.code = result.timedOut ? -1 : (WIFEXITED(status) ? WEXITSTATUS(status) : 128 + WTERMSIG(status));
+    outThread.join();
+    errThread.join();
+    close(outPipe[0]); close(errPipe[0]);
+    return result;
+}
+#endif
+
 void BuiltinRegistry::registerSystemShell() {
+    regModule(sys_ns, "system", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString())
+            JC2_THROW(TypeError, "sys.system() expects a command string.");
+        int rc = std::system(args[0].asString().c_str());
+#ifdef _WIN32
+        return Value::fromInt32(rc);
+#else
+        if (WIFEXITED(rc)) return Value::fromInt32(WEXITSTATUS(rc));
+        if (WIFSIGNALED(rc)) return Value::fromInt32(128 + WTERMSIG(rc));
+        return Value::fromInt32(rc);
+#endif
+        }, {"command"});
+
+    regModule(sys_ns, "exec", { 1, 2, 3 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString())
+            JC2_THROW(TypeError, "sys.exec() expects a program name.");
+        std::string program = args[0].asString();
+        std::vector<std::string> argv;
+        std::string cwd, input;
+        int timeoutMs = 0;
+        bool useShell = false;
+        std::map<std::string, std::string> env;
+        Value opts;
+
+        auto readArgs = [&](const Value& v) {
+            if (!v.isObjType(ObjType::LIST))
+                JC2_THROW(TypeError, "sys.exec() args must be a list of strings.");
+            for (const auto& item : static_cast<ObjList*>(v.asObj())->vec) {
+                if (!item.isString()) JC2_THROW(TypeError, "sys.exec() args must be strings.");
+                argv.push_back(item.asString());
+            }
+        };
+        auto readOpts = [&](const Value& v) {
+            if (!v.isObjType(ObjType::DICT))
+                JC2_THROW(TypeError, "sys.exec() options must be a dict.");
+            static const std::set<std::string> allowed = {"cwd", "env", "stdin", "timeoutMs", "shell"};
+            for (const auto& [k, val] : static_cast<ObjDict*>(v.asObj())->elements) {
+                if (!k.isString() || !allowed.count(k.asString()))
+                    JC2_THROW(TypeError, "Unknown sys.exec option: '" + k.toRepr() + "'");
+            }
+            Value x = helpDictGet(v, "cwd");
+            if (!x.isNone()) { if (!x.isString()) JC2_THROW(TypeError, "sys.exec cwd must be a string."); cwd = x.asString(); }
+            x = helpDictGet(v, "stdin");
+            if (!x.isNone()) { if (!x.isString()) JC2_THROW(TypeError, "sys.exec stdin must be a string."); input = x.asString(); }
+            x = helpDictGet(v, "timeoutMs");
+            if (!x.isNone()) {
+                if (!x.isNumber()) JC2_THROW(TypeError, "sys.exec timeoutMs must be a number.");
+                timeoutMs = static_cast<int>(std::round(x.asFloat()));
+            }
+            x = helpDictGet(v, "shell");
+            if (!x.isNone()) useShell = x.truthy();
+            x = helpDictGet(v, "env");
+            if (!x.isNone()) {
+                if (!x.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "sys.exec env must be a dict.");
+                for (const auto& [k, val] : static_cast<ObjDict*>(x.asObj())->elements) {
+                    if (!k.isString() || !val.isString())
+                        JC2_THROW(TypeError, "sys.exec env keys and values must be strings.");
+                    env[k.asString()] = val.asString();
+                }
+            }
+        };
+
+        if (args.size() == 2) {
+            if (args[1].isObjType(ObjType::LIST)) readArgs(args[1]);
+            else readOpts(args[1]);
+        }
+        if (args.size() == 3) {
+            readArgs(args[1]);
+            readOpts(args[2]);
+        }
+        if (timeoutMs < 0) JC2_THROW(MathError, "sys.exec timeoutMs cannot be negative.");
+
+        ExecOutcome res = execProcess(program, argv, cwd, env, input, timeoutMs, useShell);
+        ObjDict* out = GcHeap::get().allocate<ObjDict>();
+        GcObjGuard guard(out);
+        out->set(Value("code"), Value::fromInt32(res.code));
+        out->set(Value("stdout"), Value(res.out));
+        out->set(Value("stderr"), Value(res.err));
+        out->set(Value("timedOut"), Value(res.timedOut));
+        return Value(out);
+        }, {"program", "args", "options"});
 
     regModule(sys_ns, "resetConst", { 0 }, [this](const std::vector<Value>&) -> Value {
         // ★ 常量已归 math 命名空间（math.PI / math.E / math.i / math.I），

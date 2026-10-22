@@ -1,0 +1,64 @@
+// tools/test.jc2 — JC2-native regression runner
+// Usage: jc2 tools/test.jc2
+// Discovers test/tests/**/*.jc2, runs the four suites, compile-checks every
+// test file, and exits non-zero on the first failing gate.
+
+import io
+import sys
+
+EXE = "out/build/x64-release/jc2.exe"
+if (sys.platform() != "windows") EXE = "out/build/x64-release/jc2"
+
+walk(dir) = {
+    files = @[]
+    for (name in io.listDir(dir)) {
+        path = dir + "/" + name
+        st = io.stat(path)
+        if (st.isDir) {
+            for (f in walk(path)) files.push(f)
+        } else if (name.endsWith(".jc2")) {
+            files.push(path)
+        }
+    }
+    return files
+}
+
+runSuite(label, args) = {
+    r = sys.exec(EXE, args, {timeoutMs: 900000})
+    text = r.stdout + r.stderr
+    ok = (r.code == 0 && !r.timedOut)
+    print(label + ": " + (ok ? "PASS" : "FAIL") + " (exit " + str(r.code) + ")")
+    if (!ok) {
+        print(text)
+        return false
+    }
+    return true
+}
+
+failures = 0
+
+if (!runSuite("unit", @["test", "test/tests"])) failures += 1
+if (!runSuite("unit --jit", @["--jit", "test", "test/tests"])) failures += 1
+if (!runSuite("http", @["test", "test/http_tests"])) failures += 1
+if (!runSuite("jit", @["--jit", "test", "test/jit_tests"])) failures += 1
+
+// compile-check every test file; this catches parser hangs and codegen crashes
+files = walk("test/tests")
+for (f in walk("examples")) files.push(f)
+compileFailures = 0
+tmp = "out/build/x64-release/__compile_check.jcb"
+for (f in files) {
+    r = sys.exec(EXE, @["compile", f, tmp], {timeoutMs: 20000})
+    if (r.code != 0 || r.timedOut) {
+        compileFailures += 1
+        print("compile FAIL: " + f + " (exit " + str(r.code) + ")")
+    }
+}
+print("compile-check: " + str(files.len()) + " files, " + str(compileFailures) + " failures")
+if (compileFailures > 0) failures += 1
+
+if (failures > 0) {
+    print("FAILED: " + str(failures) + " gate(s)")
+    sys.exit(1)
+}
+print("ALL GATES PASSED")

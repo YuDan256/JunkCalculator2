@@ -66,6 +66,14 @@ test_macro_errors() = {
     } catch (e) {
         assert("Undefined" in e.message || "not defined" in e.message, "Wrong error for normal macro call")
     }
+
+    try {
+        eval("syntax empty_arg(s) = { x = none; return @[quote { print(1, $x) }] }; @empty_arg {}")
+        assert(false, "Should throw when an unquoted none becomes a call argument")
+    } catch (e) {
+        msg = str(e.message)
+        assert("empty argument" in msg || "Macro expansion" in msg, "Wrong error for empty macro argument: " + msg)
+    }
 }
 test_macro_errors()
 

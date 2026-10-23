@@ -881,7 +881,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<Block>(getExprList(getProp("statements")));
     } else if (type == "Call") {
         Token callee(TokenType::IDENTIFIER, getProp("callee").asString(), line);
-        return std::make_unique<Call>(callee, getExprList(getProp("arguments")));
+        auto args = getExprList(getProp("arguments"));
+        for (auto& arg : args) {
+            if (!arg) {
+                JC2_THROW(RuntimeError, "Macro expansion produced an empty argument for call '" + callee.lexeme + "'.");
+            }
+        }
+        return std::make_unique<Call>(callee, std::move(args));
     } else if (type == "MatrixNode") {
         std::vector<std::vector<std::unique_ptr<Expr>>> elements;
         Value rowsVal = getProp("elements");

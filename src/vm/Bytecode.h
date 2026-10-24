@@ -447,15 +447,15 @@ public:
         return static_cast<uint32_t>(callSignatures.size() - 1);
     }
 
-    void disassemble(const std::string& name) const {
+    void disassemble(const std::string& name, bool verbose = false) const {
         std::cout << "=== " << name << " ===" << std::endl;
         for (int offset = 0; offset < static_cast<int>(code.size()); ++offset) {
-            disassembleInstruction(offset);
+            disassembleInstruction(offset, verbose);
         }
         std::cout << "==================" << std::endl;
     }
 
-    void disassembleInstruction(int offset) const {
+    void disassembleInstruction(int offset, bool verbose = false) const {
         Instruction inst = code[offset];
         std::cout << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
 
@@ -494,14 +494,55 @@ public:
             return "R(" + std::to_string(rk) + ")";
         };
 
+        auto trailing = [&](const std::string& compact, const std::string& expanded) {
+            const std::string& text = verbose ? expanded : compact;
+            if (!text.empty()) std::cout << "  ; " << text;
+        };
+        auto scratchSuffix = [](int r) -> std::string {
+            return (r >= 124 && r <= 126) ? " (scratch)" : "";
+        };
+        auto cacheName = [&](int idx) -> std::string {
+            if (idx < 0 || idx >= static_cast<int>(inlineCaches.size())) return "";
+            int nameIdx = inlineCaches[idx].nameIdx;
+            if (nameIdx < 0 || nameIdx >= static_cast<int>(constants.size())) return "";
+            return constants[nameIdx].asString();
+        };
+
         switch (op) {
             case OpCode::ADD: case OpCode::SUB: case OpCode::MUL: case OpCode::DIV: case OpCode::IDIV:
             case OpCode::MOD: case OpCode::POW: case OpCode::LDIV: case OpCode::BAND:
             case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
             case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
-            case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS:
+            case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS: {
                 std::cout << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
+                const char* sym = "?";
+                switch (op) {
+                    case OpCode::ADD: sym = "+"; break;
+                    case OpCode::SUB: sym = "-"; break;
+                    case OpCode::MUL: sym = "*"; break;
+                    case OpCode::DIV: sym = "/"; break;
+                    case OpCode::IDIV: sym = "~/"; break;
+                    case OpCode::MOD: sym = "%"; break;
+                    case OpCode::POW: sym = "^"; break;
+                    case OpCode::LDIV: sym = "\\"; break;
+                    case OpCode::BAND: sym = "&"; break;
+                    case OpCode::BOR: sym = "|"; break;
+                    case OpCode::BXOR: sym = "^^"; break;
+                    case OpCode::SHL: sym = "<<"; break;
+                    case OpCode::SHR: sym = ">>"; break;
+                    case OpCode::EQ: sym = "=="; break;
+                    case OpCode::NEQ: sym = "!="; break;
+                    case OpCode::LT: sym = "<"; break;
+                    case OpCode::LE: sym = "<="; break;
+                    case OpCode::GT: sym = ">"; break;
+                    case OpCode::GE: sym = ">="; break;
+                    case OpCode::CMP: sym = "<=>"; break;
+                    case OpCode::IS: sym = "is"; break;
+                    default: break;
+                }
+                trailing("", "R(" + std::to_string(a) + ") := " + formatRK(b) + " " + sym + " " + formatRK(c));
                 break;
+            }
             
             case OpCode::BUILD_LIST: case OpCode::BUILD_DICT: case OpCode::BUILD_SET:
             case OpCode::CONCAT_STRINGS: case OpCode::DICT_REST: case OpCode::BUILD_MATRIX:
@@ -513,48 +554,86 @@ public:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
-            case OpCode::FORMAT_STRING:
+            case OpCode::FORMAT_STRING: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << formatConstant(c);
-                }
+                std::string spec = (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size()))
+                    ? formatConstant(c) : "?";
+                trailing(spec, "R(" + std::to_string(a) + ") := format(R(" + std::to_string(b) + "), " + spec + ")");
                 break;
+            }
 
-            case OpCode::BUILD_NAMESPACE:
+            case OpCode::BUILD_NAMESPACE: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[b].asString();
-                }
+                std::string name = (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size()))
+                    ? constants[b].asString() : "";
+                trailing(name, "R(" + std::to_string(a) + ") := namespace(" + name + ", "
+                         + std::to_string(c) + " entries)");
                 break;
+            }
 
-            case OpCode::ASSERT_PARAM_TYPE:
+            case OpCode::ASSERT_PARAM_TYPE: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[c].asString();
-                }
+                std::string name = (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size()))
+                    ? constants[c].asString() : "";
+                trailing(name, "assert_param(R(" + std::to_string(a) + "), param "
+                         + std::to_string(b) + ", " + name + ")");
                 break;
+            }
 
-            case OpCode::ASSERT_TYPE:
+            case OpCode::ASSERT_TYPE: {
                 std::cout << "R(" << a << ") R(" << b << ") " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[c].asString();
-                }
+                std::string name = (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size()))
+                    ? constants[c].asString() : "";
+                trailing(name, "assert_type(R(" + std::to_string(a) + "), R("
+                         + std::to_string(b) + "), " + name + ")");
                 break;
+            }
 
-            case OpCode::GET_PROP: case OpCode::GET_PRIVATE: case OpCode::TRY_GET_PROP: 
-            case OpCode::SET_PROP: case OpCode::SET_PRIVATE: case OpCode::DEFINE_PRIVATE:
-            case OpCode::DEFINE_PRIVATE_CONST: case OpCode::DEFINE_PROP: case OpCode::DEFINE_PROP_CONST:
-            case OpCode::INVOKE: case OpCode::TAIL_INVOKE: 
-            case OpCode::INVOKE_PRIVATE: case OpCode::TAIL_INVOKE_PRIVATE:
-            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK:
+            case OpCode::GET_PROP: case OpCode::GET_PRIVATE: case OpCode::TRY_GET_PROP: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(inlineCaches.size())) {
-                    int nameIdx = inlineCaches[c].nameIdx;
-                    if (nameIdx < static_cast<int>(constants.size())) {
-                        std::cout << "  ; " << constants[nameIdx].asString();
-                    }
-                }
+                std::string name = cacheName(c);
+                std::string semantic;
+                std::string rs = "R(" + std::to_string(a) + ")";
+                std::string obj = "R(" + std::to_string(b) + ")";
+                if (op == OpCode::GET_PROP) semantic = rs + " := " + obj + "." + name;
+                else if (op == OpCode::GET_PRIVATE) semantic = rs + " := " + obj + ".private." + name;
+                else semantic = rs + ", R(" + std::to_string(a + 1) + ") := try_get(" + obj + ", " + name + ")";
+                trailing(name, semantic);
                 break;
+            }
+
+            case OpCode::SET_PROP: case OpCode::SET_PRIVATE: case OpCode::DEFINE_PRIVATE:
+            case OpCode::DEFINE_PRIVATE_CONST: case OpCode::DEFINE_PROP: case OpCode::DEFINE_PROP_CONST: {
+                std::cout << "R(" << a << ") " << b << " " << c;
+                std::string name = cacheName(b);
+                std::string obj = "R(" + std::to_string(a) + ")";
+                std::string val = "R(" + std::to_string(c) + ")";
+                std::string semantic;
+                if (op == OpCode::SET_PROP) semantic = obj + "." + name + " := " + val;
+                else if (op == OpCode::SET_PRIVATE) semantic = obj + ".private." + name + " := " + val;
+                else if (op == OpCode::DEFINE_PRIVATE) semantic = "define private " + name + " on " + obj + " := " + val;
+                else if (op == OpCode::DEFINE_PRIVATE_CONST) semantic = "define const private " + name + " on " + obj + " := " + val;
+                else if (op == OpCode::DEFINE_PROP) semantic = "define " + name + " on " + obj + " := " + val;
+                else semantic = "define const " + name + " on " + obj + " := " + val;
+                trailing(name, semantic);
+                break;
+            }
+
+            case OpCode::INVOKE: case OpCode::TAIL_INVOKE:
+            case OpCode::INVOKE_PRIVATE: case OpCode::TAIL_INVOKE_PRIVATE:
+            case OpCode::INVOKE_FALLBACK: case OpCode::TAIL_INVOKE_FALLBACK: {
+                std::cout << "R(" << a << ") " << b << " " << c;
+                std::string name = cacheName(c);
+                std::string rs = "R(" + std::to_string(a) + ")";
+                std::string prefix = (op == OpCode::TAIL_INVOKE || op == OpCode::TAIL_INVOKE_PRIVATE
+                                      || op == OpCode::TAIL_INVOKE_FALLBACK) ? "tail " : "";
+                std::string args = (b > 0)
+                    ? "(args R(" + std::to_string(a + 1) + ")..R(" + std::to_string(a + b) + "))"
+                    : "()";
+                std::string semantic = prefix + rs + " := " + rs + "." + name + args;
+                trailing(name, semantic);
+                break;
+            }
 
             case OpCode::MATCH_TYPE: case OpCode::IS_SUBSET:
                 std::cout << "R(" << a << ") " << b << " " << c;
@@ -562,27 +641,102 @@ public:
 
             case OpCode::MATCH_INIT:
                 std::cout << "R(" << a << ") " << b;
+                trailing("match_view(R(" + std::to_string(b) + "))",
+                         "R(" + std::to_string(a) + ") := match_view(R(" + std::to_string(b) + "))");
                 break;
 
-            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE:
+            case OpCode::SUPER_INVOKE: case OpCode::TAIL_SUPER_INVOKE: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[c].asString();
-                }
+                std::string name = (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size()))
+                    ? constants[c].asString() : "";
+                std::string rs = "R(" + std::to_string(a) + ")";
+                std::string args = (b > 0)
+                    ? "(args R(" + std::to_string(a + 1) + ")..R(" + std::to_string(a + b) + "))"
+                    : "()";
+                trailing(name, rs + " := super(" + rs + ")." + name + args);
                 break;
+            }
 
-            case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST: case OpCode::METHOD_PRIVATE_CONST: case OpCode::METHOD_ABSTRACT: case OpCode::METHOD_ABSTRACT_PRIVATE:
+            case OpCode::METHOD: case OpCode::METHOD_PRIVATE: case OpCode::METHOD_CONST:
+            case OpCode::METHOD_PRIVATE_CONST: case OpCode::METHOD_ABSTRACT:
+            case OpCode::METHOD_ABSTRACT_PRIVATE: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[b].asString();
-                }
+                std::string name = (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size()))
+                    ? constants[b].asString() : "";
+                std::string obj = "R(" + std::to_string(a) + ")";
+                std::string val = "R(" + std::to_string(c) + ")";
+                std::string prefix;
+                if (op == OpCode::METHOD_PRIVATE) prefix = "private ";
+                else if (op == OpCode::METHOD_CONST) prefix = "const ";
+                else if (op == OpCode::METHOD_PRIVATE_CONST) prefix = "private const ";
+                else if (op == OpCode::METHOD_ABSTRACT) prefix = "abstract ";
+                else if (op == OpCode::METHOD_ABSTRACT_PRIVATE) prefix = "abstract private ";
+                trailing(name, "define " + prefix + "method " + name + " on " + obj + " := " + val);
+                break;
+            }
+
+            case OpCode::MOVE:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := R(" + std::to_string(b) + ")");
                 break;
 
-            case OpCode::MOVE: case OpCode::LOAD_NIL:
-            case OpCode::GET_UPVAL: case OpCode::SET_UPVAL: case OpCode::IS_UNINIT:
-            case OpCode::UNM: case OpCode::NOT: case OpCode::BNOT: case OpCode::TO_BOOL:
+            case OpCode::LOAD_NIL:
+                std::cout << "R(" << a << ") " << b;
+                trailing("nil", "R(" + std::to_string(a) + ") := nil");
+                break;
+
+            case OpCode::GET_UPVAL:
+                std::cout << "R(" << a << ") " << b;
+                trailing("up[" + std::to_string(b) + "]",
+                         "R(" + std::to_string(a) + ") := up[" + std::to_string(b) + "]");
+                break;
+
+            case OpCode::SET_UPVAL: {
+                std::cout << "R(" << a << ") " << b;
+                std::string compact = "up[" + std::to_string(b) + "]" + scratchSuffix(a);
+                trailing(compact, "up[" + std::to_string(b) + "] := R(" + std::to_string(a) + ")" + scratchSuffix(a));
+                break;
+            }
+
+            case OpCode::IS_UNINIT:
+                std::cout << "R(" << a << ") " << b;
+                trailing("is_uninit(R(" + std::to_string(b) + "))",
+                         "R(" + std::to_string(a) + ") := is_uninit(R(" + std::to_string(b) + "))");
+                break;
+
+            case OpCode::UNM:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := -R(" + std::to_string(b) + ")");
+                break;
+
+            case OpCode::NOT:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := !R(" + std::to_string(b) + ")");
+                break;
+
+            case OpCode::BNOT:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := ~R(" + std::to_string(b) + ")");
+                break;
+
+            case OpCode::TO_BOOL:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := bool(R(" + std::to_string(b) + "))");
+                break;
+
+            case OpCode::STRINGIFY:
+                std::cout << "R(" << a << ") " << b;
+                trailing("R(" + std::to_string(b) + ")",
+                         "R(" + std::to_string(a) + ") := str(R(" + std::to_string(b) + "))");
+                break;
+
             case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::FREEZE_CLASS: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
-            case OpCode::STRINGIFY: case OpCode::ITER_NEXT: case OpCode::IMPORT:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT:
                 std::cout << "R(" << a << ") " << b;
                 break;
 
@@ -590,21 +744,24 @@ public:
                 std::cout << "R(" << a << ") " << b << " " << c;
                 break;
 
-            case OpCode::LOAD_BOOL:
+            case OpCode::LOAD_BOOL: {
                 std::cout << "R(" << a << ") " << b;
-                std::cout << "  ; " << (b ? "true" : "false");
+                std::string value = b ? "true" : "false";
+                trailing(value, "R(" + std::to_string(a) + ") := " + value);
                 break;
+            }
 
             case OpCode::ASSERT_RETURN_TYPE:
                 std::cout << "R(" << a << ")";
                 break;
 
-            case OpCode::GET_SUPER:
+            case OpCode::GET_SUPER: {
                 std::cout << "R(" << a << ") " << b << " " << c;
-                if (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[c].asString();
-                }
+                std::string name = (c != ESCAPE_NORMAL_8 && c < static_cast<int>(constants.size()))
+                    ? constants[c].asString() : "";
+                trailing(name, "R(" + std::to_string(a) + ") := super(R(" + std::to_string(b) + "))." + name);
                 break;
+            }
 
             case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
             case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT: case OpCode::DICT_INIT:
@@ -616,76 +773,267 @@ public:
                 std::cout << a;
                 break;
 
-            case OpCode::LOADK:
+            case OpCode::LOADK: {
                 std::cout << "R(" << a << ") " << bx;
-                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << formatConstant(bx);
-                }
+                std::string value = (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size()))
+                    ? formatConstant(bx) : "?";
+                trailing(value + scratchSuffix(a),
+                         "R(" + std::to_string(a) + ") := " + value + scratchSuffix(a));
                 break;
+            }
 
-            case OpCode::THROW_TYPED:
+            case OpCode::THROW_TYPED: {
                 std::cout << "R(" << a << ") " << bx;
-                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << formatConstant(bx);
-                }
+                std::string cls = (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size()))
+                    ? formatConstant(bx) : "?";
+                trailing(cls, "throw " + cls + "(R(" + std::to_string(a) + "))");
                 break;
+            }
 
             case OpCode::GET_GLOBAL: case OpCode::SET_GLOBAL:
-            case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL:
+            case OpCode::SET_GLOBAL_REF: case OpCode::DEFINE_CONST_GLOBAL: {
                 std::cout << "R(" << a << ") " << bx;
+                std::string name;
                 if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(inlineCaches.size())) {
                     int nameIdx = inlineCaches[bx].nameIdx;
                     if (nameIdx < static_cast<int>(constants.size())) {
-                        std::cout << "  ; " << constants[nameIdx].asString();
+                        name = constants[nameIdx].asString();
                     }
                 }
-                break;
-
-            case OpCode::CLASS: case OpCode::TRAIT:
-                std::cout << "R(" << a << ") " << bx;
-                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[bx].asString();
+                if (!name.empty()) {
+                    std::string rs = "R(" + std::to_string(a) + ")";
+                    std::string semantic;
+                    if (op == OpCode::GET_GLOBAL) semantic = rs + " := global(" + name + ")";
+                    else if (op == OpCode::SET_GLOBAL) semantic = "global(" + name + ") := " + rs;
+                    else if (op == OpCode::SET_GLOBAL_REF) semantic = "globalRef(" + name + ") := " + rs;
+                    else semantic = "const global(" + name + ") := " + rs;
+                    trailing(name, semantic);
                 }
                 break;
+            }
 
-            case OpCode::CLOSURE:
+            case OpCode::CLASS: case OpCode::TRAIT: {
                 std::cout << "R(" << a << ") " << bx;
-                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; fnIdx=" << constants[bx].asFloat();
-                }
+                std::string name = (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size()))
+                    ? constants[bx].asString() : "";
+                trailing(name, "R(" + std::to_string(a) + ") := "
+                         + (op == OpCode::CLASS ? "class(" : "trait(") + name + ")");
                 break;
+            }
+
+            case OpCode::CLOSURE: {
+                std::cout << "R(" << a << ") " << bx;
+                int fnIdx = -1;
+                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size()))
+                    fnIdx = static_cast<int>(std::round(constants[bx].asFloat()));
+                std::string fn = "fn[" + std::to_string(fnIdx) + "]";
+                trailing(fn, "R(" + std::to_string(a) + ") := closure(" + fn + ")");
+                break;
+            }
 
             case OpCode::GET_REF_PARAM: case OpCode::SET_REF_PARAM:
                 std::cout << "R(" << a << ") " << bx;
                 break;
 
-            case OpCode::DELETE_GLOBAL:
+            case OpCode::DELETE_GLOBAL: {
                 std::cout << bx;
-                if (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size())) {
-                    std::cout << "  ; " << constants[bx].asString();
-                }
+                std::string name = (bx != ESCAPE_NORMAL_16 && bx < static_cast<int>(constants.size()))
+                    ? constants[bx].asString() : "";
+                trailing(name, "delete global(" + name + ")");
                 break;
+            }
 
             case OpCode::PASS_REFS:
                 std::cout << bx;
                 break;
 
-            case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN:
+            case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN: {
                 std::cout << "R(" << a << ") " << sbx;
+                int target = offset + 1 + sbx;
+                std::string t = std::to_string(target);
+                if (op == OpCode::JMP_TRUE)
+                    trailing("-> " + t, "if R(" + std::to_string(a) + ") goto " + t);
+                else if (op == OpCode::JMP_FALSE)
+                    trailing("-> " + t, "unless R(" + std::to_string(a) + ") goto " + t);
+                else
+                    trailing("try -> " + t, "try R(" + std::to_string(a) + ") -> " + t);
                 break;
+            }
 
             case OpCode::EXTRAARG:
             case OpCode::SET_KW_ARGC:
                 std::cout << ax;
                 break;
 
-            case OpCode::JMP:
+            case OpCode::JMP: {
                 std::cout << sax;
+                int target = offset + 1 + sax;
+                std::string t = std::to_string(target);
+                trailing("-> " + t, "goto " + t);
                 break;
+            }
 
             default:
                 std::cout << "?";
                 break;
+        }
+        if (verbose) {
+            std::string semantic;
+            switch (op) {
+                case OpCode::CONCAT_STRINGS:
+                    semantic = (c > 0)
+                        ? "R(" + std::to_string(a) + ") := concat(R(" + std::to_string(b) + ")..R("
+                          + std::to_string(b + c - 1) + "))"
+                        : "R(" + std::to_string(a) + ") := concat()";
+                    break;
+                case OpCode::BUILD_LIST:
+                    semantic = "R(" + std::to_string(a) + ") := list(" + std::to_string(c) + " items from R("
+                             + std::to_string(b) + "))";
+                    break;
+                case OpCode::BUILD_DICT:
+                    semantic = "R(" + std::to_string(a) + ") := dict(" + std::to_string(c) + " pairs from R("
+                             + std::to_string(b) + "))";
+                    break;
+                case OpCode::BUILD_SET:
+                    semantic = "R(" + std::to_string(a) + ") := set(" + std::to_string(c) + " items from R("
+                             + std::to_string(b) + "))";
+                    break;
+                case OpCode::IN:
+                    semantic = "R(" + std::to_string(a) + ") := R(" + std::to_string(b) + ") in R("
+                             + std::to_string(c) + ")";
+                    break;
+                case OpCode::INDEX_GET:
+                    semantic = "R(" + std::to_string(a) + ") := index(R(" + std::to_string(b) + "), "
+                             + std::to_string(c) + " dims)";
+                    break;
+                case OpCode::INDEX_SET:
+                    semantic = "R(" + std::to_string(a) + ")["
+                             + std::to_string(c) + " dims] := R(" + std::to_string(a + c + 1) + ")";
+                    break;
+                case OpCode::RETURN:
+                    semantic = "return R(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::CALL:
+                case OpCode::TAIL_CALL:
+                    semantic = std::string(op == OpCode::TAIL_CALL ? "tail " : "")
+                             + "call R(" + std::to_string(b) + "), " + std::to_string(c) + " args -> R("
+                             + std::to_string(a) + ")";
+                    break;
+                case OpCode::GET_REF_PARAM:
+                    semantic = "R(" + std::to_string(a) + ") := refParam[" + std::to_string(bx) + "]";
+                    break;
+                case OpCode::SET_REF_PARAM:
+                    semantic = "refParam[" + std::to_string(bx) + "] := R(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::PASS_REFS:
+                    semantic = "pass_refs(sig[" + std::to_string(bx) + "])";
+                    break;
+                case OpCode::MATCH_TYPE:
+                    semantic = "R(" + std::to_string(a) + ") := match_type(R(" + std::to_string(b)
+                             + "), R(" + std::to_string(c) + "))";
+                    break;
+                case OpCode::IS_SUBSET:
+                    semantic = "R(" + std::to_string(a) + ") := R(" + std::to_string(b) + ") <: R("
+                             + std::to_string(c) + ")";
+                    break;
+                case OpCode::INHERIT:
+                    semantic = "R(" + std::to_string(a) + ") inherits R(" + std::to_string(b) + ")";
+                    break;
+                case OpCode::WITH_TRAIT:
+                    semantic = "R(" + std::to_string(a) + ") with R(" + std::to_string(b) + ")";
+                    break;
+                case OpCode::FREEZE_CLASS:
+                    semantic = "freeze R(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::LIST_APPEND:
+                    semantic = "R(" + std::to_string(a) + ").append(R(" + std::to_string(b) + "))";
+                    break;
+                case OpCode::MATRIX_COMP_APPEND:
+                    semantic = "R(" + std::to_string(a) + ").append(toMatrix(R(" + std::to_string(b) + ")))";
+                    break;
+                case OpCode::SET_APPEND:
+                    semantic = "R(" + std::to_string(a) + ").add(R(" + std::to_string(b) + "))";
+                    break;
+                case OpCode::ITER_NEXT:
+                    semantic = "R(" + std::to_string(a) + ") := next(R(" + std::to_string(b) + "))";
+                    break;
+                case OpCode::IMPORT:
+                    semantic = "R(" + std::to_string(a) + ") := import(R(" + std::to_string(b) + "))";
+                    break;
+                case OpCode::ASSERT_RETURN_TYPE:
+                    semantic = "assert_return(R(" + std::to_string(a) + "))";
+                    break;
+                case OpCode::GET_SELF:
+                    semantic = "R(" + std::to_string(a) + ") := self";
+                    break;
+                case OpCode::GET_CURRENT_CLOSURE:
+                    semantic = "R(" + std::to_string(a) + ") := current_closure";
+                    break;
+                case OpCode::LIST_INIT:
+                    semantic = "R(" + std::to_string(a) + ") := []";
+                    break;
+                case OpCode::MATRIX_COMP_INIT:
+                    semantic = "R(" + std::to_string(a) + ") := []";
+                    break;
+                case OpCode::MATRIX_COMP_END:
+                    semantic = "R(" + std::to_string(a) + ") := hcat(R(" + std::to_string(a) + "))";
+                    break;
+                case OpCode::SET_INIT:
+                    semantic = "R(" + std::to_string(a) + ") := @{}";
+                    break;
+                case OpCode::DICT_INIT:
+                    semantic = "R(" + std::to_string(a) + ") := {}";
+                    break;
+                case OpCode::TRY_END:
+                    semantic = "pop try handler";
+                    break;
+                case OpCode::THROW:
+                    semantic = "throw R(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::DEFER:
+                    semantic = "defer R(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::RUN_DEFERS:
+                    semantic = "run_defers(" + std::to_string(a) + ")";
+                    break;
+                case OpCode::EXTRAARG:
+                    semantic = "extended operand = " + std::to_string(ax);
+                    break;
+                case OpCode::SET_KW_ARGC:
+                    semantic = "kwArgc := " + std::to_string(ax);
+                    break;
+                case OpCode::DICT_REST:
+                    semantic = "R(" + std::to_string(a) + ") := dict_rest(R(" + std::to_string(b)
+                             + "), exclude = R(" + std::to_string(c) + "))";
+                    break;
+                case OpCode::BUILD_MATRIX:
+                    semantic = "R(" + std::to_string(a) + ") := matrix(R(" + std::to_string(b)
+                             + ")..., shape[" + std::to_string(c) + "])";
+                    break;
+                case OpCode::BUILD_SLICE:
+                    semantic = "R(" + std::to_string(a) + ") := slice(R(" + std::to_string(b)
+                             + "), R(" + std::to_string(b + 1) + "), R(" + std::to_string(b + 2) + "))";
+                    break;
+                case OpCode::MAKE_SPREAD:
+                    semantic = "R(" + std::to_string(a) + ") := spread(R(" + std::to_string(b)
+                             + "), keyword = " + std::to_string(c) + ")";
+                    break;
+                case OpCode::ITER_INIT:
+                    semantic = "R(" + std::to_string(a) + ") := iter(R(" + std::to_string(b)
+                             + "), destruct = " + std::to_string(c) + ")";
+                    break;
+                case OpCode::DICT_APPEND:
+                    semantic = "R(" + std::to_string(a) + ")[R(" + std::to_string(b) + ")] := R("
+                             + std::to_string(c) + ")";
+                    break;
+                case OpCode::MATCH_SHAPE:
+                    semantic = "R(" + std::to_string(a) + ") := match_shape(R(" + std::to_string(b)
+                             + "), shape[" + std::to_string(c) + "])";
+                    break;
+                default:
+                    break;
+            }
+            if (!semantic.empty()) std::cout << "  ; " << semantic;
         }
         std::cout << std::endl;
     }

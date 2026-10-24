@@ -132,6 +132,7 @@ void printHelpTopic(const std::string& topic) {
 // 核心 VM 实例和全局上下文
 jc::VM vm;
 bool g_showDisasm = false;  // ★ 新增：字节码反汇编开关
+bool g_disasmVerbose = false; // 反汇编：紧凑 / 语义展开
 bool g_showIR = false;      // ★ 新增：IR 图打印开关
 bool g_showHIR = false;     // ★ 新增：JIT HIR 图打印开关
 bool g_showMachineCode = false; // ★ 新增：JIT 机器码打印开关
@@ -184,9 +185,9 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         for (size_t i = currentFnsSize; i < fns.size(); ++i) {
             std::string chunkName = fns[i]->name;
             chunkName = "Function: " + chunkName;
-            fns[i]->chunk.disassemble(chunkName);
+            fns[i]->chunk.disassemble(chunkName, g_disasmVerbose);
         }
-        chunk.disassemble(isFile ? "Script Chunk" : "REPL Chunk");
+        chunk.disassemble(isFile ? "Script Chunk" : "REPL Chunk", g_disasmVerbose);
     }
     
     return vm.execute(chunk, localCount);
@@ -870,9 +871,9 @@ int main(int argc, char* argv[]) {
             if (g_showDisasm) {
                 // 嵌套函数在 emit 期间已经追加进来，最后一个是 modFn 自己
                 for (size_t i = static_cast<size_t>(startIndex); i + 1 < fns.size(); ++i) {
-                    fns[i]->chunk.disassemble("Function: " + fns[i]->name);
+                    fns[i]->chunk.disassemble("Function: " + fns[i]->name, g_disasmVerbose);
                 }
-                modFn->chunk.disassemble(compileAsModule ? "Module Chunk" : "Script Chunk");
+                modFn->chunk.disassemble(compileAsModule ? "Module Chunk" : "Script Chunk", g_disasmVerbose);
             }
 
             int count = static_cast<int>(fns.size()) - startIndex;
@@ -1115,7 +1116,7 @@ int main(int argc, char* argv[]) {
                 else if (name == "ir") { g_showIR = on; }
                 else if (name == "hir") { g_showHIR = on; }
                 else if (name == "mc") { g_showMachineCode = on; }
-                else if (name == "disasm") { g_showDisasm = on; }
+                else if (name == "disasm") { g_showDisasm = on; if (on) g_disasmVerbose = false; }
                 else if (name == "profile") { g_profile = on; }
                 else if (name == "color") { jc::colorsEnabled = on; }
                 else if (name == "none") { g_showNone = on; }
@@ -1127,15 +1128,21 @@ int main(int argc, char* argv[]) {
             if (input.substr(0, 5) == "/set ") {
                 std::string rest = input.substr(5);
                 size_t sp = rest.find(' ');
-                if (sp == std::string::npos) { std::cout << "Usage: /set <switch> on|off\n"; continue; }
+                if (sp == std::string::npos) { std::cout << "Usage: /set <switch> on|off  (or /set disasm verbose|compact)\n"; continue; }
                 std::string name = rest.substr(0, sp);
                 std::string val = rest.substr(sp + 1);
                 size_t vs = val.find_first_not_of(" \t");
                 if (vs != std::string::npos) val = val.substr(vs);
+                if (name == "disasm" && (val == "verbose" || val == "compact")) {
+                    g_showDisasm = true;
+                    g_disasmVerbose = (val == "verbose");
+                    std::cout << "Disassembly mode: " << val << ".\n";
+                    continue;
+                }
                 bool on;
                 if (val == "on") on = true;
                 else if (val == "off") on = false;
-                else { std::cout << "Usage: /set <switch> on|off\n"; continue; }
+                else { std::cout << "Usage: /set <switch> on|off  (or /set disasm verbose|compact)\n"; continue; }
                 if (!applySwitch(name, on)) {
                     std::cout << "Unknown switch '" << name << "'. Available: jit, debug, ir, hir, mc, disasm, profile, color, none, silent\n";
                 } else {

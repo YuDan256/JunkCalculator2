@@ -1524,7 +1524,7 @@
       "signature": "sys.breakpoint()"
     },
     "disassemble": {
-      "signature": "sys.disassemble(f)"
+      "signature": "sys.disassemble(f, [verbose])"
     },
     "buildIndex": {
       "signature": "sys.buildIndex()"
@@ -1557,7 +1557,7 @@
       "signature": "sys.debugger()"
     },
     "disasm": {
-      "signature": "sys.disasm(f)"
+      "signature": "sys.disasm(f, [verbose])"
     },
     "loadPrimes": {
       "signature": "sys.loadPrimes()"

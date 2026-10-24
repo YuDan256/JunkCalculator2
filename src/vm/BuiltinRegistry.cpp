@@ -6160,17 +6160,18 @@ void BuiltinRegistry::registerSystemShell() {
         return Value::none();
         }, {});
 
-    regModule(sys_ns, "disassemble", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(sys_ns, "disassemble", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isFunctionClosure()) {
             JC2_THROW(TypeError, "disassemble() expects a function.");
         }
         auto cl = args[0].asFunction();
+        bool verbose = args.size() > 1 && args[1].truthy();
         if (cl->compiledFnIndex >= 0) {
             if (VM::activeVM) {
                 auto fns = VM::activeVM->getCompiledFunctions();
                 if (cl->compiledFnIndex < static_cast<int>(fns.size())) {
                     auto fn = fns[cl->compiledFnIndex];
-                    fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name);
+                    fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name, verbose);
                 } else {
                     std::cout << "Invalid compiled function index." << std::endl;
                 }
@@ -6179,18 +6180,19 @@ void BuiltinRegistry::registerSystemShell() {
             std::cout << "Cannot disassemble native function: " << cl->rawBody << std::endl;
         }
         return Value::none();
-        }, {"f"});
-    regModule(sys_ns, "disasm", { 1 }, [](const std::vector<Value>& args) -> Value {
+        }, {"f", "verbose"});
+    regModule(sys_ns, "disasm", { 1, 2 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isFunctionClosure()) {
             JC2_THROW(TypeError, "disassemble() expects a function.");
         }
         auto cl = args[0].asFunction();
+        bool verbose = args.size() > 1 && args[1].truthy();
         if (cl->compiledFnIndex >= 0) {
             if (VM::activeVM) {
                 auto fns = VM::activeVM->getCompiledFunctions();
                 if (cl->compiledFnIndex < static_cast<int>(fns.size())) {
                     auto fn = fns[cl->compiledFnIndex];
-                    fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name);
+                    fn->chunk.disassemble(fn->name.empty() ? "Function" : fn->name, verbose);
                 } else {
                     std::cout << "Invalid compiled function index." << std::endl;
                 }
@@ -6199,7 +6201,7 @@ void BuiltinRegistry::registerSystemShell() {
             std::cout << "Cannot disassemble native function: " << cl->rawBody << std::endl;
         }
         return Value::none();
-        }, {"f"});
+        }, {"f", "verbose"});
 }
 
 // =================================================================

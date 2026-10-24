@@ -7634,13 +7634,14 @@
       ]
     },
     "disassemble": {
-      "signature": "sys.disassemble(f)",
-      "desc": "Prints the bytecode disassembly of a function closure.",
+      "signature": "sys.disassemble(f, [verbose])",
+      "desc": "Prints the bytecode disassembly of a function closure. Pass verbose=true for semantic comments.",
       "aliases": [
         "disasm"
       ],
       "examples": [
-        "import sys; sys.disassemble(myFunc)"
+        "import sys; sys.disassemble(myFunc)",
+        "import sys; sys.disassemble(myFunc, true)"
       ]
     },
     "buildIndex": {
@@ -7717,10 +7718,11 @@
       ]
     },
     "disasm": {
-      "signature": "sys.disasm(f)",
-      "desc": "Prints the bytecode disassembly of a function closure; alias of sys.disassemble.",
+      "signature": "sys.disasm(f, [verbose])",
+      "desc": "Prints the bytecode disassembly of a function closure; alias of sys.disassemble. Pass verbose=true for semantic comments.",
       "examples": [
-        "sys.disasm(myFunc)"
+        "sys.disasm(myFunc)",
+        "sys.disasm(myFunc, true)"
       ]
     },
     "loadPrimes": {

@@ -1,0 +1,24 @@
+d = {}
+assert((try d.x) is none, "bare try on missing property")
+assert((try { 1 / 0 }) is none, "bare try on runtime error")
+assert((try { throw "boom" }) is none, "bare try on explicit throw")
+
+try {
+    1 / 0
+} catch (e) {
+    assert(e.type == "MathError", "normal catch still gets the error object")
+}
+
+f() = none.x
+assert((try f()) is none, "bare try across frames")
+
+defer_order = @[]
+g() = {
+    defer defer_order.push("d")
+    try none.x
+    return 7
+}
+assert(g() == 7, "function result")
+assert(defer_order == @["d"], "defer runs on silent unwinding")
+
+print("silent try battery OK")

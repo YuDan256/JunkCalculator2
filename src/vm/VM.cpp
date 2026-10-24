@@ -3308,6 +3308,16 @@ void VM::execCompileTimeImport(const std::string& name) {
     importedModules.insert(name);
 }
 
+bool VM::canSilentUnwind() const {
+    if (exceptionHandlers.empty()) return false;
+    const ExceptionHandler& h = exceptionHandlers.back();
+    return h.silent && h.frameIndex == frameCount - 1;
+}
+
+bool jc::silentUnwindActive() {
+    return VM::activeVM && VM::activeVM->canSilentUnwind();
+}
+
 bool VM::handleExceptionUnwind(Value* errValPtr) {
     if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
         auto handler = exceptionHandlers.back();
@@ -6806,7 +6816,8 @@ Value VM::run(int targetFrameDepth) {
                 handler.frameIndex = frameCount - 1;
                 handler.ip = ip + sbx;
                 handler.registerBase = frame->registerBase;
-                handler.errReg = a;
+                handler.silent = (a & 0x80) != 0;
+                handler.errReg = a & 0x7F;
                 handler.deferBase = static_cast<int>(deferStack.size());
                 exceptionHandlers.push_back(handler);
                 break;
@@ -6819,6 +6830,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::THROW: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (silentUnwindActive()) throw SilentUnwind{};
                 Value errVal = getReg(a);
                 frame->ip = ip;
                 errVal = wrapException(nullptr, "Exception", errVal);
@@ -6827,6 +6839,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::THROW_TYPED: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
+                if (silentUnwindActive()) throw SilentUnwind{};
                 Value errVal = getReg(a);
                 Value clsVal = chunk->constants.data()[bx];
                 ObjClass* errCls = clsVal.isClass() ? static_cast<ObjClass*>(clsVal.asObj()) : nullptr;
@@ -8244,6 +8257,16 @@ Value VM::run(int targetFrameDepth) {
             }
         } catch (const EngineInterruptError&) {
             throw;
+        } catch (const SilentUnwind&) {
+            Value noneVal = Value::none();
+            if (!handleExceptionUnwind(&noneVal)) {
+                throw ValueException(noneVal);
+            }
+            frame = &frames[frameCount - 1];
+            chunk = frame->chunk;
+            code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
         } catch (const ValueException& ex) {
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);

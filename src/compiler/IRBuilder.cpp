@@ -3637,6 +3637,8 @@ void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
 void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* tryBegin = graph->createNode(IROp::TryBegin);
     tryBegin->setControl(currentControl);
+    // 裸 try：不需要异常对象，只需要失败后跳到 catch 块并得到 none。
+    tryBegin->payload1 = expr->catchBranches.empty() ? 1 : 0;
 
     auto baseEnv = envStack;
 

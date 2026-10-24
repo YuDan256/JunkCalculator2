@@ -56,8 +56,18 @@ namespace jc {
         }
     };
 
+    // ★ 静默展开：裸 try 只要跳转和 none，不构造异常对象/traceback。
+    struct SilentUnwind {};
+
+    // 由 VM 实现：当前栈顶 handler 是否为同帧的 silent try。
+    bool silentUnwindActive();
+
     // ★ 统一抛出入口：类型与消息显式分离，替代 throw std::runtime_error("前缀: 消息")
-    #define JC2_THROW(T, msg) throw ::jc::Jc2Error(::jc::err::T##Class, #T, (msg))
+    //   silent try 生效时先抛轻量 SilentUnwind，连消息表达式都不求值。
+    #define JC2_THROW(T, msg) do { \
+        if (::jc::silentUnwindActive()) throw ::jc::SilentUnwind{}; \
+        throw ::jc::Jc2Error(::jc::err::T##Class, #T, (msg)); \
+    } while (0)
 
     // ★ 重复错误 helper：消除同一错误在多处重复抛出（后续新代码也直接复用）
     [[noreturn]] inline void errDivByZero() { JC2_THROW(MathError, "Division by zero."); }

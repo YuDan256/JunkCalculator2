@@ -848,7 +848,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 EncodedInst tryInst;
                 tryInst.isJump = true;
                 tryInst.jumpOp = OpCode::TRY_BEGIN;
-                tryInst.jumpA = errReg;
+                // A 的最高位是 silent 标记；低 7 位仍是 errReg（寄存器最大 126）。
+                tryInst.jumpA = errReg | (cNode->payload1 ? 0x80 : 0);
                 tryInst.jumpTarget = catchBlock;
                 insts.push_back(tryInst);
                 

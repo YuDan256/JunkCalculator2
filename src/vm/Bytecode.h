@@ -850,6 +850,11 @@ public:
                 break;
 
             case OpCode::JMP_TRUE: case OpCode::JMP_FALSE: case OpCode::TRY_BEGIN: {
+                bool silentTry = false;
+                if (op == OpCode::TRY_BEGIN) {
+                    silentTry = (a & 0x80) != 0;
+                    a &= 0x7F;
+                }
                 line << "R(" << a << ") " << sbx;
                 int target = offset + 1 + sbx;
                 std::string t = std::to_string(target);
@@ -858,7 +863,9 @@ public:
                 else if (op == OpCode::JMP_FALSE)
                     trailing("-> " + t, "unless R(" + std::to_string(a) + ") goto " + t);
                 else
-                    trailing("try -> " + t, "try R(" + std::to_string(a) + ") -> " + t);
+                    trailing(silentTry ? ("silent try -> " + t) : ("try -> " + t),
+                             (silentTry ? "silent try R(" : "try R(") + std::to_string(a)
+                             + ") -> " + t);
                 break;
             }
 

@@ -105,6 +105,7 @@ private:
 
 public:
     int frameCount = 0;
+    bool canSilentUnwind() const;
     ObjUpVal* captureUpvaluePublic(int regIndex) { return captureUpvalue(regIndex); }
 
 private:
@@ -114,6 +115,7 @@ private:
         int registerBase = 0;
         int errReg = 0;
         int deferBase = 0;
+        bool silent = false;
     };
     std::vector<ExceptionHandler> exceptionHandlers;
 

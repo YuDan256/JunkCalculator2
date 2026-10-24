@@ -449,15 +449,16 @@ public:
 
     void disassemble(const std::string& name, bool verbose = false) const {
         std::cout << "=== " << name << " ===" << std::endl;
-        for (int offset = 0; offset < static_cast<int>(code.size()); ++offset) {
-            disassembleInstruction(offset, verbose);
+        for (int offset = 0; offset < static_cast<int>(code.size()); ) {
+            offset += 1 + disassembleInstruction(offset, verbose);
         }
         std::cout << "==================" << std::endl;
     }
 
-    void disassembleInstruction(int offset, bool verbose = false) const {
+    int disassembleInstruction(int offset, bool verbose = false) const {
         std::ostringstream line;
         std::string pendingComment;
+        int extra = 0;
         Instruction inst = code[offset];
         line << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
 
@@ -485,13 +486,27 @@ public:
             std::ostringstream oss; oss << v; return oss.str();
         };
 
-        auto formatRK = [&](int rk) {
+        auto readExtra = [&]() -> int {
+            int pos = offset + 1 + extra;
+            if (pos >= static_cast<int>(code.size())) return -1;
+            ++extra;
+            return GET_Ax(code[pos]);
+        };
+
+        auto formatRK = [&](int rk) -> std::string {
+            if (rk == ESCAPE_KBIT_CONST) {
+                int idx = readExtra();
+                if (idx < 0) return "K(?)";
+                return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
+            }
+            if (rk == ESCAPE_KBIT_REG) {
+                int reg = readExtra();
+                if (reg < 0) return "R(?)";
+                return "R(" + std::to_string(reg) + ")";
+            }
             if (ISK(rk)) {
                 int idx = INDEXK(rk);
-                if (idx != ESCAPE_KBIT_CONST) {
-                    return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
-                }
-                return "K(" + std::to_string(idx) + ")";
+                return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
             }
             return "R(" + std::to_string(rk) + ")";
         };
@@ -1055,6 +1070,7 @@ public:
             std::cout << "; " << pendingComment;
         }
         std::cout << std::endl;
+        return extra;
     }
 };
 

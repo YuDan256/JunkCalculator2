@@ -89,7 +89,7 @@
       "    1_000_000                      number separators (underscores)",
       "    A | B                          set union / base-2 bitwise OR",
       "    A ^^ B                         set sym diff / base-2 bitwise XOR",
-      "    f\"x = {x}, pi = {pi()::.2f}\"     string interpolation (f-string)",
+      "    f\"x = {x}, pi = {math.pi()::.2f}\"     string interpolation (f-string)",
       "    match (x) { 1 => \"A\", _ => \"B\"} pattern matching",
       "    for (@[k, v] in d) { ... }      destructured for-in",
       "    [x^2 for (x in range(10))]     matrix comprehension (1D row matrix)",
@@ -445,8 +445,8 @@
       "      silently overwrite the imaginary unit. sys.resetConst() restores all four.",
       "",
       "    Values available without any import:",
-      "      pi()              → 3.14159265358979…  (also symbolic π inside CAS expressions)",
-      "      math.e / math.E    → 2.71828182845904…  (requires import math)",
+      "      math.pi()              → 3.14159265358979…  (also symbolic π inside CAS expressions)",
+      "      math.e() / math.E    → 2.71828182845904…  (requires import math)",
       "      1i / 3i           → imaginary unit via the literal suffix (1i * 1i == -1.0)",
       "      3 + 4i            → 3.0+4.0i",
       "",
@@ -517,7 +517,7 @@
       "  ──────────────────────",
       "    print(...)          Print arguments, joined by ' ' and ended with '\\n'",
       "    format(fmt, ...)    Python-style string formatting",
-      "                          format(\"{::>10.2f}\", pi())",
+      "                          format(\"{::>10.2f}\", math.pi())",
       "    input()             Read a line from stdin",
       "    input(\"prompt\")     Print prompt and read a line",
       "    clock()             High-resolution timer (seconds since epoch)",
@@ -611,7 +611,7 @@
       "    All elementary functions (sin, cos, exp, log, sqrt, asin, acos …)",
       "    seamlessly accept complex arguments and return complex results.",
       "",
-      "    exp(pi() * 1i) + 1    →  0       (Euler's identity)",
+      "    exp(math.pi() * 1i) + 1    →  0       (Euler's identity)",
       "    asin(2)             →  complex",
       "",
       "    matrix operations also auto-promote:",
@@ -681,7 +681,7 @@
       "      [1, 2, 3]    → realmatrix (1×3)      @[1, 2, 3]    → list",
       "      [1, 2; 3, 4] → 2×2 matrix           @[1, 2; 3, 4] → list of lists",
       "    ",
-      "    Elements may be expressions:  [sin(pi()), 2*1i; 0, 1]",
+      "    Elements may be expressions:  [sin(math.pi()), 2*1i; 0, 1]",
       "    Any complex element auto-promotes the whole matrix to complexmatrix.",
       "",
       "    ★ Empty Matrices:",
@@ -1684,8 +1684,8 @@
       "    math.PI = 3.14        Reassign individually (namespace field)",
       "",
       "    No import needed:",
-      "      pi()    → 3.14159265358979…   (global factory function, permanent)",
-      "      math.e  → 2.71828182845904…   (requires import math)",
+      "      math.pi()    → 3.14159265358979…   (function form, requires import math)",
+      "      math.e()  → 2.71828182845904…   (requires import math)",
       "      1i      → imaginary unit via the literal suffix (immune to shadowing)",
       "",
       "  Prime Engine (Block-Differential I/O)",
@@ -1994,7 +1994,7 @@
       "      Function Parameters:",
       "        `f(const x) = ...`  : Prevents accidental reassignment of `x` inside `f`.",
       "    • System Constants: math.PI, math.E, math.i, math.I can be reassigned.",
-      "      Restore via `resetConst()` or factory functions like `pi()`.",
+      "      Restore via `resetConst()` or factory functions like `math.pi()`.",
       "    • Built-ins: Can be freely shadowed by user variables. Built-ins themselves",
       "      cannot be deleted. `delete sin` only removes the shadowing variable.",
       "",
@@ -2103,7 +2103,7 @@
       "  ──────────────────────",
       "    f\"text {expr} text\"             Embed any expression",
       "    f\"Hello, {name}!\"               Variable interpolation",
-      "    f\"area = {pi() * r^2::.2f}\"       With format spec (:: separator)",
+      "    f\"area = {math.pi() * r^2::.2f}\"       With format spec (:: separator)",
       "",
       "    Format spec: {expr::[[fill]align][sign][#][0][width][,][.precision][type]}",
       "      fill       Any character used for padding (must precede align)",
@@ -2118,9 +2118,9 @@
       "                 e/E sci  f/F fixed  g/G general  % percent  s string",
       "",
       "      Examples:",
-      "        f\"{pi()::.4f}\"    → \"3.1416\"        f\"{255::x}\"   → \"ff\"",
+      "        f\"{math.pi()::.4f}\"    → \"3.1416\"        f\"{255::x}\"   → \"ff\"",
       "        f\"{7::+03d}\"   → \"+007\"          f\"{10000::,}\" → \"10,000\"",
-      "        f\"{pi()::08.2f}\" → \"00003.14\"      f\"{name::>10}\" → \"     Alice\"",
+      "        f\"{math.pi()::08.2f}\" → \"00003.14\"      f\"{name::>10}\" → \"     Alice\"",
       "        f\"{x > 0 ? x : -x}\"               Ternary inside interpolation works",
       "",
       "  Raw Strings (r-strings)",
@@ -3097,7 +3097,7 @@
       "      assertions to use variables that were just bound earlier in the SAME pattern!",
       "      ",
       "    match (val) {",
-      "        (pi()) => \"Matches the pi() constant factory\",",
+      "        (math.pi()) => \"Matches the math.pi() constant factory\",",
       "        [a, (2*a)] => \"Matches if the second element is exactly twice the first!\",",
       "        {\"x\": a, \"y\": (a^2)} => \"Matches if y is the square of x!\",",
       "        x if (x < 0) => \"Negative: \" + str(x),",
@@ -3824,13 +3824,6 @@
     ]
   },
   "global_functions": {
-    "pi": {
-      "signature": "pi()",
-      "desc": "Returns the mathematical constant pi (3.14159265...) as a plain float. The constant proper lives in the math namespace as math.PI (requires `import math`); pi() needs no import and participates in symbolic CAS expressions.",
-      "examples": [
-        "pi()"
-      ]
-    },
     "i": {
       "signature": "math.i",
       "desc": "The imaginary unit (0 + 1i). It is a constant in the math namespace (math.i, alias math.I), so `import math` is required; without an import use the imaginary literal suffix `1i` / `3i` instead. It is NOT a function -- `i()` does not exist.",
@@ -3977,7 +3970,7 @@
       "signature": "deg(x)",
       "desc": "Converts an angle from radians to degrees.",
       "examples": [
-        "deg(pi())"
+        "deg(math.pi())"
       ]
     },
     "rad": {
@@ -3998,21 +3991,21 @@
       "signature": "sin(x)",
       "desc": "Returns the sine of x (in radians). Supports complex numbers and matrices.",
       "examples": [
-        "sin(pi() / 2)"
+        "sin(math.pi() / 2)"
       ]
     },
     "cos": {
       "signature": "cos(x)",
       "desc": "Returns the cosine of x (in radians). Supports complex numbers and matrices.",
       "examples": [
-        "cos(pi())"
+        "cos(math.pi())"
       ]
     },
     "tan": {
       "signature": "tan(x)",
       "desc": "Returns the tangent of x (in radians). Supports complex numbers and matrices.",
       "examples": [
-        "tan(pi() / 4)"
+        "tan(math.pi() / 4)"
       ]
     },
     "sec": {
@@ -4026,14 +4019,14 @@
       "signature": "csc(x)",
       "desc": "Returns the cosecant of x (1 / sin(x)).",
       "examples": [
-        "csc(pi() / 2)"
+        "csc(math.pi() / 2)"
       ]
     },
     "cot": {
       "signature": "cot(x)",
       "desc": "Returns the cotangent of x (1 / tan(x)).",
       "examples": [
-        "cot(pi() / 4)"
+        "cot(math.pi() / 4)"
       ]
     },
     "asin": {
@@ -4111,7 +4104,7 @@
       "desc": "Returns Euler's number e raised to the power of x. Supports complex numbers and matrices.",
       "examples": [
         "exp(1)",
-        "exp(pi() * 1i)"
+        "exp(math.pi() * 1i)"
       ]
     },
     "erf": {
@@ -4139,14 +4132,14 @@
       "signature": "Si(x)",
       "desc": "Returns the Sine integral of x.",
       "examples": [
-        "Si(pi())"
+        "Si(math.pi())"
       ]
     },
     "Ci": {
       "signature": "Ci(x)",
       "desc": "Returns the Cosine integral of x. Defined for x > 0.",
       "examples": [
-        "Ci(pi())"
+        "Ci(math.pi())"
       ]
     },
     "Ei": {
@@ -4284,7 +4277,7 @@
       "signature": "format(fmt, ...)",
       "desc": "Formats a string using Python-style placeholders {}.",
       "examples": [
-        "format(\"x = {:.2f}\", pi())"
+        "format(\"x = {:.2f}\", math.pi())"
       ]
     },
     "type": {
@@ -5212,7 +5205,7 @@
       "signature": "ln(x)",
       "desc": "Alias of log(); returns the natural logarithm of x.",
       "examples": [
-        "import math; ln(math.e)"
+        "import math; ln(math.e())"
       ]
     }
   },
@@ -7974,11 +7967,11 @@
       ]
     },
     "e": {
-      "signature": "math.e",
-      "desc": "Euler's number e (2.71828182...) as a plain float. Requires import math; the uppercase constant math.E is the same value.",
+      "signature": "math.e()",
+      "desc": "Returns Euler's number e (2.71828182...) as a float. Requires import math; the uppercase constant math.E is the same value.",
       "examples": [
-        "import math; math.e",
-        "import math; math.e == math.E"
+        "import math; math.e()",
+        "import math; math.e() == math.E"
       ]
     },
     "ode": {
@@ -7995,6 +7988,14 @@
       "examples": [
         "import math; r = math.ode((t, y) => y, 0, 1, 1); f = math.odeInterp(r, \"hermite\"); f(0.5)",
         "import math; sol = math.ode((t, y) => y, 0, 1, 1, {dense: true}); sol(0.5)"
+      ]
+    },
+    "pi": {
+      "signature": "math.pi()",
+      "desc": "Returns pi (3.14159265...) as a float. Requires import math; the uppercase constant math.PI is the same value.",
+      "examples": [
+        "import math; math.pi()",
+        "import math; math.pi() == math.PI"
       ]
     }
   },
@@ -8058,14 +8059,14 @@
     },
     "pi": {
       "signature": "cas.pi()",
-      "desc": "Returns the symbolic constant pi (stays exact, unlike the floating-point pi()).",
+      "desc": "Returns the symbolic constant pi (stays exact, unlike the floating-point math.pi()).",
       "examples": [
         "import cas; cas.solve(sym(\"x\")^2 - cas.pi(), sym(\"x\"))"
       ]
     },
     "e": {
       "signature": "cas.e()",
-      "desc": "Returns the symbolic constant e, which is exp(1) (normalized on simplification; stays exact, unlike the floating-point math.e).",
+      "desc": "Returns the symbolic constant e, which is exp(1) (normalized on simplification; stays exact, unlike the floating-point math.e()).",
       "examples": [
         "import cas; cas.e() * cas.e()"
       ]

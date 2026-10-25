@@ -185,10 +185,8 @@ class LatexParser {
 
         if (cmd != "") {
             pos += cmd.size();
-            // ★ π 生成 `pi()` 而不是裸 `PI`：数学常量已移入 math 命名空间
-            //   （math.PI 需要 import math），工厂函数 pi() 全局可用且保持符号性
-            //   （latex.eval(r"\sin(\pi/2)") 仍能得到精确的 1）。
-            if (cmd == "\\pi") return "pi()";
+            // π 生成 math.pi()：数值常量只在 math 命名空间，pi() 不再是全局函数。
+            if (cmd == "\\pi") return "math.pi()";
             return cmd.substr(1);
         }
         if (pos < src.size() && std::isalpha(static_cast<unsigned char>(src[pos]))) {
@@ -371,11 +369,11 @@ int jc2_init(jc2::Module& mod) {
         "        f = latex.compile(r\"\\frac{\\sin(\\theta)}{x^2}\", [\"x\", r\"\\theta\"])\n"
         "        \n"
         "        // 2. Call it interactively! (Supports real and complex arguments)\n"
-        "        f(2.0, PI/2)                 → 0.25\n"
+        "        f(2.0, math.PI/2)                 → 0.25\n"
         "        \n"
         "        // 3. Works seamlessly with all higher-order and calculus functions!\n"
-        "        table(f, [1, 2, 3], fill(PI/2, 3)|>trans)    → Tabulates results over a vector\n"
-        "        diff(f(_, PI/2), 2.0)        → Derivative w.r.t 'x' at x=2.0\n\n"
+        "        table(f, [1, 2, 3], fill(math.PI/2, 3)|>trans)    → Tabulates results over a vector\n"
+        "        diff(f(_, math.PI/2), 2.0)        → Derivative w.r.t 'x' at x=2.0\n\n"
         "  Supported LaTeX Syntax (Parser Engine)\n"
         "  ──────────────────────\n"
         "    • Operations:   +, -, *, /, ^\n"

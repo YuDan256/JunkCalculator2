@@ -2,7 +2,7 @@ import cas
 import math
 
 // ── 符号常量：cas.pi() / cas.e() / cas.i() ──
-// 数值常量走 math.e / math.E；符号场景走 cas 命名空间的工厂。
+// 数值常量走 math.e() / math.E；符号场景走 cas 命名空间的工厂。
 // 常量是独立的 SymType::CONST 节点，不是普通变量，因此不会被同名用户符号冒充。
 
 test_const_display() = {
@@ -221,10 +221,10 @@ test_exp_powers_are_canonicalized() = {
 test_exp_powers_are_canonicalized()
 
 test_math_constants_stay_float() = {
-    // 全局 pi() 与 math.e 保持浮点语义
-    assert(pi() > 3.14159 && pi() < 3.1416, "pi() stays float")
-    assert(math.e > 2.71828 && math.e < 2.71829, "math.e stays float")
-    assert(abs(pi() * 2 - 6.283185307179586) < 1e-12, "pi()*2 numeric")
+    // math.pi() 与 math.e() 保持浮点语义
+    assert(math.pi() > 3.14159 && math.pi() < 3.1416, "math.pi() stays float")
+    assert(math.e() > 2.71828 && math.e() < 2.71829, "math.e() stays float")
+    assert(abs(math.pi() * 2 - 6.283185307179586) < 1e-12, "math.pi()*2 numeric")
 }
 test_math_constants_stay_float()
 

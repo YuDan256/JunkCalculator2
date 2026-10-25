@@ -1,8 +1,5 @@
 {
   "global_functions": {
-    "pi": {
-      "signature": "pi()"
-    },
     "i": {
       "signature": "math.i"
     },
@@ -1664,13 +1661,16 @@
       "signature": "b.digits()"
     },
     "e": {
-      "signature": "math.e"
+      "signature": "math.e()"
     },
     "ode": {
       "signature": "math.ode(f, t0, y0, t1, [options])"
     },
     "odeInterp": {
       "signature": "math.odeInterp(res, [method], [f])"
+    },
+    "pi": {
+      "signature": "math.pi()"
     }
   },
   "cas_methods": {

@@ -589,7 +589,6 @@ void BuiltinRegistry::populateMathConstants() {
     if (!math_ns) return;
     math_ns->setField("PI", Value(3.14159265358979323846));
     math_ns->setField("E", Value(2.71828182845904523536));
-    math_ns->setField("e", Value(2.71828182845904523536));
     math_ns->setField("i", Value(Complex(0.0, 1.0)));
     math_ns->setField("I", Value(Complex(0.0, 1.0)));
 }
@@ -754,11 +753,17 @@ void BuiltinRegistry::registerMath() {
         };
 
     // 我们在此插入您要求的常量工厂和泛类型构造：
-    // 注意：这里只注册 **函数形式** 的常量工厂。π/e 的常量是 math.PI / math.E（math.e 别名），pi() 仍是全局函数。
+    // 注意：这里只注册 **函数形式** 的常量工厂。π/e 的常量是 math.PI / math.E，
+    // 函数形式是 math.pi() / math.e()；全局 pi() 已移除。
     // 虚数单位不在此注册：`i`/`I` 是启动时由 main.cpp setGlobal 建立的**全局常量**
     // （并有 `3i` 字面量语法），再注册一个 0 参函数 `i()` 会被该常量遮蔽而永远不可达
     // （调用只会抛 "Target is not callable"），故已删除。
-    reg("pi", { 0 }, [](const std::vector<Value>&) -> Value { return Value(3.14159265358979323846); }, {});
+    regModule(math_ns, "pi", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(3.14159265358979323846);
+        }, {});
+    regModule(math_ns, "e", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(2.71828182845904523536);
+        }, {});
     // ★ 非有限值构造函数：语言层面禁止除零（0/0、1.0/0.0 均抛 MathError），
     //   因此 NaN 无法由算术产生，必须提供显式构造，否则 isnan/isinf 不可达。
     //   （Inf 还可能由上溢产生，如 exp(1000.0)；但 NaN 没有任何其它产生途径。）
@@ -6729,7 +6734,7 @@ void BuiltinRegistry::registerCAS() {
         }, {"names"});
 
     // ★ 符号常量工厂：cas.pi() / cas.e() / cas.i() 返回**符号**常量节点。
-    //   全局 pi() 仍是浮点函数；e 的数值形式是 math.e（数值代码不改），符号场景走这三个入口。
+    //   数值形式是 math.pi() / math.e()；符号场景走这三个入口。
     //   常量是独立的 SymType::CONST 节点，不是普通变量，所以不会被同名用户符号冒充。
     regModule(cas_ns, "pi", { 0 }, [](const std::vector<Value>&) -> Value {
         return Value(SymExpr::makeConst(SymConstId::Pi));

@@ -130,7 +130,88 @@ static int packArgs(std::vector<uint32_t>& words, const std::vector<IRNode*>& ar
     return base;
 }
 
+// 清掉不产生字节码的空跳板块（Merge / IfTrue / IfFalse）：前驱直接接到唯一后继。
+// 这类块是 if/for/match 布局里 JMP 1 + 死 JMP 的根源；只处理无 Phi 的
+// 安全情形，带 Phi 的汇合块留给布局后 DCE。
+static bool blockEmitsCode(BasicBlock* bb) {
+    if (!bb->controlNode) return true;
+    const IROp ctrl = bb->controlNode->op;
+    if (ctrl != IROp::Merge && ctrl != IROp::IfTrue && ctrl != IROp::IfFalse) return true;
+    for (IRNode* node : bb->instructions) {
+        if (node->op == IROp::Merge || node->op == IROp::IfTrue || node->op == IROp::IfFalse) continue;
+        if (node->op == IROp::Phi) return true;   // 有 Phi，不在这里拆
+        if (node->op == IROp::Constant && node->physicalReg == -1) continue;
+        return true;
+    }
+    return false;
+}
+
+static bool blockHasPhi(BasicBlock* bb) {
+    for (IRNode* node : bb->instructions) {
+        if (node->op == IROp::Phi) return true;
+    }
+    return false;
+}
+
+static void simplifyEmptyMergeBlocks(IRGraph* graph) {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+
+        // 先重建 preds，避免上一轮删除留下的旧边。
+        for (auto& bbPtr : graph->blocks) bbPtr->preds.clear();
+        for (auto& bbPtr : graph->blocks) {
+            for (BasicBlock* succ : bbPtr->succs) {
+                if (succ) succ->preds.push_back(bbPtr.get());
+            }
+        }
+
+        // 一轮只计算映射，不边删边改，避免后继又被删除后留下悬空 target。
+        std::unordered_map<BasicBlock*, BasicBlock*> redirect;
+        for (size_t i = 1; i < graph->blocks.size(); ++i) {
+            BasicBlock* bb = graph->blocks[i].get();
+            if (bb->succs.size() != 1) continue;
+            BasicBlock* target = bb->succs[0];
+            if (!target || target == bb) continue;
+            if (blockEmitsCode(bb)) continue;
+            if (blockHasPhi(target)) continue;   // 目标 Phi 的边序会被打乱，保守跳过
+            redirect[bb] = target;
+        }
+        if (redirect.empty()) break;
+
+        auto resolve = [&](BasicBlock* bb) -> BasicBlock* {
+            BasicBlock* cur = bb;
+            for (size_t guard = 0; guard <= graph->blocks.size(); ++guard) {
+                auto it = redirect.find(cur);
+                if (it == redirect.end()) return cur;
+                cur = it->second;
+            }
+            return nullptr;   // 环：不重定向，也不删除
+        };
+
+        // 所有前驱边先指向最终目标，再统一删除跳板块。
+        for (auto& bbPtr : graph->blocks) {
+            for (BasicBlock*& succ : bbPtr->succs) {
+                if (BasicBlock* resolved = resolve(succ)) succ = resolved;
+            }
+        }
+
+        std::vector<std::unique_ptr<BasicBlock>> kept;
+        kept.reserve(graph->blocks.size());
+        for (auto& bbPtr : graph->blocks) {
+            if (redirect.count(bbPtr.get()) && resolve(bbPtr.get())) {
+                changed = true;
+                continue;
+            }
+            kept.push_back(std::move(bbPtr));
+        }
+        graph->blocks = std::move(kept);
+    }
+}
+
 int Emitter::emit(IRGraph* graph, Chunk& chunk) {
+    simplifyEmptyMergeBlocks(graph);
+
     for (auto& cb : graph->postAllocCallbacks) {
         cb();
     }
@@ -799,9 +880,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             if (cNode->op == IROp::If) {
                 BasicBlock* trueBlock = nullptr;
                 BasicBlock* falseBlock = nullptr;
-                for (auto* succ : bb->succs) {
-                    if (succ->controlNode->op == IROp::IfTrue) trueBlock = succ;
-                    if (succ->controlNode->op == IROp::IfFalse) falseBlock = succ;
+                for (size_t si = 0; si < bb->succs.size(); ++si) {
+                    BasicBlock* succ = bb->succs[si];
+                    int kind = (si < bb->succKind.size()) ? bb->succKind[si] : 0;
+                    if (kind == 1 || (!kind && succ->controlNode->op == IROp::IfTrue)) trueBlock = succ;
+                    if (kind == 2 || (!kind && succ->controlNode->op == IROp::IfFalse)) falseBlock = succ;
                 }
                 EncodedInst dummy;
                 int condReg = ensureReg(cNode->dataInputs[0], dummy.words, chunk, 124);

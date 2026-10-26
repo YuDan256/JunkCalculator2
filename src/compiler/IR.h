@@ -339,6 +339,9 @@ struct BasicBlock {
     std::vector<IRNode*> instructions;
     std::vector<BasicBlock*> preds;
     std::vector<BasicBlock*> succs;
+    // 与 succs 一一对应：0=普通边，1=IfTrue，2=IfFalse。
+    // 跳板块被折叠后，控制节点可能不再带 IfTrue/IfFalse 标记，边本身的语义必须保留。
+    std::vector<int> succKind;
 
     std::unordered_set<int> def;
     std::unordered_set<int> use;

@@ -67,12 +67,15 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                     BasicBlock* predBB = nodeToBB[predC];
                     bb->preds.push_back(predBB);
                     predBB->succs.push_back(bb.get());
+                    predBB->succKind.push_back(0);
                 }
             }
         } else if (c->controlInput && nodeToBB.count(c->controlInput)) {
             BasicBlock* predBB = nodeToBB[c->controlInput];
             bb->preds.push_back(predBB);
             predBB->succs.push_back(bb.get());
+            predBB->succKind.push_back(c->op == IROp::IfTrue ? 1
+                                       : c->op == IROp::IfFalse ? 2 : 0);
         }
     }
 

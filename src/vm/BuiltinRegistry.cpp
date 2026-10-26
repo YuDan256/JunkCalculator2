@@ -5629,6 +5629,55 @@ static std::wstring execQuoteArg(const std::wstring& arg) {
     return out;
 }
 
+#ifdef _WIN32
+static bool execIsValidUtf8(const std::string& raw) {
+    if (raw.empty()) return true;
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw.data(),
+                               static_cast<int>(raw.size()), nullptr, 0) > 0;
+}
+
+static std::string execCodepageToUtf8(const std::string& raw, UINT cp) {
+    if (raw.empty()) return raw;
+    int wlen = MultiByteToWideChar(cp, 0, raw.data(), static_cast<int>(raw.size()), nullptr, 0);
+    if (wlen <= 0) return raw;
+    std::wstring wide(static_cast<size_t>(wlen), L'\0');
+    if (MultiByteToWideChar(cp, 0, raw.data(), static_cast<int>(raw.size()),
+                            wide.data(), wlen) <= 0) {
+        return raw;
+    }
+    int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, nullptr, 0, nullptr, nullptr);
+    if (u8len <= 0) return raw;
+    std::string out(static_cast<size_t>(u8len), '\0');
+    if (WideCharToMultiByte(CP_UTF8, 0, wide.data(), wlen, out.data(), u8len,
+                            nullptr, nullptr) <= 0) {
+        return raw;
+    }
+    return out;
+}
+#endif
+
+static std::string execDecodeOutput(const std::string& raw, const std::string& encoding) {
+#ifdef _WIN32
+    if (encoding == "utf-8" || encoding == "utf8") return raw;
+    if (encoding == "auto") {
+        if (execIsValidUtf8(raw)) return raw;
+        UINT cp = GetOEMCP();
+        std::string out = execCodepageToUtf8(raw, cp);
+        if (out != raw) return out;
+        return execCodepageToUtf8(raw, GetACP());
+    }
+    UINT cp = CP_ACP;
+    if (encoding == "gbk" || encoding == "cp936") cp = 936;
+    else if (encoding == "ansi") cp = GetACP();
+    else if (encoding == "oem") cp = GetOEMCP();
+    else if (encoding == "system") cp = GetConsoleOutputCP() ? GetConsoleOutputCP() : GetOEMCP();
+    return execCodepageToUtf8(raw, cp);
+#else
+    (void)encoding;
+    return raw;
+#endif
+}
+
 static ExecOutcome execProcess(const std::string& program, const std::vector<std::string>& args,
                                const std::string& cwd, const std::map<std::string, std::string>& env,
                                const std::string& input, int timeoutMs, bool useShell) {
@@ -5844,6 +5893,7 @@ void BuiltinRegistry::registerSystemShell() {
         std::string cwd, input;
         int timeoutMs = 0;
         bool useShell = false;
+        std::string encoding = "auto";
         std::map<std::string, std::string> env;
         Value opts;
 
@@ -5858,7 +5908,7 @@ void BuiltinRegistry::registerSystemShell() {
         auto readOpts = [&](const Value& v) {
             if (!v.isObjType(ObjType::DICT))
                 JC2_THROW(TypeError, "sys.exec() options must be a dict.");
-            static const std::set<std::string> allowed = {"cwd", "env", "stdin", "timeoutMs", "shell"};
+            static const std::set<std::string> allowed = {"cwd", "env", "stdin", "timeoutMs", "shell", "encoding"};
             for (const auto& [k, val] : static_cast<ObjDict*>(v.asObj())->elements) {
                 if (!k.isString() || !allowed.count(k.asString()))
                     JC2_THROW(TypeError, "Unknown sys.exec option: '" + k.toRepr() + "'");
@@ -5874,6 +5924,21 @@ void BuiltinRegistry::registerSystemShell() {
             }
             x = helpDictGet(v, "shell");
             if (!x.isNone()) useShell = x.truthy();
+            x = helpDictGet(v, "encoding");
+            if (!x.isNone()) {
+                if (!x.isString()) JC2_THROW(TypeError, "sys.exec encoding must be a string.");
+                encoding = x.asString();
+                std::string e = encoding;
+                for (char& ch : e) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+                static const std::set<std::string> encAllowed = {
+                    "auto", "utf-8", "utf8", "gbk", "cp936", "ansi", "oem", "system"
+                };
+                if (!encAllowed.count(e)) {
+                    JC2_THROW(TypeError, "sys.exec unknown encoding '" + encoding
+                              + "' (expected auto, utf-8, gbk, ansi, oem or system).");
+                }
+                encoding = e;
+            }
             x = helpDictGet(v, "env");
             if (!x.isNone()) {
                 if (!x.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "sys.exec env must be a dict.");
@@ -5896,6 +5961,8 @@ void BuiltinRegistry::registerSystemShell() {
         if (timeoutMs < 0) JC2_THROW(MathError, "sys.exec timeoutMs cannot be negative.");
 
         ExecOutcome res = execProcess(program, argv, cwd, env, input, timeoutMs, useShell);
+        res.out = execDecodeOutput(res.out, encoding);
+        res.err = execDecodeOutput(res.err, encoding);
         ObjDict* out = GcHeap::get().allocate<ObjDict>();
         GcObjGuard guard(out);
         out->set(Value("code"), Value::fromInt32(res.code));

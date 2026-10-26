@@ -21,6 +21,17 @@ if (sys.platform() == "windows") {
 
     s = sys.exec("echo hi", @[], {shell: true})
     assert(s["stdout"].contains("hi"), "shell mode")
+    u = sys.exec("cmd", @["/c", "echo hello"], {encoding: "utf-8"})
+    assert(u["stdout"].contains("hello"), "encoding utf-8")
+    a = sys.exec("cmd", @["/c", "echo hello"], {encoding: "auto"})
+    assert(a["stdout"].contains("hello"), "encoding auto")
+
+    try {
+        sys.exec("cmd", @["/c", "echo hello"], {encoding: "no-such-encoding"})
+        assert(false, "unknown encoding must throw")
+    } catch (e) {
+        assert(e.type == "TypeError", "unknown encoding type")
+    }
 
     t = sys.exec("cmd", @["/c", "ping -n 5 127.0.0.1 >nul"], {timeoutMs: 200})
     assert(t["timedOut"], "timeout")

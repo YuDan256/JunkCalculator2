@@ -7734,10 +7734,11 @@
     },
     "exec": {
       "signature": "sys.exec(program, [args], [options]) -> dict",
-      "desc": "Runs an external program without a shell. args is a list of strings. options: cwd, env (merged into the inherited environment), stdin (string), timeoutMs, shell (false by default). Returns {code, stdout, stderr, timedOut}. Non-zero exit codes are returned, not thrown.",
+      "desc": "Runs an external program without a shell. args is a list of strings. options: cwd, env (merged into the inherited environment), stdin (string), timeoutMs, shell (false by default), encoding (auto by default). Returns {code, stdout, stderr, timedOut}. On Windows encoding=auto validates UTF-8 and falls back to the OEM/ANSI codepage (e.g. gbk); use utf-8 to keep raw bytes or gbk to force CP936. Non-zero exit codes are returned, not thrown.",
       "examples": [
         "import sys; sys.exec(\"git\", @[\"--version\"])[\"stdout\"]",
-        "import sys; sys.exec(\"cmd\", @[\"/c\", \"echo hello\"])"
+        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"auto\"})",
+        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"gbk\"})"
       ]
     }
   },

@@ -590,16 +590,38 @@ int main(int argc, char* argv[]) {
     };
     jc::helpers::resolvePathCallback = [exeDir](const std::string& path) -> std::string {
         namespace fs = std::filesystem;
-        fs::path p(path);
-        if (p.is_absolute()) return p.string();
-        std::vector<std::string> c = {
-            fs::weakly_canonical(fs::current_path() / p).string(),
-            (fs::path(exeDir) / p).string(),
-            (fs::path(exeDir) / "modules" / p).string(),
-            (fs::path(exeDir) / "lib" / p).string()
+        // 全程走 UTF-8 <-> wide path，不能用 fs::path(std::string)：
+        // 它按 ANSI 代码页解释，含 GBK 之外的 Unicode 文件名会触发 Win32 1113。
+        auto toU8Path = [](const std::string& s) {
+            return fs::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
         };
-        for (const auto& cp : c) if (fs::exists(cp)) return cp;
-        return fs::weakly_canonical(fs::current_path() / p).string();
+        auto toU8String = [](const fs::path& p) {
+            auto u = p.u8string();
+            return std::string(u.begin(), u.end());
+        };
+        fs::path p = toU8Path(path);
+        fs::path exePath = toU8Path(exeDir);
+        if (p.is_absolute()) return toU8String(p);
+
+        fs::path cwdPath = fs::current_path() / p;
+        std::string cwdResolved;
+        try {
+            cwdResolved = toU8String(fs::weakly_canonical(cwdPath));
+        } catch (const fs::filesystem_error&) {
+            cwdResolved = toU8String(cwdPath.lexically_normal());
+        }
+
+        std::vector<fs::path> candidates = {
+            toU8Path(cwdResolved),
+            exePath / p,
+            exePath / "modules" / p,
+            exePath / "lib" / p
+        };
+        for (const auto& cp : candidates) {
+            std::error_code ec;
+            if (fs::exists(cp, ec)) return toU8String(cp);
+        }
+        return cwdResolved;
         };
 
     // ★ 清洁版命令行参数解析 (Subcommand 架构)

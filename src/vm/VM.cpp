@@ -2954,14 +2954,19 @@ Value VM::execPackageImport(const std::string& name) {
 
 Value VM::execImport(std::string name, bool packagePath) {
     if (packagePath) return execPackageImport(name);
+    std::string displayName = from_path(to_path(name).stem());
     {
         std::string probe = helpers::safeResolveImportPath(name);
         std::error_code ec;
         if (std::filesystem::is_directory(to_path(probe), ec)) {
-            if (!isPackageDir(to_path(probe))) {
+            if (isPackageDir(to_path(probe))) return execPackageImport(name);
+            bool pathLike = name.find('/') != std::string::npos ||
+                            name.find('\\') != std::string::npos ||
+                            (!name.empty() && name[0] == '.');
+            if (pathLike) {
                 JC2_THROW(RuntimeError, "Directory '" + name + "' is not a package (missing init.jc2).");
             }
-            return execPackageImport(name);
+            // 裸名字可能撞到同名目录；继续找 .jc2/.jcb/.dll。
         }
     }
 
@@ -2980,7 +2985,7 @@ Value VM::execImport(std::string name, bool packagePath) {
         if (!canonical.empty()) name = canonical;
     }
 
-    std::string baseName = from_path(to_path(name).stem());
+    std::string baseName = displayName;
 
     if (loadedModules.count(name)) {
         importedModules.insert(name);
@@ -2989,7 +2994,7 @@ Value VM::execImport(std::string name, bool packagePath) {
 
     ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
     loadedModules[name] = Value(ns);
-    ns->name = name;
+    ns->name = displayName;
 
     std::string resolved = "";
     
@@ -3292,6 +3297,7 @@ Value VM::execImport(std::string name, bool packagePath) {
     }
     ObjNamespace* returnedNs = static_cast<ObjNamespace*>(nsVal.asObj());
     mergeExportedNamespace(ns, returnedNs);
+    ns->name = displayName;
     loadedModules[name] = Value(ns);
 
     HelpRouter::ensureModuleHelp(baseName);

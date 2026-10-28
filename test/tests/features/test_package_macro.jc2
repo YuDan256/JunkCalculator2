@@ -1,0 +1,4 @@
+import @"test/fixtures/pkgmac"
+x = @twice(21)
+assert(x == 42, "package macro")
+print("package macro battery OK")

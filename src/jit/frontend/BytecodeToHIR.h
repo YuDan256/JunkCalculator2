@@ -953,12 +953,7 @@ public:
                     }
                     case OpCode::BUILD_NAMESPACE: {
                         auto fs = captureFrameState(currentIp);
-                        auto countNode = builder_.createInt32Constant(c);
-                        auto nameIdxNode = builder_.createInt32Constant(b);
-                        auto chunkNode = builder_.createInt64Constant(reinterpret_cast<uint64_t>(&chunk_));
-                        auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_build_namespace), JITType::TaggedValue, 3, {countNode, nameIdxNode, chunkNode}, fs);
-                        for (int i = 0; i < c * 3; ++i) callout->addInput(getBoxedRKNode(a + 1 + i));
-                        setLocalSync(a, callout);
+                        builder_.createDeoptimize(fs);
                         break;
                     }
                     case OpCode::CONCAT_STRINGS: {

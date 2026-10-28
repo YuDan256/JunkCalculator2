@@ -1,0 +1,12 @@
+import sys
+
+class A {
+    x = 1
+    __eq__(other: any) -> bool = return isinstance(other, A)
+}
+
+local namespace P {
+    f() = 1
+}
+
+g() = P.f()

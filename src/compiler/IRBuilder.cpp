@@ -91,6 +91,7 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
 
 void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal, bool isExplicitConst) {
     if (name == "_") return;
+    namedValueNodes[name] = value;
     if (sym.scope == VarScope::Global) {
         IROp op = isExplicitConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
         IRNode* node = graph->createNode(op);
@@ -98,6 +99,7 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
         node->addData(value);
         node->name = name;
         currentControl = node;
+        globalValueNodes[name] = value;
     } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState || sym.scope == VarScope::State) {
         int upvalIdx = -1;
         if (sym.scope == VarScope::State) {
@@ -3913,6 +3915,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     IRNode* classNode = graph->createValueNode(IROp::Class);
     classNode->setControl(currentControl);
     classNode->name = expr->name.lexeme;
+    if (!expr->name.lexeme.empty()) classValueNodes[expr->name.lexeme] = classNode;
     classNode->payload1 = expr->isTrait ? 1 : 0;
     currentControl = classNode;
         
@@ -4185,10 +4188,24 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     
     for (const auto& [k, v] : envStack.back()) {
         if (currentLocalVars.count(k)) continue;
+        IRNode* target = v;
+        if (target->op == IROp::Constant && target->constVal.isUninit()) {
+            auto cit = classValueNodes.find(k);
+            if (cit != classValueNodes.end()) {
+                target = cit->second;
+            } else {
+                auto nit = namedValueNodes.find(k);
+                if (nit != namedValueNodes.end()) target = nit->second;
+                else {
+                    auto git = globalValueNodes.find(k);
+                    if (git != globalValueNodes.end()) target = git->second;
+                }
+            }
+        }
         exportedKeys.push_back(k);
-        exportedNodes.push_back(v);
+        exportedNodes.push_back(target);
         exportedConsts.push_back(currentConstVars.count(k) > 0);
-        capturedNodesToExtend.push_back(v);
+        capturedNodesToExtend.push_back(target);
     }
     
     popScope();

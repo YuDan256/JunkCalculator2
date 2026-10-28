@@ -145,6 +145,9 @@ public:
 
     // 顶层 const enum 的成员值：A.OK 可直接折叠成常量
     std::unordered_map<std::string, std::unordered_map<std::string, Value>> globalEnumFields;
+    std::unordered_map<std::string, IRNode*> globalValueNodes;
+    std::unordered_map<std::string, IRNode*> classValueNodes;
+    std::unordered_map<std::string, IRNode*> namedValueNodes;
 
     // 宏定义等 VM 内部生成的 AST 编译时置 true，跳过 <...> 保留名检查（<macro_temp_xxx> 等）。
     bool allowInternalNames = false;

@@ -1,0 +1,5 @@
+p = import "test/fixtures/classmod"
+assert(p.A().x == 1, "module class field")
+assert(p.A() == p.A(), "class self-reference")
+assert(p.g() == 1, "module function through local namespace")
+print("module class battery OK")

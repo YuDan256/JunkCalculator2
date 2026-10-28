@@ -7885,14 +7885,15 @@ Value VM::run(int targetFrameDepth) {
                 
                 for (int i = 0; i < c; ++i) {
                     Value keyVal = getReg(a + 1 + i * 3);
-                    Value slotVal = getReg(a + 1 + i * 3 + 1);
+                    Value fieldVal = getReg(a + 1 + i * 3 + 1);
                     Value isConstVal = getReg(a + 1 + i * 3 + 2);
                     
                     std::string key = keyVal.asString();
-                    int slot = static_cast<int>(slotVal.asFloat());
                     bool isConst = isConstVal.truthy();
                     
-                    ObjUpVal* upval = captureUpvalue(frame->registerBase + slot);
+                    ObjUpVal* upval = GcHeap::get().allocate<ObjUpVal>();
+                    upval->closed = fieldVal;
+                    upval->location = &upval->closed;
                     ns->fields[key] = { upval, isConst };
                 }
                 break;

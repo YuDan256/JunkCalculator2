@@ -546,9 +546,16 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::BuildNamespace: {
+                        int fieldCount = static_cast<int>(node->payload1) * 3;
                         std::vector<IRNode*> argsToPack;
-                        for (uint32_t i = 0; i < node->payload1 * 3; ++i) {
-                            argsToPack.push_back(node->dataInputs[i]);
+                        for (uint32_t i = 0; i < node->payload1; ++i) {
+                            IRNode* key = node->dataInputs[i * 3];
+                            IRNode* target = node->dataInputs[fieldCount + static_cast<int>(i)];
+                            IRNode* isConst = node->dataInputs[i * 3 + 2];
+                            if (target && target->op == IROp::Constant) target->physicalReg = -1;
+                            argsToPack.push_back(key);
+                            argsToPack.push_back(target);
+                            argsToPack.push_back(isConst);
                         }
                         int spillBase = packArgs(inst.words, argsToPack, chunk, dynamicSpillBase + 1) - 1;
                         uint32_t nameIdx = chunk.addConstant(Value(node->name));

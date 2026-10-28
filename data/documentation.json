@@ -5895,7 +5895,7 @@
       "desc": [
         "Merges the members of a namespace into the current module/package namespace.",
         "`export import \"...\"` imports and exports in one step without creating a variable.",
-        "The result is always `none`; export cannot be assigned or used as a value.",
+        "The result is `none`; `x = export ...` simply stores `none`.",
         "Export targets the namespace currently being executed, so a function exports",
         "into whichever module calls it; it does not capture its defining module.",
         "Conflicting members raise an error; exporting the same namespace twice is idempotent."

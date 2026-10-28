@@ -545,6 +545,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::NamespaceBegin: {
+                        auto w = buildInstA(OpCode::NAMESPACE_BEGIN, 0);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::BuildNamespace: {
                         int fieldCount = static_cast<int>(node->payload1) * 3;
                         std::vector<IRNode*> argsToPack;

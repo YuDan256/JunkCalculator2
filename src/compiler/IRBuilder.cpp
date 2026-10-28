@@ -4159,6 +4159,9 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     int prevNamespaceDepth = namespaceScopeDepth;
     namespaceScopeDepth = static_cast<int>(envStack.size());
     pushScope();
+
+    IRNode* nsBegin = graph->createNode(IROp::NamespaceBegin);
+    nsBegin->setControl(currentControl);
     
     currentLocalVars.clear();
     currentConstVars.clear();

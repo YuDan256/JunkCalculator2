@@ -1,0 +1,15 @@
+namespace A {
+    a = 1
+    export namespace { b = 2 }
+}
+assert(A.a == 1, "namespace own member")
+assert(A.b == 2, "export into namespace")
+
+namespace O {
+    namespace I {
+        export namespace { x = 3 }
+    }
+}
+assert(O.I.x == 3, "nested namespace export")
+
+print("namespace export battery OK")

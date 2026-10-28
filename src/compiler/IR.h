@@ -83,6 +83,7 @@ enum class IROp {
     BuildDict,
     DictRest,
     BuildNamespace,
+    NamespaceBegin,
     BuildSet,
     IndexGet,
     IndexSet,
@@ -224,6 +225,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::BuildDict: return "BuildDict";
         case IROp::DictRest: return "DictRest";
         case IROp::BuildNamespace: return "BuildNamespace";
+        case IROp::NamespaceBegin: return "NamespaceBegin";
         case IROp::BuildSet: return "BuildSet";
         case IROp::IndexGet: return "IndexGet";
         case IROp::IndexSet: return "IndexSet";

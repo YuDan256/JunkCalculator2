@@ -124,7 +124,8 @@ enum class OpCode : uint8_t {
     DICT_REST,      // R(A) := dict_rest(R(B), exclude_keys = R(C)) [Ext C]
     BUILD_SET,      // R(A) := Set(R(B) ... R(B+C-1)) [Ext B, C]
     BUILD_MATRIX,   // R(A) := Matrix(elements = R(B)..., shapeIdx = C) [Ext A, B, C]
-    BUILD_NAMESPACE,// R(A) := Namespace(nameIdx = B, count = C). Triplets (key, slot, isConst) start at R(A+1) [Ext A, B, C]
+    BUILD_NAMESPACE,
+    NAMESPACE_BEGIN,// R(A) := Namespace(nameIdx = B, count = C). Triplets (key, slot, isConst) start at R(A+1) [Ext A, B, C]
     LIST_INIT,      // R(A) := []
     LIST_APPEND,    // R(A).append(R(B))
     MATRIX_COMP_INIT,   // R(A) := matrix comprehension accumulator (empty list)
@@ -261,6 +262,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::BUILD_SET: return "BUILD_SET";
         case OpCode::BUILD_MATRIX: return "BUILD_MATRIX";
         case OpCode::BUILD_NAMESPACE: return "BUILD_NAMESPACE";
+        case OpCode::NAMESPACE_BEGIN: return "NAMESPACE_BEGIN";
         case OpCode::LIST_INIT: return "LIST_INIT";
         case OpCode::LIST_APPEND: return "LIST_APPEND";
         case OpCode::MATRIX_COMP_INIT: return "MATRIX_COMP_INIT";
@@ -581,6 +583,10 @@ public:
                 break;
             }
 
+            case OpCode::NAMESPACE_BEGIN: {
+                trailing("begin namespace", "push namespace export context");
+                break;
+            }
             case OpCode::BUILD_NAMESPACE: {
                 line << "R(" << a << ") " << b << " " << c;
                 std::string name = (b != ESCAPE_NORMAL_8 && b < static_cast<int>(constants.size()))

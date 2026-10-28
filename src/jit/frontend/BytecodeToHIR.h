@@ -951,6 +951,7 @@ public:
                         setLocalSync(a, callout);
                         break;
                     }
+                    case OpCode::NAMESPACE_BEGIN:
                     case OpCode::BUILD_NAMESPACE: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);

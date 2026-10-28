@@ -59,7 +59,7 @@ bool IROptimizer::hasSideEffects(IROp op) {
         case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
         case IROp::Shl: case IROp::Shr:
         case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
-        case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
+        case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::NamespaceBegin: case IROp::Class:
         case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
         case IROp::Inherit: case IROp::WithTrait: case IROp::FreezeClass: case IROp::Import:
         case IROp::Defer: case IROp::RunDefers:

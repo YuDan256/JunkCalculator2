@@ -7873,12 +7873,22 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
+            case OpCode::NAMESPACE_BEGIN: {
+                ObjNamespace* pending = GcHeap::get().allocate<ObjNamespace>();
+                exportNamespaceStack.push_back(pending);
+                break;
+            }
             case OpCode::BUILD_NAMESPACE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 const std::string& nsName = chunk->constants.data()[b].asString();
+                ObjNamespace* pendingExports = nullptr;
+                if (!exportNamespaceStack.empty()) {
+                    pendingExports = exportNamespaceStack.back();
+                    exportNamespaceStack.pop_back();
+                }
                 ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
                 getReg(a) = Value(ns); // ★ 立即 Root 防止 GC 误杀
                 ns->name = nsName;
@@ -7896,6 +7906,7 @@ Value VM::run(int targetFrameDepth) {
                     upval->location = &upval->closed;
                     ns->fields[key] = { upval, isConst };
                 }
+                if (pendingExports) mergeExportedNamespace(ns, pendingExports);
                 break;
             }
             case OpCode::MATRIX_COMP_INIT: {

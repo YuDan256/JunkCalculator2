@@ -278,6 +278,27 @@ namespace helpers {
     inline std::function<void(const std::string&)> runFileCallback = nullptr;
     inline std::vector<std::string> g_scriptDirStack;
 
+    // 供 import 使用：相对路径先相对“当前正在执行的模块目录”，
+    // 再回退到 cwd / exe / modules / lib；绝对路径不搜索。
+    inline std::string safeResolveImportPath(const std::string& path) {
+        namespace fs = std::filesystem;
+        auto toU8Path = [](const std::string& s) {
+            return fs::path(std::u8string(reinterpret_cast<const char8_t*>(s.data()), s.size()));
+        };
+        auto toU8String = [](const fs::path& p) {
+            auto u = p.u8string();
+            return std::string(u.begin(), u.end());
+        };
+        fs::path p = toU8Path(path);
+        if (p.is_absolute()) return toU8String(p);
+        if (!g_scriptDirStack.empty() && !g_scriptDirStack.back().empty()) {
+            fs::path candidate = toU8Path(g_scriptDirStack.back()) / p;
+            std::error_code ec;
+            if (fs::exists(candidate, ec)) return toU8String(candidate);
+        }
+        return safeResolvePath(path);
+    }
+
     template<typename Func>
     inline bool iterateIterable(const Value& iterable, Func callback) {
         if (iterable.isInstance() && hasDunder(iterable, "__iter__")) {

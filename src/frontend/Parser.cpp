@@ -1714,12 +1714,27 @@ namespace jc {
             
             if (check(TokenType::IDENTIFIER)) {
                 Token nameTok = advance();
-                if (isComptime && !disableMacroExpansion) {
-                    VM::activeVM->execCompileTimeImport(nameTok.lexeme);
-                }
+                std::string moduleName = nameTok.lexeme;
+                bool packagePath = false;
                 int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
-                auto pathExpr = withPos(std::make_unique<Literal>(nameTok.lexeme, true), nameTok.position, endPos);
+                while (match({ TokenType::DOT })) {
+                    if (!check(TokenType::IDENTIFIER)) {
+                        JC2_THROW(ParserError, "Expect module name after '.' in import.");
+                    }
+                    Token seg = advance();
+                    moduleName += "." + seg.lexeme;
+                    packagePath = true;
+                    endPos = seg.position + static_cast<int>(seg.lexeme.length());
+                }
+                if (isComptime && !disableMacroExpansion) {
+                    VM::activeVM->execCompileTimeImport(moduleName);
+                }
+                if (isComptime) {
+                    return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
+                }
+                auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true), nameTok.position, endPos);
                 auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)), startPos, endPos);
+                importExpr->packagePath = packagePath;
                 return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr)), startPos, endPos);
             } else {
                 auto path = assignment();  // ★ 降级：防止逗号被误吞
@@ -1729,6 +1744,9 @@ namespace jc {
                     } else {
                         JC2_THROW(ParserError, "Compile-time import (@) requires a static string or identifier.");
                     }
+                }
+                if (isComptime) {
+                    return withPos(std::make_unique<Literal>("none", false, false, true), startPos, path->endPos);
                 }
                 int endPos = path->endPos;
                 return withPos(std::make_unique<ImportExpr>(std::move(path)), startPos, endPos);

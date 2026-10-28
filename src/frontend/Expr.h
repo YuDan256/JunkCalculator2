@@ -621,6 +621,8 @@ namespace jc {
 
     struct ImportExpr : public Expr {
         std::unique_ptr<Expr> path;
+        // 点号导入（import pkg.table）走包解析；字符串导入是显式路径。
+        bool packagePath = false;
         ImportExpr(std::unique_ptr<Expr> path)
             : path(std::move(path)) {
         }

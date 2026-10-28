@@ -3818,6 +3818,7 @@ void IRBuilder::visitImportExpr(ImportExpr* expr) {
     expr->path->accept(*this);
     IRNode* importNode = graph->createValueNode(IROp::Import);
     importNode->setControl(currentControl);
+    importNode->payload1 = expr->packagePath ? 1 : 0;
     importNode->addData(lastValue);
     currentControl = importNode;
     lastValue = importNode;

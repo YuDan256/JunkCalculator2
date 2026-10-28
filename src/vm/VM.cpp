@@ -2817,7 +2817,131 @@ void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTail
     }
 }
 
-Value VM::execImport(const std::string& name) {
+static bool isPackageDir(const std::filesystem::path& dir) {
+    std::error_code ec;
+    return std::filesystem::is_directory(dir, ec) &&
+           std::filesystem::is_regular_file(dir / "init.jc2", ec);
+}
+
+static std::string packagePathString(const std::filesystem::path& p) {
+    auto u = p.u8string();
+    return std::string(u.begin(), u.end());
+}
+
+static ObjNamespace* packageNamespace(const Value& v) {
+    if (!v.isObjType(ObjType::NAMESPACE)) return nullptr;
+    return static_cast<ObjNamespace*>(v.asObj());
+}
+
+static void packageAttach(ObjNamespace* parent, const std::string& name, const Value& child) {
+    auto it = parent->fields.find(name);
+    if (it != parent->fields.end()) {
+        Value existing = *(it->second.upval->location);
+        if (existing.isObjType(ObjType::NAMESPACE) && child.isObjType(ObjType::NAMESPACE) &&
+            existing.asObj() == child.asObj()) {
+            return;
+        }
+        JC2_THROW(RuntimeError, "Package member '" + name + "' already defined by init.jc2.");
+    }
+    parent->setField(name, child);
+}
+
+Value VM::execPackageImport(const std::string& name) {
+    const std::string cacheKey = "pkg:" + name;
+    auto cached = loadedModules.find(cacheKey);
+    if (cached != loadedModules.end()) return cached->second;
+    if (loadingPackages.count(name)) {
+        JC2_THROW(RuntimeError, "Circular package import: '" + name + "'.");
+    }
+    std::vector<std::string> parts;
+    if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
+        parts.push_back(name);
+    } else {
+        size_t start = 0;
+        while (true) {
+            size_t dot = name.find('.', start);
+            parts.push_back(name.substr(start, dot == std::string::npos ? std::string::npos : dot - start));
+            if (dot == std::string::npos) break;
+            start = dot + 1;
+        }
+    }
+    if (parts.empty() || parts[0].empty()) JC2_THROW(RuntimeError, "Invalid package name.");
+
+    std::string rootResolved = helpers::safeResolveImportPath(parts[0]);
+    std::filesystem::path rootDir = to_path(rootResolved);
+    if (!isPackageDir(rootDir)) {
+        JC2_THROW(RuntimeError, "'" + parts[0] + "' is not a package (missing init.jc2).");
+    }
+
+    loadingPackages.insert(name);
+    try {
+        Value rootVal = execImport(packagePathString(rootDir / "init.jc2"));
+        ObjNamespace* rootNs = packageNamespace(rootVal);
+        if (!rootNs) JC2_THROW(RuntimeError, "Package init did not produce a namespace.");
+        rootNs->name = parts[0];
+        rootNs->is_package = true;
+
+        ObjNamespace* parent = rootNs;
+        std::filesystem::path currentDir = rootDir;
+        for (size_t i = 1; i < parts.size(); ++i) {
+            const std::string& seg = parts[i];
+            std::filesystem::path base = currentDir / seg;
+            std::filesystem::path src = base; src += ".jc2";
+            std::filesystem::path jcb = base; jcb += ".jcb";
+            std::filesystem::path dll = base; dll += ".dll";
+            std::error_code ec;
+            bool hasSrc = std::filesystem::is_regular_file(src, ec);
+            bool hasJcb = std::filesystem::is_regular_file(jcb, ec);
+            bool hasDll = std::filesystem::is_regular_file(dll, ec);
+            bool hasPkg = isPackageDir(base);
+            if ((hasSrc && hasDll) || (hasJcb && hasDll) ||
+                (hasPkg && (hasSrc || hasJcb || hasDll))) {
+                JC2_THROW(RuntimeError, "Ambiguous package submodule '" + seg + "' in '" +
+                                        packagePathString(currentDir) + "'.");
+            }
+            Value childVal;
+            std::filesystem::path nextDir = currentDir;
+            auto existingIt = parent->fields.find(seg);
+            if (existingIt != parent->fields.end()) {
+                childVal = *(existingIt->second.upval->location);
+                ObjNamespace* existingNs = packageNamespace(childVal);
+                if (!existingNs) {
+                    JC2_THROW(RuntimeError, "Package member '" + seg + "' already defined by init.jc2.");
+                }
+                if (hasPkg) nextDir = base;
+            } else if (hasSrc) childVal = execImport(packagePathString(src));
+            else if (hasJcb) childVal = execImport(packagePathString(jcb));
+            else if (hasDll) childVal = execImport(packagePathString(dll));
+            else if (hasPkg) {
+                childVal = execImport(packagePathString(base / "init.jc2"));
+                nextDir = base;
+            } else {
+                JC2_THROW(RuntimeError, "Cannot find package submodule '" + seg + "' in '" +
+                                        packagePathString(currentDir) + "'.");
+            }
+            ObjNamespace* childNs = packageNamespace(childVal);
+            if (!childNs) JC2_THROW(RuntimeError, "Package submodule '" + name + "' did not produce a namespace.");
+            childNs->is_package = true;
+            packageAttach(parent, seg, childVal);
+            parent = childNs;
+            currentDir = nextDir;
+        }
+        loadedModules[cacheKey] = rootVal;
+        loadingPackages.erase(name);
+        return rootVal;
+    } catch (...) {
+        loadingPackages.erase(name);
+        throw;
+    }
+}
+
+Value VM::execImport(const std::string& name, bool packagePath) {
+    if (packagePath) return execPackageImport(name);
+    {
+        std::string probe = helpers::safeResolveImportPath(name);
+        if (isPackageDir(to_path(probe))) return execPackageImport(name);
+    }
+
     std::string baseName = from_path(to_path(name).stem());
 
     if (loadedModules.count(name)) {
@@ -2859,18 +2983,18 @@ Value VM::execImport(const std::string& name) {
 
     // 2. 其次查找当前目录下的原生库
     if (resolved.empty()) {
-        std::string localModPath = helpers::safeResolvePath(nativeName);
+        std::string localModPath = helpers::safeResolveImportPath(nativeName);
         if (std::filesystem::is_regular_file(to_path(localModPath))) resolved = localModPath;
     }
 
     // 3. 查找 .jcb 字节码
     std::string jcbPath = "";
     if (resolved.empty()) {
-        std::string p = helpers::safeResolvePath(name);
+        std::string p = helpers::safeResolveImportPath(name);
         if (from_path(to_path(p).extension()) == ".jcb" && std::filesystem::is_regular_file(to_path(p))) {
             jcbPath = p;
         } else {
-            p = helpers::safeResolvePath(name + ".jcb");
+            p = helpers::safeResolveImportPath(name + ".jcb");
             if (std::filesystem::is_regular_file(to_path(p))) jcbPath = p;
         }
     }
@@ -2878,11 +3002,11 @@ Value VM::execImport(const std::string& name) {
     // 4. 查找 .jc2 模块脚本
     std::string jc2Path = "";
     if (resolved.empty() && jcbPath.empty()) {
-        std::string p = helpers::safeResolvePath(name);
+        std::string p = helpers::safeResolveImportPath(name);
         if (from_path(to_path(p).extension()) == ".jc2" && std::filesystem::is_regular_file(to_path(p))) {
             jc2Path = p;
         } else {
-            p = helpers::safeResolvePath(name + ".jc2");
+            p = helpers::safeResolveImportPath(name + ".jc2");
             if (std::filesystem::is_regular_file(to_path(p))) jc2Path = p;
         }
     }
@@ -2993,7 +3117,7 @@ Value VM::execImport(const std::string& name) {
         } catch (const jc::Jc2Error& e) {
             if (e.errorClass == jc::err::IOErrorClass && (e.message == "MAGIC_MISMATCH" || e.message == "VERSION_MISMATCH")) {
                 if (jc2Path.empty()) {
-                    jc2Path = helpers::safeResolvePath(name + ".jc2");
+                    jc2Path = helpers::safeResolveImportPath(name + ".jc2");
                     if (!std::filesystem::is_regular_file(jc2Path)) {
                         loadedModules.erase(name);
                         JC2_THROW(RuntimeError, "Bytecode version mismatch and source file not found for '" + name + "'.");
@@ -3133,6 +3257,48 @@ Value VM::execImport(const std::string& name) {
 }
 
 void VM::execCompileTimeImport(const std::string& name) {
+    // @pkg.sub：先编译 init，再编译子模块；只用于宏/语法。
+    bool dottedModule = name.find('.') != std::string::npos &&
+                        name.find('/') == std::string::npos &&
+                        name.find('\\') == std::string::npos &&
+                        !(name.size() >= 4 && name.compare(name.size() - 4, 4, ".jc2") == 0) &&
+                        !(name.size() >= 4 && name.compare(name.size() - 4, 4, ".jcb") == 0) &&
+                        !(name.size() >= 4 && name.compare(name.size() - 4, 4, ".dll") == 0);
+    if (dottedModule) {
+        size_t firstDot = name.find('.');
+        std::string root = name.substr(0, firstDot);
+        std::filesystem::path dir = to_path(helpers::safeResolveImportPath(root));
+        if (!isPackageDir(dir)) {
+            JC2_THROW(RuntimeError, "'" + root + "' is not a package (missing init.jc2).");
+        }
+        execCompileTimeImport(root);
+        std::string rest = name.substr(firstDot + 1);
+        size_t start = 0;
+        while (true) {
+            size_t dot = rest.find('.', start);
+            std::string seg = rest.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+            std::filesystem::path base = dir / seg;
+            std::filesystem::path src = base; src += ".jc2";
+            std::filesystem::path jcb = base; jcb += ".jcb";
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(src, ec)) {
+                execCompileTimeImport(packagePathString(src));
+                dir = base;
+            } else if (std::filesystem::is_regular_file(jcb, ec)) {
+                execCompileTimeImport(packagePathString(jcb));
+                dir = base;
+            } else if (isPackageDir(base)) {
+                execCompileTimeImport(packagePathString(base / "init.jc2"));
+                dir = base;
+            } else {
+                JC2_THROW(RuntimeError, "Cannot find compile-time submodule '" + seg + "' in '" +
+                                        packagePathString(dir) + "'.");
+            }
+            if (dot == std::string::npos) break;
+            start = dot + 1;
+        }
+        return;
+    }
     std::string baseName = from_path(to_path(name).stem());
 
     if (loadedModules.count(name)) {
@@ -3141,9 +3307,12 @@ void VM::execCompileTimeImport(const std::string& name) {
 
     std::string resolved = "";
     
-    resolved = helpers::safeResolvePath(name);
+    resolved = helpers::safeResolveImportPath(name);
+    if (isPackageDir(to_path(resolved))) {
+        resolved = packagePathString(to_path(resolved) / "init.jc2");
+    }
     if (!std::filesystem::is_regular_file(to_path(resolved))) {
-        resolved = helpers::safeResolvePath(name + ".jc2");
+        resolved = helpers::safeResolveImportPath(name + ".jc2");
     }
 
     if (resolved.empty() || !std::filesystem::is_regular_file(to_path(resolved))) {
@@ -7114,12 +7283,15 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
+                bool strictNamespaceMissing = false;
                 if (!found && obj.isObjType(ObjType::NAMESPACE)) {
                     auto ns = static_cast<ObjNamespace*>(obj.asObj());
                     auto it = ns->fields.find(field);
                     if (it != ns->fields.end()) {
                         result = *(it->second.upval->location);
                         found = true;
+                    } else {
+                        strictNamespaceMissing = ns->is_package;
                     }
                 } else if (!found && obj.isSlice()) {
                     Value prop = obj.asSlice()->getProperty(field);
@@ -7146,6 +7318,9 @@ Value VM::run(int targetFrameDepth) {
                 }
                 
                 if (!found) {
+                    if (strictNamespaceMissing) {
+                        JC2_THROW(RuntimeError, "Property '" + field + "' not found.");
+                    }
                     if (ic.cachedGlobalSlot == -4) {
                         
 
@@ -7808,9 +7983,10 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::IMPORT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 Value pathVal = getReg(b);
                 if (!pathVal.isString()) JC2_THROW(RuntimeError, "import requires a string path.");
-                getReg(a) = execImport(pathVal.asString());
+                getReg(a) = execImport(pathVal.asString(), c != 0);
                 break;
             }
             case OpCode::ASSERT_PARAM_TYPE: {

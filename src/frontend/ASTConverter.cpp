@@ -273,7 +273,7 @@ public:
     }
     void visitImportExpr(ImportExpr* expr) override {
         expr->path->accept(*this); Value path = result;
-        result = makeASTNode("ImportExpr", 0, {{"path", path}});
+        result = makeASTNode("ImportExpr", 0, {{"path", path}, {"package", Value(expr->packagePath)}});
     }
     void visitDotAccess(DotAccess* expr) override {
         expr->object->accept(*this); Value obj = result;

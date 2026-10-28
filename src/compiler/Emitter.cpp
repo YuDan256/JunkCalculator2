@@ -773,7 +773,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::Import: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::IMPORT, node->physicalReg, b);
+                        auto w = buildInstABC(OpCode::IMPORT, node->physicalReg, b, node->payload1 ? 1 : 0);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

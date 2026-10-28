@@ -1,0 +1,17 @@
+p = import "../../fixtures/pkgdemo"
+assert(p.version == "1.0", "package init")
+t = import "../../fixtures/pkgdemo/table"
+assert(t.run() == 42, "package submodule")
+
+try {
+    p.table
+    assert(false, "missing package member must throw")
+} catch (e) {
+    assert(e.type == "RuntimeError", "missing package member type")
+}
+
+p2 = import "../../fixtures/pkgdemo2"
+assert(p2.version == "2.0", "package init import")
+assert(p2.table.run() == 84, "init-imported submodule")
+
+print("package battery OK")

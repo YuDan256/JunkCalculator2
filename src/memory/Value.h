@@ -1371,6 +1371,8 @@ namespace jc {
         std::string name;
         std::unordered_map<std::string, NamespaceField> fields;
         bool is_frozen = false;
+        // 包命名空间不允许在成员缺失时回落到全局内建函数。
+        bool is_package = false;
         ObjNamespace() { type = ObjType::NAMESPACE; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Namespace."); }
         void clear() override { clearFields(); }

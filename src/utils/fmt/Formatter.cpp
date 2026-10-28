@@ -319,6 +319,9 @@ public:
         }
     }
     void visitImportExpr(ImportExpr* e) override { if (e->path) e->path->accept(*this); }
+    void visitExportExpr(ExportExpr* e) override {
+        if (e->value) e->value->accept(*this);
+    }
     void visitClassDefExpr(ClassDefExpr* e) override {
         collectOuterBraces(e->startPos, e->endPos);
         if (e->superClassExpr) e->superClassExpr->accept(*this);

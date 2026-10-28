@@ -777,6 +777,12 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::Export: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstAB(OpCode::EXPORT, node->physicalReg, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::AssertParamType: {
                         int a = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         auto w = buildInstABC(OpCode::ASSERT_PARAM_TYPE, a, node->payload1, node->payload2, OpType::NORMAL, OpType::NORMAL);

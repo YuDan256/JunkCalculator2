@@ -119,6 +119,7 @@ private:
     };
     std::vector<ExceptionHandler> exceptionHandlers;
     std::unordered_set<std::string> loadingPackages;
+    std::vector<ObjNamespace*> exportNamespaceStack;
 
     int currentTargetFrameDepth = 0;
 
@@ -193,7 +194,7 @@ private:
                   Value explicitSelf = Value::none());
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
 
-    Value execImport(const std::string& name, bool packagePath = false);
+    Value execImport(std::string name, bool packagePath = false);
     Value execPackageImport(const std::string& name);
 
 public:

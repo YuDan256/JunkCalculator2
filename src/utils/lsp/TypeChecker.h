@@ -66,6 +66,7 @@ namespace lsp {
         void visitThrowExpr(ThrowExpr* e) override;
         void visitTryCatchExpr(TryCatchExpr* e) override;
         void visitImportExpr(ImportExpr*) override {}
+    void visitExportExpr(ExportExpr*) override {}
         void visitClassDefExpr(ClassDefExpr* e) override;
         void visitNamespaceDecl(NamespaceDecl* e) override;
         void visitEnumDefExpr(EnumDefExpr* e) override;

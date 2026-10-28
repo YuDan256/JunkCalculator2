@@ -426,6 +426,10 @@ void Resolver::visitTryCatchExpr(TryCatchExpr* expr) {
     resolveMatchBranches(expr->catchBranches);
 }
 
+void Resolver::visitExportExpr(ExportExpr* expr) {
+    if (expr->value) expr->value->accept(*this);
+}
+
 void Resolver::visitImportExpr(ImportExpr* expr) {
     resolve(expr->path.get());
 }

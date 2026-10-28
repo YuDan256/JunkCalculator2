@@ -3814,6 +3814,15 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     }
 }
 
+void IRBuilder::visitExportExpr(ExportExpr* expr) {
+    expr->value->accept(*this);
+    IRNode* exportNode = graph->createValueNode(IROp::Export);
+    exportNode->setControl(currentControl);
+    exportNode->addData(lastValue);
+    currentControl = exportNode;
+    lastValue = exportNode;
+}
+
 void IRBuilder::visitImportExpr(ImportExpr* expr) {
     expr->path->accept(*this);
     IRNode* importNode = graph->createValueNode(IROp::Import);
@@ -3822,6 +3831,13 @@ void IRBuilder::visitImportExpr(ImportExpr* expr) {
     importNode->addData(lastValue);
     currentControl = importNode;
     lastValue = importNode;
+    if (expr->isExport) {
+        IRNode* exportNode = graph->createValueNode(IROp::Export);
+        exportNode->setControl(currentControl);
+        exportNode->addData(lastValue);
+        currentControl = exportNode;
+        lastValue = exportNode;
+    }
 }
 
 void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {

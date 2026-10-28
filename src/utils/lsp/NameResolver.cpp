@@ -441,7 +441,11 @@ namespace lsp {
         if (e->value) e->value->accept(*this);
     }
 
-    void NameResolver::visitImportExpr(ImportExpr* e) { handleImport(e); }
+    void NameResolver::visitExportExpr(ExportExpr* e) {
+    if (e->value) e->value->accept(*this);
+}
+
+void NameResolver::visitImportExpr(ImportExpr* e) { handleImport(e); }
 
     void NameResolver::visitLambdaExpr(LambdaExpr* e) {
         // 匿名 lambda 的内部占位名（"<lambda>"）不对应源码位置，不能 declare：

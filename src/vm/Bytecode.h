@@ -160,6 +160,7 @@ enum class OpCode : uint8_t {
 
     // 模块导入
     IMPORT,         // R(A) := import(R(B))
+    EXPORT,         // export R(B) into current module namespace; R(A) := none
 
     DEFER,          // defer(closure = R(A))
     RUN_DEFERS,     // run_defers(count = A)
@@ -286,6 +287,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::IN: return "IN";
         case OpCode::IS_SUBSET: return "IS_SUBSET";
         case OpCode::IMPORT: return "IMPORT";
+        case OpCode::EXPORT: return "EXPORT";
         case OpCode::DEFER: return "DEFER";
         case OpCode::RUN_DEFERS: return "RUN_DEFERS";
         case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
@@ -753,8 +755,11 @@ public:
                 break;
 
             case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::FREEZE_CLASS: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
-            case OpCode::ITER_NEXT: case OpCode::IMPORT:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT: case OpCode::EXPORT:
                 line << "R(" << a << ") " << b;
+                if (op == OpCode::EXPORT)
+                    trailing("export R(" + std::to_string(b) + ")",
+                             "export R(" + std::to_string(b) + ") into current namespace");
                 break;
 
             case OpCode::CALL: case OpCode::TAIL_CALL:

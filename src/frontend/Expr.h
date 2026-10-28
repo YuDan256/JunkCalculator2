@@ -96,6 +96,7 @@ namespace jc {
     struct ThrowExpr;        // ★
     struct TryCatchExpr;     // ★
     struct ImportExpr;
+struct ExportExpr;
     struct ClassDefExpr;       // ★
     struct NamespaceDecl;      // ★ 新增
     struct EnumDefExpr;        // ★ 新增
@@ -243,6 +244,7 @@ namespace jc {
         virtual void visitThrowExpr(ThrowExpr* expr) = 0;
         virtual void visitTryCatchExpr(TryCatchExpr* expr) = 0;
         virtual void visitImportExpr(ImportExpr* expr) = 0;
+    virtual void visitExportExpr(ExportExpr* expr) = 0;
         virtual void visitClassDefExpr(ClassDefExpr* expr) = 0;
         virtual void visitNamespaceDecl(NamespaceDecl* expr) = 0;
         virtual void visitEnumDefExpr(EnumDefExpr* expr) = 0;
@@ -623,10 +625,17 @@ namespace jc {
         std::unique_ptr<Expr> path;
         // 点号导入（import pkg.table）走包解析；字符串导入是显式路径。
         bool packagePath = false;
+        bool isExport = false;
         ImportExpr(std::unique_ptr<Expr> path)
             : path(std::move(path)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitImportExpr(this); }
+    };
+
+    struct ExportExpr : public Expr {
+        std::unique_ptr<Expr> value;
+        explicit ExportExpr(std::unique_ptr<Expr> value) : value(std::move(value)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitExportExpr(this); }
     };
 
     struct NamespaceDecl : public Expr {

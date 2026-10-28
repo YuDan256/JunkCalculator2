@@ -132,6 +132,7 @@ enum class IROp {
 
     // 模块导入
     Import,
+    Export,
 
     Defer,
     RunDefers,
@@ -264,6 +265,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::GetSelf: return "GetSelf";
         case IROp::GetCurrentClosure: return "GetCurrentClosure";
         case IROp::Import: return "Import";
+        case IROp::Export: return "Export";
         case IROp::Defer: return "Defer";
         case IROp::RunDefers: return "RunDefers";
         case IROp::AssertParamType: return "AssertParamType";

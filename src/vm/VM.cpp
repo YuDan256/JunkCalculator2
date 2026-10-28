@@ -2846,6 +2846,20 @@ static void packageAttach(ObjNamespace* parent, const std::string& name, const V
     parent->setField(name, child);
 }
 
+static void mergeExportedNamespace(ObjNamespace* target, ObjNamespace* src) {
+    if (!target || !src || target == src) return;
+    for (const auto& [k, field] : src->fields) {
+        Value incoming = *(field.upval->location);
+        auto it = target->fields.find(k);
+        if (it != target->fields.end()) {
+            Value existing = *(it->second.upval->location);
+            if (existing.as_bits == incoming.as_bits) continue;
+            JC2_THROW(RuntimeError, "Export conflict for member '" + k + "'.");
+        }
+        target->setField(k, incoming);
+    }
+}
+
 Value VM::execPackageImport(const std::string& name) {
     const std::string cacheKey = "pkg:" + name;
     auto cached = loadedModules.find(cacheKey);
@@ -2938,7 +2952,7 @@ Value VM::execPackageImport(const std::string& name) {
     }
 }
 
-Value VM::execImport(const std::string& name, bool packagePath) {
+Value VM::execImport(std::string name, bool packagePath) {
     if (packagePath) return execPackageImport(name);
     {
         std::string probe = helpers::safeResolveImportPath(name);
@@ -2949,6 +2963,21 @@ Value VM::execImport(const std::string& name, bool packagePath) {
             }
             return execPackageImport(name);
         }
+    }
+
+    // 相对导入先规范成实际文件路径，避免不同包里的 "./inner" 共用缓存键。
+    if (!packagePath) {
+        auto canonicalCandidate = [](const std::string& candidate) {
+            std::string p = helpers::safeResolveImportPath(candidate);
+            std::error_code ec;
+            if (std::filesystem::is_regular_file(to_path(p), ec)) return p;
+            return std::string();
+        };
+        std::string canonical = canonicalCandidate(name);
+        if (canonical.empty()) canonical = canonicalCandidate(name + ".jc2");
+        if (canonical.empty()) canonical = canonicalCandidate(name + ".jcb");
+        if (canonical.empty()) canonical = canonicalCandidate(name + ".dll");
+        if (!canonical.empty()) name = canonical;
     }
 
     std::string baseName = from_path(to_path(name).stem());
@@ -3229,6 +3258,7 @@ Value VM::execImport(const std::string& name, bool packagePath) {
 
     std::string scriptDir = from_path(to_path(executePath).parent_path());
     helpers::g_scriptDirStack.push_back(scriptDir);
+    exportNamespaceStack.push_back(ns);
     Value nsVal;
     try {
         nsVal = run(targetDepth);
@@ -3248,17 +3278,20 @@ Value VM::execImport(const std::string& name, bool packagePath) {
             f->refParamsBase = -1;
             frameCount--;
         }
+        exportNamespaceStack.pop_back();
         helpers::g_scriptDirStack.pop_back();
         loadedModules.erase(name);
         throw;
     }
+    exportNamespaceStack.pop_back();
     helpers::g_scriptDirStack.pop_back();
 
     if (!nsVal.isObjType(ObjType::NAMESPACE)) {
         loadedModules.erase(name);
         JC2_THROW(RuntimeError, "Module script must not use top-level 'return'.");
     }
-    ns = static_cast<ObjNamespace*>(nsVal.asObj());
+    ObjNamespace* returnedNs = static_cast<ObjNamespace*>(nsVal.asObj());
+    mergeExportedNamespace(ns, returnedNs);
     loadedModules[name] = Value(ns);
 
     HelpRouter::ensureModuleHelp(baseName);
@@ -7987,6 +8020,21 @@ Value VM::run(int targetFrameDepth) {
                     deferStack.pop_back();
                     callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
                 }
+                break;
+            }
+            case OpCode::EXPORT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value exported = getReg(b);
+                if (!exported.isObjType(ObjType::NAMESPACE)) {
+                    JC2_THROW(RuntimeError, "export expects a namespace.");
+                }
+                if (exportNamespaceStack.empty()) {
+                    JC2_THROW(RuntimeError, "export: no current module namespace.");
+                }
+                mergeExportedNamespace(exportNamespaceStack.back(),
+                                       static_cast<ObjNamespace*>(exported.asObj()));
+                getReg(a) = Value::none();
                 break;
             }
             case OpCode::IMPORT: {

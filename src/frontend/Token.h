@@ -56,6 +56,7 @@ namespace jc {
         TRY,                 // ★ 新增
         CATCH,               // ★ 新增
         IMPORT,
+        EXPORT,
         MATCH,               // ★ 新增
         MACRO,               // ★ 新增
         SYNTAX,              // ★ 新增

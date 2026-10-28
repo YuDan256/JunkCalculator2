@@ -682,6 +682,9 @@
     },
     "defer": {
       "signature": "defer expr"
+    },
+    "export": {
+      "signature": "export import \"path\"  |  export namespace"
     }
   },
   "matrix_methods": {

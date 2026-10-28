@@ -1,0 +1,2 @@
+export import "./inner"
+ret = export import "./inner"

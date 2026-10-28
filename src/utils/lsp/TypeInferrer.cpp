@@ -381,6 +381,9 @@ namespace lsp {
     void TypeInferrer::visitImportExpr(ImportExpr* e) {
         (void)e;
     }
+    void TypeInferrer::visitExportExpr(ExportExpr* e) {
+        if (e->value) e->value->accept(*this);
+    }
     void TypeInferrer::visitEnumDefExpr(EnumDefExpr* e) {
         for (auto& m : e->members) if (m.second) m.second->accept(*this);
     }

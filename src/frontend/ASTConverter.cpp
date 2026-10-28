@@ -271,9 +271,13 @@ public:
         expr->value->accept(*this); Value val = result;
         result = makeASTNode("ThrowExpr", expr->keyword.line, {{"value", val}});
     }
+    void visitExportExpr(ExportExpr* expr) override {
+        expr->value->accept(*this); Value value = result;
+        result = makeASTNode("ExportExpr", 0, {{"value", value}});
+    }
     void visitImportExpr(ImportExpr* expr) override {
         expr->path->accept(*this); Value path = result;
-        result = makeASTNode("ImportExpr", 0, {{"path", path}, {"package", Value(expr->packagePath)}});
+        result = makeASTNode("ImportExpr", 0, {{"path", path}, {"package", Value(expr->packagePath)}, {"export", Value(expr->isExport)}});
     }
     void visitDotAccess(DotAccess* expr) override {
         expr->object->accept(*this); Value obj = result;
@@ -953,8 +957,13 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<InvokeExpr>(toAST(getProp("callee")), getExprList(getProp("arguments")));
     } else if (type == "ThrowExpr") {
         return std::make_unique<ThrowExpr>(Token(TokenType::THROW, "throw", line), toAST(getProp("value")));
+    } else if (type == "ExportExpr") {
+        return std::make_unique<ExportExpr>(toAST(getProp("value")));
     } else if (type == "ImportExpr") {
-        return std::make_unique<ImportExpr>(toAST(getProp("path")));
+        auto imp = std::make_unique<ImportExpr>(toAST(getProp("path")));
+        imp->packagePath = getProp("package").truthy();
+        imp->isExport = getProp("export").truthy();
+        return imp;
     } else if (type == "DotAccess") {
         return std::make_unique<DotAccess>(toAST(getProp("object")), Token(TokenType::IDENTIFIER, getProp("field").asString(), line));
     } else if (type == "DotAssign") {

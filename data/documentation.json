@@ -3787,7 +3787,17 @@
       "    the end user) receives the same frozen namespace and can no longer modify it.",
       "    To keep a private, locked copy without polluting downstream users, copy it:",
       "      const local lib = copy(import \"lib\", true)",
-      "    This deep-copies the namespace and freezes only your own copy."
+      "    This deep-copies the namespace and freezes only your own copy.",
+      "",
+      "  Export",
+      "  ──────────────────────",
+      "    export import \"./plot.dll\"",
+      "    n = import \"./extra\"",
+      "    export n",
+      "",
+      "    Merges a namespace into the current module/package namespace and returns none.",
+      "    It can run anywhere; the target is the current execution context, not the",
+      "    function's defining module. Conflicts are errors; repeated exports are idempotent."
     ],
     "fmt": [
       "═══ Code Formatting (jc2 fmt) ═══",
@@ -5878,6 +5888,22 @@
       "examples": [
         "defer print(\"Cleanup\")",
         "defer file.close()"
+      ]
+    },
+    "export": {
+      "signature": "export import \"path\"  |  export namespace",
+      "desc": [
+        "Merges the members of a namespace into the current module/package namespace.",
+        "`export import \"...\"` imports and exports in one step without creating a variable.",
+        "The result is always `none`; export cannot be assigned or used as a value.",
+        "Export targets the namespace currently being executed, so a function exports",
+        "into whichever module calls it; it does not capture its defining module.",
+        "Conflicting members raise an error; exporting the same namespace twice is idempotent."
+      ],
+      "examples": [
+        "export import \"./plot.dll\"",
+        "n = import \"./extra\"",
+        "export n"
       ]
     }
   },

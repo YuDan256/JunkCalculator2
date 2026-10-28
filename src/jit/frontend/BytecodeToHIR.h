@@ -320,7 +320,7 @@ public:
                     case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::LIST_APPEND:
                     case OpCode::MATRIX_COMP_APPEND: case OpCode::MAKE_SPREAD:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
-                    case OpCode::IMPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
+                    case OpCode::IMPORT: case OpCode::EXPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
                     case OpCode::BUILD_SLICE: case OpCode::MATCH_INIT:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (b == ESCAPE_NORMAL_8) b = fetchExtra();
@@ -1583,7 +1583,8 @@ public:
                         builder_.createDeoptimize(fs);
                         break;
                     }
-                    case OpCode::DEFER: {
+                    case OpCode::DEFER:
+                    case OpCode::EXPORT: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);
                         break;

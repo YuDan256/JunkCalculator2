@@ -1,0 +1,14 @@
+import sys
+
+abs_path = sys.cwd() + "/test/fixtures/pkgdemo/table"
+at = import (abs_path)
+assert(at.run() == 42, "absolute path import")
+
+try {
+    import "../../fixtures/pkgcycle/a"
+    assert(false, "cycle must fail")
+} catch (e) {
+    assert(e.type == "RuntimeError", "cycle error type")
+}
+
+print("package edge battery OK")

@@ -3,6 +3,9 @@ assert(p.version == "1.0", "package init")
 t = import "../../fixtures/pkgdemo/table"
 assert(t.run() == 42, "package submodule")
 
+s = import "../../fixtures/pkgdemo/sub"
+assert(s.subval == 7, "subpackage")
+
 try {
     p.table
     assert(false, "missing package member must throw")

@@ -2885,6 +2885,9 @@ Value VM::execPackageImport(const std::string& name) {
         std::filesystem::path currentDir = rootDir;
         for (size_t i = 1; i < parts.size(); ++i) {
             const std::string& seg = parts[i];
+            if (seg == "init") {
+                JC2_THROW(RuntimeError, "Package entry 'init' is reserved and cannot be imported as a submodule.");
+            }
             std::filesystem::path base = currentDir / seg;
             std::filesystem::path src = base; src += ".jc2";
             std::filesystem::path jcb = base; jcb += ".jcb";
@@ -2939,7 +2942,13 @@ Value VM::execImport(const std::string& name, bool packagePath) {
     if (packagePath) return execPackageImport(name);
     {
         std::string probe = helpers::safeResolveImportPath(name);
-        if (isPackageDir(to_path(probe))) return execPackageImport(name);
+        std::error_code ec;
+        if (std::filesystem::is_directory(to_path(probe), ec)) {
+            if (!isPackageDir(to_path(probe))) {
+                JC2_THROW(RuntimeError, "Directory '" + name + "' is not a package (missing init.jc2).");
+            }
+            return execPackageImport(name);
+        }
     }
 
     std::string baseName = from_path(to_path(name).stem());
@@ -2987,27 +2996,27 @@ Value VM::execImport(const std::string& name, bool packagePath) {
         if (std::filesystem::is_regular_file(to_path(localModPath))) resolved = localModPath;
     }
 
-    // 3. 查找 .jcb 字节码
-    std::string jcbPath = "";
-    if (resolved.empty()) {
-        std::string p = helpers::safeResolveImportPath(name);
-        if (from_path(to_path(p).extension()) == ".jcb" && std::filesystem::is_regular_file(to_path(p))) {
-            jcbPath = p;
-        } else {
-            p = helpers::safeResolveImportPath(name + ".jcb");
-            if (std::filesystem::is_regular_file(to_path(p))) jcbPath = p;
-        }
-    }
-
-    // 4. 查找 .jc2 模块脚本
+    // 3. 优先 .jc2 源码；源码存在时忽略同名 .jcb。
     std::string jc2Path = "";
-    if (resolved.empty() && jcbPath.empty()) {
+    if (resolved.empty()) {
         std::string p = helpers::safeResolveImportPath(name);
         if (from_path(to_path(p).extension()) == ".jc2" && std::filesystem::is_regular_file(to_path(p))) {
             jc2Path = p;
         } else {
             p = helpers::safeResolveImportPath(name + ".jc2");
             if (std::filesystem::is_regular_file(to_path(p))) jc2Path = p;
+        }
+    }
+
+    // 4. 没有源码时才用 .jcb 字节码
+    std::string jcbPath = "";
+    if (resolved.empty() && jc2Path.empty()) {
+        std::string p = helpers::safeResolveImportPath(name);
+        if (from_path(to_path(p).extension()) == ".jcb" && std::filesystem::is_regular_file(to_path(p))) {
+            jcbPath = p;
+        } else {
+            p = helpers::safeResolveImportPath(name + ".jcb");
+            if (std::filesystem::is_regular_file(to_path(p))) jcbPath = p;
         }
     }
 

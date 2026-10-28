@@ -660,7 +660,7 @@
       "signature": "throw expr"
     },
     "import": {
-      "signature": "import module  |  import \"path\"  |  import @module"
+      "signature": "import module  |  import pkg.sub  |  import \"path\"  |  import @module"
     },
     "true": {
       "signature": "true"

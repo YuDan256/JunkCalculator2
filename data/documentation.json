@@ -7742,13 +7742,6 @@
         "import sys; sys.sysinfo()"
       ]
     },
-    "vars": {
-      "signature": "sys.vars()",
-      "desc": "Lists all custom variables currently in the environment.",
-      "examples": [
-        "import sys; sys.vars()"
-      ]
-    },
     "symconfig": {
       "signature": "sys.symconfig([dict_or_default])",
       "desc": "Gets or sets CAS limits. Pass \"default\" to reset.",

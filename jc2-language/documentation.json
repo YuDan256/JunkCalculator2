@@ -1544,9 +1544,6 @@
     "sysinfo": {
       "signature": "sys.sysinfo()"
     },
-    "vars": {
-      "signature": "sys.vars()"
-    },
     "symconfig": {
       "signature": "sys.symconfig([dict_or_default])"
     },

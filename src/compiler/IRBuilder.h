@@ -85,6 +85,7 @@ private:
     void declareVariable(const std::string& name, IRNode* value);
     
     IRNode* getLocalNode(const std::string& name);
+    IRNode* createCFGNode(IROp op);
     int resolveUpvalue(const std::string& name, bool isCapturedState = false);
 
     struct IRLoopInfo {

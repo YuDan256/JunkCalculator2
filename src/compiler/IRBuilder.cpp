@@ -201,6 +201,12 @@ IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunctio
     pushScope(); // 压入顶层作用域
 }
 
+IRNode* IRBuilder::createCFGNode(IROp op) {
+    IRNode* node = graph->createNode(op);
+    currentControl = node;
+    return node;
+}
+
 IRNode* IRBuilder::getLocalNode(const std::string& name) {
     for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
         auto it = envStack[i].find(name);
@@ -372,14 +378,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             isUninit->addData(getVal);
             isUninit->setControl(currentSeq);
             
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->addData(isUninit);
             ifNode->setControl(currentSeq);
             
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             
             auto baseEnv = envStack;
@@ -392,7 +398,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             currentSeq = ifFalse;
             auto falseEnv = baseEnv;
             
-            IRNode* merge = graph->createNode(IROp::Merge);
+            IRNode* merge = createCFGNode(IROp::Merge);
             merge->addData(trueCtrl);
             merge->addData(ifFalse);
             
@@ -437,14 +443,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             matchNode->addData(valueNode);
             matchNode->addData(typeNode);
 
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(matchNode);
 
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
 
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             failMerge->addData(ifFalse);
 
@@ -465,14 +471,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         isUninit->setControl(currentSeq);
         isUninit->addData(valNode);
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(isUninit);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         
         currentSeq = ifTrue;
@@ -480,7 +486,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         IRNode* defVal = lastValue;
         IRNode* trueCtrl = currentSeq;
         
-        IRNode* merge = graph->createNode(IROp::Merge);
+        IRNode* merge = createCFGNode(IROp::Merge);
         merge->addData(trueCtrl);
         merge->addData(ifFalse);
         
@@ -498,15 +504,15 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         isUninit->setControl(currentSeq);
         isUninit->addData(valNode);
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(isUninit);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         failMerge->addData(ifTrue);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         currentSeq = ifFalse;
 
@@ -541,14 +547,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         eqNode->addData(valNode);
         eqNode->addData(lastValue);
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(eqNode);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
@@ -674,14 +680,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             eqNode->addData(valNode);
             eqNode->addData(lastValue);
             
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(eqNode);
             
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             failMerge->addData(ifFalse);
             
@@ -700,14 +706,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         eqNode->addData(valNode);
         eqNode->addData(lastValue);
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(eqNode);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
@@ -751,14 +757,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         shapeNode->payload4 = maxCols;
         shapeNode->payload5 = 2; // exactMask = 2 (1D pattern)
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(shapeNode);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
@@ -937,14 +943,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         shapeNode->payload4 = maxCols;
         shapeNode->payload5 = 0; // exactMask = 0 (2D pattern)
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(shapeNode);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
@@ -1135,14 +1141,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         toBool->setControl(currentSeq);
         toBool->addData(or2);
 
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(toBool);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
@@ -1227,7 +1233,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
     currentSeq = iterNode;
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -1243,7 +1249,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* exitControl = graph->createNode(IROp::Merge);
+    IRNode* exitControl = createCFGNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentSeq);
@@ -1254,35 +1260,35 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     exitControl->addData(ifTrue);
     auto exitEnvStack = envStack;
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
-    IRNode* failMerge = graph->createNode(IROp::Merge);
+    IRNode* failMerge = createCFGNode(IROp::Merge);
     buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
     
     auto envBeforeCond = envStack;
-    IRNode* condFailMerge = graph->createNode(IROp::Merge);
+    IRNode* condFailMerge = createCFGNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
-        IRNode* condIfNode = graph->createNode(IROp::If);
+        IRNode* condIfNode = createCFGNode(IROp::If);
         condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
-        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        IRNode* condIfTrue = createCFGNode(IROp::IfTrue);
         condIfTrue->setControl(condIfNode);
         
-        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        IRNode* condIfFalse = createCFGNode(IROp::IfFalse);
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
@@ -1354,7 +1360,7 @@ void IRBuilder::build(Expr* ast) {
     }
 
     if (currentSeq->op != IROp::Return && currentSeq->op != IROp::Throw && currentSeq->op != IROp::ThrowTyped) {
-        IRNode* retNode = graph->createNode(IROp::Return);
+        IRNode* retNode = createCFGNode(IROp::Return);
         retNode->setControl(currentSeq);
         retNode->addData(retVal);
         recordExitNode(retNode);
@@ -1505,19 +1511,19 @@ void IRBuilder::visitBinary(Binary* expr) {
         toBoolNode->setControl(currentSeq);
         toBoolNode->addData(leftVal);
         
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->setControl(currentSeq);
         ifNode->addData(toBoolNode);
         
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
         
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         
         auto baseEnv = envStack;
         
-        IRNode* mergeNode = graph->createNode(IROp::Merge);
+        IRNode* mergeNode = createCFGNode(IROp::Merge);
         IRNode* resultPhi = graph->createValueNode(IROp::Phi);
         resultPhi->setControl(mergeNode);
         
@@ -1708,14 +1714,14 @@ void IRBuilder::visitAssign(Assign* expr) {
         isUninit->addData(getVal);
         isUninit->setControl(currentSeq);
 
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->addData(isUninit);
         ifNode->setControl(currentSeq);
 
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
 
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
 
         auto baseEnv = envStack;
@@ -1734,7 +1740,7 @@ void IRBuilder::visitAssign(Assign* expr) {
         currentSeq = ifFalse;
         auto falseEnv = baseEnv;
 
-        IRNode* merge = graph->createNode(IROp::Merge);
+        IRNode* merge = createCFGNode(IROp::Merge);
         merge->addData(trueCtrl);
         merge->addData(ifFalse);
         
@@ -2073,14 +2079,14 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     IRNode* condVal = lastValue;
 
     // 2. 创建 If 控制节点
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
 
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
 
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
 
     // 3. 保存当前环境快照
@@ -2119,7 +2125,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     envStack = baseEnv;
 
     // 6. 创建 Merge 节点汇合控制流
-    IRNode* mergeNode = graph->createNode(IROp::Merge);
+    IRNode* mergeNode = createCFGNode(IROp::Merge);
     mergeNode->addData(thenControl);
     mergeNode->addData(elseControl);
     currentSeq = mergeNode;
@@ -2188,7 +2194,7 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
         currentSeq = assertNode;
     }
 
-    IRNode* retNode = graph->createNode(IROp::Return);
+    IRNode* retNode = createCFGNode(IROp::Return);
     retNode->setControl(currentSeq);
     retNode->addData(retVal);
     
@@ -2271,7 +2277,7 @@ void IRBuilder::visitListNode(ListNode* expr) {
 void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     pushScope(); // ★ 自动创建块级作用域
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -2287,21 +2293,21 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* breakMerge = graph->createNode(IROp::Merge);
-    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    IRNode* breakMerge = createCFGNode(IROp::Merge);
+    IRNode* continueMerge = createCFGNode(IROp::Merge);
     loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     
     auto envBeforeBody = envStack;
@@ -2369,7 +2375,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     pushScope(); // ★ 自动创建块级作用域
     expr->initializer->accept(*this);
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -2385,21 +2391,21 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* breakMerge = graph->createNode(IROp::Merge);
-    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    IRNode* breakMerge = createCFGNode(IROp::Merge);
+    IRNode* continueMerge = createCFGNode(IROp::Merge);
     loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     
     auto envBeforeBody = envStack;
@@ -2473,7 +2479,7 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
-        IRNode* tryEnd = graph->createNode(IROp::TryEnd);
+        IRNode* tryEnd = createCFGNode(IROp::TryEnd);
         tryEnd->setControl(currentSeq);
         currentSeq = tryEnd;
     }
@@ -2492,7 +2498,7 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
     loop.breakMerge->addData(currentSeq);
     loop.breakEnvs.push_back(envStack);
     
-    currentSeq = graph->createNode(IROp::Merge); // Dead code
+    currentSeq = createCFGNode(IROp::Merge); // Dead code
 }
 
 void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
@@ -2503,7 +2509,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
-        IRNode* tryEnd = graph->createNode(IROp::TryEnd);
+        IRNode* tryEnd = createCFGNode(IROp::TryEnd);
         tryEnd->setControl(currentSeq);
         currentSeq = tryEnd;
     }
@@ -2532,7 +2538,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
         }
     }
     
-    currentSeq = graph->createNode(IROp::Merge); // Dead code
+    currentSeq = createCFGNode(IROp::Merge); // Dead code
 }
     
 void IRBuilder::visitIndexAccess(IndexAccess* expr) {
@@ -3130,14 +3136,14 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             isUninit->setControl(currentSeq);
             isUninit->addData(paramNode);
             
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(isUninit);
             
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             
             auto baseEnv = envStack;
@@ -3159,7 +3165,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             
             envStack = baseEnv;
             
-            IRNode* merge = graph->createNode(IROp::Merge);
+            IRNode* merge = createCFGNode(IROp::Merge);
             merge->addData(trueCtrl);
             merge->addData(falseCtrl);
             
@@ -3247,12 +3253,12 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
             isUninit->setControl(currentSeq);
             isUninit->addData(paramNode);
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(isUninit);
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             auto baseEnv = envStack;
             currentSeq = ifTrue;
@@ -3269,7 +3275,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             auto falseEnv = envStack;
             envStack.pop_back();
             envStack = baseEnv;
-            IRNode* merge = graph->createNode(IROp::Merge);
+            IRNode* merge = createCFGNode(IROp::Merge);
             merge->addData(trueCtrl);
             merge->addData(falseCtrl);
             for (size_t envIdx = 0; envIdx < baseEnv.size(); ++envIdx) {
@@ -3527,7 +3533,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     currentSeq = iterNode;
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -3543,8 +3549,8 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* breakMerge = graph->createNode(IROp::Merge);
-    IRNode* continueMerge = graph->createNode(IROp::Merge);
+    IRNode* breakMerge = createCFGNode(IROp::Merge);
+    IRNode* continueMerge = createCFGNode(IROp::Merge);
     loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
@@ -3556,21 +3562,21 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     breakMerge->addData(ifTrue);
     loopStack.back().breakEnvs.push_back(envStack);
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     currentSeq = ifFalse;
     
     auto envBeforeBody = envStack;
-    IRNode* failMerge = graph->createNode(IROp::Merge);
+    IRNode* failMerge = createCFGNode(IROp::Merge);
     ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
     buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst, true);
     
@@ -3637,7 +3643,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
 void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
     expr->value->accept(*this);
     graph->currentLine = expr->keyword.line;
-    IRNode* throwNode = graph->createNode(IROp::Throw);
+    IRNode* throwNode = createCFGNode(IROp::Throw);
     throwNode->setControl(currentSeq);
     throwNode->addData(lastValue);
     recordExitNode(throwNode);
@@ -3646,7 +3652,7 @@ void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
 }
 
 void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
-    IRNode* tryBegin = graph->createNode(IROp::TryBegin);
+    IRNode* tryBegin = createCFGNode(IROp::TryBegin);
     tryBegin->setControl(currentSeq);
     // 裸 try：不需要异常对象，只需要失败后跳到 catch 块并得到 none。
     tryBegin->payload1 = expr->catchBranches.empty() ? 1 : 0;
@@ -3654,7 +3660,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     auto baseEnv = envStack;
 
     // 1. 正常分支
-    IRNode* tryBodyStart = graph->createNode(IROp::Merge);
+    IRNode* tryBodyStart = createCFGNode(IROp::Merge);
     tryBodyStart->addData(tryBegin);
     currentSeq = tryBodyStart;
 
@@ -3662,7 +3668,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     expr->tryBody->accept(*this);
     activeTryCount--;
     
-    IRNode* tryEnd = graph->createNode(IROp::TryEnd);
+    IRNode* tryEnd = createCFGNode(IROp::TryEnd);
     tryEnd->setControl(currentSeq);
     IRNode* normalControl = tryEnd;
     IRNode* normalVal = lastValue;
@@ -3678,7 +3684,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
     IRNode* subjectNode = errVal;
     
-    IRNode* endMerge = graph->createNode(IROp::Merge);
+    IRNode* endMerge = createCFGNode(IROp::Merge);
     IRNode* catchResultPhi = graph->createValueNode(IROp::Phi);
     catchResultPhi->setControl(endMerge);
     
@@ -3690,12 +3696,12 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
         envStack = baseEnv;
         pushScope(); // Branch scope
         
-        IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
-        IRNode* nextBranchMerge = graph->createNode(IROp::Merge);
+        IRNode* branchSuccessMerge = createCFGNode(IROp::Merge);
+        IRNode* nextBranchMerge = createCFGNode(IROp::Merge);
         
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> patEnvs;
         for (auto& pat : branch.patterns) {
-            IRNode* patFailMerge = graph->createNode(IROp::Merge);
+            IRNode* patFailMerge = createCFGNode(IROp::Merge);
             auto envBefore = envStack;
             buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false); // ★ 软匹配
             patEnvs.push_back(envStack);
@@ -3727,12 +3733,12 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
         currentSeq = branchSuccessMerge;
         if (branch.guard) {
             branch.guard->accept(*this);
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(lastValue);
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             nextBranchMerge->addData(ifFalse);
             currentSeq = ifTrue;
@@ -3751,7 +3757,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     currentSeq = currentFailControl;
     envStack = baseEnv;
     pushScope();
-    IRNode* throwNode = graph->createNode(IROp::Throw);
+    IRNode* throwNode = createCFGNode(IROp::Throw);
     throwNode->setControl(currentSeq);
     throwNode->addData(errVal);
     recordExitNode(throwNode);
@@ -3785,7 +3791,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     auto catchEnv = envStack;
 
     // 3. 汇合
-    IRNode* mergeNode = graph->createNode(IROp::Merge);
+    IRNode* mergeNode = createCFGNode(IROp::Merge);
     mergeNode->addData(normalControl);
     mergeNode->addData(catchControl);
     currentSeq = mergeNode;
@@ -4708,17 +4714,17 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         isUninit->addData(getVal);
         isUninit->setControl(currentSeq);
             
-        IRNode* ifNode = graph->createNode(IROp::If);
+        IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->addData(isUninit);
         ifNode->setControl(currentSeq);
             
-        IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
             
-        IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
             
-        skipMerge = graph->createNode(IROp::Merge);
+        skipMerge = createCFGNode(IROp::Merge);
         skipMerge->addData(ifFalse);
             
         currentSeq = ifTrue;
@@ -4731,7 +4737,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         envStack[hv.second.first][hv.first] = hv.second.second;
     }
 
-    IRNode* failMerge = graph->createNode(IROp::Merge);
+    IRNode* failMerge = createCFGNode(IROp::Merge);
     
     ScopeModifier mod = ScopeModifier::None;
     if (expr->isLocal) mod = ScopeModifier::Local;
@@ -4741,7 +4747,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
     
     if (!failMerge->dataInputs.empty()) {
-        IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
+        IRNode* throwNode = createCFGNode(IROp::ThrowTyped);
         throwNode->setControl(failMerge);
         IRNode* errStr = graph->createConstant(Value("Destructuring pattern match failed."));
         errStr->setControl(failMerge);
@@ -4889,7 +4895,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
     currentSeq = iterNode;
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -4905,7 +4911,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* exitControl = graph->createNode(IROp::Merge);
+    IRNode* exitControl = createCFGNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentSeq);
@@ -4916,35 +4922,35 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     exitControl->addData(ifTrue);
     auto exitEnvStack = envStack;
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
-    IRNode* failMerge = graph->createNode(IROp::Merge);
+    IRNode* failMerge = createCFGNode(IROp::Merge);
     buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
     
     auto envBeforeCond = envStack;
-    IRNode* condFailMerge = graph->createNode(IROp::Merge);
+    IRNode* condFailMerge = createCFGNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
-        IRNode* condIfNode = graph->createNode(IROp::If);
+        IRNode* condIfNode = createCFGNode(IROp::If);
         condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
-        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        IRNode* condIfTrue = createCFGNode(IROp::IfTrue);
         condIfTrue->setControl(condIfNode);
         
-        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        IRNode* condIfFalse = createCFGNode(IROp::IfFalse);
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
@@ -5015,7 +5021,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
     currentSeq = iterNode;
     
-    IRNode* loopNode = graph->createNode(IROp::Loop);
+    IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
@@ -5031,7 +5037,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     envStack = loopPhisStack;
     currentSeq = loopNode;
     
-    IRNode* exitControl = graph->createNode(IROp::Merge);
+    IRNode* exitControl = createCFGNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     nextNode->setControl(currentSeq);
@@ -5042,35 +5048,35 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
-    IRNode* ifNode = graph->createNode(IROp::If);
+    IRNode* ifNode = createCFGNode(IROp::If);
     ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
-    IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+    IRNode* ifTrue = createCFGNode(IROp::IfTrue);
     ifTrue->setControl(ifNode);
     exitControl->addData(ifTrue);
     auto exitEnvStack = envStack;
     
-    IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+    IRNode* ifFalse = createCFGNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
     currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
-    IRNode* failMerge = graph->createNode(IROp::Merge);
+    IRNode* failMerge = createCFGNode(IROp::Merge);
     buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
     
     auto envBeforeCond = envStack;
-    IRNode* condFailMerge = graph->createNode(IROp::Merge);
+    IRNode* condFailMerge = createCFGNode(IROp::Merge);
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
-        IRNode* condIfNode = graph->createNode(IROp::If);
+        IRNode* condIfNode = createCFGNode(IROp::If);
         condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
-        IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
+        IRNode* condIfTrue = createCFGNode(IROp::IfTrue);
         condIfTrue->setControl(condIfNode);
         
-        IRNode* condIfFalse = graph->createNode(IROp::IfFalse);
+        IRNode* condIfFalse = createCFGNode(IROp::IfFalse);
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
@@ -5300,7 +5306,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     expr->subject->accept(*this);
     IRNode* subjectNode = lastValue;
     
-    IRNode* endMerge = graph->createNode(IROp::Merge);
+    IRNode* endMerge = createCFGNode(IROp::Merge);
     IRNode* resultPhi = graph->createValueNode(IROp::Phi);
     resultPhi->setControl(endMerge);
     
@@ -5313,12 +5319,12 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         envStack = baseEnv;
         pushScope(); // Scope for branch
         
-        IRNode* branchSuccessMerge = graph->createNode(IROp::Merge);
-        IRNode* nextBranchMerge = graph->createNode(IROp::Merge);
+        IRNode* branchSuccessMerge = createCFGNode(IROp::Merge);
+        IRNode* nextBranchMerge = createCFGNode(IROp::Merge);
         
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> patEnvs;
         for (auto& pat : branch.patterns) {
-            IRNode* patFailMerge = graph->createNode(IROp::Merge);
+            IRNode* patFailMerge = createCFGNode(IROp::Merge);
             
             auto envBefore = envStack;
             buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false);
@@ -5353,14 +5359,14 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         currentSeq = branchSuccessMerge;
         if (branch.guard) {
             branch.guard->accept(*this);
-            IRNode* ifNode = graph->createNode(IROp::If);
+            IRNode* ifNode = createCFGNode(IROp::If);
             ifNode->setControl(currentSeq);
             ifNode->addData(lastValue);
             
-            IRNode* ifTrue = graph->createNode(IROp::IfTrue);
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             
-            IRNode* ifFalse = graph->createNode(IROp::IfFalse);
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             nextBranchMerge->addData(ifFalse);
             
@@ -5395,7 +5401,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     concatNode->payload1 = 2;
     currentSeq = concatNode;
     
-    IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
+    IRNode* throwNode = createCFGNode(IROp::ThrowTyped);
     throwNode->setControl(currentSeq);
     throwNode->addData(concatNode);
     IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));

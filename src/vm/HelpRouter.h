@@ -757,8 +757,9 @@ namespace jc {
             if (!subtopics.empty()) {
                 o << "  " << paint(Ansi::BRIGHT_CYAN, "Subtopics") << "\n";
                 for (const CNode* c : subtopics) {
-                    o << "    " << c->path;
-                    o << (c->path.size() < 22 ? std::string(22 - c->path.size(), ' ') : "  ");
+                    std::string label = lastSeg(c->path);
+                    o << "    " << label;
+                    o << (label.size() < 22 ? std::string(22 - label.size(), ' ') : "  ");
                     o << truncate(childSummary(ix, *c), 62) << "\n";
                 }
                 o << "\n";
@@ -923,7 +924,7 @@ namespace jc {
                     for (const auto& cid : n.children) {
                         auto ci = ix.cat.find(cid);
                         if (ci == ix.cat.end()) continue;
-                        labels.push_back(ci->second.path);
+                        labels.push_back(lastSeg(ci->second.path));
                     }
                     for (size_t i = 0; i < labels.size(); ++i) { if (i) o << ", "; o << labels[i]; }
                     o << "\n";

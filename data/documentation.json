@@ -8436,24 +8436,24 @@
         {
           "title": "Dunders",
           "auto": "dunders"
-        }
-      ]
-    },
-    {
-      "title": "Directives",
-      "summary": "Compile-time # directives and toolchain switches.",
-      "children": [
-        {
-          "ref": "topic.directives"
         },
         {
-          "ref": "topic.directives.version"
-        },
-        {
-          "ref": "topic.directives.warning"
-        },
-        {
-          "ref": "topic.directives.error"
+          "title": "directives",
+          "ref": "topic.directives",
+          "children": [
+            {
+              "title": "version",
+              "ref": "topic.directives.version"
+            },
+            {
+              "title": "warning",
+              "ref": "topic.directives.warning"
+            },
+            {
+              "title": "error",
+              "ref": "topic.directives.error"
+            }
+          ]
         }
       ]
     },

@@ -4181,7 +4181,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     namespaceScopeDepth = static_cast<int>(envStack.size());
     pushScope();
 
-    IRNode* nsBegin = graph->createNode(IROp::NamespaceBegin);
+    IRNode* nsBegin = graph->createValueNode(IROp::NamespaceBegin);
     link(nsBegin);
 
     auto savedLocalVars = currentLocalVars;
@@ -4190,12 +4190,11 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     currentConstVars.clear();
     namespaceMemberScopes.emplace_back();
     
-    IRNode* nsSelfNode = graph->createNode(IROp::Nop);
-    declareVariable("<namespace>", nsSelfNode);
+    declareVariable("<namespace>", nsBegin);
     currentLocalVars.insert("<namespace>");
     currentConstVars.insert("<namespace>");
     if (!expr->name.lexeme.empty()) {
-        declareVariable(expr->name.lexeme, nsSelfNode);
+        declareVariable(expr->name.lexeme, nsBegin);
         currentLocalVars.insert(expr->name.lexeme);
         currentConstVars.insert(expr->name.lexeme);
     }
@@ -4279,15 +4278,8 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     }
     
     nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
+    nsNode->dataInputs.insert(nsNode->dataInputs.begin(), nsBegin);
     currentSeq = nsNode;
-    
-    nsSelfNode->forwarding = nsNode;
-    for (auto& nPtr : graph->getNodes()) {
-        IRNode* n = nPtr.get();
-        for (auto& din : n->dataInputs) {
-            if (din == nsSelfNode) din = nsNode;
-        }
-    }
     
     lastValue = nsNode;
     if (!namespaceMemberScopes.empty() && !expr->name.lexeme.empty() &&

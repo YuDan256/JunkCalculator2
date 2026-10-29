@@ -7875,6 +7875,7 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::NAMESPACE_BEGIN: {
                 ObjNamespace* pending = GcHeap::get().allocate<ObjNamespace>();
+                getReg(a) = Value(pending);
                 exportNamespaceStack.push_back(pending);
                 break;
             }
@@ -7889,7 +7890,10 @@ Value VM::run(int targetFrameDepth) {
                     pendingExports = exportNamespaceStack.back();
                     exportNamespaceStack.pop_back();
                 }
-                ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
+                Value existingNs = getReg(a);
+                ObjNamespace* ns = existingNs.isObjType(ObjType::NAMESPACE)
+                    ? static_cast<ObjNamespace*>(existingNs.asObj())
+                    : GcHeap::get().allocate<ObjNamespace>();
                 getReg(a) = Value(ns); // ★ 立即 Root 防止 GC 误杀
                 ns->name = nsName;
                 

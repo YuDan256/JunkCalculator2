@@ -1,0 +1,18 @@
+import @macros
+
+result = ""
+
+@windows {
+    result = "windows"
+}
+
+@linux {
+    result = "linux"
+}
+
+@macos {
+    result = "macos"
+}
+
+assert(result != "", "selected platform branch")
+print("platform macros battery OK")

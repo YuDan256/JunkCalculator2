@@ -1,0 +1,25 @@
+// JC2 macro package: import @macros
+// Platform-gated blocks. Unselected bodies are not parsed into AST.
+syntax windows(stream) = {
+    import sys
+    if (sys.platform() == "windows") {
+        return stream.parse()
+    }
+    return quote { none }
+}
+
+syntax linux(stream) = {
+    import sys
+    if (sys.platform() == "linux") {
+        return stream.parse()
+    }
+    return quote { none }
+}
+
+syntax macos(stream) = {
+    import sys
+    if (sys.platform() == "macos") {
+        return stream.parse()
+    }
+    return quote { none }
+}

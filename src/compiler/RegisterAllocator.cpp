@@ -106,10 +106,16 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             if (visited.count(n)) return;
             if (visiting.count(n)) return;
             visiting.insert(n);
+            auto sameBlock = [&](IRNode* in) {
+                IRNode* owner = in->controlInput;
+                while (owner && !nodeToBB.count(owner)) owner = owner->controlInput;
+                return owner && nodeToBB[owner] == bb.get();
+            };
+            if (n->seqPrev && !isControlSpine(n->seqPrev->op) && sameBlock(n->seqPrev)) {
+                dfs(n->seqPrev);
+            }
             for (IRNode* in : n->dataInputs) {
-                if (in && !isControlSpine(in->op) && in->op != IROp::Phi && in->controlInput == bb->controlNode) {
-                    dfs(in);
-                }
+                if (in && !isControlSpine(in->op) && in->op != IROp::Phi && sameBlock(in)) dfs(in);
             }
             visiting.erase(n);
             visited.insert(n);

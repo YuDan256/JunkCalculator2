@@ -291,3 +291,18 @@ IFDIFF then seq=SetProperty id=27 ctl=IfFalse id=23
 因此 If 迁移必须与 isControlSpine 收缩、数据节点 owner 解析一起做，
 不能单独先改 Merge 边。
 
+## 诊断记录（Round 6）
+
+尝试 shrink + owner 解析 + Merge 边改 currentControl，并给块内指令加
+stable_sort(id)：
+
+- 最小 (x)=x*2 仍出现 Unimplemented opcode；
+- 数学测试出现 Expected a string / Target is not callable。
+
+结论：块内顺序不能靠 id 排序恢复。RegisterAllocator 目前依赖
+isControlSpine 中的副作用节点作为隐式顺序边界；收缩 spine 必须同时引入
+显式的“前一指令”依赖，否则数据节点会被排到错误位置。
+
+下一步需要给 IRNode 增加序列边（或等价的 scheduler 输入），而不是继续
+在 spine 列表和 Merge 边上局部调整。
+

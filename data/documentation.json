@@ -3873,6 +3873,9 @@
       "    #version >= 2.6.4.0",
       "    #version == 2.6.4.0",
       "",
+      "  #platform windows|linux|macos",
+      "    Require the current host platform; otherwise compilation fails.",
+      "",
       "  #warning \"text\"",
       "    Print a compile-time warning and continue.",
       "",
@@ -3907,6 +3910,16 @@
       "  Abort compilation with ParserError and the given message.",
       "",
       "  #error \"unsupported target\""
+    ],
+    "directives.platform": [
+      "#platform windows|linux|macos",
+      "",
+      "  Require the current host platform before parsing the file.",
+      "  The directive fails on any other platform.",
+      "",
+      "  #platform windows",
+      "  #platform linux",
+      "  #platform macos"
     ]
   },
   "global_functions": {
@@ -8452,6 +8465,10 @@
             {
               "title": "error",
               "ref": "topic.directives.error"
+            },
+            {
+              "title": "platform",
+              "ref": "topic.directives.platform"
             }
           ]
         }

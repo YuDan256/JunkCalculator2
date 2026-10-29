@@ -218,11 +218,33 @@ static std::string directiveMessage(const std::string& raw) {
     return text;
 }
 
+static std::string currentPlatformName() {
+#if defined(_WIN32)
+    return "windows";
+#elif defined(__APPLE__)
+    return "macos";
+#else
+    return "linux";
+#endif
+}
+
 static void processDirectives(const std::vector<jc::Directive>& directives, const std::string& sourceFile) {
     for (const auto& d : directives) {
         if (d.name == "!") continue;  // Shebang，no-op
         if (d.name == "version") {
             requireVersion(d.args, sourceFile);
+            continue;
+        }
+        if (d.name == "platform") {
+            std::string required = trimDirectiveArg(d.args);
+            if (required != "windows" && required != "linux" && required != "macos") {
+                JC2_THROW(ParserError, "#platform expects windows, linux, or macos, got '" + required + "'.");
+            }
+            std::string current = currentPlatformName();
+            if (required != current) {
+                JC2_THROW(ParserError, "#platform requires " + required + "; running " + current +
+                           " (" + sourceFile + ":" + std::to_string(d.line) + ")");
+            }
             continue;
         }
         if (d.name == "warning") {

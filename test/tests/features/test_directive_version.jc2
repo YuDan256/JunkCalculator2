@@ -1,0 +1,6 @@
+#version >= 2.6.4.0
+#version 2.6.4.0
+#version == 2.6.4.0
+
+assert(true, "version directives accepted")
+print("version directive battery OK")

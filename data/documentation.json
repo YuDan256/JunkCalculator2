@@ -3859,6 +3859,21 @@
       "  ──────────────────────",
       "    • Code inside `@syntax_macro { ... }` is preserved exactly as written,",
       "      ensuring custom DSLs (Domain Specific Languages) are not destroyed."
+    ],
+    "directives": [
+      "═══ Compile-time directives ═══",
+      "",
+      "  Directives occupy the whole line and start with # at line start.",
+      "  They configure the compiler/VM; they are not a text preprocessor.",
+      "",
+      "  #version [op] <version>",
+      "    Require an engine version. op is one of >= > == <= <; default is >=.",
+      "    Missing components are treated as 0: 2.6 == 2.6.0.0.",
+      "",
+      "    #version >= 2.6.4.0",
+      "    #version == 2.6.4.0",
+      "",
+      "  Unknown directives and invalid versions are compile errors."
     ]
   },
   "global_functions": {

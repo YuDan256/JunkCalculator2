@@ -143,10 +143,79 @@ bool g_showNone = false;
 bool g_silentRepl = false;
 bool g_enableJit = false;
 
-// ★ 消费编译器/VM 指令（行首 # 开头）。注册表：'!' 是 Shebang，no-op。
-static void processDirectives(const std::vector<jc::Directive>& directives) {
+// ★ 消费编译器/VM 指令（行首 # 开头）。
+static std::string trimDirectiveArg(const std::string& s) {
+    size_t a = 0, b = s.size();
+    while (a < b && std::isspace(static_cast<unsigned char>(s[a]))) ++a;
+    while (b > a && std::isspace(static_cast<unsigned char>(s[b - 1]))) --b;
+    return s.substr(a, b - a);
+}
+
+static std::vector<long long> parseVersionParts(const std::string& text) {
+    std::vector<long long> parts;
+    size_t start = 0;
+    while (start <= text.size()) {
+        size_t dot = text.find('.', start);
+        std::string seg = text.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+        if (seg.empty()) return {};
+        for (char c : seg) if (!std::isdigit(static_cast<unsigned char>(c))) return {};
+        try { parts.push_back(std::stoll(seg)); } catch (...) { return {}; }
+        if (dot == std::string::npos) break;
+        start = dot + 1;
+    }
+    return parts;
+}
+
+static int compareVersions(const std::vector<long long>& a, const std::vector<long long>& b) {
+    size_t n = std::max(a.size(), b.size());
+    for (size_t i = 0; i < n; ++i) {
+        long long av = i < a.size() ? a[i] : 0;
+        long long bv = i < b.size() ? b[i] : 0;
+        if (av < bv) return -1;
+        if (av > bv) return 1;
+    }
+    return 0;
+}
+
+static void requireVersion(const std::string& rawArgs, const std::string& sourceFile) {
+    std::string spec = trimDirectiveArg(rawArgs);
+    std::string op = ">=";
+    for (const char* candidate : {">=", "<=", "==", ">", "<", "="}) {
+        size_t n = std::strlen(candidate);
+        if (spec.compare(0, n, candidate) == 0) {
+            op = candidate;
+            spec = trimDirectiveArg(spec.substr(n));
+            break;
+        }
+    }
+    if (spec.empty()) {
+        JC2_THROW(ParserError, "#version expects a version, e.g. #version >= 2.6.4.0.");
+    }
+    auto required = parseVersionParts(spec);
+    auto current = parseVersionParts(jc::VERSION);
+    if (required.empty() || current.empty()) {
+        JC2_THROW(ParserError, "#version expects a numeric version, got '" + spec + "'.");
+    }
+    int cmp = compareVersions(current, required);
+    bool ok = false;
+    if (op == ">=") ok = cmp >= 0;
+    else if (op == ">") ok = cmp > 0;
+    else if (op == "==" || op == "=") ok = cmp == 0;
+    else if (op == "<=") ok = cmp <= 0;
+    else if (op == "<") ok = cmp < 0;
+    if (!ok) {
+        JC2_THROW(ParserError, "#version requires " + op + " " + spec +
+                   "; running " + jc::VERSION + " (" + sourceFile + ").");
+    }
+}
+
+static void processDirectives(const std::vector<jc::Directive>& directives, const std::string& sourceFile) {
     for (const auto& d : directives) {
         if (d.name == "!") continue;  // Shebang，no-op
+        if (d.name == "version") {
+            requireVersion(d.args, sourceFile);
+            continue;
+        }
         JC2_THROW(ParserError, "Unknown directive '#" + d.name + "'.");
     }
 }
@@ -155,7 +224,7 @@ static void processDirectives(const std::vector<jc::Directive>& directives) {
 jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool isFile = false) {
     jc::Lexer lexer(code, sourceFile);                       // ★
     auto tokens = lexer.tokenize();
-    processDirectives(lexer.directives);
+    processDirectives(lexer.directives, sourceFile);
     jc::Parser parser(tokens, sourceFile);                   // ★
     auto ast = parser.parse();
     
@@ -841,7 +910,7 @@ int main(int argc, char* argv[]) {
         try {
             jc::Lexer lexer(code, resolvedPath);
             auto tokens = lexer.tokenize();
-            processDirectives(lexer.directives);
+            processDirectives(lexer.directives, resolvedPath);
             jc::Parser parser(tokens, resolvedPath);
             auto ast = parser.parse();
             

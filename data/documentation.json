@@ -5442,6 +5442,7 @@
         "• `namespace r\"Display Name\" { ... }` is accepted; f-strings are rejected as names.",
         "• `namespace \"Display Name\" { ... }` names it without binding; assign the result to keep it: `ns = namespace \"Display Name\" { ... }`.",
         "• `namespace { ... }` is anonymous (prints `<anonymous namespace>`).",
+        "• Inside a named namespace body, the namespace name is a const self-binding; `A = 1` inside `namespace A` is an error, not a new member. Use a different member name.",
         "• Inside a namespace block, bare `namespace` evaluates to that namespace object itself.",
         "• `local` members are private; `const` members are exported immutable.",
         "",

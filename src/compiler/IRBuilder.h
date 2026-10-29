@@ -149,6 +149,11 @@ public:
     std::unordered_map<std::string, IRNode*> classValueNodes;
     std::unordered_map<std::string, IRNode*> namedValueNodes;
 
+    struct NamespaceMemberScope {
+        std::unordered_map<std::string, IRNode*> members;
+    };
+    std::vector<NamespaceMemberScope> namespaceMemberScopes;
+
     // 宏定义等 VM 内部生成的 AST 编译时置 true，跳过 <...> 保留名检查（<macro_temp_xxx> 等）。
     bool allowInternalNames = false;
 

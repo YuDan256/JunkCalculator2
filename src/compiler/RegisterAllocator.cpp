@@ -563,6 +563,17 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     }
 
     // 9. 插入 FreeReg 指令以帮助 GC 及时回收死对象
+    // BuildNamespace 的字段 target 仍会在后续块被读取；这些物理寄存器不能提前清空。
+    std::unordered_set<int> namespaceTargetRegs;
+    for (auto& nodePtr : graph->getNodes()) {
+        if (nodePtr->op != IROp::BuildNamespace) continue;
+        for (size_t i = nodePtr->payload1 * 3; i < nodePtr->dataInputs.size(); ++i) {
+            IRNode* target = nodePtr->dataInputs[i];
+            if (target && target->virtualReg != -1 && color[target->virtualReg] != -1) {
+                namespaceTargetRegs.insert(color[target->virtualReg]);
+            }
+        }
+    }
     for (size_t i = 0; i < blocks.size(); ++i) {
         auto& bb = blocks[i];
         
@@ -621,6 +632,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         }
         
         for (int p : deadRegs) {
+            if (namespaceTargetRegs.count(p)) continue;
             IRNode* freeNode = graph->createNode(IROp::FreeReg);
             freeNode->physicalReg = p;
             freeNode->setControl(cNode);

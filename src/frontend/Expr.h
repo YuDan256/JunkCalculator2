@@ -643,6 +643,7 @@ struct ExportExpr;
         std::unique_ptr<Expr> body;
         // ★ 名字用字符串字面量给出时（namespace "N" {...}）只命名、不绑定变量
         bool bindsVariable = true;
+        bool isLocalBinding = false;
         NamespaceDecl(Token name, std::unique_ptr<Expr> body)
             : name(std::move(name)), body(std::move(body)) {
         }

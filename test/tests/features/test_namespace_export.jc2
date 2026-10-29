@@ -12,4 +12,10 @@ namespace O {
 }
 assert(O.I.x == 3, "nested namespace export")
 
+namespace C {
+    export namespace D { e = 1 }
+}
+assert(C.e == 1, "export named namespace contents")
+assert(C.D.e == 1, "export named namespace binding")
+
 print("namespace export battery OK")

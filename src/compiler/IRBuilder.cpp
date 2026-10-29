@@ -1770,6 +1770,9 @@ void IRBuilder::visitAssign(Assign* expr) {
         return;
     }
 
+    if (auto* named = dynamic_cast<NamespaceDecl*>(expr->value.get())) {
+        named->isLocalBinding = expr->isLocal;
+    }
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
 
@@ -4162,9 +4165,12 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
 
     IRNode* nsBegin = graph->createNode(IROp::NamespaceBegin);
     nsBegin->setControl(currentControl);
-    
+
+    auto savedLocalVars = currentLocalVars;
+    auto savedConstVars = currentConstVars;
     currentLocalVars.clear();
     currentConstVars.clear();
+    namespaceMemberScopes.emplace_back();
     
     IRNode* nsSelfNode = graph->createNode(IROp::Nop);
     declareVariable("<namespace>", nsSelfNode);
@@ -4189,6 +4195,8 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     std::vector<IRNode*> exportedNodes;
     std::vector<bool> exportedConsts;
     
+    // 1) 普通字段来自当前 namespace 作用域的 env，排除显式 local。
+    std::unordered_set<std::string> collected;
     for (const auto& [k, v] : envStack.back()) {
         if (currentLocalVars.count(k)) continue;
         IRNode* target = v;
@@ -4205,12 +4213,23 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
                 }
             }
         }
+        auto mit = namespaceMemberScopes.back().members.find(k);
+        if (mit != namespaceMemberScopes.back().members.end()) target = mit->second;
         exportedKeys.push_back(k);
         exportedNodes.push_back(target);
         exportedConsts.push_back(currentConstVars.count(k) > 0);
         capturedNodesToExtend.push_back(target);
+        collected.insert(k);
     }
-    
+    for (const auto& [k, target] : namespaceMemberScopes.back().members) {
+        if (collected.count(k)) continue;
+        exportedKeys.push_back(k);
+        exportedNodes.push_back(target);
+        exportedConsts.push_back(false);
+        capturedNodesToExtend.push_back(target);
+    }
+
+    namespaceMemberScopes.pop_back();
     popScope();
     namespaceScopeDepth = prevNamespaceDepth;
     
@@ -4253,6 +4272,12 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     }
     
     lastValue = nsNode;
+    if (!namespaceMemberScopes.empty() && !expr->name.lexeme.empty() &&
+        !expr->isLocalBinding && expr->bindsVariable) {
+        namespaceMemberScopes.back().members[expr->name.lexeme] = nsNode;
+    }
+    currentLocalVars = std::move(savedLocalVars);
+    currentConstVars = std::move(savedConstVars);
 }
     
 void IRBuilder::visitDotAccess(DotAccess* expr) {

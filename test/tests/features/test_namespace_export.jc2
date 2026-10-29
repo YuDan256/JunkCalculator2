@@ -19,3 +19,12 @@ assert(C.e == 1, "include named namespace contents")
 assert(C.D.e == 1, "include named namespace binding")
 
 print("namespace include battery OK")
+
+f(flag) = {
+    if (flag) include namespace { x = 1 }
+    else include namespace { y = 2 }
+}
+namespace C { f(true) }
+assert(C.x == 1, "conditional include true branch")
+namespace D { f(false) }
+assert(D.y == 2, "conditional include false branch")

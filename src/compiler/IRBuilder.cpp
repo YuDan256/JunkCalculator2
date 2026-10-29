@@ -2091,6 +2091,9 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     pushScope(); // ★ 自动创建块级作用域
     expr->thenBranch->accept(*this);
     IRNode* thenControl = currentControl;
+    while (thenControl && (thenControl->op == IROp::Export || thenControl->op == IROp::Import)) {
+        thenControl = thenControl->controlInput;
+    }
     IRNode* thenVal = lastValue;
     auto thenEnv = envStack;
     popScope();
@@ -2108,6 +2111,9 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
         elseVal->setControl(currentControl);
     }
     IRNode* elseControl = currentControl;
+    while (elseControl && (elseControl->op == IROp::Export || elseControl->op == IROp::Import)) {
+        elseControl = elseControl->controlInput;
+    }
     auto elseEnv = envStack;
     popScope();
     envStack = baseEnv;

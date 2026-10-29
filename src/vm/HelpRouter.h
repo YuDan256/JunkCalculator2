@@ -643,6 +643,9 @@ namespace jc {
         static std::string renderNode(const Index& ix, const HNode& n) {
             std::ostringstream o;
             if (n.kind == "topic") {
+                if (n.display.find('.') != std::string::npos) {
+                    o << paint(Ansi::BRIGHT_CYAN, breadcrumb(n.display)) << "\n\n";
+                }
                 o << n.body;
                 if (!n.body.empty() && n.body.back() != '\n') o << "\n";
                 if (hasChildren(ix, n.id)) {

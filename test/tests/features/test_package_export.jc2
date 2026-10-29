@@ -1,8 +1,8 @@
 p = import "../../fixtures/pkgexport"
-assert(p.value == 42, "export import merges members")
-assert(p.ret is none, "export returns none")
+assert(p.value == 42, "include import merges members")
+assert(p.ret is none, "include returns none")
 
 c = import "../../fixtures/pkgcaller"
-assert(c.value == 7, "export targets current module, not defining module")
+assert(c.value == 7, "include targets current module, not defining module")
 
-print("package export battery OK")
+print("package include battery OK")

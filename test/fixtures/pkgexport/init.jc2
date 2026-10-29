@@ -1,2 +1,2 @@
-export import "./inner"
-ret = export import "./inner"
+include import "./inner"
+ret = include import "./inner"

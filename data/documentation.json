@@ -3789,15 +3789,15 @@
       "      const local lib = copy(import \"lib\", true)",
       "    This deep-copies the namespace and freezes only your own copy.",
       "",
-      "  Export",
+      "  Include",
       "  ──────────────────────",
-      "    export import \"./plot.dll\"",
+      "    include import \"./plot.dll\"",
       "    n = import \"./extra\"",
-      "    export n",
+      "    include n",
       "",
-      "    Merges a namespace into the current module/package namespace and returns none.",
+      "    Includes a namespace into the current module/package namespace and returns none.",
       "    It can run anywhere; the target is the current execution context, not the",
-      "    function's defining module. Conflicts are errors; repeated exports are idempotent."
+      "    function's defining module. Conflicts are errors; repeated includes are idempotent."
     ],
     "fmt": [
       "═══ Code Formatting (jc2 fmt) ═══",
@@ -5891,20 +5891,20 @@
         "defer file.close()"
       ]
     },
-    "export": {
-      "signature": "export import \"path\"  |  export namespace",
+    "include": {
+      "signature": "include import \"path\"  |  include namespace",
       "desc": [
-        "Merges the members of a namespace into the current module/package namespace.",
-        "`export import \"...\"` imports and exports in one step without creating a variable.",
-        "The result is `none`; `x = export ...` simply stores `none`.",
-        "Export targets the namespace currently being executed, so a function exports",
+        "Includes the members of a namespace into the current namespace.",
+        "`include import \"...\"` imports and includes in one step without creating a variable.",
+        "The result is `none`; `x = include ...` simply stores `none`.",
+        "Include targets the namespace currently being executed, so a function includes",
         "into whichever module calls it; it does not capture its defining module.",
-        "Conflicting members raise an error; exporting the same namespace twice is idempotent."
+        "Conflicting members raise an error; including the same namespace twice is idempotent."
       ],
       "examples": [
-        "export import \"./plot.dll\"",
+        "include import \"./plot.dll\"",
         "n = import \"./extra\"",
-        "export n"
+        "include n"
       ]
     }
   },

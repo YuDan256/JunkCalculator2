@@ -161,7 +161,7 @@ enum class OpCode : uint8_t {
 
     // 模块导入
     IMPORT,         // R(A) := import(R(B))
-    EXPORT,         // export R(B) into current module namespace; R(A) := none
+    EXPORT,         // include R(B) into current namespace; R(A) := none
 
     DEFER,          // defer(closure = R(A))
     RUN_DEFERS,     // run_defers(count = A)

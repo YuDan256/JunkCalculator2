@@ -1,21 +1,21 @@
 namespace A {
     a = 1
-    export namespace { b = 2 }
+    include namespace { b = 2 }
 }
 assert(A.a == 1, "namespace own member")
-assert(A.b == 2, "export into namespace")
+assert(A.b == 2, "include into namespace")
 
 namespace O {
     namespace I {
-        export namespace { x = 3 }
+        include namespace { x = 3 }
     }
 }
-assert(O.I.x == 3, "nested namespace export")
+assert(O.I.x == 3, "nested namespace include")
 
 namespace C {
-    export namespace D { e = 1 }
+    include namespace D { e = 1 }
 }
-assert(C.e == 1, "export named namespace contents")
-assert(C.D.e == 1, "export named namespace binding")
+assert(C.e == 1, "include named namespace contents")
+assert(C.D.e == 1, "include named namespace binding")
 
-print("namespace export battery OK")
+print("namespace include battery OK")

@@ -683,8 +683,8 @@
     "defer": {
       "signature": "defer expr"
     },
-    "export": {
-      "signature": "export import \"path\"  |  export namespace"
+    "include": {
+      "signature": "include import \"path\"  |  include namespace"
     }
   },
   "matrix_methods": {

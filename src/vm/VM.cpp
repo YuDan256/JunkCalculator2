@@ -8045,10 +8045,10 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value exported = getReg(b);
                 if (!exported.isObjType(ObjType::NAMESPACE)) {
-                    JC2_THROW(RuntimeError, "export expects a namespace.");
+                    JC2_THROW(RuntimeError, "include expects a namespace.");
                 }
                 if (exportNamespaceStack.empty()) {
-                    JC2_THROW(RuntimeError, "export: no current module namespace.");
+                    JC2_THROW(RuntimeError, "include: no current module namespace.");
                 }
                 mergeExportedNamespace(exportNamespaceStack.back(),
                                        static_cast<ObjNamespace*>(exported.asObj()));

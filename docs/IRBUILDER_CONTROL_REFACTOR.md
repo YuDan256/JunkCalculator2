@@ -306,3 +306,26 @@ isControlSpine 中的副作用节点作为隐式顺序边界；收缩 spine 必�
 下一步需要给 IRNode 增加序列边（或等价的 scheduler 输入），而不是继续
 在 spine 列表和 Merge 边上局部调整。
 
+## Round 8 决策：先加 scheduler 序列边
+
+前几轮证明：仅靠 controlInput 归属块 + id 排序无法恢复块内语义。
+下一阶段不要直接收缩 isControlSpine。
+
+建议先给 IRNode 增加显式序列字段：
+
+`cpp
+IRNode* seqPrev = nullptr;  // 仅用于调度，不参与数据/CFG
+`
+
+IRBuilder 在推进 currentSeq 时同步：
+
+`cpp
+node->seqPrev = currentSeq;
+currentSeq = node;
+`
+
+RegisterAllocator 的块内拓扑排序把 seqPrev 作为块内顺序依赖，但仍不把
+副作用节点升级为 CFG 块。等所有测试通过后，再收缩 isControlSpine。
+
+这样顺序与 CFG 解耦，不需要在每个创建点先判断 op 是否 CFG。
+

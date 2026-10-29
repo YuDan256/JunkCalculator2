@@ -1,0 +1,22 @@
+// A closure may capture a ref parameter and outlive the callee frame.
+make(ref x) = { () => x }
+
+a = 1
+f = make(a)
+a = 99
+assert(f() == 99, "global ref captured by closure")
+
+h() = {
+    local a = 1
+    local f = make(a)
+    a = 99
+    return f()
+}
+assert(h() == 99, "local ref captured by closure")
+
+f(ref x) = { x += 1 }
+b = 1
+f(b)
+assert(b == 2, "ref write-through")
+
+print("ref closure battery OK")

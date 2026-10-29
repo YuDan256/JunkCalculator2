@@ -333,6 +333,14 @@ public:
         clearAllGlobalICs();
     }
 
+    Value readUpvalue(ObjUpVal* uv) const {
+        return (uv && uv->isGlobalRef) ? globals[uv->globalSlot] : *uv->location;
+    }
+    void writeUpvalue(ObjUpVal* uv, const Value& val) {
+        if (uv && uv->isGlobalRef) globals[uv->globalSlot] = val;
+        else *uv->location = val;
+    }
+
     std::unordered_map<std::string, Value> getGlobals() const {
         std::unordered_map<std::string, Value> res;
         for (const auto& [k, v] : globalNames) res[k] = globals[v];

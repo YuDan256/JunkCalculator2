@@ -1358,6 +1358,8 @@ namespace jc {
         Value closed;
         int stackIndex = -1;
         ObjUpVal* nextOpen = nullptr;
+        bool isGlobalRef = false;
+        uint32_t globalSlot = 0;
         ObjUpVal() { type = ObjType::UPVALUE; }
         void clearTotal() override { closed = Value::none(); location = nullptr; }
     };

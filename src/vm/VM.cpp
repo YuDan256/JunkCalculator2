@@ -1060,7 +1060,8 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
                 registers[newFrame.refParamsBase + refIdx] = Value(providedRef);
             } else {
                 ObjUpVal* dummy = GcHeap::get().allocate<ObjUpVal>();
-                dummy->location = &registers[newFrame.registerBase + i];
+                dummy->closed = registers[newFrame.registerBase + i];
+                dummy->location = &dummy->closed;
                 registers[newFrame.refParamsBase + refIdx] = Value(dummy);
             }
             refIdx++;
@@ -5078,7 +5079,8 @@ Value VM::run(int targetFrameDepth) {
                         if (uv.isRef) {
                             if (uv.isLocal) {
                                 if (uv.isRefParam) {
-                                    closure->upvalues[i] = static_cast<ObjUpVal*>(getReg(frame->refParamsBase + uv.index).asObj());
+                                    closure->upvalues[i] = static_cast<ObjUpVal*>(
+                                        registers[frame->refParamsBase + uv.index].asObj());
                                 } else {
                                     closure->upvalues[i] = captureUpvalue(frame->registerBase + uv.index);
                                 }
@@ -5098,13 +5100,13 @@ Value VM::run(int targetFrameDepth) {
                                 dummy->closed = Value::uninit();
                             } else if (uv.isLocal) {
                                 if (uv.isRefParam) {
-                                    dummy->closed = *(static_cast<ObjUpVal*>(getReg(frame->refParamsBase + uv.index).asObj())->location);
+                                    dummy->closed = readUpvalue(static_cast<ObjUpVal*>(registers[frame->refParamsBase + uv.index].asObj()));
                                 } else {
                                     dummy->closed = getReg(uv.index);
                                 }
                             } else {
                                 if (frame->closure && uv.index < frame->closure->upvalueCount) {
-                                    dummy->closed = *(frame->closure->upvalues[uv.index]->location);
+                                    dummy->closed = readUpvalue(frame->closure->upvalues[uv.index]);
                                 } else if (uv.isGlobal) {
                                     dummy->closed = getGlobalChecked(uv.name);
                                 } else {
@@ -5239,7 +5241,7 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
                     errInvalidUpvalueIndex();
-                getReg(a) = *(frame->closure->upvalues[b]->location);
+                getReg(a) = readUpvalue(frame->closure->upvalues[b]);
                 break;
             }
             case OpCode::SET_UPVAL: {
@@ -5247,21 +5249,21 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
                     errInvalidUpvalueIndex();
-                *(frame->closure->upvalues[b]->location) = getReg(a);
+                writeUpvalue(frame->closure->upvalues[b], getReg(a));
                 break;
             }
             case OpCode::GET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 if (frame->refParamsBase == -1) errInvalidRefParamIndex();
-                getReg(a) = *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location);
+                getReg(a) = readUpvalue(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj()));
                 break;
             }
             case OpCode::SET_REF_PARAM: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();
                 if (frame->refParamsBase == -1) errInvalidRefParamIndex();
-                *(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj())->location) = getReg(a);
+                writeUpvalue(static_cast<ObjUpVal*>(registers[frame->refParamsBase + bx].asObj()), getReg(a));
                 break;
             }
             case OpCode::PASS_REFS: {
@@ -5287,7 +5289,8 @@ Value VM::run(int targetFrameDepth) {
                                 globalsDataPtr = globals.data();
                                 clearAllGlobalICs();
                             }
-                            upval->location = &globals[globalNames[name]];
+                            upval->isGlobalRef = true;
+                            upval->globalSlot = globalNames[name];
                             break;
                         }
                         case 2: {
@@ -8798,7 +8801,7 @@ uint64_t jc2_jit_get_ref_param(uint32_t bx) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     if (frame->refParamsBase == -1) JC2_THROW(RuntimeError, "Invalid ref param index.");
-    Value res = *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location);
+    Value res = vm->readUpvalue(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj()));
     frame->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
@@ -8810,7 +8813,7 @@ void jc2_jit_set_ref_param(uint32_t bx, uint64_t val_bits) {
     CallFrame* frame = vm->getCurrentFrame();
     if (frame->refParamsBase == -1) JC2_THROW(RuntimeError, "Invalid ref param index.");
     Value val = Value::fromRawBits(val_bits);
-    *(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj())->location) = val;
+    vm->writeUpvalue(static_cast<ObjUpVal*>(vm->getRegisters()[frame->refParamsBase + bx].asObj()), val);
     JIT_CALLOUT_CATCH_VOID
 }
 
@@ -10319,7 +10322,7 @@ uint64_t jc2_jit_get_upval(uint32_t uvIdx) {
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
         JC2_THROW(RuntimeError, "Invalid upvalue index.");
-    Value res = *(frame->closure->upvalues[uvIdx]->location);
+    Value res = vm->readUpvalue(frame->closure->upvalues[uvIdx]);
     frame->jitReturnSlot = res;
     return res.as_bits;
     JIT_CALLOUT_CATCH
@@ -10331,7 +10334,7 @@ void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits) {
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
         JC2_THROW(RuntimeError, "Invalid upvalue index.");
-    *(frame->closure->upvalues[uvIdx]->location) = Value::fromRawBits(val_bits);
+    vm->writeUpvalue(frame->closure->upvalues[uvIdx], Value::fromRawBits(val_bits));
     JIT_CALLOUT_CATCH_VOID
 }
 
@@ -11002,7 +11005,7 @@ uint64_t jc2_jit_closure(uint64_t* values, uint32_t fnIdx, uint32_t registerOffs
                     dummy->closed = Value::uninit();
                 } else if (uv.isLocal) {
                     if (uv.isRefParam) {
-                        dummy->closed = *(static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj())->location);
+                        dummy->closed = vm->readUpvalue(static_cast<ObjUpVal*>(regs[frame->refParamsBase + uv.index].asObj()));
                     } else {
                         // ★ 从 values[] 取，不能回读帧槽：现代 JIT callout 不做全量写回，
                         //   HIR 局部值不会落到帧槽上，回读拿到的是旧值（捕获到 none）。
@@ -11010,7 +11013,7 @@ uint64_t jc2_jit_closure(uint64_t* values, uint32_t fnIdx, uint32_t registerOffs
                     }
                 } else {
                     if (frame->closure && uv.index < frame->closure->upvalueCount) {
-                        dummy->closed = *(frame->closure->upvalues[uv.index]->location);
+                        dummy->closed = vm->readUpvalue(frame->closure->upvalues[uv.index]);
                     } else if (uv.isGlobal) {
                         dummy->closed = vm->getGlobalChecked(uv.name);
                     } else {

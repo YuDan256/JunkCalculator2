@@ -209,12 +209,30 @@ static void requireVersion(const std::string& rawArgs, const std::string& source
     }
 }
 
+static std::string directiveMessage(const std::string& raw) {
+    std::string text = trimDirectiveArg(raw);
+    if (text.size() >= 2 && ((text.front() == '"' && text.back() == '"') ||
+                             (text.front() == '\'' && text.back() == '\''))) {
+        text = text.substr(1, text.size() - 2);
+    }
+    return text;
+}
+
 static void processDirectives(const std::vector<jc::Directive>& directives, const std::string& sourceFile) {
     for (const auto& d : directives) {
         if (d.name == "!") continue;  // Shebang，no-op
         if (d.name == "version") {
             requireVersion(d.args, sourceFile);
             continue;
+        }
+        if (d.name == "warning") {
+            std::string msg = directiveMessage(d.args);
+            std::cerr << sourceFile << ":" << d.line << ": warning: " << msg << "\n";
+            continue;
+        }
+        if (d.name == "error") {
+            std::string msg = directiveMessage(d.args);
+            JC2_THROW(ParserError, "#error: " + msg + " (" + sourceFile + ":" + std::to_string(d.line) + ")");
         }
         JC2_THROW(ParserError, "Unknown directive '#" + d.name + "'.");
     }

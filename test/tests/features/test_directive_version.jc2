@@ -4,3 +4,4 @@
 
 assert(true, "version directives accepted")
 print("version directive battery OK")
+#warning "expected test warning"

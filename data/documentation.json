@@ -3873,6 +3873,12 @@
       "    #version >= 2.6.4.0",
       "    #version == 2.6.4.0",
       "",
+      "  #warning \"text\"",
+      "    Print a compile-time warning and continue.",
+      "",
+      "  #error \"text\"",
+      "    Abort compilation with the given message.",
+      "",
       "  Unknown directives and invalid versions are compile errors."
     ]
   },

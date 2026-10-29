@@ -109,7 +109,8 @@ test_ast_tamper()
 
 test_macro_control_flow() = {
     macro repeat_three(node) = {
-        i_var = gensym("i")
+        import ast
+        i_var = ast.gensym("i")
         return quote {
             for (local $i_var = 0; $i_var < 3; $i_var += 1) {
                 $node
@@ -163,7 +164,8 @@ test_no_arg_macro_safety()
 
 test_multi_arg_macro() = {
     macro repeat(n_node, body_node) = {
-        i_var = gensym("i")
+        import ast
+        i_var = ast.gensym("i")
         return quote {
             for (local $i_var = 0; $i_var < $n_node; $i_var += 1) {
                 $body_node
@@ -201,8 +203,9 @@ test_variadic_macro()
 
 test_macro_identifier_unquote() = {
     macro def_memo(func_name, arg_name, body) = {
-        cache_var = gensym("cache")
-        res_var = gensym("res")
+        import ast
+        cache_var = ast.gensym("cache")
+        res_var = ast.gensym("res")
         return quote {
             local $cache_var = {}
             $func_name($arg_name) = {
@@ -232,7 +235,8 @@ test_macro_identifier_unquote()
 
 test_hygienic_macro() = {
     macro hygienic_swap(a_node, b_node) = {
-        temp_var = gensym("temp")
+        import ast
+        temp_var = ast.gensym("temp")
         return quote {
             local $temp_var = $a_node
             $a_node = $b_node

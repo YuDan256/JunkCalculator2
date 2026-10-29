@@ -661,12 +661,14 @@ void BuiltinRegistry::registerAll() {
     cas_ns = GcHeap::get().allocate<ObjNamespace>(); cas_ns->name = "cas";
     math_ns = GcHeap::get().allocate<ObjNamespace>(); math_ns->name = "math";
     random_ns = GcHeap::get().allocate<ObjNamespace>(); random_ns->name = "random";
+    ast_ns = GcHeap::get().allocate<ObjNamespace>(); ast_ns->name = "ast";
 
     if (VM::activeVM) {
         VM::activeVM->injectModule("sys", Value(sys_ns));
         VM::activeVM->injectModule("cas", Value(cas_ns));
         VM::activeVM->injectModule("math", Value(math_ns));
         VM::activeVM->injectModule("random", Value(random_ns));
+        VM::activeVM->injectModule("ast", Value(ast_ns));
     }
 
     registerMath();
@@ -2489,28 +2491,48 @@ void BuiltinRegistry::registerSystemUtils() {
         return Value(d);
     }, {});
 
-    reg("gensym", { 0, 1 }, [](const std::vector<Value>& args) -> Value {
+    auto astPosArg = [](const Value& v, const char* what) -> int {
+        if (!v.isInt32() || v.asInt32() < 0) {
+            JC2_THROW(TypeError, std::string("ast.") + what + " expects a non-negative int");
+        }
+        return v.asInt32();
+    };
+
+    regModule(ast_ns, "toNode", { 1, 2, 3 }, [astPosArg](const std::vector<Value>& args) -> Value {
+        int line = 0, position = 0;
+        if (args.size() >= 2) line = astPosArg(args[1], "toNode line");
+        if (args.size() >= 3) position = astPosArg(args[2], "toNode position");
+        return ASTLiteralFromValue(args[0], line, position);
+    }, {"value", "line", "position"});
+
+    regModule(ast_ns, "toValue", { 1 }, [](const std::vector<Value>& args) -> Value {
+        return ASTLiteralToValue(args[0]);
+    }, {"node"});
+
+    regModule(ast_ns, "gensym", { 0, 1, 2, 3 }, [astPosArg](const std::vector<Value>& args) -> Value {
         static uint64_t counter = 0;
         std::string prefix = "gensym";
-        if (args.size() == 1 && args[0].isString()) {
+        int line = 0, position = 0;
+        if (args.size() >= 1) {
+            if (!args[0].isString()) JC2_THROW(TypeError, "ast.gensym expects a string prefix");
             prefix = args[0].asString();
         }
-        // ★ 用 '#' 连接，生成词法上非法的绝对安全标识符（'#' 会触发词法错误，用户源码完全写不出）
+        if (args.size() >= 2) line = astPosArg(args[1], "gensym line");
+        if (args.size() >= 3) position = astPosArg(args[2], "gensym position");
         std::string uniqueName = prefix + "#" + std::to_string(counter++);
-        
+
         auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
         if (!clsVal.isClass()) JC2_THROW(RuntimeError, "ASTNode class not found");
-        
+
         ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
         GcObjGuard instGuard(inst);
         inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
-        
         inst->ownPut("type", Value("Variable"), false, false);
-        inst->ownPut("line", Value::fromInt32(0), false, false);
+        inst->ownPut("line", Value::fromInt32(line), false, false);
+        inst->ownPut("position", Value::fromInt32(position), false, false);
         inst->ownPut("name", Value(uniqueName), false, false);
-        
         return Value(inst);
-    }, {"prefix"});
+    }, {"prefix", "line", "position"});
     regModule(sys_ns, "gc", { 0 }, [](const std::vector<Value>&) -> Value {
         // 1. 清理符号表达式的弱引用池
         jc::SymExpr::cleanupPool();

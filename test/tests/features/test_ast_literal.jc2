@@ -1,0 +1,31 @@
+import ast
+
+assert(ast.toValue(ast.toNode(42)) == 42, "int literal")
+assert(ast.toValue(ast.toNode(-7)) == -7, "negative int literal")
+assert(ast.toValue(ast.toNode(3.5)) == 3.5, "float literal")
+assert(ast.toValue(ast.toNode("hello")) == "hello", "string literal")
+assert(ast.toValue(ast.toNode(true)) == true, "bool literal")
+assert(ast.toValue(ast.toNode(none)) is none, "none literal")
+
+v = ast.toNode(1, 12, 34)
+assert(v.line == 12 && v.position == 34, "location")
+
+g = ast.gensym("tmp", 7, 9)
+assert(g.type == "Variable", "gensym type")
+assert(g.line == 7 && g.position == 9, "gensym location")
+assert("tmp#" in g.name, "gensym name")
+
+syntax answer(stream) = {
+    import ast
+    return ast.toNode(42)
+}
+assert(@answer {} == 42, "macro returns constant node")
+
+try {
+    ast.toNode(1 + 2i)
+    assert(false, "complex must be rejected")
+} catch (e) {
+    assert("unsupported value type" in e.message, "complex error")
+}
+
+print("ast literal battery OK")

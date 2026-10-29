@@ -483,9 +483,6 @@
     "__mapping__": {
       "signature": "__mapping__()"
     },
-    "gensym": {
-      "signature": "gensym([prefix])"
-    },
     "nan": {
       "signature": "nan()"
     },

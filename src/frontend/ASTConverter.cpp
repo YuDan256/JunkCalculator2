@@ -1,8 +1,80 @@
 #include "ASTConverter.h"
 #include "../vm/VM.h"
 #include <stdexcept>
+#include <cmath>
+#include <iomanip>
+#include <sstream>
 
 namespace jc {
+
+static Value makeASTNodeValue(const std::string& type, int line,
+                              const std::vector<std::pair<std::string, Value>>& props) {
+    auto clsVal = VM::activeVM->getBuiltinValue("ASTNode");
+    if (!clsVal.isClass()) JC2_THROW(RuntimeError, "ASTNode class not found");
+    ObjInstance* inst = GcHeap::get().allocate<ObjInstance>();
+    GcObjGuard guard(inst);
+    inst->classDef = static_cast<ObjClass*>(clsVal.asObj());
+    inst->properties["type"] = {Value(type), false, false};
+    inst->properties["line"] = {Value(line), false, false};
+    for (const auto& p : props) inst->properties[p.first] = {p.second, false, false};
+    return Value(inst);
+}
+
+Value ASTLiteralFromValue(const Value& value, int line, int position) {
+    std::string text;
+    bool isString = false, isImaginary = false, isKeyword = false;
+    if (value.isNone()) { text = "none"; isKeyword = true; }
+    else if (value.isBool()) { text = value.truthy() ? "true" : "false"; isKeyword = true; }
+    else if (value.isString()) { text = value.asString(); isString = true; }
+    else if (value.isInt32()) { text = std::to_string(value.asInt32()); }
+    else if (value.isBigInt()) { text = value.asBigInt().toString(); }
+    else if (value.isFloat()) {
+        double d = value.asFloatRaw();
+        if (!std::isfinite(d)) JC2_THROW(TypeError, "ast.toNode: non-finite float is not supported");
+        std::ostringstream oss;
+        oss << std::setprecision(17) << d;
+        text = oss.str();
+        if (text.find('.') == std::string::npos && text.find('e') == std::string::npos &&
+            text.find('E') == std::string::npos) text += ".0";
+    } else {
+        JC2_THROW(TypeError, "ast.toNode: unsupported value type '" + value.typeName() + "'");
+    }
+    return makeASTNodeValue("Literal", line, {
+        {"position", Value::fromInt32(position)},
+        {"value", Value(text)},
+        {"isString", Value(isString)},
+        {"isImaginary", Value(isImaginary)},
+        {"isKeyword", Value(isKeyword)}
+    });
+}
+
+Value ASTLiteralToValue(const Value& node) {
+    if (!node.isInstance() || !node.asInstance()->classDef ||
+        node.asInstance()->classDef->name != "ASTNode") {
+        JC2_THROW(TypeError, "ast.toValue: expected an ASTNode");
+    }
+    auto inst = node.asInstance();
+    auto getProp = [&](const std::string& key) -> Value {
+        auto it = inst->properties.find(key);
+        return it == inst->properties.end() ? Value::none() : it->second.val;
+    };
+    if (getProp("type").asString() != "Literal") {
+        JC2_THROW(TypeError, "ast.toValue: expected a Literal node, got '" +
+                                 getProp("type").asString() + "'");
+    }
+    std::string text = getProp("value").asString();
+    if (getProp("isKeyword").truthy()) {
+        if (text == "none") return Value::none();
+        if (text == "true") return Value(true);
+        if (text == "false") return Value(false);
+        JC2_THROW(TypeError, "ast.toValue: unsupported keyword literal '" + text + "'");
+    }
+    if (getProp("isString").truthy()) return Value(text);
+    if (getProp("isImaginary").truthy()) return Value(Complex(0.0, std::stod(text)));
+    if (text.find('.') != std::string::npos || text.find('e') != std::string::npos ||
+        text.find('E') != std::string::npos) return Value(std::stod(text));
+    return Value(BigInt(text));
+}
 
 class ASTToJC2Visitor : public ExprVisitor {
 public:

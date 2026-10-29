@@ -3292,13 +3292,15 @@
       "      import @my_macros",
       "      @my_macro_call()",
       "",
-      "  Hygienic Macros (gensym)",
+      "    import ast",
+      "  Hygienic Macros (ast.gensym)",
       "  ──────────────────────",
       "    To avoid accidental variable capture (name collisions) in macros, use",
-      "    `gensym(\"prefix\")` to generate a globally unique AST Variable node.",
+      "    `ast.gensym(\"prefix\")` to generate a globally unique AST Variable node.",
       "    ",
       "      macro hygienic_swap(a, b) = {",
-      "          temp = gensym(\"temp\")",
+      "          import ast",
+      "          temp = ast.gensym(\"temp\")",
       "          return quote {",
       "              local $temp = $a",
       "              $a = $b",
@@ -3554,7 +3556,26 @@
       "  ★ Helper Nodes (Used inside other nodes)",
       "  ──────────────────────",
       "    CompClause     pattern (ASTNode), iterable (ASTNode), conditions (List of ASTNode)",
-      "    MatchBranch    patterns (List of ASTNode), guard (ASTNode), body (ASTNode)"
+      "    MatchBranch    patterns (List of ASTNode), guard (ASTNode), body (ASTNode)",
+      "",
+      "  ★ Compile-time Construction",
+      "  ──────────────────────",
+      "    ast.toNode(value, [line], [position]) -> ASTNode",
+      "      Build a Literal node from none/bool/int/bigint/float/string.",
+      "      line and position default to 0.",
+      "",
+      "    ast.toValue(node) -> Value",
+      "      Convert a Literal node back to its scalar value.",
+      "      Non-Literal nodes are rejected.",
+      "",
+      "    ast.gensym([prefix], [line], [position]) -> ASTNode",
+      "      Build a hygienic Variable node with a unique name.",
+      "",
+      "    Examples:",
+      "      import ast",
+      "      n = ast.toNode(42, 7, 12)",
+      "      ast.toValue(n)",
+      "      v = ast.gensym(\"tmp\", 7, 12)"
     ],
     "error": [
       "═══ Error Handling & Tracebacks ═══",
@@ -5095,16 +5116,6 @@
       "desc": "Dunder method: Returns a dict to unpack the instance during keyword spread (f(; ...obj)).",
       "examples": [
         "__mapping__() = { \"x\": self.x, \"y\": self.y }"
-      ]
-    },
-    "gensym": {
-      "signature": "gensym([prefix])",
-      "desc": [
-        "Generates a globally unique AST Variable node.",
-        "Used in macros to create hygienic variables that will never collide with user variables."
-      ],
-      "examples": [
-        "temp_var = gensym(\"temp\")"
       ]
     },
     "nan": {

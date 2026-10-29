@@ -509,6 +509,7 @@ private:
     ObjNamespace* cas_ns = nullptr;
     ObjNamespace* math_ns = nullptr;
     ObjNamespace* random_ns = nullptr;
+    ObjNamespace* ast_ns = nullptr;
 
     void regModule(ObjNamespace* ns, const std::string& name, std::set<int> arity, NativeCallable fn, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());
     void regMethod(ObjClass* proto, const std::string& name, std::vector<std::string> paramNames, NativeCallable fn, int defaultCount = 0, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());

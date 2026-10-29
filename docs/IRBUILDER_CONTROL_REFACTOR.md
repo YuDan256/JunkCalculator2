@@ -272,3 +272,22 @@ feeb287 fix(lang): keep exported namespace members
 ```
 
 当前 `currentControl` 仍承担双重职责；本方案是后续彻底重构的起点。
+
+## 诊断记录（2026-10-29）
+
+在 helper-only 阶段给 isitIfExpr 加 compare：
+
+`	ext
+IFDIFF then seq=SetProperty id=27 ctl=IfFalse id=23
+`
+
+说明在 isControlSpine 仍然包含 SetProperty 等副作用节点时：
+
+- 分支真正的最后控制块是 SetProperty 这类节点；
+- currentControl 仍停在 IfTrue/IfFalse；
+- 直接把 Merge 边改成 currentControl 会跳过分支末尾的副作用块，导致
+  8 个测试失败。
+
+因此 If 迁移必须与 isControlSpine 收缩、数据节点 owner 解析一起做，
+不能单独先改 Merge 边。
+

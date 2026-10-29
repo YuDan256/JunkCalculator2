@@ -292,6 +292,7 @@ struct IRNode {
     
     // 依赖边 (Sea of Nodes)
     IRNode* controlInput = nullptr;      // 控制依赖 (Control Flow)
+    IRNode* seqPrev = nullptr;           // 显式指令序列依赖（不参与 CFG）
     std::vector<IRNode*> dataInputs;     // 数据依赖 (Data Flow)
     
     IRNode* forwarding = nullptr;        // 用于节点替换时的转发

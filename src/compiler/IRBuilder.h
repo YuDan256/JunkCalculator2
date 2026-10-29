@@ -22,6 +22,7 @@ private:
     // Sea of Nodes 构建状态
     IRNode* currentSeq;     // 最近生成的指令/值节点（顺序链）
     IRNode* currentControl; // 最近的真实 CFG 节点
+    IRNode* seqCursor;      // 序列链游标
     IRNode* lastValue;      // 上一个表达式计算出的数据节点
 
     // 简单的局部变量环境 (用于初步的 SSA 构建)
@@ -86,6 +87,7 @@ private:
     
     IRNode* getLocalNode(const std::string& name);
     IRNode* createCFGNode(IROp op);
+    void link(IRNode* node);
     int resolveUpvalue(const std::string& name, bool isCapturedState = false);
 
     struct IRLoopInfo {

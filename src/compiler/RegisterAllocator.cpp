@@ -18,8 +18,8 @@ static bool isControlSpine(IROp op) {
         case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
         case IROp::InvokePrivate: case IROp::TailInvokePrivate:
         case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
-        case IROp::IndexGet: case IROp::IndexSet: case IROp::BuildSlice: case IROp::MakeSpread: 
-        case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty: 
+        case IROp::IndexGet: case IROp::IndexSet: case IROp::BuildSlice: case IROp::MakeSpread:
+        case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty:
         case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
         case IROp::DefineProp: case IROp::DefinePropConst:
         case IROp::GetSuper:
@@ -638,6 +638,32 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             freeNode->setControl(cNode);
             bb->instructions.push_back(freeNode);
         }
+    }
+
+    // 10. 按 CFG 的逆后序重排基本块。Emitter 按 graph->blocks 顺序布局，
+    // 仅按创建顺序会在 Loop/Merge 处把回边块排到循环体之前。
+    if (blocks.size() > 1 && blocks[0]->succs.empty()) {
+        blocks[0]->succs.push_back(blocks[1].get());
+        blocks[1]->preds.push_back(blocks[0].get());
+    }
+    if (!blocks.empty()) {
+        std::vector<BasicBlock*> rpo;
+        std::unordered_set<BasicBlock*> seen;
+        std::function<void(BasicBlock*)> dfs = [&](BasicBlock* b) {
+            if (!b || seen.count(b)) return;
+            seen.insert(b);
+            for (BasicBlock* succ : b->succs) dfs(succ);
+            rpo.push_back(b);
+        };
+        dfs(blocks[0].get());
+        for (auto& b : blocks) if (!seen.count(b.get())) rpo.push_back(b.get());
+        std::reverse(rpo.begin(), rpo.end());
+        std::unordered_map<BasicBlock*, int> rank;
+        for (size_t i = 0; i < rpo.size(); ++i) rank[rpo[i]] = static_cast<int>(i);
+        std::stable_sort(graph->blocks.begin(), graph->blocks.end(),
+            [&](const std::unique_ptr<BasicBlock>& a, const std::unique_ptr<BasicBlock>& b) {
+                return rank[a.get()] < rank[b.get()];
+            });
     }
 }
 

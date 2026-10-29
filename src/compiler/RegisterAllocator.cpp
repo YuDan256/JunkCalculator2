@@ -12,27 +12,8 @@ namespace jc {
 static bool isControlSpine(IROp op) {
     switch (op) {
         case IROp::Start: case IROp::Return: case IROp::If: case IROp::IfTrue: case IROp::IfFalse:
-        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd: case IROp::Throw: case IROp::ThrowTyped:
-        case IROp::GetGlobal: case IROp::SetGlobal: case IROp::SetGlobalRef: case IROp::DefineConstGlobal: case IROp::DeleteGlobal:
-        case IROp::StoreLocal: case IROp::SetUpvalue: case IROp::SetRefParam: case IROp::PassRefs: case IROp::UpdateCaptured:
-        case IROp::Call: case IROp::TailCall: case IROp::Invoke: case IROp::TailInvoke:
-        case IROp::InvokePrivate: case IROp::TailInvokePrivate:
-        case IROp::InvokeFallback: case IROp::TailInvokeFallback: case IROp::SuperInvoke: case IROp::TailSuperInvoke:
-        case IROp::IndexGet: case IROp::IndexSet: case IROp::BuildSlice: case IROp::MakeSpread:
-        case IROp::GetProperty: case IROp::GetPrivate: case IROp::TryGetProperty:
-        case IROp::SetProperty: case IROp::SetPrivate: case IROp::DefinePrivate: case IROp::DefinePrivateConst:
-        case IROp::DefineProp: case IROp::DefinePropConst:
-        case IROp::GetSuper:
-        case IROp::AssertParamType: case IROp::AssertReturnType: case IROp::AssertType:
-        case IROp::MatchInit:
-        case IROp::IterInit: case IROp::IterNext: case IROp::BuildList: case IROp::BuildDict:
-        case IROp::DictRest: case IROp::BuildSet: case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::Class:
-        case IROp::Method: case IROp::MethodPrivate: case IROp::MethodConst: case IROp::MethodPrivateConst:
-        case IROp::Inherit: case IROp::WithTrait: case IROp::FreezeClass: case IROp::Import:
-        case IROp::Defer: case IROp::RunDefers:
-        case IROp::ListInit: case IROp::ListAppend: case IROp::MatrixCompInit: case IROp::MatrixCompAppend: case IROp::MatrixCompEnd:
-        case IROp::SetInit: case IROp::SetAppend: case IROp::DictInit: case IROp::DictAppend:
-        case IROp::Stringify: case IROp::ConcatStrings: case IROp::FormatString:
+        case IROp::Merge: case IROp::Loop: case IROp::TryBegin: case IROp::Catch: case IROp::TryEnd:
+        case IROp::Throw: case IROp::ThrowTyped:
             return true;
         default:
             return false;
@@ -63,8 +44,10 @@ void RegisterAllocator::allocate(IRGraph* graph) {
         IRNode* c = bb->controlNode;
         if (c->op == IROp::Merge || c->op == IROp::Loop) {
             for (IRNode* predC : c->dataInputs) {
-                if (predC && nodeToBB.count(predC)) {
-                    BasicBlock* predBB = nodeToBB[predC];
+                IRNode* owner = predC;
+                while (owner && !nodeToBB.count(owner)) owner = owner->controlInput;
+                if (owner && nodeToBB.count(owner)) {
+                    BasicBlock* predBB = nodeToBB[owner];
                     bb->preds.push_back(predBB);
                     predBB->succs.push_back(bb.get());
                     predBB->succKind.push_back(0);
@@ -90,9 +73,9 @@ void RegisterAllocator::allocate(IRGraph* graph) {
     for (auto& nodePtr : graph->getNodes()) {
         IRNode* node = nodePtr.get();
         if (node->op == IROp::Nop || isControlSpine(node->op) || node->op == IROp::Phi) continue;
-        if (node->controlInput && nodeToBB.count(node->controlInput)) {
-            blockDataNodes[nodeToBB[node->controlInput]].push_back(node);
-        }
+        IRNode* owner = node->controlInput;
+        while (owner && !nodeToBB.count(owner)) owner = owner->controlInput;
+        if (owner && nodeToBB.count(owner)) blockDataNodes[nodeToBB[owner]].push_back(node);
     }
 
     // 在每个基本块内对数据节点进行拓扑排序 (指令调度)
@@ -152,9 +135,12 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             if (src->op == IROp::Nop && src->virtualReg == -1) continue;
             if (i >= merge->dataInputs.size()) continue;
             IRNode* predC = merge->dataInputs[i];
-            if (!predC || !nodeToBB.count(predC)) continue;
+            if (!predC) continue;
+            IRNode* predOwner = predC;
+            while (predOwner && !nodeToBB.count(predOwner)) predOwner = predOwner->controlInput;
+            if (!predOwner || !nodeToBB.count(predOwner)) continue;
 
-            BasicBlock* predBB = nodeToBB[predC];
+            BasicBlock* predBB = nodeToBB[predOwner];
             IRNode* moveNode = graph->createNode(IROp::Move);
             moveNode->virtualReg = phi->virtualReg;
             moveNode->addData(src);

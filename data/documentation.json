@@ -1720,6 +1720,7 @@
       "",
       "    sys.setWorkspace(\"path\")         Change workspace directory",
       "    sys.setWorkspace(\"default\")      Reset to current directory",
+      "    sys.globals()          Snapshot of user-visible globals",
       "    sys.getWorkspace()               Returns current workspace path as string",
       "    sys.pwd()                        Print both script dir and workspace dir",
       "    sys.cls()                        Clear the console screen",
@@ -7792,6 +7793,19 @@
         "import sys; sys.exec(\"git\", @[\"--version\"])[\"stdout\"]",
         "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"auto\"})",
         "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"gbk\"})"
+      ]
+    },
+    "globals": {
+      "signature": "sys.globals()",
+      "desc": [
+        "Returns a shallow snapshot dict of user-visible global variables.",
+        "Builtins, PI/E/i/I/ANS and internal <...> names are excluded.",
+        "The returned dict is a copy; mutating it does not change the globals."
+      ],
+      "examples": [
+        "import sys",
+        "g = sys.globals()",
+        "g[\"x\"]"
       ]
     }
   },

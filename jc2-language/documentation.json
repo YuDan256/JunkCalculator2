@@ -1564,6 +1564,9 @@
     },
     "exec": {
       "signature": "sys.exec(program, [args], [options]) -> dict"
+    },
+    "globals": {
+      "signature": "sys.globals()"
     }
   },
   "math_methods": {

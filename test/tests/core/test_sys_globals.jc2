@@ -1,0 +1,9 @@
+import sys
+
+x = 123
+g = sys.globals()
+assert(g["x"] == 123, "globals contains user variable")
+for (k in g) assert(k != "PI", "globals excludes PI")
+g["x"] = 999
+assert(x == 123, "globals returns a snapshot")
+print("sys.globals battery OK")

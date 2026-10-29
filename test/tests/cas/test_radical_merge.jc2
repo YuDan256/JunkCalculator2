@@ -1,0 +1,6 @@
+// sqrt(a)*sqrt(b) 合并：仅正数值底
+assert(str(sqrt(2) * sqrt(3)) == "sqrt(6)", "sqrt(2)*sqrt(3)")
+assert(str(sqrt(2) * sqrt(3) * sqrt(5)) == "sqrt(30)", "three radicals")
+assert(sqrt(4) * sqrt(9) == 6, "perfect squares")
+assert(str(sqrt(-2) * sqrt(-3)) == "-sqrt(6)", "negative radicands keep sign")
+print("radical merge battery OK")

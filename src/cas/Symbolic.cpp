@@ -1396,6 +1396,53 @@ namespace jc {
             sortedFactors.reserve(smallCount);
             for (int i = 0; i < smallCount; ++i) sortedFactors.push_back(smallFactors[i]);
         }
+        // ★ 同指数、正数值底的根式合并：sqrt(2) * sqrt(3) -> sqrt(6)
+        //   仅在 base 是正整数且指数是同一有理数时启用；负底/符号底保留原式。
+        {
+            std::vector<FactorData> merged;
+            std::vector<bool> consumed(sortedFactors.size(), false);
+            for (size_t i = 0; i < sortedFactors.size(); ++i) {
+                if (consumed[i]) continue;
+                FactorData& first = sortedFactors[i];
+                if (first.baseNode->getType() != SymType::NUM ||
+                    !std::holds_alternative<Fraction>(first.exp)) {
+                    continue;
+                }
+                auto [firstIsInt, firstInt] = extractExactInt(
+                    static_cast<SymNum*>(first.baseNode)->value);
+                if (!firstIsInt || firstInt <= 0) continue;
+
+                BigInt product = firstInt;
+                bool any = false;
+                for (size_t j = i + 1; j < sortedFactors.size(); ++j) {
+                    if (consumed[j]) continue;
+                    FactorData& other = sortedFactors[j];
+                    if (other.baseNode->getType() != SymType::NUM ||
+                        !std::holds_alternative<Fraction>(other.exp) ||
+                        !casValNumberEqual(first.exp, other.exp)) {
+                        continue;
+                    }
+                    auto [otherIsInt, otherInt] = extractExactInt(
+                        static_cast<SymNum*>(other.baseNode)->value);
+                    if (!otherIsInt || otherInt <= 0) continue;
+                    product = product * BigInt(otherInt);
+                    consumed[j] = true;
+                    any = true;
+                }
+                if (any) {
+                    consumed[i] = true;
+                    FactorData combined;
+                    combined.exp = first.exp;
+                    combined.baseNode = SymExpr(product).ptr;
+                    merged.push_back(combined);
+                }
+            }
+            for (size_t i = 0; i < sortedFactors.size(); ++i) {
+                if (!consumed[i]) merged.push_back(sortedFactors[i]);
+            }
+            sortedFactors = std::move(merged);
+        }
+
         std::sort(sortedFactors.begin(), sortedFactors.end(), [](const auto& lhs, const auto& rhs) {
             return lhs.baseNode->hashValue > rhs.baseNode->hashValue;
         });

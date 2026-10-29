@@ -20,7 +20,8 @@ private:
     std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions;
     
     // Sea of Nodes 构建状态
-    IRNode* currentControl; // 当前的控制流依赖节点
+    IRNode* currentSeq;     // 最近生成的指令/值节点（顺序链）
+    IRNode* currentControl; // 最近的真实 CFG 节点
     IRNode* lastValue;      // 上一个表达式计算出的数据节点
 
     // 简单的局部变量环境 (用于初步的 SSA 构建)
@@ -58,8 +59,8 @@ private:
         if (dCount > 0) {
             IRNode* runNode = graph->createNode(IROp::RunDefers);
             runNode->payload1 = dCount;
-            runNode->setControl(currentControl);
-            currentControl = runNode;
+            runNode->setControl(currentSeq);
+            currentSeq = runNode;
         }
         envStack.pop_back();
         currentLocalVars = localVarsStack.back();

@@ -34,15 +34,15 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
     if (currentFunction && currentFunction->name == name && sym.scope != VarScope::Local && sym.scope != VarScope::State && sym.scope != VarScope::RefParam) {
         IRNode* node = graph->createValueNode(IROp::GetCurrentClosure);
         node->name = name;
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         return node;
     }
 
     if (sym.scope == VarScope::Global) {
         IRNode* node = graph->createValueNode(IROp::GetGlobal);
         node->name = name;
-        node->setControl(currentControl);
-        currentControl = node;
+        node->setControl(currentSeq);
+        currentSeq = node;
         return node;
     } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState || sym.scope == VarScope::State) {
         int upvalIdx = -1;
@@ -72,19 +72,19 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
         IRNode* node = graph->createValueNode(IROp::GetUpvalue);
         node->payload1 = static_cast<uint32_t>(upvalIdx);
         node->name = name;
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         return node;
     } else if (sym.scope == VarScope::RefParam) {
         IRNode* node = graph->createValueNode(IROp::GetRefParam);
         node->payload1 = refParams[name];
         node->name = name;
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         return node;
     } else {
         IRNode* localNode = getLocalNode(name);
         if (localNode) return localNode;
         IRNode* uninit = graph->createConstant(Value::uninit());
-        uninit->setControl(currentControl);
+        uninit->setControl(currentSeq);
         return uninit;
     }
 }
@@ -95,10 +95,10 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
     if (sym.scope == VarScope::Global) {
         IROp op = isExplicitConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
         IRNode* node = graph->createNode(op);
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         node->addData(value);
         node->name = name;
-        currentControl = node;
+        currentSeq = node;
         globalValueNodes[name] = value;
     } else if (sym.scope == VarScope::Upvalue || sym.scope == VarScope::CapturedState || sym.scope == VarScope::State) {
         int upvalIdx = -1;
@@ -129,15 +129,15 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
         node->payload1 = static_cast<uint32_t>(upvalIdx);
         node->name = name;
         node->addData(value);
-        node->setControl(currentControl);
-        currentControl = node;
+        node->setControl(currentSeq);
+        currentSeq = node;
     } else if (sym.scope == VarScope::RefParam) {
         IRNode* node = graph->createNode(IROp::SetRefParam);
         node->payload1 = refParams[name];
         node->name = name;
         node->addData(value);
-        node->setControl(currentControl);
-        currentControl = node;
+        node->setControl(currentSeq);
+        currentSeq = node;
     } else {
         if (currentConstVars.count(name)) {
             if (!isExplicitConst) error("Runtime Error: Cannot modify const variable '" + name + "'.");
@@ -161,10 +161,10 @@ void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSy
             
             if (found && capturedLocals.count(name)) {
                 IRNode* updateNode = graph->createNode(IROp::UpdateCaptured);
-                updateNode->setControl(currentControl);
+                updateNode->setControl(currentSeq);
                 updateNode->addData(origNode);
                 updateNode->addData(value);
-                currentControl = updateNode;
+                currentSeq = updateNode;
                 return;
             }
             
@@ -191,7 +191,7 @@ void IRBuilder::declareVariable(const std::string& name, IRNode* value) {
 }
 
 IRBuilder::IRBuilder(IRGraph* graph, std::vector<std::shared_ptr<CompiledFunction>>* compiledFunctions, IRBuilder* parent, CompiledFunction* currentFunction, const std::unordered_map<Expr*, ResolvedSym>* exprSymbols, const std::unordered_map<Pattern*, ResolvedSym>* patternSymbols, const std::unordered_map<DeleteExpr*, std::vector<ResolvedSym>>* deleteSyms) 
-    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), deleteSyms(deleteSyms), currentControl(graph->startNode), lastValue(nullptr) {
+    : graph(graph), compiledFunctions(compiledFunctions), parent(parent), currentFunction(currentFunction), exprSymbols(exprSymbols), patternSymbols(patternSymbols), deleteSyms(deleteSyms), currentSeq(graph->startNode), currentControl(graph->startNode), lastValue(nullptr) {
     if (parent) {
         classStack = parent->classStack;
         globalEnumFields = parent->globalEnumFields;
@@ -299,7 +299,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
         // 如果父函数正是我们要捕获的递归函数本身，直接在父图中生成 GetCurrentClosure
         localNode = parent->graph->createValueNode(IROp::GetCurrentClosure);
         localNode->name = name;
-        localNode->setControl(parent->currentControl);
+        localNode->setControl(parent->currentSeq);
     }
     if (localNode) {
         int upvalIdx = static_cast<int>(currentFunction->upvalues.size());
@@ -370,11 +370,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* getVal = readVariable(name, sym);
             IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
             isUninit->addData(getVal);
-            isUninit->setControl(currentControl);
+            isUninit->setControl(currentSeq);
             
             IRNode* ifNode = graph->createNode(IROp::If);
             ifNode->addData(isUninit);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
@@ -384,12 +384,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             
             auto baseEnv = envStack;
             
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
             writeVariable(name, vNode, sym, isLocal, isConst);
-            IRNode* trueCtrl = currentControl;
+            IRNode* trueCtrl = currentSeq;
             auto trueEnv = envStack;
             
-            currentControl = ifFalse;
+            currentSeq = ifFalse;
             auto falseEnv = baseEnv;
             
             IRNode* merge = graph->createNode(IROp::Merge);
@@ -416,11 +416,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
             }
             
-            currentControl = merge;
+            currentSeq = merge;
         } else {
             writeVariable(name, vNode, sym, isLocal, isConst);
-            if (mod == ScopeModifier::Ref && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
-                currentControl->op = IROp::SetGlobalRef;
+            if (mod == ScopeModifier::Ref && sym.scope == VarScope::Global && currentSeq->op == IROp::SetGlobal) {
+                currentSeq->op = IROp::SetGlobalRef;
             }
         }
     };
@@ -433,12 +433,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (!isAssignment) {
             // match 模式：类型守卫，类型不匹配时跳 failMerge（试下一个分支），而非抛错
             IRNode* matchNode = graph->createValueNode(IROp::MatchType);
-            matchNode->setControl(currentControl);
+            matchNode->setControl(currentSeq);
             matchNode->addData(valueNode);
             matchNode->addData(typeNode);
 
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(matchNode);
 
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -448,25 +448,25 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ifFalse->setControl(ifNode);
             failMerge->addData(ifFalse);
 
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
             return;
         }
 
         IRNode* assertNode = graph->createNode(IROp::AssertType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(valueNode);
         assertNode->addData(typeNode);
         assertNode->name = name;
-        currentControl = assertNode;
+        currentSeq = assertNode;
     };
 
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-        isUninit->setControl(currentControl);
+        isUninit->setControl(currentSeq);
         isUninit->addData(valNode);
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(isUninit);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -475,10 +475,10 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         IRNode* ifFalse = graph->createNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
         dp->defaultExpr->accept(*this);
         IRNode* defVal = lastValue;
-        IRNode* trueCtrl = currentControl;
+        IRNode* trueCtrl = currentSeq;
         
         IRNode* merge = graph->createNode(IROp::Merge);
         merge->addData(trueCtrl);
@@ -489,17 +489,17 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         phi->addData(defVal);
         phi->addData(valNode);
         
-        currentControl = merge;
+        currentSeq = merge;
         buildPatternMatch(dp->inner.get(), phi, failMerge, globalMod, globalConst, isAssignment);
         return;
     }
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-        isUninit->setControl(currentControl);
+        isUninit->setControl(currentSeq);
         isUninit->addData(valNode);
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(isUninit);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -508,7 +508,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         
         IRNode* ifFalse = graph->createNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
-        currentControl = ifFalse;
+        currentSeq = ifFalse;
 
         if (vp->name.lexeme != "_") {
             auto it = patternSymbols->find(pat);
@@ -530,19 +530,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
     } else if (auto* lit = dynamic_cast<LiteralPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-        matchInit->setControl(currentControl);
+        matchInit->setControl(currentSeq);
         matchInit->addData(valNode);
-        currentControl = matchInit;
+        currentSeq = matchInit;
         valNode = matchInit;
 
         lit->literal->accept(*this);
         IRNode* eqNode = graph->createValueNode(IROp::Eq);
-        eqNode->setControl(currentControl);
+        eqNode->setControl(currentSeq);
         eqNode->addData(valNode);
         eqNode->addData(lastValue);
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(eqNode);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -552,7 +552,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
     } else if (auto* exprPat = dynamic_cast<ExprPattern*>(pat)) {
         if (isAssignment) {
             if (auto* dot = dynamic_cast<DotAccess*>(exprPat->expr.get())) {
@@ -561,11 +561,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 IRNode* objNode = lastValue;
                 
                 IRNode* setProp = graph->createValueNode(IROp::SetProperty);
-                setProp->setControl(currentControl);
+                setProp->setControl(currentSeq);
                 setProp->addData(objNode);
                 setProp->addData(valNode);
                 setProp->name = dot->field.lexeme;
-                currentControl = setProp;
+                currentSeq = setProp;
                 
                 if (auto* var = dynamic_cast<Variable*>(dot->object.get())) {
                     auto it = exprSymbols->find(var);
@@ -595,10 +595,10 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     dotPropName = chainDot->field.lexeme;
                     
                     IRNode* getProp = graph->createValueNode(IROp::GetProperty);
-                    getProp->setControl(currentControl);
+                    getProp->setControl(currentSeq);
                     getProp->addData(dotParentNode);
                     getProp->name = dotPropName;
-                    currentControl = getProp;
+                    currentSeq = getProp;
                     objNode = getProp;
                 } else {
                     chain[0]->object->accept(*this);
@@ -629,33 +629,33 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     int depth = static_cast<int>(chain.size());
                     if (depth == 1) {
                         IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
-                        setIdx->setControl(currentControl);
+                        setIdx->setControl(currentSeq);
                         setIdx->addData(objNode);
                         for (auto* iNode : allIndices[0]) setIdx->addData(iNode);
                         setIdx->addData(valNode);
                         setIdx->payload1 = static_cast<uint32_t>(allIndices[0].size());
-                        currentControl = setIdx;
+                        currentSeq = setIdx;
                     } else {
                         std::vector<IRNode*> chainObjs;
                         chainObjs.push_back(objNode);
                     
                         for (size_t i = 0; i < chain.size() - 1; ++i) {
                             IRNode* getNode = graph->createValueNode(IROp::IndexGet);
-                            getNode->setControl(currentControl);
+                            getNode->setControl(currentSeq);
                             getNode->addData(chainObjs.back());
                             for (auto* idxNode : allIndices[i]) getNode->addData(idxNode);
                             getNode->payload1 = static_cast<uint32_t>(allIndices[i].size());
-                            currentControl = getNode;
+                            currentSeq = getNode;
                             chainObjs.push_back(getNode);
                         }
                     
                         IRNode* setNode = graph->createValueNode(IROp::IndexSet);
-                        setNode->setControl(currentControl);
+                        setNode->setControl(currentSeq);
                         setNode->addData(chainObjs.back());
                         for (auto* iNode : allIndices.back()) setNode->addData(iNode);
                         setNode->addData(valNode);
                         setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
-                        currentControl = setNode;
+                        currentSeq = setNode;
                     }
                 }
             } else {
@@ -663,19 +663,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             }
         } else {
             IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-            matchInit->setControl(currentControl);
+            matchInit->setControl(currentSeq);
             matchInit->addData(valNode);
-            currentControl = matchInit;
+            currentSeq = matchInit;
             valNode = matchInit;
 
             exprPat->expr->accept(*this);
             IRNode* eqNode = graph->createValueNode(IROp::Eq);
-            eqNode->setControl(currentControl);
+            eqNode->setControl(currentSeq);
             eqNode->addData(valNode);
             eqNode->addData(lastValue);
             
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(eqNode);
             
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -685,23 +685,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             ifFalse->setControl(ifNode);
             failMerge->addData(ifFalse);
             
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
         }
     } else if (auto* dap = dynamic_cast<DynamicAssertPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-        matchInit->setControl(currentControl);
+        matchInit->setControl(currentSeq);
         matchInit->addData(valNode);
-        currentControl = matchInit;
+        currentSeq = matchInit;
         valNode = matchInit;
 
         dap->expr->accept(*this);
         IRNode* eqNode = graph->createValueNode(IROp::Eq);
-        eqNode->setControl(currentControl);
+        eqNode->setControl(currentSeq);
         eqNode->addData(valNode);
         eqNode->addData(lastValue);
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(eqNode);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -711,12 +711,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
     } else if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-        matchInit->setControl(currentControl);
+        matchInit->setControl(currentSeq);
         matchInit->addData(valNode);
-        currentControl = matchInit;
+        currentSeq = matchInit;
         valNode = matchInit;
 
         int restIndex = -1;
@@ -743,7 +743,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         uint32_t maxCols = hasRest ? 0xFFFFFFFF : static_cast<uint32_t>(lp->elements.size());
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
-        shapeNode->setControl(currentControl);
+        shapeNode->setControl(currentSeq);
         shapeNode->addData(valNode);
         shapeNode->payload1 = 1; // minRows
         shapeNode->payload2 = 1; // maxRows
@@ -752,7 +752,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         shapeNode->payload5 = 2; // exactMask = 2 (1D pattern)
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(shapeNode);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -762,35 +762,35 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
 
         for (size_t i = 0; i < lp->elements.size(); ++i) {
             if (static_cast<int>(i) == restIndex) {
                 auto* restPat = static_cast<RestPattern*>(lp->elements[i].get());
                 IRNode* startNode = graph->createConstant(Value(static_cast<double>(i)));
-                startNode->setControl(currentControl);
+                startNode->setControl(currentSeq);
                 
                 int tailCount = static_cast<int>(lp->elements.size()) - 1 - static_cast<int>(i);
                 IRNode* endNode = tailCount > 0 ? graph->createConstant(Value(static_cast<double>(-tailCount))) : graph->createConstant(Value::none());
-                endNode->setControl(currentControl);
+                endNode->setControl(currentSeq);
                 
                 IRNode* stepNode = graph->createConstant(Value::none());
-                stepNode->setControl(currentControl);
+                stepNode->setControl(currentSeq);
                 
                 IRNode* buildSliceNode = graph->createValueNode(IROp::BuildSlice);
-                buildSliceNode->setControl(currentControl);
+                buildSliceNode->setControl(currentSeq);
                 buildSliceNode->addData(startNode);
                 buildSliceNode->addData(endNode);
                 buildSliceNode->addData(stepNode);
-                currentControl = buildSliceNode;
+                currentSeq = buildSliceNode;
 
                 IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
-                sliceNode->setControl(currentControl);
+                sliceNode->setControl(currentSeq);
                 sliceNode->addData(valNode);
                 sliceNode->addData(buildSliceNode);
                 sliceNode->payload1 = 1;
                 sliceNode->payload2 = 0;
-                currentControl = sliceNode;
+                currentSeq = sliceNode;
                 
                 if (restPat->name.lexeme != "_") {
                     auto it = patternSymbols->find(restPat);
@@ -820,15 +820,15 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             } else {
                 idxNode = graph->createConstant(Value(static_cast<double>(i)));
             }
-            idxNode->setControl(currentControl);
+            idxNode->setControl(currentSeq);
             
             IRNode* elemNode = graph->createValueNode(IROp::IndexGet);
-            elemNode->setControl(currentControl);
+            elemNode->setControl(currentSeq);
             elemNode->addData(valNode);
             elemNode->addData(idxNode);
             elemNode->payload1 = 1;
             elemNode->payload2 = 1; // noThrow
-            currentControl = elemNode;
+            currentSeq = elemNode;
             
             buildPatternMatch(lp->elements[i].get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
         }
@@ -836,28 +836,28 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (lp->rest) {
             auto* restPat = lp->rest.get();
             IRNode* startNode = graph->createConstant(Value(static_cast<double>(lp->elements.size())));
-            startNode->setControl(currentControl);
+            startNode->setControl(currentSeq);
             
             IRNode* endNode = graph->createConstant(Value::none());
-            endNode->setControl(currentControl);
+            endNode->setControl(currentSeq);
             
             IRNode* stepNode = graph->createConstant(Value::none());
-            stepNode->setControl(currentControl);
+            stepNode->setControl(currentSeq);
             
             IRNode* buildSliceNode = graph->createValueNode(IROp::BuildSlice);
-            buildSliceNode->setControl(currentControl);
+            buildSliceNode->setControl(currentSeq);
             buildSliceNode->addData(startNode);
             buildSliceNode->addData(endNode);
             buildSliceNode->addData(stepNode);
-            currentControl = buildSliceNode;
+            currentSeq = buildSliceNode;
 
             IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
-            sliceNode->setControl(currentControl);
+            sliceNode->setControl(currentSeq);
             sliceNode->addData(valNode);
             sliceNode->addData(buildSliceNode);
             sliceNode->payload1 = 1;
             sliceNode->payload2 = 0;
-            currentControl = sliceNode;
+            currentSeq = sliceNode;
             
             if (restPat->name.lexeme != "_") {
                 auto it = patternSymbols->find(restPat);
@@ -880,9 +880,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
     } else if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-        matchInit->setControl(currentControl);
+        matchInit->setControl(currentSeq);
         matchInit->addData(valNode);
-        currentControl = matchInit;
+        currentSeq = matchInit;
         valNode = matchInit;
 
         uint32_t minRows = 0;
@@ -929,7 +929,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
 
         IRNode* shapeNode = graph->createValueNode(IROp::MatchShape);
-        shapeNode->setControl(currentControl);
+        shapeNode->setControl(currentSeq);
         shapeNode->addData(valNode);
         shapeNode->payload1 = minRows;
         shapeNode->payload2 = maxRows;
@@ -938,7 +938,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         shapeNode->payload5 = 0; // exactMask = 0 (2D pattern)
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(shapeNode);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -948,7 +948,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
 
         for (size_t i = 0; i < mp->rows.size(); ++i) {
             int rowRestColIndex = -1;
@@ -965,42 +965,42 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     auto* restPat = static_cast<RestPattern*>(mp->rows[i][j].get());
                     if (restPat->name.lexeme != "_") {
                         IRNode* rStartNode = graph->createConstant(Value(static_cast<double>(i)));
-                        rStartNode->setControl(currentControl);
+                        rStartNode->setControl(currentSeq);
                         IRNode* rEndNode = graph->createConstant(Value(static_cast<double>(i + 1)));
-                        rEndNode->setControl(currentControl);
+                        rEndNode->setControl(currentSeq);
                         IRNode* rStepNode = graph->createConstant(Value::none());
-                        rStepNode->setControl(currentControl);
+                        rStepNode->setControl(currentSeq);
 
                         IRNode* cStartNode = graph->createConstant(Value(static_cast<double>(j)));
-                        cStartNode->setControl(currentControl);
+                        cStartNode->setControl(currentSeq);
                         int tailCount = static_cast<int>(mp->rows[i].size()) - 1 - static_cast<int>(j);
                         IRNode* cEndNode = tailCount > 0 ? graph->createConstant(Value(static_cast<double>(-tailCount))) : graph->createConstant(Value::none());
-                        cEndNode->setControl(currentControl);
+                        cEndNode->setControl(currentSeq);
                         IRNode* cStepNode = graph->createConstant(Value::none());
-                        cStepNode->setControl(currentControl);
+                        cStepNode->setControl(currentSeq);
 
                         IRNode* rSliceNode = graph->createValueNode(IROp::BuildSlice);
-                        rSliceNode->setControl(currentControl);
+                        rSliceNode->setControl(currentSeq);
                         rSliceNode->addData(rStartNode);
                         rSliceNode->addData(rEndNode);
                         rSliceNode->addData(rStepNode);
-                        currentControl = rSliceNode;
+                        currentSeq = rSliceNode;
 
                         IRNode* cSliceNode = graph->createValueNode(IROp::BuildSlice);
-                        cSliceNode->setControl(currentControl);
+                        cSliceNode->setControl(currentSeq);
                         cSliceNode->addData(cStartNode);
                         cSliceNode->addData(cEndNode);
                         cSliceNode->addData(cStepNode);
-                        currentControl = cSliceNode;
+                        currentSeq = cSliceNode;
 
                         IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
-                        sliceNode->setControl(currentControl);
+                        sliceNode->setControl(currentSeq);
                         sliceNode->addData(valNode);
                         sliceNode->addData(rSliceNode);
                         sliceNode->addData(cSliceNode);
                         sliceNode->payload1 = 2;
                         sliceNode->payload2 = 0;
-                        currentControl = sliceNode;
+                        currentSeq = sliceNode;
 
                         auto it = patternSymbols->find(restPat);
                         ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
@@ -1020,7 +1020,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
 
                 IRNode* rIdxNode = graph->createConstant(Value(static_cast<double>(i)));
-                rIdxNode->setControl(currentControl);
+                rIdxNode->setControl(currentSeq);
 
                 IRNode* cIdxNode = nullptr;
                 if (rowRestColIndex != -1 && static_cast<int>(j) > rowRestColIndex) {
@@ -1029,16 +1029,16 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 } else {
                     cIdxNode = graph->createConstant(Value(static_cast<double>(j)));
                 }
-                cIdxNode->setControl(currentControl);
+                cIdxNode->setControl(currentSeq);
 
                 IRNode* elemNode = graph->createValueNode(IROp::IndexGet);
-                elemNode->setControl(currentControl);
+                elemNode->setControl(currentSeq);
                 elemNode->addData(valNode);
                 elemNode->addData(rIdxNode);
                 elemNode->addData(cIdxNode);
                 elemNode->payload1 = 2;
                 elemNode->payload2 = 1; // noThrow
-                currentControl = elemNode;
+                currentSeq = elemNode;
 
                 buildPatternMatch(mp->rows[i][j].get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
             }
@@ -1047,41 +1047,41 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (hasRestRow && mp->restRow->name.lexeme != "_") {
             auto* restPat = mp->restRow.get();
             IRNode* rStartNode = graph->createConstant(Value(static_cast<double>(mp->rows.size())));
-            rStartNode->setControl(currentControl);
+            rStartNode->setControl(currentSeq);
             IRNode* rEndNode = graph->createConstant(Value::none());
-            rEndNode->setControl(currentControl);
+            rEndNode->setControl(currentSeq);
             IRNode* rStepNode = graph->createConstant(Value::none());
-            rStepNode->setControl(currentControl);
+            rStepNode->setControl(currentSeq);
 
             IRNode* cStartNode = graph->createConstant(Value(0.0));
-            cStartNode->setControl(currentControl);
+            cStartNode->setControl(currentSeq);
             IRNode* cEndNode = graph->createConstant(Value::none());
-            cEndNode->setControl(currentControl);
+            cEndNode->setControl(currentSeq);
             IRNode* cStepNode = graph->createConstant(Value::none());
-            cStepNode->setControl(currentControl);
+            cStepNode->setControl(currentSeq);
 
             IRNode* rSliceNode = graph->createValueNode(IROp::BuildSlice);
-            rSliceNode->setControl(currentControl);
+            rSliceNode->setControl(currentSeq);
             rSliceNode->addData(rStartNode);
             rSliceNode->addData(rEndNode);
             rSliceNode->addData(rStepNode);
-            currentControl = rSliceNode;
+            currentSeq = rSliceNode;
 
             IRNode* cSliceNode = graph->createValueNode(IROp::BuildSlice);
-            cSliceNode->setControl(currentControl);
+            cSliceNode->setControl(currentSeq);
             cSliceNode->addData(cStartNode);
             cSliceNode->addData(cEndNode);
             cSliceNode->addData(cStepNode);
-            currentControl = cSliceNode;
+            currentSeq = cSliceNode;
 
             IRNode* sliceNode = graph->createValueNode(IROp::IndexGet);
-            sliceNode->setControl(currentControl);
+            sliceNode->setControl(currentSeq);
             sliceNode->addData(valNode);
             sliceNode->addData(rSliceNode);
             sliceNode->addData(cSliceNode);
             sliceNode->payload1 = 2;
             sliceNode->payload2 = 0;
-            currentControl = sliceNode;
+            currentSeq = sliceNode;
 
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
@@ -1099,19 +1099,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         }
     } else if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
         IRNode* matchInit = graph->createValueNode(IROp::MatchInit);
-        matchInit->setControl(currentControl);
+        matchInit->setControl(currentSeq);
         matchInit->addData(valNode);
-        currentControl = matchInit;
+        currentSeq = matchInit;
         valNode = matchInit;
 
         auto createTypeCheck = [&](const std::string& typeName) {
             IRNode* typeNode = graph->createValueNode(IROp::GetGlobal);
             typeNode->name = typeName;
-            typeNode->setControl(currentControl);
-            currentControl = typeNode;
+            typeNode->setControl(currentSeq);
+            currentSeq = typeNode;
             
             IRNode* matchNode = graph->createValueNode(IROp::MatchType);
-            matchNode->setControl(currentControl);
+            matchNode->setControl(currentSeq);
             matchNode->addData(valNode);
             matchNode->addData(typeNode);
             return matchNode;
@@ -1122,21 +1122,21 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         IRNode* isNs = createTypeCheck("namespace_type");
 
         IRNode* or1 = graph->createValueNode(IROp::BitOr);
-        or1->setControl(currentControl);
+        or1->setControl(currentSeq);
         or1->addData(isDict);
         or1->addData(isInst);
 
         IRNode* or2 = graph->createValueNode(IROp::BitOr);
-        or2->setControl(currentControl);
+        or2->setControl(currentSeq);
         or2->addData(or1);
         or2->addData(isNs);
 
         IRNode* toBool = graph->createValueNode(IROp::ToBool);
-        toBool->setControl(currentControl);
+        toBool->setControl(currentSeq);
         toBool->addData(or2);
 
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(toBool);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -1146,19 +1146,19 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         ifFalse->setControl(ifNode);
         failMerge->addData(ifFalse);
         
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
 
         for (auto& entry : dp->entries) {
             IRNode* keyNode = graph->createConstant(Value(entry.first));
-            keyNode->setControl(currentControl);
+            keyNode->setControl(currentSeq);
             
             IRNode* elemNode = graph->createValueNode(IROp::IndexGet);
-            elemNode->setControl(currentControl);
+            elemNode->setControl(currentSeq);
             elemNode->addData(valNode);
             elemNode->addData(keyNode);
             elemNode->payload1 = 1;
             elemNode->payload2 = 1; // noThrow
-            currentControl = elemNode;
+            currentSeq = elemNode;
             
             buildPatternMatch(entry.second.get(), elemNode, failMerge, globalMod, globalConst, isAssignment);
         }
@@ -1169,21 +1169,21 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             std::vector<IRNode*> keyNodes;
             for (auto& entry : dp->entries) {
                 IRNode* kNode = graph->createConstant(Value(entry.first));
-                kNode->setControl(currentControl);
+                kNode->setControl(currentSeq);
                 keyNodes.push_back(kNode);
             }
             
             IRNode* excludeList = graph->createValueNode(IROp::BuildList);
-            excludeList->setControl(currentControl);
+            excludeList->setControl(currentSeq);
             for (auto* k : keyNodes) excludeList->addData(k);
             excludeList->payload1 = static_cast<uint32_t>(keyNodes.size());
-            currentControl = excludeList;
+            currentSeq = excludeList;
             
             IRNode* restNode = graph->createValueNode(IROp::DictRest);
-            restNode->setControl(currentControl);
+            restNode->setControl(currentSeq);
             restNode->addData(valNode);
             restNode->addData(excludeList);
-            currentControl = restNode;
+            currentSeq = restNode;
             
             auto it = patternSymbols->find(restPat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
@@ -1207,17 +1207,17 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
         expr->valueExpr->accept(*this);
         IRNode* valNode = lastValue;
         IRNode* appendNode = graph->createNode(appendOp);
-        appendNode->setControl(currentControl);
+        appendNode->setControl(currentSeq);
         appendNode->addData(accNode);
         appendNode->addData(valNode);
-        currentControl = appendNode;
+        currentSeq = appendNode;
         return;
     }
     
     auto& clause = expr->clauses[clauseIdx];
     clause.iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
-    iterNode->setControl(currentControl);
+    iterNode->setControl(currentSeq);
     iterNode->addData(lastValue);
     
     auto isDestructPattern = [](Pattern* p) {
@@ -1225,10 +1225,10 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
         return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
     };
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
-    currentControl = iterNode;
+    currentSeq = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -1241,21 +1241,21 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* exitControl = graph->createNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
-    nextNode->setControl(currentControl);
+    nextNode->setControl(currentSeq);
     nextNode->addData(iterNode);
-    currentControl = nextNode;
+    currentSeq = nextNode;
     
     IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
-    isUninitNode->setControl(currentControl);
+    isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -1265,7 +1265,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
-    currentControl = ifFalse;
+    currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
@@ -1276,7 +1276,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
         IRNode* condIfNode = graph->createNode(IROp::If);
-        condIfNode->setControl(currentControl);
+        condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
         IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
@@ -1286,12 +1286,12 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
-        currentControl = condIfTrue;
+        currentSeq = condIfTrue;
     }
     
     buildCompClause(expr, clauseIdx + 1, accNode, appendOp);
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
     if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
     
@@ -1309,7 +1309,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     }
     
     envStack = exitEnvStack;
-    currentControl = exitControl;
+    currentSeq = exitControl;
 }
 
 void IRBuilder::build(Expr* ast) {
@@ -1318,7 +1318,7 @@ void IRBuilder::build(Expr* ast) {
             f->value->accept(*this);
             IRNode* valNode = lastValue;
             IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
-            selfNode->setControl(currentControl);
+            selfNode->setControl(currentSeq);
             
             IROp op;
             if (f->isLocal && f->isConst) op = IROp::DefinePrivateConst;
@@ -1327,11 +1327,11 @@ void IRBuilder::build(Expr* ast) {
             else op = IROp::DefineProp;
             
             IRNode* defNode = graph->createValueNode(op);
-            defNode->setControl(currentControl);
+            defNode->setControl(currentSeq);
             defNode->addData(selfNode);
             defNode->addData(valNode);
             defNode->name = f->name.lexeme;
-            currentControl = defNode;
+            currentSeq = defNode;
         }
     }
 
@@ -1343,22 +1343,22 @@ void IRBuilder::build(Expr* ast) {
         retVal = lastValue;
     } else {
         retVal = graph->createConstant(Value::none());
-        retVal->setControl(currentControl);
+        retVal->setControl(currentSeq);
     }
     
     if (currentReturnTypeHint) {
         IRNode* assertNode = graph->createNode(IROp::AssertReturnType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(retVal);
-        currentControl = assertNode;
+        currentSeq = assertNode;
     }
 
-    if (currentControl->op != IROp::Return && currentControl->op != IROp::Throw && currentControl->op != IROp::ThrowTyped) {
+    if (currentSeq->op != IROp::Return && currentSeq->op != IROp::Throw && currentSeq->op != IROp::ThrowTyped) {
         IRNode* retNode = graph->createNode(IROp::Return);
-        retNode->setControl(currentControl);
+        retNode->setControl(currentSeq);
         retNode->addData(retVal);
         recordExitNode(retNode);
-        currentControl = retNode;
+        currentSeq = retNode;
     }
 
     // 为所有退出节点添加被捕获变量的伪依赖，延长其生命周期
@@ -1423,7 +1423,7 @@ void IRBuilder::visitLiteral(Literal* expr) {
         }
     }
     lastValue = graph->createConstant(val);
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitBinary(Binary* expr) {
@@ -1477,22 +1477,22 @@ void IRBuilder::visitBinary(Binary* expr) {
         if (!sig.refs.empty()) {
             graph->callSignatures.push_back(sig);
             IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
-            passRefsNode->setControl(currentControl);
+            passRefsNode->setControl(currentSeq);
             passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
             for (auto& ref : sig.refs) {
                 if (ref.localNode) passRefsNode->addData(ref.localNode);
             }
-            currentControl = passRefsNode;
+            currentSeq = passRefsNode;
         }
         
         IRNode* callNode = graph->createValueNode(IROp::Call);
-        callNode->setControl(currentControl);
+        callNode->setControl(currentSeq);
         callNode->addData(calleeNode);
         callNode->addData(argNode);
         callNode->payload1 = 1;
         callNode->payload2 = 0;
         
-        currentControl = callNode;
+        currentSeq = callNode;
         lastValue = callNode;
         return;
     }
@@ -1502,11 +1502,11 @@ void IRBuilder::visitBinary(Binary* expr) {
         IRNode* leftVal = lastValue;
         
         IRNode* toBoolNode = graph->createValueNode(IROp::ToBool);
-        toBoolNode->setControl(currentControl);
+        toBoolNode->setControl(currentSeq);
         toBoolNode->addData(leftVal);
         
         IRNode* ifNode = graph->createNode(IROp::If);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
         ifNode->addData(toBoolNode);
         
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -1522,19 +1522,19 @@ void IRBuilder::visitBinary(Binary* expr) {
         resultPhi->setControl(mergeNode);
         
         if (expr->op.type == TokenType::AND_AND) {
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
             expr->right->accept(*this);
             IRNode* rightToBool = graph->createValueNode(IROp::ToBool);
-            rightToBool->setControl(currentControl);
+            rightToBool->setControl(currentSeq);
             rightToBool->addData(lastValue);
             
-            mergeNode->addData(currentControl);
+            mergeNode->addData(currentSeq);
             resultPhi->addData(rightToBool);
             auto rightEnv = envStack;
             
             envStack = baseEnv;
-            currentControl = ifFalse;
-            mergeNode->addData(currentControl);
+            currentSeq = ifFalse;
+            mergeNode->addData(currentSeq);
             resultPhi->addData(toBoolNode);
             
             envStack = baseEnv;
@@ -1555,18 +1555,18 @@ void IRBuilder::visitBinary(Binary* expr) {
                 }
             }
         } else {
-            currentControl = ifTrue;
-            mergeNode->addData(currentControl);
+            currentSeq = ifTrue;
+            mergeNode->addData(currentSeq);
             resultPhi->addData(toBoolNode);
             
             envStack = baseEnv;
-            currentControl = ifFalse;
+            currentSeq = ifFalse;
             expr->right->accept(*this);
             IRNode* rightToBool = graph->createValueNode(IROp::ToBool);
-            rightToBool->setControl(currentControl);
+            rightToBool->setControl(currentSeq);
             rightToBool->addData(lastValue);
             
-            mergeNode->addData(currentControl);
+            mergeNode->addData(currentSeq);
             resultPhi->addData(rightToBool);
             auto rightEnv = envStack;
             
@@ -1589,7 +1589,7 @@ void IRBuilder::visitBinary(Binary* expr) {
             }
         }
         
-        currentControl = mergeNode;
+        currentSeq = mergeNode;
         lastValue = resultPhi;
         return;
     }
@@ -1633,7 +1633,7 @@ void IRBuilder::visitBinary(Binary* expr) {
 
     // 4. 创建运算节点并连接依赖边
     IRNode* node = graph->createValueNode(op);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(leftVal);
     node->addData(rightVal);
     lastValue = node;
@@ -1661,11 +1661,11 @@ void IRBuilder::visitTypeAssertExpr(TypeAssertExpr* expr) {
     IRNode* typeNode = lastValue;
 
     IRNode* assertNode = graph->createNode(IROp::AssertType);
-    assertNode->setControl(currentControl);
+    assertNode->setControl(currentSeq);
     assertNode->addData(valueNode);
     assertNode->addData(typeNode);
     assertNode->name = expr->name.lexeme;
-    currentControl = assertNode;
+    currentSeq = assertNode;
 
     lastValue = valueNode;  // 断言通过后，表达式值 = x
 }
@@ -1706,11 +1706,11 @@ void IRBuilder::visitAssign(Assign* expr) {
         IRNode* getVal = readVariable(expr->name.lexeme, sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
-        isUninit->setControl(currentControl);
+        isUninit->setControl(currentSeq);
 
         IRNode* ifNode = graph->createNode(IROp::If);
         ifNode->addData(isUninit);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
 
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
@@ -1720,7 +1720,7 @@ void IRBuilder::visitAssign(Assign* expr) {
 
         auto baseEnv = envStack;
 
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
         
         expr->value->accept(*this);
         IRNode* valNode = lastValue;
@@ -1728,10 +1728,10 @@ void IRBuilder::visitAssign(Assign* expr) {
         if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
         
         writeVariable(expr->name.lexeme, valNode, sym, false);
-        IRNode* trueCtrl = currentControl;
+        IRNode* trueCtrl = currentSeq;
         auto trueEnv = envStack;
 
-        currentControl = ifFalse;
+        currentSeq = ifFalse;
         auto falseEnv = baseEnv;
 
         IRNode* merge = graph->createNode(IROp::Merge);
@@ -1758,7 +1758,7 @@ void IRBuilder::visitAssign(Assign* expr) {
             }
         }
         
-        currentControl = merge;
+        currentSeq = merge;
 
         IRNode* phiVal = graph->createValueNode(IROp::Phi);
         phiVal->setControl(merge);
@@ -1799,18 +1799,18 @@ void IRBuilder::visitAssign(Assign* expr) {
         IRNode* typeNode = lastValue;
         
         IRNode* assertNode = graph->createNode(IROp::AssertType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(valNode);
         assertNode->addData(typeNode);
         assertNode->name = expr->name.lexeme;
-        currentControl = assertNode;
+        currentSeq = assertNode;
     }
     
     if (hidden) envStack[hiddenDepth][expr->name.lexeme] = hiddenNode;
     
     writeVariable(expr->name.lexeme, valNode, sym, expr->isLocal, expr->isConst);
-    if (expr->isRef && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
-        currentControl->op = IROp::SetGlobalRef;
+    if (expr->isRef && sym.scope == VarScope::Global && currentSeq->op == IROp::SetGlobal) {
+        currentSeq->op = IROp::SetGlobalRef;
     }
     lastValue = valNode;
 }
@@ -1821,7 +1821,7 @@ void IRBuilder::hoistBlock(Block* block) {
         if (isExplicitLocal) {
             if (!envStack.back().count(name)) {
                 IRNode* uninit = graph->createConstant(Value::uninit());
-                uninit->setControl(currentControl);
+                uninit->setControl(currentSeq);
                 envStack.back()[name] = uninit;
             }
         } else {
@@ -1834,7 +1834,7 @@ void IRBuilder::hoistBlock(Block* block) {
             }
             if (!found) {
                 IRNode* uninit = graph->createConstant(Value::uninit());
-                uninit->setControl(currentControl);
+                uninit->setControl(currentSeq);
                 if (namespaceScopeDepth != -1) envStack[namespaceScopeDepth][name] = uninit;
                 else envStack[0][name] = uninit;
             }
@@ -1913,7 +1913,7 @@ void IRBuilder::visitBlock(Block* expr) {
     hoistBlock(expr);
     if (expr->statements.empty()) {
         lastValue = graph->createConstant(Value::none());
-        lastValue->setControl(currentControl);
+        lastValue->setControl(currentSeq);
     } else {
         for (size_t i = 0; i < expr->statements.size(); ++i) {
             expr->statements[i]->accept(*this);
@@ -1949,7 +1949,7 @@ void IRBuilder::visitUnary(Unary* expr) {
     }
     
     IRNode* node = graph->createValueNode(op);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(rightVal);
     lastValue = node;
 }
@@ -1982,20 +1982,20 @@ void IRBuilder::visitCall(Call* expr) {
             actualArg = kwArg->value.get();
             
             IRNode* nameNode = graph->createConstant(Value(kwName));
-            nameNode->setControl(currentControl);
+            nameNode->setControl(currentSeq);
             argNodes.push_back(nameNode);
             kwArgc++;
         }
         else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
             if (spread->isKeyword) {
                 IRNode* noneNode = graph->createConstant(Value::none());
-                noneNode->setControl(currentControl);
+                noneNode->setControl(currentSeq);
                 IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
-                markNode->setControl(currentControl);
+                markNode->setControl(currentSeq);
                 markNode->addData(noneNode);
                 markNode->payload1 = 1;
                 argNodes.push_back(markNode);
-                currentControl = markNode;
+                currentSeq = markNode;
                 kwArgc++;
                 actualArg = spread->value.get();
             }
@@ -2045,16 +2045,16 @@ void IRBuilder::visitCall(Call* expr) {
     if (!sig.refs.empty()) {
         graph->callSignatures.push_back(sig);
         IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
-        passRefsNode->setControl(currentControl);
+        passRefsNode->setControl(currentSeq);
         passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
         for (auto& ref : sig.refs) {
             if (ref.localNode) passRefsNode->addData(ref.localNode);
         }
-        currentControl = passRefsNode;
+        currentSeq = passRefsNode;
     }
     
     IRNode* callNode = graph->createValueNode(IROp::Call);
-    callNode->setControl(currentControl);
+    callNode->setControl(currentSeq);
     callNode->addData(calleeNode);
     for (IRNode* arg : argNodes) {
         callNode->addData(arg);
@@ -2063,7 +2063,7 @@ void IRBuilder::visitCall(Call* expr) {
     callNode->payload2 = static_cast<uint32_t>(kwArgc);
     if (isTailCall) callNode->op = IROp::TailCall;
 
-    currentControl = callNode;
+    currentSeq = callNode;
     lastValue = callNode;
 }
 
@@ -2074,7 +2074,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
 
     // 2. 创建 If 控制节点
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
 
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -2087,10 +2087,10 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     auto baseEnv = envStack;
 
     // 4. 编译 True 分支
-    currentControl = ifTrue;
+    currentSeq = ifTrue;
     pushScope(); // ★ 自动创建块级作用域
     expr->thenBranch->accept(*this);
-    IRNode* thenControl = currentControl;
+    IRNode* thenControl = currentSeq;
     while (thenControl && (thenControl->op == IROp::Export || thenControl->op == IROp::Import)) {
         thenControl = thenControl->controlInput;
     }
@@ -2100,7 +2100,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
 
     // 5. 编译 False 分支
     envStack = baseEnv;
-    currentControl = ifFalse;
+    currentSeq = ifFalse;
     pushScope(); // ★ 自动创建块级作用域
     IRNode* elseVal = nullptr;
     if (expr->elseBranch) {
@@ -2108,9 +2108,9 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
         elseVal = lastValue;
     } else {
         elseVal = graph->createConstant(Value::none());
-        elseVal->setControl(currentControl);
+        elseVal->setControl(currentSeq);
     }
-    IRNode* elseControl = currentControl;
+    IRNode* elseControl = currentSeq;
     while (elseControl && (elseControl->op == IROp::Export || elseControl->op == IROp::Import)) {
         elseControl = elseControl->controlInput;
     }
@@ -2122,7 +2122,7 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     IRNode* mergeNode = graph->createNode(IROp::Merge);
     mergeNode->addData(thenControl);
     mergeNode->addData(elseControl);
-    currentControl = mergeNode;
+    currentSeq = mergeNode;
 
     // 7. 合并环境 (生成 Phi 节点)
     for (size_t i = 0; i < baseEnv.size(); ++i) {
@@ -2176,25 +2176,25 @@ void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
         tailCallPosition = false;
     } else {
         retVal = graph->createConstant(Value::none());
-        retVal->setControl(currentControl);
+        retVal->setControl(currentSeq);
     }
     
     graph->currentLine = expr->keyword.line;
     
     if (currentReturnTypeHint) {
         IRNode* assertNode = graph->createNode(IROp::AssertReturnType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(retVal);
-        currentControl = assertNode;
+        currentSeq = assertNode;
     }
 
     IRNode* retNode = graph->createNode(IROp::Return);
-    retNode->setControl(currentControl);
+    retNode->setControl(currentSeq);
     retNode->addData(retVal);
     
     recordExitNode(retNode);
     
-    currentControl = retNode;
+    currentSeq = retNode;
     lastValue = retVal;
 }
 
@@ -2202,7 +2202,7 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
     int rows = static_cast<int>(expr->elements.size());
     if (rows == 0) {
         lastValue = graph->createConstant(Value(RealMatrix(0, 0)));
-        lastValue->setControl(currentControl);
+        lastValue->setControl(currentSeq);
         return;
     }
 
@@ -2214,11 +2214,11 @@ void IRBuilder::visitMatrixNode(MatrixNode* expr) {
         }
     }
     IRNode* node = graph->createValueNode(IROp::BuildMatrix);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     for (auto* e : elements) node->addData(e);
     node->payload1 = static_cast<uint32_t>(expr->elements.size());
     for (auto& row : expr->elements) node->rowCols.push_back(static_cast<uint32_t>(row.size()));
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
 
@@ -2226,8 +2226,8 @@ void IRBuilder::visitListNode(ListNode* expr) {
     int rows = static_cast<int>(expr->elements.size());
     if (rows == 0) {
         IRNode* node = graph->createValueNode(IROp::ListInit);
-        node->setControl(currentControl);
-        currentControl = node;
+        node->setControl(currentSeq);
+        currentSeq = node;
         lastValue = node;
         return;
     }
@@ -2239,10 +2239,10 @@ void IRBuilder::visitListNode(ListNode* expr) {
             elements.push_back(lastValue);
         }
         IRNode* node = graph->createValueNode(IROp::BuildList);
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         for (auto* e : elements) node->addData(e);
         node->payload1 = static_cast<uint32_t>(elements.size());
-        currentControl = node;
+        currentSeq = node;
         lastValue = node;
     } else {
         std::vector<IRNode*> rowNodes;
@@ -2253,17 +2253,17 @@ void IRBuilder::visitListNode(ListNode* expr) {
                 elements.push_back(lastValue);
             }
             IRNode* rowNode = graph->createValueNode(IROp::BuildList);
-            rowNode->setControl(currentControl);
+            rowNode->setControl(currentSeq);
             for (auto* e : elements) rowNode->addData(e);
             rowNode->payload1 = static_cast<uint32_t>(elements.size());
-            currentControl = rowNode;
+            currentSeq = rowNode;
             rowNodes.push_back(rowNode);
         }
         IRNode* node = graph->createValueNode(IROp::BuildList);
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         for (auto* r : rowNodes) node->addData(r);
         node->payload1 = static_cast<uint32_t>(rowNodes.size());
-        currentControl = node;
+        currentSeq = node;
         lastValue = node;
     }
 }
@@ -2272,7 +2272,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     pushScope(); // ★ 自动创建块级作用域
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -2285,7 +2285,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
@@ -2295,7 +2295,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     IRNode* condVal = lastValue;
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -2306,13 +2306,13 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     
     auto envBeforeBody = envStack;
     
-    currentControl = ifTrue;
+    currentSeq = ifTrue;
     expr->body->accept(*this);
     
-    continueMerge->addData(currentControl);
+    continueMerge->addData(currentSeq);
     loopStack.back().continueEnvs.push_back(envStack);
     
-    currentControl = continueMerge;
+    currentSeq = continueMerge;
     
     auto& continueEnvs = loopStack.back().continueEnvs;
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -2328,7 +2328,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
         }
     }
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
             ResolvedSym rs; rs.scope = VarScope::Local;
@@ -2339,7 +2339,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     breakMerge->addData(ifFalse);
     loopStack.back().breakEnvs.push_back(envBeforeBody);
     
-    currentControl = breakMerge;
+    currentSeq = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
     std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
@@ -2362,7 +2362,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitForExpr(ForExpr* expr) {
@@ -2370,7 +2370,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     expr->initializer->accept(*this);
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -2383,7 +2383,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
@@ -2393,7 +2393,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     IRNode* condVal = lastValue;
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(condVal);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -2404,13 +2404,13 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     
     auto envBeforeBody = envStack;
     
-    currentControl = ifTrue;
+    currentSeq = ifTrue;
     expr->body->accept(*this);
     
-    continueMerge->addData(currentControl);
+    continueMerge->addData(currentSeq);
     loopStack.back().continueEnvs.push_back(envStack);
     
-    currentControl = continueMerge;
+    currentSeq = continueMerge;
     
     auto& continueEnvs = loopStack.back().continueEnvs;
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -2428,7 +2428,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     
     expr->update->accept(*this);
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
             ResolvedSym rs; rs.scope = VarScope::Local;
@@ -2439,7 +2439,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     breakMerge->addData(ifFalse);
     loopStack.back().breakEnvs.push_back(envBeforeBody);
     
-    currentControl = breakMerge;
+    currentSeq = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
     std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
@@ -2462,7 +2462,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitBreakExpr(BreakExpr* expr) {
@@ -2474,8 +2474,8 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
         IRNode* tryEnd = graph->createNode(IROp::TryEnd);
-        tryEnd->setControl(currentControl);
-        currentControl = tryEnd;
+        tryEnd->setControl(currentSeq);
+        currentSeq = tryEnd;
     }
 
     int defersToRun = 0;
@@ -2485,14 +2485,14 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
     if (defersToRun > 0) {
         IRNode* runNode = graph->createNode(IROp::RunDefers);
         runNode->payload1 = defersToRun;
-        runNode->setControl(currentControl);
-        currentControl = runNode;
+        runNode->setControl(currentSeq);
+        currentSeq = runNode;
     }
     
-    loop.breakMerge->addData(currentControl);
+    loop.breakMerge->addData(currentSeq);
     loop.breakEnvs.push_back(envStack);
     
-    currentControl = graph->createNode(IROp::Merge); // Dead code
+    currentSeq = graph->createNode(IROp::Merge); // Dead code
 }
 
 void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
@@ -2504,8 +2504,8 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
         IRNode* tryEnd = graph->createNode(IROp::TryEnd);
-        tryEnd->setControl(currentControl);
-        currentControl = tryEnd;
+        tryEnd->setControl(currentSeq);
+        currentSeq = tryEnd;
     }
 
     int defersToRun = 0;
@@ -2515,15 +2515,15 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
     if (defersToRun > 0) {
         IRNode* runNode = graph->createNode(IROp::RunDefers);
         runNode->payload1 = defersToRun;
-        runNode->setControl(currentControl);
-        currentControl = runNode;
+        runNode->setControl(currentSeq);
+        currentSeq = runNode;
     }
     
     if (loop.continueMerge) {
-        loop.continueMerge->addData(currentControl);
+        loop.continueMerge->addData(currentSeq);
         loop.continueEnvs.push_back(envStack);
     } else {
-        loop.loopNode->addData(currentControl);
+        loop.loopNode->addData(currentSeq);
         for (size_t i = 0; i < loop.loopPhisStack.size(); ++i) {
             for (auto& pair : loop.loopPhisStack[i]) {
                 ResolvedSym rs; rs.scope = VarScope::Local;
@@ -2532,7 +2532,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
         }
     }
     
-    currentControl = graph->createNode(IROp::Merge); // Dead code
+    currentSeq = graph->createNode(IROp::Merge); // Dead code
 }
     
 void IRBuilder::visitIndexAccess(IndexAccess* expr) {
@@ -2546,11 +2546,11 @@ void IRBuilder::visitIndexAccess(IndexAccess* expr) {
     }
         
     IRNode* node = graph->createValueNode(IROp::IndexGet);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(objNode);
     for (auto* idx : indices) node->addData(idx);
     node->payload1 = static_cast<uint32_t>(indices.size());
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
 
@@ -2565,10 +2565,10 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
             dotPropName = dot->field.lexeme;
             
             IRNode* getProp = graph->createValueNode(IROp::GetProperty);
-            getProp->setControl(currentControl);
+            getProp->setControl(currentSeq);
             getProp->addData(dotParentNode);
             getProp->name = dotPropName;
-            currentControl = getProp;
+            currentSeq = getProp;
             lastValue = getProp;
         } else {
             expr->objectExpr->accept(*this);
@@ -2598,26 +2598,26 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         if (dotParentNode) {
             // 字段索引赋值：GetProperty 取字段 + IndexSet 原地改（引用类型原地改，矩阵报错）
             IRNode* getProp = graph->createValueNode(IROp::GetProperty);
-            getProp->setControl(currentControl);
+            getProp->setControl(currentSeq);
             getProp->addData(dotParentNode);
             getProp->name = dotPropName;
-            currentControl = getProp;
+            currentSeq = getProp;
             
             IRNode* node = graph->createValueNode(IROp::IndexSet);
-            node->setControl(currentControl);
+            node->setControl(currentSeq);
             node->addData(getProp);
             for (auto* idx : indicesTmp[0]) node->addData(idx);
             node->addData(valNode);
             node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
-            currentControl = node;
+            currentSeq = node;
         } else {
             IRNode* node = graph->createValueNode(IROp::IndexSet);
-            node->setControl(currentControl);
+            node->setControl(currentSeq);
             node->addData(rootObjNode);
             for (auto* idx : indicesTmp[0]) node->addData(idx);
             node->addData(valNode);
             node->payload1 = static_cast<uint32_t>(indicesTmp[0].size());
-            currentControl = node;
+            currentSeq = node;
         }
         lastValue = valNode;
     } else {
@@ -2626,21 +2626,21 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         
         for (int level = 0; level < depth - 1; ++level) {
             IRNode* getNode = graph->createValueNode(IROp::IndexGet);
-            getNode->setControl(currentControl);
+            getNode->setControl(currentSeq);
             getNode->addData(chainObjs.back());
             for (auto* idx : indicesTmp[level]) getNode->addData(idx);
             getNode->payload1 = static_cast<uint32_t>(indicesTmp[level].size());
-            currentControl = getNode;
+            currentSeq = getNode;
             chainObjs.push_back(getNode);
         }
         
         IRNode* setNode = graph->createValueNode(IROp::IndexSet);
-        setNode->setControl(currentControl);
+        setNode->setControl(currentSeq);
         setNode->addData(chainObjs.back());
         for (auto* idx : indicesTmp[depth - 1]) setNode->addData(idx);
         setNode->addData(valNode);
         setNode->payload1 = static_cast<uint32_t>(indicesTmp[depth - 1].size());
-        currentControl = setNode;
+        currentSeq = setNode;
         
         lastValue = valNode;
     }
@@ -2649,11 +2649,11 @@ void IRBuilder::visitIndexAssign(IndexAssign* expr) {
         expr->typeHint->accept(*this);
         IRNode* typeNode = lastValue;
         IRNode* assertNode = graph->createNode(IROp::AssertType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(valNode);
         assertNode->addData(typeNode);
         assertNode->name = expr->name.lexeme;
-        currentControl = assertNode;
+        currentSeq = assertNode;
         lastValue = valNode;
     }
 }
@@ -2666,7 +2666,7 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
     IRNode* capturedNode;
     if (expr->name.lexeme == "_") {
         capturedNode = graph->createConstant(Value::uninit());
-        capturedNode->setControl(currentControl);
+        capturedNode->setControl(currentSeq);
     } else {
         auto it = exprSymbols->find(expr);
         ResolvedSym outerSym = it != exprSymbols->end() ? it->second : ResolvedSym{};
@@ -2679,17 +2679,17 @@ void IRBuilder::visitLocalDecl(LocalDecl* expr) {
             expr->typeHint->accept(*this);
             IRNode* typeNode = lastValue;
             IRNode* assertNode = graph->createNode(IROp::AssertType);
-            assertNode->setControl(currentControl);
+            assertNode->setControl(currentSeq);
             assertNode->addData(capturedNode);
             assertNode->addData(typeNode);
             assertNode->name = expr->name.lexeme;
-            currentControl = assertNode;
+            currentSeq = assertNode;
         }
         currentLocalVars.insert(expr->name.lexeme);
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitRefDecl(RefDecl* expr) {
@@ -2706,8 +2706,8 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
         } else if (sym.scope == VarScope::Global) {
             IRNode* checkNode = graph->createValueNode(IROp::GetGlobal);
             checkNode->name = expr->name.lexeme;
-            checkNode->setControl(currentControl);
-            currentControl = checkNode;
+            checkNode->setControl(currentSeq);
+            currentSeq = checkNode;
         }
         
         if (expr->typeHint) {
@@ -2715,17 +2715,17 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
             expr->typeHint->accept(*this);
             IRNode* typeNode = lastValue;
             IRNode* assertNode = graph->createNode(IROp::AssertType);
-            assertNode->setControl(currentControl);
+            assertNode->setControl(currentSeq);
             assertNode->addData(outerVal);
             assertNode->addData(typeNode);
             assertNode->name = expr->name.lexeme;
-            currentControl = assertNode;
+            currentSeq = assertNode;
         }
         
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitStateDecl(StateDecl* expr) {
@@ -2756,29 +2756,29 @@ void IRBuilder::visitStateDecl(StateDecl* expr) {
             expr->typeHint->accept(*this);
             IRNode* typeNode = lastValue;
             IRNode* assertNode = graph->createNode(IROp::AssertType);
-            assertNode->setControl(currentControl);
+            assertNode->setControl(currentSeq);
             assertNode->addData(stateVal);
             assertNode->addData(typeNode);
             assertNode->name = expr->name.lexeme;
-            currentControl = assertNode;
+            currentSeq = assertNode;
         }
         if (expr->isConst) currentConstVars.insert(expr->name.lexeme);
     }
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
     
 void IRBuilder::visitConstDecl(ConstDecl* expr) {
     if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
     IRNode* uninitNode = graph->createConstant(Value::uninit());
-    uninitNode->setControl(currentControl);
+    uninitNode->setControl(currentSeq);
     declareVariable(expr->name.lexeme, uninitNode);
     if (expr->name.lexeme != "_") {
         currentConstVars.insert(expr->name.lexeme);
     }
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
@@ -2793,13 +2793,13 @@ void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
         ResolvedSym sym = (i < syms.size()) ? syms[i] : ResolvedSym{};
         if (sym.scope == VarScope::Global) {
             IRNode* delNode = graph->createNode(IROp::DeleteGlobal);
-            delNode->setControl(currentControl);
+            delNode->setControl(currentSeq);
             delNode->name = name;
-            currentControl = delNode;
+            currentSeq = delNode;
         } else {
             // 局部遮蔽：编译期已在 Resolver 回落外层；这里把 envStack 的局部标记为 uninit，防闭包/后续误引用
             IRNode* uninit = graph->createConstant(Value::uninit());
-            uninit->setControl(currentControl);
+            uninit->setControl(currentSeq);
             for (int j = static_cast<int>(envStack.size()) - 1; j >= 0; --j) {
                 auto envIt = envStack[j].find(name);
                 if (envIt != envStack[j].end()) {
@@ -2810,7 +2810,7 @@ void IRBuilder::visitDeleteExpr(DeleteExpr* expr) {
         }
     }
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
@@ -2878,10 +2878,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
 
         targetVal = graph->createValueNode(getOp);
-        targetVal->setControl(currentControl);
+        targetVal->setControl(currentSeq);
         targetVal->addData(objNode);
         targetVal->name = propName;
-        currentControl = targetVal;
+        currentSeq = targetVal;
     } else if (auto* idx = dynamic_cast<IndexAccess*>(expr->target.get())) {
         IndexAccess* curr = idx;
         while (curr) {
@@ -2916,10 +2916,10 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             }
 
             IRNode* getProp = graph->createValueNode(getOp);
-            getProp->setControl(currentControl);
+            getProp->setControl(currentSeq);
             getProp->addData(dotParentNode);
             getProp->name = dotPropName;
-            currentControl = getProp;
+            currentSeq = getProp;
             objNode = getProp;
         } else {
             chain[0]->object->accept(*this);
@@ -2938,11 +2938,11 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
             }
             
             IRNode* getNode = graph->createValueNode(IROp::IndexGet);
-            getNode->setControl(currentControl);
+            getNode->setControl(currentSeq);
             getNode->addData(currObj);
             for (auto* idxNode : levelIndices) getNode->addData(idxNode);
             getNode->payload1 = static_cast<uint32_t>(levelIndices.size());
-            currentControl = getNode;
+            currentSeq = getNode;
             currObj = getNode;
         }
         targetVal = currObj;
@@ -2985,7 +2985,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     }
 
     IRNode* opNode = graph->createValueNode(op);
-    opNode->setControl(currentControl);
+    opNode->setControl(currentSeq);
     opNode->addData(targetVal);
     opNode->addData(rightVal);
 
@@ -2993,8 +2993,8 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         auto it = exprSymbols->find(var);
         ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
         writeVariable(var->name.lexeme, opNode, sym, expr->isLocal, false);
-        if (expr->isRef && sym.scope == VarScope::Global && currentControl->op == IROp::SetGlobal) {
-            currentControl->op = IROp::SetGlobalRef;
+        if (expr->isRef && sym.scope == VarScope::Global && currentSeq->op == IROp::SetGlobal) {
+            currentSeq->op = IROp::SetGlobalRef;
         }
     } else if (dynamic_cast<DotAccess*>(expr->target.get())) {
         IROp setOp = IROp::SetProperty;
@@ -3015,21 +3015,21 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
         }
 
         IRNode* setProp = graph->createValueNode(setOp);
-        setProp->setControl(currentControl);
+        setProp->setControl(currentSeq);
         setProp->addData(objNode);
         setProp->addData(opNode);
         setProp->name = propName;
-        currentControl = setProp;
+        currentSeq = setProp;
     } else if (dynamic_cast<IndexAccess*>(expr->target.get())) {
         int depth = static_cast<int>(chain.size());
         if (depth == 1) {
             IRNode* setIdx = graph->createValueNode(IROp::IndexSet);
-            setIdx->setControl(currentControl);
+            setIdx->setControl(currentSeq);
             setIdx->addData(objNode);
             for (auto* i : indices) setIdx->addData(i);
             setIdx->addData(opNode);
             setIdx->payload1 = static_cast<uint32_t>(indices.size());
-            currentControl = setIdx;
+            currentSeq = setIdx;
         } else {
             std::vector<IRNode*> chainObjs;
             chainObjs.push_back(objNode);
@@ -3045,22 +3045,22 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                 
                 if (i < chain.size() - 1) {
                     IRNode* getNode = graph->createValueNode(IROp::IndexGet);
-                    getNode->setControl(currentControl);
+                    getNode->setControl(currentSeq);
                     getNode->addData(chainObjs.back());
                     for (auto* idxNode : levelIndices) getNode->addData(idxNode);
                     getNode->payload1 = static_cast<uint32_t>(levelIndices.size());
-                    currentControl = getNode;
+                    currentSeq = getNode;
                     chainObjs.push_back(getNode);
                 }
             }
             
             IRNode* setNode = graph->createValueNode(IROp::IndexSet);
-            setNode->setControl(currentControl);
+            setNode->setControl(currentSeq);
             setNode->addData(chainObjs.back());
             for (auto* idx : allIndices.back()) setNode->addData(idx);
             setNode->addData(opNode);
             setNode->payload1 = static_cast<uint32_t>(allIndices.back().size());
-            currentControl = setNode;
+            currentSeq = setNode;
         }
     }
 
@@ -3114,7 +3114,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
                 paramNode = readVariable(params[i].lexeme, rs);
             } else {
                 paramNode = graph->createConstant(Value::none());
-                paramNode->setControl(currentControl);
+                paramNode->setControl(currentSeq);
             }
         } else {
             paramNode = graph->createValueNode(IROp::Parameter);
@@ -3127,11 +3127,11 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
         
         if (defaultExprs[i]) {
             IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-            isUninit->setControl(currentControl);
+            isUninit->setControl(currentSeq);
             isUninit->addData(paramNode);
             
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(isUninit);
             
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -3142,18 +3142,18 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             
             auto baseEnv = envStack;
             
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
             envStack.emplace_back();
             defaultExprs[i]->accept(*this);
             IRNode* defVal = lastValue;
-            IRNode* trueCtrl = currentControl;
+            IRNode* trueCtrl = currentSeq;
             auto trueEnv = envStack;
             envStack.pop_back();
             
             envStack = baseEnv;
-            currentControl = ifFalse;
+            currentSeq = ifFalse;
             envStack.emplace_back();
-            IRNode* falseCtrl = currentControl;
+            IRNode* falseCtrl = currentSeq;
             auto falseEnv = envStack;
             envStack.pop_back();
             
@@ -3192,7 +3192,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             phi->addData(paramNode);
             phi->name = params[i].lexeme;
             
-            currentControl = merge;
+            currentSeq = merge;
             ResolvedSym sym;
             sym.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             sym.isConst = paramIsConst[i];
@@ -3201,7 +3201,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
         
         if (i < typeHints.size() && typeHints[i]) {
             IRNode* assertNode = graph->createNode(IROp::AssertParamType);
-            assertNode->setControl(currentControl);
+            assertNode->setControl(currentSeq);
             ResolvedSym rs; rs.scope = paramIsRef[i] ? VarScope::RefParam : VarScope::Local;
             assertNode->addData(readVariable(params[i].lexeme, rs));
             
@@ -3210,7 +3210,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             assertNode->payload1 = static_cast<uint32_t>(i);
             assertNode->payload2 = paramNameIdx;
             
-            currentControl = assertNode;
+            currentSeq = assertNode;
         }
     }
 
@@ -3233,7 +3233,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
                 paramNode = readVariable(kwargParams[j].lexeme, rs);
             } else {
                 paramNode = graph->createConstant(Value::none());
-                paramNode->setControl(currentControl);
+                paramNode->setControl(currentSeq);
             }
         } else {
             paramNode = graph->createValueNode(IROp::Parameter);
@@ -3245,27 +3245,27 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
         }
         if (j < kwargDefaultExprs.size() && kwargDefaultExprs[j]) {
             IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-            isUninit->setControl(currentControl);
+            isUninit->setControl(currentSeq);
             isUninit->addData(paramNode);
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(isUninit);
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             IRNode* ifFalse = graph->createNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             auto baseEnv = envStack;
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
             envStack.emplace_back();
             kwargDefaultExprs[j]->accept(*this);
             IRNode* defVal = lastValue;
-            IRNode* trueCtrl = currentControl;
+            IRNode* trueCtrl = currentSeq;
             auto trueEnv = envStack;
             envStack.pop_back();
             envStack = baseEnv;
-            currentControl = ifFalse;
+            currentSeq = ifFalse;
             envStack.emplace_back();
-            IRNode* falseCtrl = currentControl;
+            IRNode* falseCtrl = currentSeq;
             auto falseEnv = envStack;
             envStack.pop_back();
             envStack = baseEnv;
@@ -3299,7 +3299,7 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
             phi->addData(defVal);
             phi->addData(paramNode);
             phi->name = kwargParams[j].lexeme;
-            currentControl = merge;
+            currentSeq = merge;
             ResolvedSym sym;
             sym.scope = VarScope::Local;
             sym.isConst = j < kwargIsConst.size() && kwargIsConst[j];
@@ -3307,13 +3307,13 @@ void IRBuilder::buildFunctionParams(const std::vector<Token>& params, const std:
         }
         if (j < kwargTypes.size() && kwargTypes[j]) {
             IRNode* assertNode = graph->createNode(IROp::AssertParamType);
-            assertNode->setControl(currentControl);
+            assertNode->setControl(currentSeq);
             ResolvedSym rs; rs.scope = VarScope::Local;
             assertNode->addData(readVariable(kwargParams[j].lexeme, rs));
             uint32_t paramNameIdx = currentFunction->chunk.addConstant(Value(kwargParams[j].lexeme));
             assertNode->payload1 = static_cast<uint32_t>(kwBase + j);
             assertNode->payload2 = paramNameIdx;
-            currentControl = assertNode;
+            currentSeq = assertNode;
         }
     }
 
@@ -3380,7 +3380,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         expr->fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
 
         IRNode* closureNode = graph->createValueNode(IROp::Closure);
-        closureNode->setControl(currentControl);
+        closureNode->setControl(currentSeq);
         closureNode->name = std::to_string(expr->fnIdx);
         
         for (auto& target : fnBuilder.upvalueTargets) {
@@ -3406,7 +3406,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         lastValue = closureNode;
     } else {
         IRNode* closureNode = graph->createValueNode(IROp::Closure);
-        closureNode->setControl(currentControl);
+        closureNode->setControl(currentSeq);
         closureNode->name = std::to_string(expr->fnIdx);
         lastValue = closureNode;
     }
@@ -3430,20 +3430,20 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
             actualArg = kwArg->value.get();
             
             IRNode* nameNode = graph->createConstant(Value(kwName));
-            nameNode->setControl(currentControl);
+            nameNode->setControl(currentSeq);
             argNodes.push_back(nameNode);
             kwArgc++;
         }
         else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
             if (spread->isKeyword) {
                 IRNode* noneNode = graph->createConstant(Value::none());
-                noneNode->setControl(currentControl);
+                noneNode->setControl(currentSeq);
                 IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
-                markNode->setControl(currentControl);
+                markNode->setControl(currentSeq);
                 markNode->addData(noneNode);
                 markNode->payload1 = 1;
                 argNodes.push_back(markNode);
-                currentControl = markNode;
+                currentSeq = markNode;
                 kwArgc++;
                 actualArg = spread->value.get();
             }
@@ -3493,22 +3493,22 @@ void IRBuilder::visitInvokeExpr(InvokeExpr* expr) {
     if (!sig.refs.empty()) {
         graph->callSignatures.push_back(sig);
         IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
-        passRefsNode->setControl(currentControl);
+        passRefsNode->setControl(currentSeq);
         passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
         for (auto& ref : sig.refs) {
             if (ref.localNode) passRefsNode->addData(ref.localNode);
         }
-        currentControl = passRefsNode;
+        currentSeq = passRefsNode;
     }
         
     IRNode* invokeNode = graph->createValueNode(IROp::Call);
-    invokeNode->setControl(currentControl);
+    invokeNode->setControl(currentSeq);
     invokeNode->addData(calleeNode);
     for (auto* arg : argNodes) invokeNode->addData(arg);
     invokeNode->payload1 = static_cast<uint32_t>(argNodes.size());
     invokeNode->payload2 = static_cast<uint32_t>(kwArgc);
         
-    currentControl = invokeNode;
+    currentSeq = invokeNode;
     lastValue = invokeNode;
 }
 
@@ -3516,7 +3516,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     pushScope(); // ★ 自动创建块级作用域
     expr->iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
-    iterNode->setControl(currentControl);
+    iterNode->setControl(currentSeq);
     iterNode->addData(lastValue);
     
     auto isDestructPattern = [](Pattern* p) {
@@ -3525,10 +3525,10 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     };
     iterNode->payload1 = isDestructPattern(expr->pattern.get()) ? 1 : 0;
     
-    currentControl = iterNode;
+    currentSeq = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -3541,23 +3541,23 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* breakMerge = graph->createNode(IROp::Merge);
     IRNode* continueMerge = graph->createNode(IROp::Merge);
     loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
-    nextNode->setControl(currentControl);
+    nextNode->setControl(currentSeq);
     nextNode->addData(iterNode);
-    currentControl = nextNode;
+    currentSeq = nextNode;
     
     IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
-    isUninitNode->setControl(currentControl);
+    isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -3567,7 +3567,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
-    currentControl = ifFalse;
+    currentSeq = ifFalse;
     
     auto envBeforeBody = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
@@ -3576,10 +3576,10 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     expr->body->accept(*this);
     
-    continueMerge->addData(currentControl);
+    continueMerge->addData(currentSeq);
     loopStack.back().continueEnvs.push_back(envStack);
     
-    currentControl = continueMerge;
+    currentSeq = continueMerge;
     
     auto& continueEnvs = loopStack.back().continueEnvs;
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -3595,7 +3595,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
         }
     }
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
             ResolvedSym rs; rs.scope = VarScope::Local;
@@ -3608,7 +3608,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
         loopStack.back().breakEnvs.push_back(envBeforeBody);
     }
     
-    currentControl = breakMerge;
+    currentSeq = breakMerge;
     
     auto& breakEnvs = loopStack.back().breakEnvs;
     std::vector<std::unordered_map<std::string, IRNode*>> exitEnvStack(envStack.size());
@@ -3631,23 +3631,23 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     popScope(); // 离开块级作用域
     
     lastValue = graph->createConstant(Value::none());
-    lastValue->setControl(currentControl);
+    lastValue->setControl(currentSeq);
 }
 
 void IRBuilder::visitThrowExpr(ThrowExpr* expr) {
     expr->value->accept(*this);
     graph->currentLine = expr->keyword.line;
     IRNode* throwNode = graph->createNode(IROp::Throw);
-    throwNode->setControl(currentControl);
+    throwNode->setControl(currentSeq);
     throwNode->addData(lastValue);
     recordExitNode(throwNode);
-    currentControl = throwNode;
+    currentSeq = throwNode;
     lastValue = throwNode;
 }
 
 void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* tryBegin = graph->createNode(IROp::TryBegin);
-    tryBegin->setControl(currentControl);
+    tryBegin->setControl(currentSeq);
     // 裸 try：不需要异常对象，只需要失败后跳到 catch 块并得到 none。
     tryBegin->payload1 = expr->catchBranches.empty() ? 1 : 0;
 
@@ -3656,14 +3656,14 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     // 1. 正常分支
     IRNode* tryBodyStart = graph->createNode(IROp::Merge);
     tryBodyStart->addData(tryBegin);
-    currentControl = tryBodyStart;
+    currentSeq = tryBodyStart;
 
     activeTryCount++;
     expr->tryBody->accept(*this);
     activeTryCount--;
     
     IRNode* tryEnd = graph->createNode(IROp::TryEnd);
-    tryEnd->setControl(currentControl);
+    tryEnd->setControl(currentSeq);
     IRNode* normalControl = tryEnd;
     IRNode* normalVal = lastValue;
     auto normalEnv = envStack;
@@ -3673,7 +3673,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     
     IRNode* catchNode = graph->createValueNode(IROp::Catch);
     catchNode->setControl(tryBegin);
-    currentControl = catchNode;
+    currentSeq = catchNode;
     
     IRNode* errVal = catchNode; // Catch 节点产生异常对象
     IRNode* subjectNode = errVal;
@@ -3682,11 +3682,11 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* catchResultPhi = graph->createValueNode(IROp::Phi);
     catchResultPhi->setControl(endMerge);
     
-    IRNode* currentFailControl = currentControl;
+    IRNode* currentFailControl = currentSeq;
     std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> branchEnvs;
     
     for (auto& branch : expr->catchBranches) {
-        currentControl = currentFailControl;
+        currentSeq = currentFailControl;
         envStack = baseEnv;
         pushScope(); // Branch scope
         
@@ -3699,11 +3699,11 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
             auto envBefore = envStack;
             buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false); // ★ 软匹配
             patEnvs.push_back(envStack);
-            branchSuccessMerge->addData(currentControl);
-            currentControl = patFailMerge;
+            branchSuccessMerge->addData(currentSeq);
+            currentSeq = patFailMerge;
             envStack = envBefore;
         }
-        nextBranchMerge->addData(currentControl);
+        nextBranchMerge->addData(currentSeq);
         
         if (branch.patterns.size() > 1) {
             size_t branchScope = envStack.size() - 1;
@@ -3724,22 +3724,22 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
             envStack = patEnvs[0];
         }
         
-        currentControl = branchSuccessMerge;
+        currentSeq = branchSuccessMerge;
         if (branch.guard) {
             branch.guard->accept(*this);
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(lastValue);
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
             ifTrue->setControl(ifNode);
             IRNode* ifFalse = graph->createNode(IROp::IfFalse);
             ifFalse->setControl(ifNode);
             nextBranchMerge->addData(ifFalse);
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
         }
         
         branch.body->accept(*this);
-        endMerge->addData(currentControl);
+        endMerge->addData(currentSeq);
         catchResultPhi->addData(lastValue);
         
         popScope();
@@ -3748,11 +3748,11 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     }
     
     // ★ 所有 catch 分支失败 → Throw errVal（异常向外传播）
-    currentControl = currentFailControl;
+    currentSeq = currentFailControl;
     envStack = baseEnv;
     pushScope();
     IRNode* throwNode = graph->createNode(IROp::Throw);
-    throwNode->setControl(currentControl);
+    throwNode->setControl(currentSeq);
     throwNode->addData(errVal);
     recordExitNode(throwNode);
     popScope();
@@ -3788,7 +3788,7 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* mergeNode = graph->createNode(IROp::Merge);
     mergeNode->addData(normalControl);
     mergeNode->addData(catchControl);
-    currentControl = mergeNode;
+    currentSeq = mergeNode;
 
     envStack = baseEnv;
     for (size_t i = 0; i < baseEnv.size(); ++i) {
@@ -3828,25 +3828,25 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
 void IRBuilder::visitExportExpr(ExportExpr* expr) {
     expr->value->accept(*this);
     IRNode* exportNode = graph->createValueNode(IROp::Export);
-    exportNode->setControl(currentControl);
+    exportNode->setControl(currentSeq);
     exportNode->addData(lastValue);
-    currentControl = exportNode;
+    currentSeq = exportNode;
     lastValue = exportNode;
 }
 
 void IRBuilder::visitImportExpr(ImportExpr* expr) {
     expr->path->accept(*this);
     IRNode* importNode = graph->createValueNode(IROp::Import);
-    importNode->setControl(currentControl);
+    importNode->setControl(currentSeq);
     importNode->payload1 = expr->packagePath ? 1 : 0;
     importNode->addData(lastValue);
-    currentControl = importNode;
+    currentSeq = importNode;
     lastValue = importNode;
     if (expr->isExport) {
         IRNode* exportNode = graph->createValueNode(IROp::Export);
-        exportNode->setControl(currentControl);
+        exportNode->setControl(currentSeq);
         exportNode->addData(lastValue);
-        currentControl = exportNode;
+        currentSeq = exportNode;
         lastValue = exportNode;
     }
 }
@@ -3922,20 +3922,20 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
 
     IRNode* classNode = graph->createValueNode(IROp::Class);
-    classNode->setControl(currentControl);
+    classNode->setControl(currentSeq);
     classNode->name = expr->name.lexeme;
     if (!expr->name.lexeme.empty()) classValueNodes[expr->name.lexeme] = classNode;
     classNode->payload1 = expr->isTrait ? 1 : 0;
-    currentControl = classNode;
+    currentSeq = classNode;
         
     if (expr->superClassExpr) {
         expr->superClassExpr->accept(*this);
         IRNode* superNode = lastValue;
         IRNode* inheritNode = graph->createNode(IROp::Inherit);
-        inheritNode->setControl(currentControl);
+        inheritNode->setControl(currentSeq);
         inheritNode->addData(classNode);
         inheritNode->addData(superNode);
-        currentControl = inheritNode;
+        currentSeq = inheritNode;
     }
         
     pushScope();
@@ -3976,12 +3976,12 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
             else if (emitName == "finalize") emitName = "<finalize>";
 
             IRNode* methodNode = graph->createNode(methodOp);
-            methodNode->setControl(currentControl);
+            methodNode->setControl(currentSeq);
             methodNode->addData(classNode);
             methodNode->addData(closureNode);
             methodNode->name = emitName;
             methodNode->payload1 = p.is_abstract ? 1 : 0;
-            currentControl = methodNode;
+            currentSeq = methodNode;
         }
     }
 
@@ -3991,18 +3991,18 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& p : expr->instanceProperties) {
         if (dynamic_cast<LambdaExpr*>(p.value.get())) continue;
         IRNode* noneNode = graph->createValueNode(IROp::Constant);
-        noneNode->setControl(currentControl);
+        noneNode->setControl(currentSeq);
         noneNode->constVal = Value::none();
         IROp defOp = IROp::DefineProp;
         if (p.isLocal && p.isConst) defOp = IROp::DefinePrivateConst;
         else if (p.isLocal) defOp = IROp::DefinePrivate;
         else if (p.isConst) defOp = IROp::DefinePropConst;
         IRNode* defNode = graph->createValueNode(defOp);
-        defNode->setControl(currentControl);
+        defNode->setControl(currentSeq);
         defNode->addData(classNode);
         defNode->addData(noneNode);
         defNode->name = p.name.lexeme;
-        currentControl = defNode;
+        currentSeq = defNode;
     }
 
     for (auto& p : expr->staticProperties) {
@@ -4019,28 +4019,28 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
         else if (emitName == "finalize") emitName = "<finalize>";
 
         IRNode* setPropNode = graph->createValueNode(propOp);
-        setPropNode->setControl(currentControl);
+        setPropNode->setControl(currentSeq);
         setPropNode->addData(classNode);
         setPropNode->addData(valNode);
         setPropNode->name = emitName;
-        currentControl = setPropNode;
+        currentSeq = setPropNode;
     }
 
     for (auto& t : expr->traitExprs) {
         t->accept(*this);
         IRNode* traitNode = lastValue;
         IRNode* withNode = graph->createNode(IROp::WithTrait);
-        withNode->setControl(currentControl);
+        withNode->setControl(currentSeq);
         withNode->addData(classNode);
         withNode->addData(traitNode);
-        currentControl = withNode;
+        currentSeq = withNode;
     }
 
     if (expr->isTrait) {
         IRNode* freezeNode = graph->createNode(IROp::FreezeClass);
-        freezeNode->setControl(currentControl);
+        freezeNode->setControl(currentSeq);
         freezeNode->addData(classNode);
-        currentControl = freezeNode;
+        currentSeq = freezeNode;
     }
         
     popScope();
@@ -4158,7 +4158,7 @@ void IRBuilder::visitEnumDefExpr(EnumDefExpr* expr) {
     ns->is_frozen = true;
     
     IRNode* node = graph->createConstant(nsVal);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     lastValue = node;
 }
 
@@ -4170,7 +4170,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     pushScope();
 
     IRNode* nsBegin = graph->createNode(IROp::NamespaceBegin);
-    nsBegin->setControl(currentControl);
+    nsBegin->setControl(currentSeq);
 
     auto savedLocalVars = currentLocalVars;
     auto savedConstVars = currentConstVars;
@@ -4240,16 +4240,16 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     namespaceScopeDepth = prevNamespaceDepth;
     
     IRNode* nsNode = graph->createValueNode(IROp::BuildNamespace);
-    nsNode->setControl(currentControl);
+    nsNode->setControl(currentSeq);
     nsNode->name = expr->name.lexeme;
     
     for (size_t i = 0; i < exportedKeys.size(); ++i) {
         IRNode* keyNode = graph->createConstant(Value(exportedKeys[i]));
-        keyNode->setControl(currentControl);
+        keyNode->setControl(currentSeq);
         nsNode->addData(keyNode);
         
         IRNode* slotNode = graph->createConstant(Value(0.0));
-        slotNode->setControl(currentControl);
+        slotNode->setControl(currentSeq);
         nsNode->addData(slotNode);
         
         IRNode* targetNode = exportedNodes[i];
@@ -4258,7 +4258,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         });
         
         IRNode* constNode = graph->createConstant(Value(exportedConsts[i]));
-        constNode->setControl(currentControl);
+        constNode->setControl(currentSeq);
         nsNode->addData(constNode);
     }
     
@@ -4267,7 +4267,7 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     }
     
     nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
-    currentControl = nsNode;
+    currentSeq = nsNode;
     
     nsSelfNode->forwarding = nsNode;
     for (auto& nPtr : graph->getNodes()) {
@@ -4312,13 +4312,13 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
         }
 
         IRNode* selfNode = graph->createValueNode(IROp::GetSelf);
-        selfNode->setControl(currentControl);
+        selfNode->setControl(currentSeq);
         
         IRNode* node = graph->createValueNode(IROp::GetSuper);
-        node->setControl(currentControl);
+        node->setControl(currentSeq);
         node->addData(selfNode);
         node->name = fieldName;
-        currentControl = node;
+        currentSeq = node;
         lastValue = node;
         return;
     }
@@ -4332,7 +4332,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
                 auto fit = eit->second.find(fieldName);
                 if (fit != eit->second.end()) {
                     lastValue = graph->createConstant(fit->second);
-                    lastValue->setControl(currentControl);
+                    lastValue->setControl(currentSeq);
                     return;
                 }
             }
@@ -4348,7 +4348,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
         auto fieldIt = enumNs->fields.find(fieldName);
         if (fieldIt != enumNs->fields.end() && fieldIt->second.isConst && fieldIt->second.upval) {
             IRNode* folded = graph->createConstant(fieldIt->second.upval->closed);
-            folded->setControl(currentControl);
+            folded->setControl(currentSeq);
             lastValue = folded;
             return;
         }
@@ -4371,10 +4371,10 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
     }
 
     IRNode* node = graph->createValueNode(op);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(objNode);
     node->name = fieldName;
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
 
@@ -4410,21 +4410,21 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
     }
 
     IRNode* node = graph->createValueNode(op);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(objNode);
     node->addData(valNode);
     node->name = expr->field.lexeme;
-    currentControl = node;
+    currentSeq = node;
 
     if (expr->typeHint) {
         expr->typeHint->accept(*this);
         IRNode* typeNode = lastValue;
         IRNode* assertNode = graph->createNode(IROp::AssertType);
-        assertNode->setControl(currentControl);
+        assertNode->setControl(currentSeq);
         assertNode->addData(valNode);
         assertNode->addData(typeNode);
         assertNode->name = expr->field.lexeme;
-        currentControl = assertNode;
+        currentSeq = assertNode;
     }
 
     lastValue = valNode;
@@ -4460,7 +4460,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     IRNode* objNode = nullptr;
     if (isSuper) {
         objNode = graph->createValueNode(IROp::GetSelf);
-        objNode->setControl(currentControl);
+        objNode->setControl(currentSeq);
     } else {
         expr->object->accept(*this);
         objNode = lastValue;
@@ -4480,20 +4480,20 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
             actualArg = kwArg->value.get();
             
             IRNode* nameNode = graph->createConstant(Value(kwName));
-            nameNode->setControl(currentControl);
+            nameNode->setControl(currentSeq);
             argNodes.push_back(nameNode);
             kwArgc++;
         }
         else if (auto* spread = dynamic_cast<SpreadExpr*>(arg.get())) {
             if (spread->isKeyword) {
                 IRNode* noneNode = graph->createConstant(Value::none());
-                noneNode->setControl(currentControl);
+                noneNode->setControl(currentSeq);
                 IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
-                markNode->setControl(currentControl);
+                markNode->setControl(currentSeq);
                 markNode->addData(noneNode);
                 markNode->payload1 = 1;
                 argNodes.push_back(markNode);
-                currentControl = markNode;
+                currentSeq = markNode;
                 kwArgc++;
                 actualArg = spread->value.get();
             }
@@ -4543,12 +4543,12 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     if (!sig.refs.empty()) {
         graph->callSignatures.push_back(sig);
         IRNode* passRefsNode = graph->createNode(IROp::PassRefs);
-        passRefsNode->setControl(currentControl);
+        passRefsNode->setControl(currentSeq);
         passRefsNode->payload1 = static_cast<uint32_t>(graph->callSignatures.size() - 1);
         for (auto& ref : sig.refs) {
             if (ref.localNode) passRefsNode->addData(ref.localNode);
         }
-        currentControl = passRefsNode;
+        currentSeq = passRefsNode;
     }
         
     bool hasFallback = false;
@@ -4613,7 +4613,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     else op = IROp::Invoke;
 
     IRNode* invokeNode = graph->createValueNode(op);
-    invokeNode->setControl(currentControl);
+    invokeNode->setControl(currentSeq);
     invokeNode->addData(objNode);
     for (auto* arg : argNodes) {
         invokeNode->addData(arg);
@@ -4625,7 +4625,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
     invokeNode->payload2 = static_cast<uint32_t>(kwArgc);
     invokeNode->name = methodName;
         
-    currentControl = invokeNode;
+    currentSeq = invokeNode;
     lastValue = invokeNode;
 }
 
@@ -4635,7 +4635,7 @@ void IRBuilder::visitSuperExpr(SuperExpr*) {
 
 void IRBuilder::visitSelfExpr(SelfExpr*) {
     IRNode* node = graph->createValueNode(IROp::GetSelf);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     lastValue = node;
 }
 
@@ -4706,11 +4706,11 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         IRNode* getVal = readVariable(tempStateNames[0], sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
-        isUninit->setControl(currentControl);
+        isUninit->setControl(currentSeq);
             
         IRNode* ifNode = graph->createNode(IROp::If);
         ifNode->addData(isUninit);
-        ifNode->setControl(currentControl);
+        ifNode->setControl(currentSeq);
             
         IRNode* ifTrue = graph->createNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
@@ -4721,7 +4721,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         skipMerge = graph->createNode(IROp::Merge);
         skipMerge->addData(ifFalse);
             
-        currentControl = ifTrue;
+        currentSeq = ifTrue;
     }
         
     expr->value->accept(*this);
@@ -4754,8 +4754,8 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     
     if (skipMerge) {
         auto trueEnv = envStack;
-        skipMerge->addData(currentControl);
-        currentControl = skipMerge;
+        skipMerge->addData(currentSeq);
+        currentSeq = skipMerge;
         
         envStack = baseEnv;
         for (size_t i = 0; i < baseEnv.size(); ++i) {
@@ -4794,7 +4794,7 @@ void IRBuilder::visitFStringExpr(FStringExpr* expr) {
     for (size_t i = 0; i < expr->exprs.size(); ++i) {
         if (!expr->literals[i].empty()) {
             IRNode* litNode = graph->createConstant(Value(expr->literals[i]));
-            litNode->setControl(currentControl);
+            litNode->setControl(currentSeq);
             parts.push_back(litNode);
         }
         expr->exprs[i]->accept(*this);
@@ -4802,33 +4802,33 @@ void IRBuilder::visitFStringExpr(FStringExpr* expr) {
             
         if (!expr->formatSpecs[i].empty()) {
             IRNode* specNode = graph->createConstant(Value(expr->formatSpecs[i]));
-            specNode->setControl(currentControl);
+            specNode->setControl(currentSeq);
             IRNode* fmtNode = graph->createValueNode(IROp::FormatString);
-            fmtNode->setControl(currentControl);
+            fmtNode->setControl(currentSeq);
             fmtNode->addData(exprVal);
             fmtNode->addData(specNode);
-            currentControl = fmtNode;
+            currentSeq = fmtNode;
             parts.push_back(fmtNode);
         } else {
             IRNode* strNode = graph->createValueNode(IROp::Stringify);
-            strNode->setControl(currentControl);
+            strNode->setControl(currentSeq);
             strNode->addData(exprVal);
-            currentControl = strNode;
+            currentSeq = strNode;
             parts.push_back(strNode);
         }
     }
     if (!expr->literals.back().empty()) {
         IRNode* litNode = graph->createConstant(Value(expr->literals.back()));
-        litNode->setControl(currentControl);
+        litNode->setControl(currentSeq);
         parts.push_back(litNode);
     }
         
     IRNode* concatNode = graph->createValueNode(IROp::ConcatStrings);
-    concatNode->setControl(currentControl);
+    concatNode->setControl(currentSeq);
     for (auto* p : parts) concatNode->addData(p);
     concatNode->payload1 = static_cast<uint32_t>(parts.size());
         
-    currentControl = concatNode;
+    currentSeq = concatNode;
     lastValue = concatNode;
 }
 
@@ -4836,15 +4836,15 @@ void IRBuilder::visitMatrixCompExpr(MatrixCompExpr* expr) {
     pushScope(); // Scope for comprehension
     
     IRNode* accNode = graph->createValueNode(IROp::MatrixCompInit);
-    accNode->setControl(currentControl);
-    currentControl = accNode;
+    accNode->setControl(currentSeq);
+    currentSeq = accNode;
     
     buildCompClause(expr, 0, accNode, IROp::MatrixCompAppend);
     
     IRNode* endNode = graph->createValueNode(IROp::MatrixCompEnd);
-    endNode->setControl(currentControl);
+    endNode->setControl(currentSeq);
     endNode->addData(accNode);
-    currentControl = endNode;
+    currentSeq = endNode;
     lastValue = endNode;
     
     popScope();
@@ -4854,8 +4854,8 @@ void IRBuilder::visitListCompExpr(ListCompExpr* expr) {
     pushScope(); // Scope for comprehension
     
     IRNode* listNode = graph->createValueNode(IROp::ListInit);
-    listNode->setControl(currentControl);
-    currentControl = listNode;
+    listNode->setControl(currentSeq);
+    currentSeq = listNode;
     
     buildCompClause(expr, 0, listNode, IROp::ListAppend);
     
@@ -4869,17 +4869,17 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
         expr->valueExpr->accept(*this);
         IRNode* valNode = lastValue;
         IRNode* appendNode = graph->createNode(IROp::SetAppend);
-        appendNode->setControl(currentControl);
+        appendNode->setControl(currentSeq);
         appendNode->addData(setNode);
         appendNode->addData(valNode);
-        currentControl = appendNode;
+        currentSeq = appendNode;
         return;
     }
     
     auto& clause = expr->clauses[clauseIdx];
     clause.iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
-    iterNode->setControl(currentControl);
+    iterNode->setControl(currentSeq);
     iterNode->addData(lastValue);
     
     auto isDestructPattern = [](Pattern* p) {
@@ -4887,10 +4887,10 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
         return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
     };
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
-    currentControl = iterNode;
+    currentSeq = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -4903,21 +4903,21 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* exitControl = graph->createNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
-    nextNode->setControl(currentControl);
+    nextNode->setControl(currentSeq);
     nextNode->addData(iterNode);
-    currentControl = nextNode;
+    currentSeq = nextNode;
     
     IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
-    isUninitNode->setControl(currentControl);
+    isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -4927,7 +4927,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
-    currentControl = ifFalse;
+    currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
@@ -4938,7 +4938,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
         IRNode* condIfNode = graph->createNode(IROp::If);
-        condIfNode->setControl(currentControl);
+        condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
         IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
@@ -4948,12 +4948,12 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
-        currentControl = condIfTrue;
+        currentSeq = condIfTrue;
     }
     
     buildSetCompClause(expr, clauseIdx + 1, setNode);
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
     if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
     
@@ -4971,15 +4971,15 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     }
     
     envStack = exitEnvStack;
-    currentControl = exitControl;
+    currentSeq = exitControl;
 }
 
 void IRBuilder::visitSetCompExpr(SetCompExpr* expr) {
     pushScope();
     
     IRNode* setNode = graph->createValueNode(IROp::SetInit);
-    setNode->setControl(currentControl);
-    currentControl = setNode;
+    setNode->setControl(currentSeq);
+    currentSeq = setNode;
     
     buildSetCompClause(expr, 0, setNode);
     
@@ -4994,18 +4994,18 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
         expr->valueExpr->accept(*this);
         IRNode* valNode = lastValue;
         IRNode* appendNode = graph->createNode(IROp::DictAppend);
-        appendNode->setControl(currentControl);
+        appendNode->setControl(currentSeq);
         appendNode->addData(dictNode);
         appendNode->addData(keyNode);
         appendNode->addData(valNode);
-        currentControl = appendNode;
+        currentSeq = appendNode;
         return;
     }
     
     auto& clause = expr->clauses[clauseIdx];
     clause.iterable->accept(*this);
     IRNode* iterNode = graph->createValueNode(IROp::IterInit);
-    iterNode->setControl(currentControl);
+    iterNode->setControl(currentSeq);
     iterNode->addData(lastValue);
     
     auto isDestructPattern = [](Pattern* p) {
@@ -5013,10 +5013,10 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
         return dynamic_cast<ListPattern*>(p) != nullptr || dynamic_cast<MatrixPattern*>(p) != nullptr;
     };
     iterNode->payload1 = isDestructPattern(clause.pattern.get()) ? 1 : 0;
-    currentControl = iterNode;
+    currentSeq = iterNode;
     
     IRNode* loopNode = graph->createNode(IROp::Loop);
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
@@ -5029,21 +5029,21 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
         }
     }
     envStack = loopPhisStack;
-    currentControl = loopNode;
+    currentSeq = loopNode;
     
     IRNode* exitControl = graph->createNode(IROp::Merge);
 
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
-    nextNode->setControl(currentControl);
+    nextNode->setControl(currentSeq);
     nextNode->addData(iterNode);
-    currentControl = nextNode;
+    currentSeq = nextNode;
     
     IRNode* isUninitNode = graph->createValueNode(IROp::IsUninit);
-    isUninitNode->setControl(currentControl);
+    isUninitNode->setControl(currentSeq);
     isUninitNode->addData(nextNode);
     
     IRNode* ifNode = graph->createNode(IROp::If);
-    ifNode->setControl(currentControl);
+    ifNode->setControl(currentSeq);
     ifNode->addData(isUninitNode);
     
     IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -5053,7 +5053,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     
     IRNode* ifFalse = graph->createNode(IROp::IfFalse);
     ifFalse->setControl(ifNode);
-    currentControl = ifFalse;
+    currentSeq = ifFalse;
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = graph->createNode(IROp::Merge);
@@ -5064,7 +5064,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     for (auto& cond : clause.conditions) {
         cond->accept(*this);
         IRNode* condIfNode = graph->createNode(IROp::If);
-        condIfNode->setControl(currentControl);
+        condIfNode->setControl(currentSeq);
         condIfNode->addData(lastValue);
         
         IRNode* condIfTrue = graph->createNode(IROp::IfTrue);
@@ -5074,12 +5074,12 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
         condIfFalse->setControl(condIfNode);
         condFailMerge->addData(condIfFalse);
         
-        currentControl = condIfTrue;
+        currentSeq = condIfTrue;
     }
     
     buildDictCompClause(expr, clauseIdx + 1, dictNode);
     
-    loopNode->addData(currentControl);
+    loopNode->addData(currentSeq);
     if (!condFailMerge->dataInputs.empty()) loopNode->addData(condFailMerge);
     if (!failMerge->dataInputs.empty()) loopNode->addData(failMerge);
     
@@ -5097,15 +5097,15 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     }
     
     envStack = exitEnvStack;
-    currentControl = exitControl;
+    currentSeq = exitControl;
 }
 
 void IRBuilder::visitDictCompExpr(DictCompExpr* expr) {
     pushScope();
     
     IRNode* dictNode = graph->createValueNode(IROp::DictInit);
-    dictNode->setControl(currentControl);
-    currentControl = dictNode;
+    dictNode->setControl(currentSeq);
+    currentSeq = dictNode;
     
     buildDictCompClause(expr, 0, dictNode);
     
@@ -5120,13 +5120,13 @@ void IRBuilder::visitDictLiteral(DictLiteral* expr) {
             // ★ rest entry：...dict 关键字解包，编译成 [ObjSpread(标记), dict]
             auto* spread = dynamic_cast<SpreadExpr*>(pair.second.get());
             IRNode* noneNode = graph->createConstant(Value::none());
-            noneNode->setControl(currentControl);
+            noneNode->setControl(currentSeq);
             IRNode* markNode = graph->createValueNode(IROp::MakeSpread);
-            markNode->setControl(currentControl);
+            markNode->setControl(currentSeq);
             markNode->addData(noneNode);
             markNode->payload1 = 1;
             keysAndVals.push_back(markNode);
-            currentControl = markNode; // ★ 更新 control，保证标记先于后续求值
+            currentSeq = markNode; // ★ 更新 control，保证标记先于后续求值
             spread->value->accept(*this);
             keysAndVals.push_back(lastValue);
         } else {
@@ -5137,10 +5137,10 @@ void IRBuilder::visitDictLiteral(DictLiteral* expr) {
         }
     }
     IRNode* node = graph->createValueNode(IROp::BuildDict);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     for (auto* kv : keysAndVals) node->addData(kv);
     node->payload1 = static_cast<uint32_t>(expr->entries.size());
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
 
@@ -5151,10 +5151,10 @@ void IRBuilder::visitSetLiteral(SetLiteral* expr) {
         elements.push_back(lastValue);
     }
     IRNode* node = graph->createValueNode(IROp::BuildSet);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     for (auto* e : elements) node->addData(e);
     node->payload1 = static_cast<uint32_t>(expr->elements.size());
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
 
@@ -5165,7 +5165,7 @@ void IRBuilder::visitSliceExpr(SliceExpr* expr) {
         startNode = lastValue;
     } else {
         startNode = graph->createConstant(Value::none());
-        startNode->setControl(currentControl);
+        startNode->setControl(currentSeq);
     }
 
     IRNode* endNode = nullptr;
@@ -5174,7 +5174,7 @@ void IRBuilder::visitSliceExpr(SliceExpr* expr) {
         endNode = lastValue;
     } else {
         endNode = graph->createConstant(Value::none());
-        endNode->setControl(currentControl);
+        endNode->setControl(currentSeq);
     }
 
     IRNode* stepNode = nullptr;
@@ -5183,15 +5183,15 @@ void IRBuilder::visitSliceExpr(SliceExpr* expr) {
         stepNode = lastValue;
     } else {
         stepNode = graph->createConstant(Value::none());
-        stepNode->setControl(currentControl);
+        stepNode->setControl(currentSeq);
     }
 
     IRNode* node = graph->createValueNode(IROp::BuildSlice);
-    node->setControl(currentControl);
+    node->setControl(currentSeq);
     node->addData(startNode);
     node->addData(endNode);
     node->addData(stepNode);
-    currentControl = node;
+    currentSeq = node;
     lastValue = node;
 }
     
@@ -5237,10 +5237,10 @@ void IRBuilder::visitSpreadExpr(SpreadExpr* expr) {
     expr->value->accept(*this);
     IRNode* valNode = lastValue;
     IRNode* spreadNode = graph->createValueNode(IROp::MakeSpread);
-    spreadNode->setControl(currentControl);
+    spreadNode->setControl(currentSeq);
     spreadNode->addData(valNode);
     spreadNode->payload1 = expr->isKeyword ? 1 : 0;
-    currentControl = spreadNode;
+    currentSeq = spreadNode;
     lastValue = spreadNode;
 }
 
@@ -5274,7 +5274,7 @@ void IRBuilder::visitDeferExpr(DeferExpr* expr) {
         int fnIdx = static_cast<int>(compiledFunctions->size()) - 1;
 
         IRNode* closureNode = graph->createValueNode(IROp::Closure);
-        closureNode->setControl(currentControl);
+        closureNode->setControl(currentSeq);
         closureNode->name = std::to_string(fnIdx);
         
         for (auto& target : fnBuilder.upvalueTargets) {
@@ -5284,13 +5284,13 @@ void IRBuilder::visitDeferExpr(DeferExpr* expr) {
         }
         
         IRNode* deferNode = graph->createNode(IROp::Defer);
-        deferNode->setControl(currentControl);
+        deferNode->setControl(currentSeq);
         deferNode->addData(closureNode);
-        currentControl = deferNode;
+        currentSeq = deferNode;
         
         deferCounts.back()++;
         lastValue = graph->createConstant(Value::none());
-        lastValue->setControl(currentControl);
+        lastValue->setControl(currentSeq);
     } else {
         error("Syntax Error: 'defer' cannot be used at the top level without a compiled function context.");
     }
@@ -5304,12 +5304,12 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
     IRNode* resultPhi = graph->createValueNode(IROp::Phi);
     resultPhi->setControl(endMerge);
     
-    IRNode* currentFailControl = currentControl;
+    IRNode* currentFailControl = currentSeq;
     auto baseEnv = envStack;
     std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> branchEnvs;
     
     for (auto& branch : expr->branches) {
-        currentControl = currentFailControl;
+        currentSeq = currentFailControl;
         envStack = baseEnv;
         pushScope(); // Scope for branch
         
@@ -5324,11 +5324,11 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
             buildPatternMatch(pat.get(), subjectNode, patFailMerge, ScopeModifier::Local, false, false);
             
             patEnvs.push_back(envStack);
-            branchSuccessMerge->addData(currentControl);
-            currentControl = patFailMerge;
+            branchSuccessMerge->addData(currentSeq);
+            currentSeq = patFailMerge;
             envStack = envBefore;
         }
-        nextBranchMerge->addData(currentControl);
+        nextBranchMerge->addData(currentSeq);
         
         if (branch.patterns.size() > 1) {
             // 多 pattern（or-pattern）：同名变量的绑定可能来自不同 IR 节点，需 phi 合并
@@ -5350,11 +5350,11 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
             envStack = patEnvs[0];
         }
         
-        currentControl = branchSuccessMerge;
+        currentSeq = branchSuccessMerge;
         if (branch.guard) {
             branch.guard->accept(*this);
             IRNode* ifNode = graph->createNode(IROp::If);
-            ifNode->setControl(currentControl);
+            ifNode->setControl(currentSeq);
             ifNode->addData(lastValue);
             
             IRNode* ifTrue = graph->createNode(IROp::IfTrue);
@@ -5364,11 +5364,11 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
             ifFalse->setControl(ifNode);
             nextBranchMerge->addData(ifFalse);
             
-            currentControl = ifTrue;
+            currentSeq = ifTrue;
         }
         
         branch.body->accept(*this);
-        endMerge->addData(currentControl);
+        endMerge->addData(currentSeq);
         resultPhi->addData(lastValue);
         
         popScope();
@@ -5376,30 +5376,30 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         currentFailControl = nextBranchMerge;
     }
     
-    currentControl = currentFailControl;
+    currentSeq = currentFailControl;
     envStack = baseEnv;
     pushScope();
     // ★ fallback：所有分支失败 → 抛 MatchError（消息带 subject 值）
     IRNode* strNode = graph->createValueNode(IROp::Stringify);
-    strNode->setControl(currentControl);
+    strNode->setControl(currentSeq);
     strNode->addData(subjectNode);
-    currentControl = strNode;
+    currentSeq = strNode;
     
     IRNode* prefixNode = graph->createConstant(Value("match: no branch matched for value "));
-    prefixNode->setControl(currentControl);
+    prefixNode->setControl(currentSeq);
     
     IRNode* concatNode = graph->createValueNode(IROp::ConcatStrings);
-    concatNode->setControl(currentControl);
+    concatNode->setControl(currentSeq);
     concatNode->addData(prefixNode);
     concatNode->addData(strNode);
     concatNode->payload1 = 2;
-    currentControl = concatNode;
+    currentSeq = concatNode;
     
     IRNode* throwNode = graph->createNode(IROp::ThrowTyped);
-    throwNode->setControl(currentControl);
+    throwNode->setControl(currentSeq);
     throwNode->addData(concatNode);
     IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));
-    typeStr->setControl(currentControl);
+    typeStr->setControl(currentSeq);
     throwNode->addData(typeStr);
     recordExitNode(throwNode);
     popScope();
@@ -5426,7 +5426,7 @@ void IRBuilder::visitMatchExpr(MatchExpr* expr) {
         }
     }
     
-    currentControl = endMerge;
+    currentSeq = endMerge;
     lastValue = resultPhi;
 }
 

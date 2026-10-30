@@ -116,6 +116,7 @@ private:
         int errReg = 0;
         int deferBase = 0;
         bool silent = false;
+        size_t includeStackDepth = 0;
     };
     std::vector<ExceptionHandler> exceptionHandlers;
     std::unordered_set<std::string> loadingPackages;
@@ -331,6 +332,15 @@ public:
         }
         constGlobals.erase(name);
         clearAllGlobalICs();
+    }
+
+    size_t includeStackDepth() const { return includeNamespaceStack.size(); }
+    void restoreIncludeStack(size_t depth) {
+        if (includeNamespaceStack.size() > depth) includeNamespaceStack.resize(depth);
+    }
+    void restoreTransientState(size_t depth) {
+        restoreIncludeStack(depth);
+        pendingCallRefs.clear();
     }
 
     Value readUpvalue(ObjUpVal* uv) const {

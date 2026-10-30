@@ -299,7 +299,13 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
         chunk.disassemble(isFile ? "Script Chunk" : "REPL Chunk", g_disasmVerbose);
     }
     
-    return vm.execute(chunk, localCount);
+    size_t includeDepth = vm.includeStackDepth();
+    try {
+        return vm.execute(chunk, localCount);
+    } catch (...) {
+        vm.restoreTransientState(includeDepth);
+        throw;
+    }
 }
 
 void runScript(const std::string& filepath, bool isImport = false) {

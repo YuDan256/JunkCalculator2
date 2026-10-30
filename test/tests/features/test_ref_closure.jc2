@@ -19,4 +19,10 @@ b = 1
 f(b)
 assert(b == 2, "ref write-through")
 
+bad(ref x) = { throw ValueError("boom") }
+try { bad(b) } catch (e) {}
+g2(ref x) = { x += 1 }
+g2(b)
+assert(b == 3, "failed ref call must not pollute the next call")
+
 print("ref closure battery OK")

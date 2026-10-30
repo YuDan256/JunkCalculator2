@@ -3573,6 +3573,9 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
         }
         
         pendingCallRefs.clear();
+        if (includeNamespaceStack.size() > handler.includeStackDepth) {
+            includeNamespaceStack.resize(handler.includeStackDepth);
+        }
         
         CallFrame* frame = &frames[frameCount - 1];
         frame->ip = handler.ip;
@@ -7052,6 +7055,7 @@ Value VM::run(int targetFrameDepth) {
                 handler.silent = (a & 0x80) != 0;
                 handler.errReg = a & 0x7F;
                 handler.deferBase = static_cast<int>(deferStack.size());
+                handler.includeStackDepth = includeNamespaceStack.size();
                 exceptionHandlers.push_back(handler);
                 break;
             }

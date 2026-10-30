@@ -19,4 +19,20 @@ namespace Good {
 }
 assert(Good.a == 1 && Good.b == 2 && Good.c == 3, "include success")
 
+// A failed namespace construction must not leave a pending include context.
+try {
+    namespace Leak {
+        include namespace { x = 1 }
+        throw ValueError("boom")
+    }
+} catch (e) {}
+
+leaked = false
+try {
+    include namespace { y = 2 }
+} catch (e) {
+    leaked = true
+}
+assert(leaked, "pending namespace context must be cleaned")
+
 print("namespace include battery OK")

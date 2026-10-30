@@ -1,0 +1,32 @@
+// Auto-local assignments nested in expressions must be hoisted to function scope.
+f() = {
+    if (true) {
+        (x = 1)
+    }
+    return x
+}
+assert(f() == 1, "grouping assignment hoist")
+
+g() = {
+    if (true) {
+        print((y = 2))
+    }
+    return y
+}
+assert(g() == 2, "call argument assignment hoist")
+
+h() = {
+    try (z = 3)
+    return z
+}
+assert(h() == 3, "try expression assignment hoist")
+
+k() = {
+    if (true) {
+        local v = (w = 4) + 1
+    }
+    return w
+}
+assert(k() == 4, "binary operand assignment hoist")
+
+print("hoist battery OK")

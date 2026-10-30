@@ -1859,55 +1859,164 @@ void IRBuilder::hoistBlock(Block* block) {
     //   hoist，绑定会落在分支帧里；而 visitIfExpr 在分支前就把 baseEnv 拷走、分支后
     //   `envStack = baseEnv` 覆盖回去 ⇒ 绑定丢失、汇合看不到它 ⇒ 不生成 Phi，
     //   分支外的读取退化成 <uninit> 并被常量折叠掉整个函数。见 local/FINDINGS.md F14。
-    std::function<void(Expr*)> hoistStmt = [&](Expr* e) {
+    std::function<void(Expr*)> hoistStmt;
+    std::function<void(Expr*)> hoistExpr;
+
+    // 普通表达式里也可能藏 auto-local 赋值：`(x = 1)`、`f(x = 1)`、
+    // `return (x = 1)`。hoist 必须递归到这些子表达式；Lambda/Namespace/
+    // Class/Enum/Quote 是独立作用域或编译期 AST，遇到即停。
+    hoistExpr = [&](Expr* e) {
         if (!e) return;
-        if (auto* blk = dynamic_cast<Block*>(e)) {
-            for (auto& st : blk->statements) hoistStmt(st.get());
-            return;
-        }
-        if (auto* i = dynamic_cast<IfExpr*>(e)) {
-            hoistStmt(i->thenBranch.get());
-            hoistStmt(i->elseBranch.get());
-            return;
-        }
-        if (auto* w = dynamic_cast<WhileExpr*>(e)) { hoistStmt(w->body.get()); return; }
-        if (auto* f = dynamic_cast<ForExpr*>(e)) { hoistStmt(f->body.get()); return; }
-        if (auto* fi = dynamic_cast<ForInExpr*>(e)) { hoistStmt(fi->body.get()); return; }
-        if (auto* m = dynamic_cast<MatchExpr*>(e)) {
-            for (auto& c : m->branches) hoistStmt(c.body.get());
-            return;
-        }
-        if (auto* tc = dynamic_cast<TryCatchExpr*>(e)) {
-            hoistStmt(tc->tryBody.get());
-            for (auto& c : tc->catchBranches) hoistStmt(c.body.get());
-            return;
-        }
-        // 注意：不进入 LambdaExpr —— 那是另一个函数，有自己的作用域。
 
-        // include 的 operand 里可能藏着赋值（include import math 即
-        // include (math = import math)），必须继续下探，否则 try/catch
-        // 的变量汇合看不到这个新绑定。
-        if (auto* inc = dynamic_cast<IncludeExpr*>(e)) {
-            hoistStmt(inc->value.get());
+        if (auto* g = dynamic_cast<GroupingExpr*>(e)) { hoistExpr(g->expression.get()); return; }
+        if (auto* seq = dynamic_cast<SequenceExpr*>(e)) {
+            for (auto& x : seq->expressions) hoistExpr(x.get());
             return;
         }
-
-        if (auto* assign = dynamic_cast<Assign*>(e)) {
-            if (!assign->isRef && !assign->isState) {
-                auto it = exprSymbols->find(assign);
-                ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                if (sym.scope != VarScope::Global) {
-                    hoistVar(assign->name.lexeme, assign->isLocal);
-                }
+        if (auto* b = dynamic_cast<Binary*>(e)) { hoistExpr(b->left.get()); hoistExpr(b->right.get()); return; }
+        if (auto* u = dynamic_cast<Unary*>(e)) { hoistExpr(u->right.get()); return; }
+        if (auto* ta = dynamic_cast<TypeAssertExpr*>(e)) {
+            hoistExpr(ta->value.get());
+            if (ta->typeHint) hoistExpr(ta->typeHint.get());
+            return;
+        }
+        if (auto* c = dynamic_cast<Call*>(e)) {
+            for (auto& a : c->arguments) hoistExpr(a.get());
+            return;
+        }
+        if (auto* inv = dynamic_cast<InvokeExpr*>(e)) {
+            hoistExpr(inv->callee.get());
+            for (auto& a : inv->arguments) hoistExpr(a.get());
+            return;
+        }
+        if (auto* mc = dynamic_cast<MethodCallExpr*>(e)) {
+            hoistExpr(mc->object.get());
+            for (auto& a : mc->arguments) hoistExpr(a.get());
+            return;
+        }
+        if (auto* ia = dynamic_cast<IndexAccess*>(e)) {
+            hoistExpr(ia->object.get());
+            for (auto& i : ia->indices) hoistExpr(i.get());
+            return;
+        }
+        if (auto* ias = dynamic_cast<IndexAssign*>(e)) {
+            if (ias->objectExpr) hoistExpr(ias->objectExpr.get());
+            for (auto& chain : ias->indexChain) for (auto& i : chain) hoistExpr(i.get());
+            hoistExpr(ias->value.get());
+            if (ias->typeHint) hoistExpr(ias->typeHint.get());
+            return;
+        }
+        if (auto* da = dynamic_cast<DotAccess*>(e)) { hoistExpr(da->object.get()); return; }
+        if (auto* das = dynamic_cast<DotAssign*>(e)) {
+            hoistExpr(das->object.get());
+            hoistExpr(das->value.get());
+            if (das->typeHint) hoistExpr(das->typeHint.get());
+            return;
+        }
+        if (auto* ca = dynamic_cast<CompoundAssign*>(e)) {
+            hoistExpr(ca->target.get());
+            hoistExpr(ca->value.get());
+            return;
+        }
+        if (auto* ea = dynamic_cast<ExprAssign*>(e)) {
+            hoistExpr(ea->target.get());
+            hoistExpr(ea->value.get());
+            return;
+        }
+        if (auto* comp = dynamic_cast<CompExprBase*>(e)) {
+            hoistExpr(comp->valueExpr.get());
+            for (auto& clause : comp->clauses) {
+                hoistExpr(clause.iterable.get());
+                for (auto& cond : clause.conditions) hoistExpr(cond.get());
             }
             return;
         }
-        if (auto* locDecl = dynamic_cast<LocalDecl*>(e)) { hoistVar(locDecl->name.lexeme, true); return; }
-        if (auto* constDecl = dynamic_cast<ConstDecl*>(e)) { hoistVar(constDecl->name.lexeme, true); return; }
-        if (auto* destAssign = dynamic_cast<DestructAssign*>(e)) {
-            if (!destAssign->isRef && !destAssign->isState) {
+        if (auto* sc = dynamic_cast<SetCompExpr*>(e)) {
+            hoistExpr(sc->valueExpr.get());
+            for (auto& clause : sc->clauses) {
+                hoistExpr(clause.iterable.get());
+                for (auto& cond : clause.conditions) hoistExpr(cond.get());
+            }
+            return;
+        }
+        if (auto* dc = dynamic_cast<DictCompExpr*>(e)) {
+            hoistExpr(dc->keyExpr.get());
+            hoistExpr(dc->valueExpr.get());
+            for (auto& clause : dc->clauses) {
+                hoistExpr(clause.iterable.get());
+                for (auto& cond : clause.conditions) hoistExpr(cond.get());
+            }
+            return;
+        }
+        if (auto* ln = dynamic_cast<ListNode*>(e)) {
+            for (auto& row : ln->elements) for (auto& x : row) hoistExpr(x.get());
+            return;
+        }
+        if (auto* mn = dynamic_cast<MatrixNode*>(e)) {
+            for (auto& row : mn->elements) for (auto& x : row) hoistExpr(x.get());
+            return;
+        }
+        if (auto* dl = dynamic_cast<DictLiteral*>(e)) {
+            for (auto& [k, v] : dl->entries) { hoistExpr(k.get()); hoistExpr(v.get()); }
+            return;
+        }
+        if (auto* sl = dynamic_cast<SetLiteral*>(e)) {
+            for (auto& x : sl->elements) hoistExpr(x.get());
+            return;
+        }
+        if (auto* slice = dynamic_cast<SliceExpr*>(e)) {
+            hoistExpr(slice->start.get());
+            hoistExpr(slice->end.get());
+            hoistExpr(slice->step.get());
+            return;
+        }
+        if (auto* fs = dynamic_cast<FStringExpr*>(e)) {
+            for (auto& x : fs->exprs) hoistExpr(x.get());
+            return;
+        }
+        if (auto* ret = dynamic_cast<ReturnExpr*>(e)) { hoistExpr(ret->value.get()); return; }
+        if (auto* th = dynamic_cast<ThrowExpr*>(e)) { hoistExpr(th->value.get()); return; }
+        if (auto* df = dynamic_cast<DeferExpr*>(e)) { hoistExpr(df->body.get()); return; }
+        if (auto* kw = dynamic_cast<KeywordArgExpr*>(e)) { hoistExpr(kw->value.get()); return; }
+        if (auto* sp = dynamic_cast<SpreadExpr*>(e)) { hoistExpr(sp->value.get()); return; }
+        if (auto* imp = dynamic_cast<ImportExpr*>(e)) { hoistExpr(imp->path.get()); return; }
+        if (auto* inc = dynamic_cast<IncludeExpr*>(e)) { hoistExpr(inc->value.get()); return; }
+        if (auto* mcall = dynamic_cast<MacroCallExpr*>(e)) {
+            for (auto& a : mcall->arguments) hoistExpr(a.get());
+            return;
+        }
+
+        // 语句/控制流由 hoistStmt 处理；赋值与声明也在这里集中处理。
+        if (dynamic_cast<Block*>(e) || dynamic_cast<IfExpr*>(e) ||
+            dynamic_cast<WhileExpr*>(e) || dynamic_cast<ForExpr*>(e) ||
+            dynamic_cast<ForInExpr*>(e) || dynamic_cast<MatchExpr*>(e) ||
+            dynamic_cast<TryCatchExpr*>(e)) {
+            hoistStmt(e);
+            return;
+        }
+
+        if (auto* a = dynamic_cast<Assign*>(e)) {
+            if (!a->isRef && !a->isState) {
+                auto it = exprSymbols->find(a);
+                ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
+                if (sym.scope != VarScope::Global) hoistVar(a->name.lexeme, a->isLocal);
+            }
+            hoistExpr(a->value.get());
+            if (a->typeHint) hoistExpr(a->typeHint.get());
+            return;
+        }
+        if (auto* ld = dynamic_cast<LocalDecl*>(e)) {
+            hoistVar(ld->name.lexeme, true);
+            if (ld->typeHint) hoistExpr(ld->typeHint.get());
+            return;
+        }
+        if (auto* cd = dynamic_cast<ConstDecl*>(e)) { hoistVar(cd->name.lexeme, true); return; }
+        if (auto* rd = dynamic_cast<RefDecl*>(e)) { if (rd->typeHint) hoistExpr(rd->typeHint.get()); return; }
+        if (auto* sd = dynamic_cast<StateDecl*>(e)) { if (sd->typeHint) hoistExpr(sd->typeHint.get()); return; }
+        if (auto* da = dynamic_cast<DestructAssign*>(e)) {
+            if (!da->isRef && !da->isState) {
                 std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> boundVars;
-                collectPatternVars(destAssign->pattern.get(), boundVars);
+                collectPatternVars(da->pattern.get(), boundVars);
                 for (const auto& varTuple : boundVars) {
                     const std::string& name = std::get<0>(varTuple);
                     ScopeModifier mod = std::get<1>(varTuple);
@@ -1915,15 +2024,65 @@ void IRBuilder::hoistBlock(Block* block) {
                     if (mod != ScopeModifier::Ref && mod != ScopeModifier::State) {
                         auto it = patternSymbols->find(p);
                         ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
-                        if (sym.scope != VarScope::Global) {
-                            hoistVar(name, mod == ScopeModifier::Local || destAssign->isLocal);
-                        }
+                        if (sym.scope != VarScope::Global) hoistVar(name, mod == ScopeModifier::Local || da->isLocal);
                     }
                 }
             }
+            hoistExpr(da->value.get());
             return;
         }
+        // Lambda / Namespace / Class / Enum / Quote / Unquote: leave untouched.
     };
+
+    hoistStmt = [&](Expr* e) {
+        if (!e) return;
+        if (auto* blk = dynamic_cast<Block*>(e)) {
+            for (auto& st : blk->statements) hoistStmt(st.get());
+            return;
+        }
+        if (auto* i = dynamic_cast<IfExpr*>(e)) {
+            hoistExpr(i->condition.get());
+            hoistStmt(i->thenBranch.get());
+            hoistStmt(i->elseBranch.get());
+            return;
+        }
+        if (auto* w = dynamic_cast<WhileExpr*>(e)) {
+            hoistExpr(w->condition.get());
+            hoistStmt(w->body.get());
+            return;
+        }
+        if (auto* f = dynamic_cast<ForExpr*>(e)) {
+            hoistExpr(f->initializer.get());
+            hoistExpr(f->condition.get());
+            hoistExpr(f->update.get());
+            hoistStmt(f->body.get());
+            return;
+        }
+        if (auto* fi = dynamic_cast<ForInExpr*>(e)) {
+            hoistExpr(fi->iterable.get());
+            hoistStmt(fi->body.get());
+            return;
+        }
+        if (auto* m = dynamic_cast<MatchExpr*>(e)) {
+            hoistExpr(m->subject.get());
+            for (auto& c : m->branches) {
+                hoistExpr(c.guard.get());
+                hoistStmt(c.body.get());
+            }
+            return;
+        }
+        if (auto* tc = dynamic_cast<TryCatchExpr*>(e)) {
+            hoistStmt(tc->tryBody.get());
+            for (auto& c : tc->catchBranches) {
+                hoistExpr(c.guard.get());
+                hoistStmt(c.body.get());
+            }
+            return;
+        }
+        hoistExpr(e);
+    };
+
+    for (auto& stmt : block->statements) hoistStmt(stmt.get());
 
     for (auto& stmt : block->statements) hoistStmt(stmt.get());
 }

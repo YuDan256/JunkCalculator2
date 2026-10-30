@@ -7,8 +7,53 @@
 #include <cstring>
 #include <stdexcept>
 #include <unordered_map>
+#include <filesystem>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#endif
 
 namespace jc {
+
+// Serialize a complete .jcb/.jcw next to the target, then replace it atomically.
+// A crash while writing must never leave a half-written file behind.
+static void writeBytesAtomically(const std::string& path, const uint8_t* data, size_t size) {
+    namespace fs = std::filesystem;
+    std::u8string u8path(reinterpret_cast<const char8_t*>(path.data()), path.size());
+    fs::path target(u8path);
+    fs::path temp = target;
+    temp += ".tmp";
+
+    std::ofstream file(temp, std::ios::binary | std::ios::trunc);
+    if (!file) JC2_THROW(IOError, "Cannot open temporary file for writing: " + path + ".tmp");
+    file.write(reinterpret_cast<const char*>(data), static_cast<std::streamsize>(size));
+    file.flush();
+    if (!file) {
+        file.close();
+        std::error_code ec;
+        fs::remove(temp, ec);
+        JC2_THROW(IOError, "Failed to write temporary file: " + path + ".tmp");
+    }
+    file.close();
+
+#ifdef _WIN32
+    if (!MoveFileExW(temp.wstring().c_str(), target.wstring().c_str(),
+                     MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+        std::error_code ec;
+        fs::remove(temp, ec);
+        JC2_THROW(IOError, "Cannot replace file: " + path);
+    }
+#else
+    std::error_code ec;
+    fs::rename(temp, target, ec);
+    if (ec) {
+        fs::remove(temp, ec);
+        JC2_THROW(IOError, "Cannot replace file: " + path);
+    }
+#endif
+}
 
 void BytecodeSerializer::write8(std::ostream& os, uint8_t v) { os.put(static_cast<char>(v)); }
 void BytecodeSerializer::write16(std::ostream& os, uint16_t v) {
@@ -500,9 +545,7 @@ void BytecodeSerializer::saveJCB(const std::string& path, VM* vm, int startIndex
     if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
         JC2_THROW(IOError, "Failed to compress bytecode data.");
     }
-    std::ofstream file(path, std::ios::binary);
-    if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
-    file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
+    writeBytesAtomically(path, compressed.data(), compressed.size());
 }
 
 std::shared_ptr<CompiledFunction> BytecodeSerializer::loadJCB(const std::string& path, VM* vm) {
@@ -848,9 +891,7 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
     if (!jc::deflateCompress(reinterpret_cast<const uint8_t*>(raw.data()), raw.size(), compressed)) {
         JC2_THROW(IOError, "Failed to compress workspace data.");
     }
-    std::ofstream file(path, std::ios::binary);
-    if (!file) JC2_THROW(IOError, "Cannot open file for writing: " + path);
-    file.write(reinterpret_cast<const char*>(compressed.data()), static_cast<std::streamsize>(compressed.size()));
+    writeBytesAtomically(path, compressed.data(), compressed.size());
 }
 
 void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bool infoOnly) {

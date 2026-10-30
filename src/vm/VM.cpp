@@ -1058,11 +1058,15 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
             }
             if (providedRef) {
                 registers[newFrame.refParamsBase + refIdx] = Value(providedRef);
-            } else {
+            } else if (isConstRefParam) {
+                // Read-only ref parameters may bind a temporary; writes are impossible.
                 ObjUpVal* dummy = GcHeap::get().allocate<ObjUpVal>();
                 dummy->closed = registers[newFrame.registerBase + i];
                 dummy->location = &dummy->closed;
                 registers[newFrame.refParamsBase + refIdx] = Value(dummy);
+            } else {
+                std::string paramName = i < static_cast<int>(fn->paramNames.size()) ? fn->paramNames[i] : "?";
+                JC2_THROW(TypeError, "Cannot pass a non-lvalue to ref parameter '" + paramName + "'.");
             }
             refIdx++;
         }

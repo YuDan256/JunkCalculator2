@@ -2853,16 +2853,25 @@ static void packageAttach(ObjNamespace* parent, const std::string& name, const V
 
 static void mergeIncludedNamespace(ObjNamespace* target, ObjNamespace* src) {
     if (!target || !src || target == src) return;
+    target->checkModify();
+
+    // Two-phase merge: build the complete result first, then swap it in.
+    // A conflict or allocation failure leaves target exactly as it was.
+    auto merged = target->fields;
     for (const auto& [k, field] : src->fields) {
         Value incoming = *(field.upval->location);
-        auto it = target->fields.find(k);
-        if (it != target->fields.end()) {
+        auto it = merged.find(k);
+        if (it != merged.end()) {
             Value existing = *(it->second.upval->location);
             if (existing.as_bits == incoming.as_bits) continue;
             JC2_THROW(RuntimeError, "Include conflict for member '" + k + "'.");
         }
-        target->setField(k, incoming);
+        ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
+        uv->closed = incoming;
+        uv->location = &uv->closed;
+        merged[k] = { uv, false };
     }
+    target->fields.swap(merged);
 }
 
 Value VM::execPackageImport(const std::string& name) {

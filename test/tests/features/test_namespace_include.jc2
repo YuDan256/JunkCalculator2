@@ -1,0 +1,22 @@
+// Include merge must not partially mutate on conflict.
+caught = false
+try {
+    namespace Bad {
+        include namespace { a = 1 }
+        include namespace { a = 2 }
+        c = 3
+    }
+} catch (e) {
+    caught = true
+    assert("Include conflict" in e.message, "include conflict message")
+}
+assert(caught, "include conflict must throw")
+
+namespace Good {
+    include namespace { a = 1 }
+    include namespace { b = 2 }
+    c = 3
+}
+assert(Good.a == 1 && Good.b == 2 && Good.c == 3, "include success")
+
+print("namespace include battery OK")

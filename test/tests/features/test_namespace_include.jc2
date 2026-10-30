@@ -41,4 +41,11 @@ namespace WithTry {
 }
 assert(WithTry.math != none, "try include import binds math")
 
+// local import must stay local even inside try/include.
+namespace WithLocal {
+    try include local import math
+}
+assert(!("math" in getFields(WithLocal)), "local import must not become a field")
+assert(WithLocal.PI != none, "include still merges math fields")
+
 print("namespace include battery OK")

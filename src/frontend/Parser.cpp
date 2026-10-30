@@ -674,6 +674,41 @@ namespace jc {
             }
         }
 
+        // import name is an assignment form, not a primary expression.
+        // Handle it here so local/ref/state/const modifiers reach the Assign.
+        int importStart = current;
+        if (match({ TokenType::IMPORT })) {
+            bool isComptime = match({ TokenType::AT });
+            if (check(TokenType::IDENTIFIER)) {
+                int importStartPos = tokens[importStart].position;
+                Token nameTok = advance();
+                std::string moduleName = nameTok.lexeme;
+                bool packagePath = false;
+                int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
+                while (match({ TokenType::DOT })) {
+                    if (!check(TokenType::IDENTIFIER)) {
+                        JC2_THROW(ParserError, "Expect module name after '.' in import.");
+                    }
+                    Token seg = advance();
+                    moduleName += "." + seg.lexeme;
+                    packagePath = true;
+                    endPos = seg.position + static_cast<int>(seg.lexeme.length());
+                }
+                if (isComptime && !disableMacroExpansion) {
+                    VM::activeVM->execCompileTimeImport(moduleName);
+                }
+                if (isComptime) {
+                    return withPos(std::make_unique<Literal>("none", false, false, true), importStartPos, endPos);
+                }
+                auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true), nameTok.position, endPos);
+                auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)), importStartPos, endPos);
+                importExpr->packagePath = packagePath;
+                return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr),
+                    isRef, isState, isLocal, isConst), importStartPos, endPos);
+            }
+            current = importStart;
+        }
+
         auto expr = ternary();
 
         // ★ 类型断言：x: int = 10、d.a: string = 1、A[i]: int = 5（对任意赋值目标）
@@ -1717,46 +1752,22 @@ namespace jc {
         if (match({ TokenType::IMPORT })) {
             int startPos = previous().position;
             bool isComptime = match({ TokenType::AT });
-            
-            if (check(TokenType::IDENTIFIER)) {
-                Token nameTok = advance();
-                std::string moduleName = nameTok.lexeme;
-                bool packagePath = false;
-                int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
-                while (match({ TokenType::DOT })) {
-                    if (!check(TokenType::IDENTIFIER)) {
-                        JC2_THROW(ParserError, "Expect module name after '.' in import.");
-                    }
-                    Token seg = advance();
-                    moduleName += "." + seg.lexeme;
-                    packagePath = true;
-                    endPos = seg.position + static_cast<int>(seg.lexeme.length());
+
+            // Identifier imports are assignment forms and are parsed in
+            // assignment(); a bare import here is the path expression form.
+            auto path = assignment();
+            if (isComptime && !disableMacroExpansion) {
+                if (auto* lit = dynamic_cast<Literal*>(path.get())) {
+                    VM::activeVM->execCompileTimeImport(lit->value);
+                } else {
+                    JC2_THROW(ParserError, "Compile-time import (@) requires a static string or identifier.");
                 }
-                if (isComptime && !disableMacroExpansion) {
-                    VM::activeVM->execCompileTimeImport(moduleName);
-                }
-                if (isComptime) {
-                    return withPos(std::make_unique<Literal>("none", false, false, true), startPos, endPos);
-                }
-                auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true), nameTok.position, endPos);
-                auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)), startPos, endPos);
-                importExpr->packagePath = packagePath;
-                return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr)), startPos, endPos);
-            } else {
-                auto path = assignment();  // ★ 降级：防止逗号被误吞
-                if (isComptime && !disableMacroExpansion) {
-                    if (auto* lit = dynamic_cast<Literal*>(path.get())) {
-                        VM::activeVM->execCompileTimeImport(lit->value);
-                    } else {
-                        JC2_THROW(ParserError, "Compile-time import (@) requires a static string or identifier.");
-                    }
-                }
-                if (isComptime) {
-                    return withPos(std::make_unique<Literal>("none", false, false, true), startPos, path->endPos);
-                }
-                int endPos = path->endPos;
-                return withPos(std::make_unique<ImportExpr>(std::move(path)), startPos, endPos);
             }
+            if (isComptime) {
+                return withPos(std::make_unique<Literal>("none", false, false, true), startPos, path->endPos);
+            }
+            int endPos = path->endPos;
+            return withPos(std::make_unique<ImportExpr>(std::move(path)), startPos, endPos);
         }
         if (match({ TokenType::MATCH })) return matchExpr();
         if (match({ TokenType::MACRO })) return macroDefExpr(false);

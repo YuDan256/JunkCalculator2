@@ -1999,18 +1999,18 @@ void IRBuilder::hoistBlock(Block* block) {
             if (!a->isRef && !a->isState) {
                 auto it = exprSymbols->find(a);
                 ResolvedSym sym = it != exprSymbols->end() ? it->second : ResolvedSym{};
-                if (sym.scope != VarScope::Global) hoistVar(a->name.lexeme, a->isLocal);
+                if (sym.scope != VarScope::Global && !a->isLocal) hoistVar(a->name.lexeme, false);
             }
             hoistExpr(a->value.get());
             if (a->typeHint) hoistExpr(a->typeHint.get());
             return;
         }
         if (auto* ld = dynamic_cast<LocalDecl*>(e)) {
-            hoistVar(ld->name.lexeme, true);
+            // explicit local stays in its block scope
             if (ld->typeHint) hoistExpr(ld->typeHint.get());
             return;
         }
-        if (auto* cd = dynamic_cast<ConstDecl*>(e)) { hoistVar(cd->name.lexeme, true); return; }
+        if (dynamic_cast<ConstDecl*>(e)) return;
         if (auto* rd = dynamic_cast<RefDecl*>(e)) { if (rd->typeHint) hoistExpr(rd->typeHint.get()); return; }
         if (auto* sd = dynamic_cast<StateDecl*>(e)) { if (sd->typeHint) hoistExpr(sd->typeHint.get()); return; }
         if (auto* da = dynamic_cast<DestructAssign*>(e)) {
@@ -2024,7 +2024,7 @@ void IRBuilder::hoistBlock(Block* block) {
                     if (mod != ScopeModifier::Ref && mod != ScopeModifier::State) {
                         auto it = patternSymbols->find(p);
                         ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
-                        if (sym.scope != VarScope::Global) hoistVar(name, mod == ScopeModifier::Local || da->isLocal);
+                        if (sym.scope != VarScope::Global && mod != ScopeModifier::Local && !da->isLocal) hoistVar(name, false);
                     }
                 }
             }

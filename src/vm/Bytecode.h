@@ -27,7 +27,7 @@ enum class OpCode : uint8_t {
     MOVE,           // R(A) := R(B)
     LOADK,          // R(A) := Kst(Bx) [Ext]
     EXTRAARG,       // 扩展参数 Ax (24-bit)，紧跟在需要扩展的指令后
-    LOAD_NIL,       // R(A) := none
+    LOAD_NONE,       // R(A) := none
     LOAD_BOOL,      // R(A) := (bool)B
     
     // 全局变量与上值
@@ -161,7 +161,7 @@ enum class OpCode : uint8_t {
 
     // 模块导入
     IMPORT,         // R(A) := import(R(B))
-    EXPORT,         // include R(B) into current namespace; R(A) := none
+    INCLUDE,         // include R(B) into current namespace; R(A) := none
 
     DEFER,          // defer(closure = R(A))
     RUN_DEFERS,     // run_defers(count = A)
@@ -181,7 +181,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::MOVE: return "MOVE";
         case OpCode::LOADK: return "LOADK";
         case OpCode::EXTRAARG: return "EXTRAARG";
-        case OpCode::LOAD_NIL: return "LOAD_NIL";
+        case OpCode::LOAD_NONE: return "LOAD_NONE";
         case OpCode::LOAD_BOOL: return "LOAD_BOOL";
         case OpCode::GET_GLOBAL: return "GET_GLOBAL";
         case OpCode::SET_GLOBAL: return "SET_GLOBAL";
@@ -289,7 +289,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::IN: return "IN";
         case OpCode::IS_SUBSET: return "IS_SUBSET";
         case OpCode::IMPORT: return "IMPORT";
-        case OpCode::EXPORT: return "EXPORT";
+        case OpCode::INCLUDE: return "INCLUDE";
         case OpCode::DEFER: return "DEFER";
         case OpCode::RUN_DEFERS: return "RUN_DEFERS";
         case OpCode::ASSERT_PARAM_TYPE: return "ASSERT_PARAM_TYPE";
@@ -584,7 +584,7 @@ public:
             }
 
             case OpCode::NAMESPACE_BEGIN: {
-                trailing("begin namespace", "push namespace export context");
+                trailing("begin namespace", "push namespace include context");
                 break;
             }
             case OpCode::BUILD_NAMESPACE: {
@@ -706,9 +706,9 @@ public:
                          "R(" + std::to_string(a) + ") := R(" + std::to_string(b) + ")");
                 break;
 
-            case OpCode::LOAD_NIL:
+            case OpCode::LOAD_NONE:
                 line << "R(" << a << ") " << b;
-                trailing("nil", "R(" + std::to_string(a) + ") := nil");
+                trailing("none", "R(" + std::to_string(a) + ") := none");
                 break;
 
             case OpCode::GET_UPVAL:
@@ -761,11 +761,11 @@ public:
                 break;
 
             case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::FREEZE_CLASS: case OpCode::LIST_APPEND: case OpCode::MATRIX_COMP_APPEND: case OpCode::SET_APPEND:
-            case OpCode::ITER_NEXT: case OpCode::IMPORT: case OpCode::EXPORT:
+            case OpCode::ITER_NEXT: case OpCode::IMPORT: case OpCode::INCLUDE:
                 line << "R(" << a << ") " << b;
-                if (op == OpCode::EXPORT)
-                    trailing("export R(" + std::to_string(b) + ")",
-                             "export R(" + std::to_string(b) + ") into current namespace");
+                if (op == OpCode::INCLUDE)
+                    trailing("include R(" + std::to_string(b) + ")",
+                             "include R(" + std::to_string(b) + ") into current namespace");
                 break;
 
             case OpCode::CALL: case OpCode::TAIL_CALL:

@@ -54,7 +54,7 @@ void RegisterAllocator::allocate(IRGraph* graph) {
                 }
             }
         } else if (c->controlInput) {
-            // BuildNamespace 是控制节点，但它的 controlInput 可能是 Export 等
+            // BuildNamespace 是控制节点，但它的 controlInput 可能是 Include 等
             // 数据节点；沿 controlInput 链回溯到最近的控制块，避免 CFG 断边。
             IRNode* predCtrl = c->controlInput;
             while (predCtrl && !nodeToBB.count(predCtrl)) predCtrl = predCtrl->controlInput;

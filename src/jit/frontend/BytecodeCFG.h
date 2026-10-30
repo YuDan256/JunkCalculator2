@@ -93,7 +93,7 @@ public:
                     if (b == ESCAPE_NORMAL_8) fetchExtra();
                     break;
 
-                case OpCode::LOAD_NIL: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:
+                case OpCode::LOAD_NONE: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:
                 case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
                 case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT:
                 case OpCode::DICT_INIT: case OpCode::THROW: case OpCode::DEFER: case OpCode::RUN_DEFERS:

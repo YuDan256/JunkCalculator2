@@ -441,7 +441,7 @@ namespace lsp {
         if (e->value) e->value->accept(*this);
     }
 
-    void NameResolver::visitExportExpr(ExportExpr* e) {
+    void NameResolver::visitIncludeExpr(IncludeExpr* e) {
     if (e->value) e->value->accept(*this);
 }
 

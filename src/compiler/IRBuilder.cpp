@@ -3831,13 +3831,13 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     }
 }
 
-void IRBuilder::visitExportExpr(ExportExpr* expr) {
+void IRBuilder::visitIncludeExpr(IncludeExpr* expr) {
     expr->value->accept(*this);
-    IRNode* exportNode = graph->createValueNode(IROp::Export);
-    link(exportNode);
-    exportNode->addData(lastValue);
-    currentSeq = exportNode;
-    lastValue = exportNode;
+    IRNode* includeNode = graph->createValueNode(IROp::Include);
+    link(includeNode);
+    includeNode->addData(lastValue);
+    currentSeq = includeNode;
+    lastValue = includeNode;
 }
 
 void IRBuilder::visitImportExpr(ImportExpr* expr) {
@@ -3848,12 +3848,12 @@ void IRBuilder::visitImportExpr(ImportExpr* expr) {
     importNode->addData(lastValue);
     currentSeq = importNode;
     lastValue = importNode;
-    if (expr->isExport) {
-        IRNode* exportNode = graph->createValueNode(IROp::Export);
-        link(exportNode);
-        exportNode->addData(lastValue);
-        currentSeq = exportNode;
-        lastValue = exportNode;
+    if (expr->isInclude) {
+        IRNode* includeNode = graph->createValueNode(IROp::Include);
+        link(includeNode);
+        includeNode->addData(lastValue);
+        currentSeq = includeNode;
+        lastValue = includeNode;
     }
 }
 
@@ -4202,9 +4202,9 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         expr->body->accept(*this);
     }
     
-    std::vector<std::string> exportedKeys;
-    std::vector<IRNode*> exportedNodes;
-    std::vector<bool> exportedConsts;
+    std::vector<std::string> fieldKeys;
+    std::vector<IRNode*> fieldNodes;
+    std::vector<bool> fieldConsts;
     
     // 1) 普通字段来自当前 namespace 作用域的 env，排除显式 local。
     std::unordered_set<std::string> collected;
@@ -4226,17 +4226,17 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         }
         auto mit = namespaceMemberScopes.back().members.find(k);
         if (mit != namespaceMemberScopes.back().members.end()) target = mit->second;
-        exportedKeys.push_back(k);
-        exportedNodes.push_back(target);
-        exportedConsts.push_back(currentConstVars.count(k) > 0);
+        fieldKeys.push_back(k);
+        fieldNodes.push_back(target);
+        fieldConsts.push_back(currentConstVars.count(k) > 0);
         capturedNodesToExtend.push_back(target);
         collected.insert(k);
     }
     for (const auto& [k, target] : namespaceMemberScopes.back().members) {
         if (collected.count(k)) continue;
-        exportedKeys.push_back(k);
-        exportedNodes.push_back(target);
-        exportedConsts.push_back(false);
+        fieldKeys.push_back(k);
+        fieldNodes.push_back(target);
+        fieldConsts.push_back(false);
         capturedNodesToExtend.push_back(target);
     }
 
@@ -4248,8 +4248,8 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     link(nsNode);
     nsNode->name = expr->name.lexeme;
     
-    for (size_t i = 0; i < exportedKeys.size(); ++i) {
-        IRNode* keyNode = graph->createConstant(Value(exportedKeys[i]));
+    for (size_t i = 0; i < fieldKeys.size(); ++i) {
+        IRNode* keyNode = graph->createConstant(Value(fieldKeys[i]));
         link(keyNode);
         nsNode->addData(keyNode);
         
@@ -4257,21 +4257,21 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
         link(slotNode);
         nsNode->addData(slotNode);
         
-        IRNode* targetNode = exportedNodes[i];
+        IRNode* targetNode = fieldNodes[i];
         this->graph->postAllocCallbacks.push_back([slotNode, targetNode]() {
             slotNode->constVal = Value(static_cast<double>(targetNode->getResolved()->physicalReg));
         });
         
-        IRNode* constNode = graph->createConstant(Value(exportedConsts[i]));
+        IRNode* constNode = graph->createConstant(Value(fieldConsts[i]));
         link(constNode);
         nsNode->addData(constNode);
     }
     
-    for (size_t i = 0; i < exportedNodes.size(); ++i) {
-        nsNode->addData(exportedNodes[i]);
+    for (size_t i = 0; i < fieldNodes.size(); ++i) {
+        nsNode->addData(fieldNodes[i]);
     }
     
-    nsNode->payload1 = static_cast<uint32_t>(exportedKeys.size());
+    nsNode->payload1 = static_cast<uint32_t>(fieldKeys.size());
     nsNode->dataInputs.insert(nsNode->dataInputs.begin(), nsBegin);
     currentSeq = nsNode;
     

@@ -224,7 +224,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
 
     // ★ 该 IR 指令是否会把自己的 physicalReg 写成结果（用于判定死写）。
     //   只列纯取值类指令：控制流 / 存储 / 调用一律不算——调用的结果虽写 A，
-    //   但 nil 写可能承担"调用前释放引用"的职责，不能当死写删。
+    //   但 none 写可能承担"调用前释放引用"的职责，不能当死写删。
     auto writesResultReg = [](IROp op) -> bool {
         switch (op) {
             case IROp::Constant: case IROp::Move: case IROp::LoadLocal:
@@ -348,7 +348,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::FreeReg: {
-                        auto w = buildInstA(OpCode::LOAD_NIL, node->physicalReg);
+                        auto w = buildInstA(OpCode::LOAD_NONE, node->physicalReg);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -794,9 +794,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::Export: {
+                    case IROp::Include: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::EXPORT, node->physicalReg, b);
+                        auto w = buildInstAB(OpCode::INCLUDE, node->physicalReg, b);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
@@ -980,8 +980,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
 
     // 1a. FreeReg 的死写消除
     //
-    //   FreeReg 在块尾为"已死寄存器"发一条 LOAD_NIL，让 GC 能提前回收。若紧接着的下一条
-    //   指令（跳过 label）就把同一个寄存器写成结果，这条 nil 写立刻被覆盖，属于死写：
+    //   FreeReg 在块尾为"已死寄存器"发一条 LOAD_NONE，让 GC 能提前回收。若紧接着的下一条
+    //   指令（跳过 label）就把同一个寄存器写成结果，这条 none 写立刻被覆盖，属于死写：
     //   删掉它不会改变任何可观察行为，GC 的差异也只有一条指令。
     //   调用类指令不算覆盖（见 writesResultReg 的说明）。
     for (size_t i = 0; i + 1 < insts.size(); ++i) {

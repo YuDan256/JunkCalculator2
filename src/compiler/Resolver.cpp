@@ -426,7 +426,7 @@ void Resolver::visitTryCatchExpr(TryCatchExpr* expr) {
     resolveMatchBranches(expr->catchBranches);
 }
 
-void Resolver::visitExportExpr(ExportExpr* expr) {
+void Resolver::visitIncludeExpr(IncludeExpr* expr) {
     if (expr->value) expr->value->accept(*this);
 }
 

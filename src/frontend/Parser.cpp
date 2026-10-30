@@ -1708,11 +1708,11 @@ namespace jc {
             int endPos = catchBranches.empty() ? previous().position + 1 : catchBranches.back().body->endPos;
             return withPos(std::make_unique<TryCatchExpr>(std::move(tryBody), std::move(catchBranches)), tryTok.position, endPos);
         }
-        if (match({ TokenType::EXPORT })) {
+        if (match({ TokenType::INCLUDE })) {
             int startPos = previous().position;
             auto value = assignment();
             int endPos = value->endPos;
-            return withPos(std::make_unique<ExportExpr>(std::move(value)), startPos, endPos);
+            return withPos(std::make_unique<IncludeExpr>(std::move(value)), startPos, endPos);
         }
         if (match({ TokenType::IMPORT })) {
             int startPos = previous().position;
@@ -2844,7 +2844,7 @@ namespace jc {
             std::vector<std::pair<std::string, std::unique_ptr<Expr>>> props;
             props.push_back({"path", transformQuote(imp->path.get())});
             props.push_back({"package", std::make_unique<Literal>(imp->packagePath ? "true" : "false", false, false, true)});
-            props.push_back({"export", std::make_unique<Literal>(imp->isExport ? "true" : "false", false, false, true)});
+            props.push_back({"include", std::make_unique<Literal>(imp->isInclude ? "true" : "false", false, false, true)});
             return makeASTNodeCall("ImportExpr", 0, std::move(props));
         }
         if (auto* inv = dynamic_cast<InvokeExpr*>(expr)) {

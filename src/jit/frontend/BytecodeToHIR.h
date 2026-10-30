@@ -320,13 +320,13 @@ public:
                     case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::LIST_APPEND:
                     case OpCode::MATRIX_COMP_APPEND: case OpCode::MAKE_SPREAD:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
-                    case OpCode::IMPORT: case OpCode::EXPORT: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
+                    case OpCode::IMPORT: case OpCode::INCLUDE: case OpCode::GET_UPVAL: case OpCode::SET_UPVAL:
                     case OpCode::BUILD_SLICE: case OpCode::MATCH_INIT:
                         if (a == ESCAPE_NORMAL_8) a = fetchExtra();
                         if (b == ESCAPE_NORMAL_8) b = fetchExtra();
                         break;
 
-                    case OpCode::LOAD_NIL: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:
+                    case OpCode::LOAD_NONE: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:
                     case OpCode::RETURN: case OpCode::GET_SELF: case OpCode::GET_CURRENT_CLOSURE:
                     case OpCode::LIST_INIT: case OpCode::MATRIX_COMP_INIT: case OpCode::MATRIX_COMP_END: case OpCode::SET_INIT:
                     case OpCode::DICT_INIT: case OpCode::THROW: case OpCode::DEFER: case OpCode::RUN_DEFERS:
@@ -462,7 +462,7 @@ public:
                         }
                         break;
                     }
-                    case OpCode::LOAD_NIL: {
+                    case OpCode::LOAD_NONE: {
                         setLocalSync(a, builder_.createNoneConstant());
                         break;
                     }
@@ -1580,7 +1580,7 @@ public:
                         break;
                     }
                     case OpCode::DEFER:
-                    case OpCode::EXPORT: {
+                    case OpCode::INCLUDE: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);
                         break;

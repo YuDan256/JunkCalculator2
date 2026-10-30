@@ -119,7 +119,7 @@ private:
     };
     std::vector<ExceptionHandler> exceptionHandlers;
     std::unordered_set<std::string> loadingPackages;
-    std::vector<ObjNamespace*> exportNamespaceStack;
+    std::vector<ObjNamespace*> includeNamespaceStack;
 
     int currentTargetFrameDepth = 0;
 

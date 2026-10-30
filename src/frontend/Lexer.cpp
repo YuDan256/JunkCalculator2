@@ -29,7 +29,7 @@ namespace jc {
         {"try",      TokenType::TRY},          // ★
         {"catch",    TokenType::CATCH},         // ★
         {"import",   TokenType::IMPORT},
-        {"include",  TokenType::EXPORT},
+        {"include",  TokenType::INCLUDE},
         {"match",    TokenType::MATCH},        // ★
         {"macro",    TokenType::MACRO},        // ★
         {"syntax",   TokenType::SYNTAX},       // ★

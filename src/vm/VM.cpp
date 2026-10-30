@@ -2851,7 +2851,7 @@ static void packageAttach(ObjNamespace* parent, const std::string& name, const V
     parent->setField(name, child);
 }
 
-static void mergeExportedNamespace(ObjNamespace* target, ObjNamespace* src) {
+static void mergeIncludedNamespace(ObjNamespace* target, ObjNamespace* src) {
     if (!target || !src || target == src) return;
     for (const auto& [k, field] : src->fields) {
         Value incoming = *(field.upval->location);
@@ -2859,7 +2859,7 @@ static void mergeExportedNamespace(ObjNamespace* target, ObjNamespace* src) {
         if (it != target->fields.end()) {
             Value existing = *(it->second.upval->location);
             if (existing.as_bits == incoming.as_bits) continue;
-            JC2_THROW(RuntimeError, "Export conflict for member '" + k + "'.");
+            JC2_THROW(RuntimeError, "Include conflict for member '" + k + "'.");
         }
         target->setField(k, incoming);
     }
@@ -3268,7 +3268,7 @@ Value VM::execImport(std::string name, bool packagePath) {
 
     std::string scriptDir = from_path(to_path(executePath).parent_path());
     helpers::g_scriptDirStack.push_back(scriptDir);
-    exportNamespaceStack.push_back(ns);
+    includeNamespaceStack.push_back(ns);
     Value nsVal;
     try {
         nsVal = run(targetDepth);
@@ -3288,12 +3288,12 @@ Value VM::execImport(std::string name, bool packagePath) {
             f->refParamsBase = -1;
             frameCount--;
         }
-        exportNamespaceStack.pop_back();
+        includeNamespaceStack.pop_back();
         helpers::g_scriptDirStack.pop_back();
         loadedModules.erase(name);
         throw;
     }
-    exportNamespaceStack.pop_back();
+    includeNamespaceStack.pop_back();
     helpers::g_scriptDirStack.pop_back();
 
     if (!nsVal.isObjType(ObjType::NAMESPACE)) {
@@ -3301,7 +3301,7 @@ Value VM::execImport(std::string name, bool packagePath) {
         JC2_THROW(RuntimeError, "Module script must not use top-level 'return'.");
     }
     ObjNamespace* returnedNs = static_cast<ObjNamespace*>(nsVal.asObj());
-    mergeExportedNamespace(ns, returnedNs);
+    mergeIncludedNamespace(ns, returnedNs);
     ns->name = displayName;
     loadedModules[name] = Value(ns);
 
@@ -4934,7 +4934,7 @@ Value VM::run(int targetFrameDepth) {
                 getReg(a) = chunk->constants.data()[bx];
                 break;
             }
-            case OpCode::LOAD_NIL: {
+            case OpCode::LOAD_NONE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 getReg(a) = Value::none();
                 break;
@@ -7883,7 +7883,7 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::NAMESPACE_BEGIN: {
                 ObjNamespace* pending = GcHeap::get().allocate<ObjNamespace>();
                 getReg(a) = Value(pending);
-                exportNamespaceStack.push_back(pending);
+                includeNamespaceStack.push_back(pending);
                 break;
             }
             case OpCode::BUILD_NAMESPACE: {
@@ -7892,10 +7892,10 @@ Value VM::run(int targetFrameDepth) {
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 
                 const std::string& nsName = chunk->constants.data()[b].asString();
-                ObjNamespace* pendingExports = nullptr;
-                if (!exportNamespaceStack.empty()) {
-                    pendingExports = exportNamespaceStack.back();
-                    exportNamespaceStack.pop_back();
+                ObjNamespace* pendingIncludes = nullptr;
+                if (!includeNamespaceStack.empty()) {
+                    pendingIncludes = includeNamespaceStack.back();
+                    includeNamespaceStack.pop_back();
                 }
                 Value existingNs = getReg(a);
                 ObjNamespace* ns = existingNs.isObjType(ObjType::NAMESPACE)
@@ -7917,7 +7917,7 @@ Value VM::run(int targetFrameDepth) {
                     upval->location = &upval->closed;
                     ns->fields[key] = { upval, isConst };
                 }
-                if (pendingExports) mergeExportedNamespace(ns, pendingExports);
+                if (pendingIncludes) mergeIncludedNamespace(ns, pendingIncludes);
                 break;
             }
             case OpCode::MATRIX_COMP_INIT: {
@@ -8051,18 +8051,18 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            case OpCode::EXPORT: {
+            case OpCode::INCLUDE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                Value exported = getReg(b);
-                if (!exported.isObjType(ObjType::NAMESPACE)) {
+                Value included = getReg(b);
+                if (!included.isObjType(ObjType::NAMESPACE)) {
                     JC2_THROW(RuntimeError, "include expects a namespace.");
                 }
-                if (exportNamespaceStack.empty()) {
+                if (includeNamespaceStack.empty()) {
                     JC2_THROW(RuntimeError, "include: no current module namespace.");
                 }
-                mergeExportedNamespace(exportNamespaceStack.back(),
-                                       static_cast<ObjNamespace*>(exported.asObj()));
+                mergeIncludedNamespace(includeNamespaceStack.back(),
+                                       static_cast<ObjNamespace*>(included.asObj()));
                 getReg(a) = Value::none();
                 break;
             }

@@ -57,7 +57,7 @@
 *   **超量常量回退 (Constant Fallback)**：如果常量池索引 >= 128，编译器会先发射一条 `LOADK` 指令（配合 `EXTRAARG` 扩展），将该常量加载到保留的暂存器中，随后在主指令中将其作为普通寄存器操作数使用。
 
 ### 1.3 核心指令集概览
-*   **数据搬运**: `MOVE`, `LOADK`, `LOADKX`, `LOAD_NIL`, `LOAD_BOOL`
+*   **数据搬运**: `MOVE`, `LOADK`, `LOADKX`, `LOAD_NONE`, `LOAD_BOOL`
 *   **算术逻辑**: `ADD`, `SUB`, `MUL`, `DIV`, `MOD`, `POW`, `BAND`, `BOR`, `BXOR`, `SHL`, `SHR` (均支持 K-Bit)
 *   **控制流**: `JMP`, `JMP_TRUE`, `JMP_FALSE`, `EQ`, `NEQ`, `LT`, `LE`, `GT`, `GE`
 *   **函数与 OOP**: `CALL`, `TAIL_CALL`, `INVOKE`, `SUPER_INVOKE`, `GET_PROP`, `SET_PROP`, `CLASS`, `METHOD`

@@ -1,0 +1,13 @@
+namespace A {
+    class C {}
+    namespace N {}
+    enum E { x, y }
+    local class Hidden {}
+}
+
+assert("C" in getFields(A), "class binding")
+assert("N" in getFields(A), "namespace binding")
+assert("E" in getFields(A), "enum binding")
+assert(!("Hidden" in getFields(A)), "local class is not a field")
+
+print("binding battery OK")

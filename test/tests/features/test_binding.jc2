@@ -1,3 +1,9 @@
+local functionSample(x) = x + 1
+assert(functionSample(1) == 2, "function binding")
+
+const constFunction(x) = x * 2
+assert(constFunction(3) == 6, "const function binding")
+
 class StaticSample {
     static const X = 1
 }

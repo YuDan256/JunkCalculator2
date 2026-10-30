@@ -399,115 +399,7 @@ namespace jc {
         return expr;
     }
 
-    // A binding is any form that produces `Assign(name, value, modifiers)`:
-    // import, class/trait, namespace and enum. Function definitions are
-    // handled by the assignment() prologue because their target is a parameter
-    // list rather than a plain identifier.
-    std::unique_ptr<Expr> Parser::binding(bool isLocal, bool isRef, bool isState, bool isConst) {
-        int saved = current;
-
-        auto applyModifiers = [&](std::unique_ptr<Expr> expr) -> std::unique_ptr<Expr> {
-            if (auto* a = dynamic_cast<Assign*>(expr.get())) {
-                a->isLocal = isLocal;
-                a->isRef = isRef;
-                a->isState = isState;
-                a->isConst = isConst;
-                return expr;
-            }
-            if (isLocal || isRef || isState || isConst) {
-                JC2_THROW(ParserError,
-                    "'local', 'ref', 'state' or 'const' requires a named binding.");
-            }
-            return expr;
-        };
-
-        if (match({ TokenType::IMPORT })) {
-            int startPos = previous().position;
-            bool isComptime = match({ TokenType::AT });
-            if (!check(TokenType::IDENTIFIER)) {
-                current = saved;
-                return nullptr;
-            }
-            Token nameTok = advance();
-            std::string moduleName = nameTok.lexeme;
-            bool packagePath = false;
-            int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
-            while (match({ TokenType::DOT })) {
-                if (!check(TokenType::IDENTIFIER)) {
-                    JC2_THROW(ParserError, "Expect module name after '.' in import.");
-                }
-                Token seg = advance();
-                moduleName += "." + seg.lexeme;
-                packagePath = true;
-                endPos = seg.position + static_cast<int>(seg.lexeme.length());
-            }
-            if (isComptime && !disableMacroExpansion) {
-                VM::activeVM->execCompileTimeImport(moduleName);
-            }
-            if (isComptime) {
-                return withPos(std::make_unique<Literal>("none", false, false, true),
-                    startPos, endPos);
-            }
-            auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true),
-                nameTok.position, endPos);
-            auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)),
-                startPos, endPos);
-            importExpr->packagePath = packagePath;
-            return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr),
-                isRef, isState, isLocal, isConst), startPos, endPos);
-        }
-
-        auto definitionStarts = [&]() {
-            if (current + 1 >= static_cast<int>(tokens.size())) return false;
-            TokenType t = tokens[current + 1].type;
-            return t == TokenType::LBRACE || t == TokenType::IDENTIFIER ||
-                   t == TokenType::DOLLAR || t == TokenType::STRING ||
-                   t == TokenType::RSTRING || t == TokenType::WITH;
-        };
-
-        if (check(TokenType::CLASS) && definitionStarts()) {
-            advance();
-            return applyModifiers(classDefExpr(false));
-        }
-        if (check(TokenType::TRAIT) && definitionStarts()) {
-            advance();
-            return applyModifiers(classDefExpr(true));
-        }
-        if (check(TokenType::NAMESPACE) && definitionStarts()) {
-            advance();
-            return applyModifiers(namespaceExpr());
-        }
-        if (check(TokenType::ENUM) && definitionStarts()) {
-            advance();
-            return applyModifiers(enumExpr());
-        }
-
-        return nullptr;
-    }
-
-    std::unique_ptr<Expr> Parser::assignment() {
-        [[maybe_unused]] int startPos = peek().position;
-        bool isLocal = false, isRef = false, isState = false, isConst = false;
-        while (true) {
-            if (match({ TokenType::LOCAL })) {
-                if (isLocal) JC2_THROW(ParserError, "Duplicate 'local' modifier.");
-                isLocal = true;
-            } else if (match({ TokenType::REF })) {
-                if (isRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
-                isRef = true;
-            } else if (match({ TokenType::STATE })) {
-                if (isState) JC2_THROW(ParserError, "Duplicate 'state' modifier.");
-                isState = true;
-            } else if (match({ TokenType::CONST })) {
-                if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
-                isConst = true;
-            } else {
-                break;
-            }
-        }
-        if (isLocal && (isRef || isState)) JC2_THROW(ParserError, "Cannot combine 'local' with 'ref' or 'state'.");
-        if (isRef && isState) JC2_THROW(ParserError, "Cannot combine 'ref' and 'state'.");
-
+    std::unique_ptr<Expr> Parser::functionBinding(bool isLocal, bool isRef, bool isState, bool isConst) {
         // ★ 特权推测解析：精准捕获带类型注解的函数定义 f(x: int) -> int = ...
         bool isFuncDef = false;
         int peekPos = current;
@@ -735,6 +627,121 @@ namespace jc {
                 }
             }
         }
+
+
+        return nullptr;
+    }
+
+    // A binding is any form that produces `Assign(name, value, modifiers)`:
+    // import, class/trait, namespace and enum. Function definitions are
+    // handled by the assignment() prologue because their target is a parameter
+    // list rather than a plain identifier.
+    std::unique_ptr<Expr> Parser::binding(bool isLocal, bool isRef, bool isState, bool isConst) {
+        if (auto fn = functionBinding(isLocal, isRef, isState, isConst)) return fn;
+
+        int saved = current;
+
+        auto applyModifiers = [&](std::unique_ptr<Expr> expr) -> std::unique_ptr<Expr> {
+            if (auto* a = dynamic_cast<Assign*>(expr.get())) {
+                a->isLocal = isLocal;
+                a->isRef = isRef;
+                a->isState = isState;
+                a->isConst = isConst;
+                return expr;
+            }
+            if (isLocal || isRef || isState || isConst) {
+                JC2_THROW(ParserError,
+                    "'local', 'ref', 'state' or 'const' requires a named binding.");
+            }
+            return expr;
+        };
+
+        if (match({ TokenType::IMPORT })) {
+            int startPos = previous().position;
+            bool isComptime = match({ TokenType::AT });
+            if (!check(TokenType::IDENTIFIER)) {
+                current = saved;
+                return nullptr;
+            }
+            Token nameTok = advance();
+            std::string moduleName = nameTok.lexeme;
+            bool packagePath = false;
+            int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
+            while (match({ TokenType::DOT })) {
+                if (!check(TokenType::IDENTIFIER)) {
+                    JC2_THROW(ParserError, "Expect module name after '.' in import.");
+                }
+                Token seg = advance();
+                moduleName += "." + seg.lexeme;
+                packagePath = true;
+                endPos = seg.position + static_cast<int>(seg.lexeme.length());
+            }
+            if (isComptime && !disableMacroExpansion) {
+                VM::activeVM->execCompileTimeImport(moduleName);
+            }
+            if (isComptime) {
+                return withPos(std::make_unique<Literal>("none", false, false, true),
+                    startPos, endPos);
+            }
+            auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true),
+                nameTok.position, endPos);
+            auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)),
+                startPos, endPos);
+            importExpr->packagePath = packagePath;
+            return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr),
+                isRef, isState, isLocal, isConst), startPos, endPos);
+        }
+
+        auto definitionStarts = [&]() {
+            if (current + 1 >= static_cast<int>(tokens.size())) return false;
+            TokenType t = tokens[current + 1].type;
+            return t == TokenType::LBRACE || t == TokenType::IDENTIFIER ||
+                   t == TokenType::DOLLAR || t == TokenType::STRING ||
+                   t == TokenType::RSTRING || t == TokenType::WITH;
+        };
+
+        if (check(TokenType::CLASS) && definitionStarts()) {
+            advance();
+            return applyModifiers(classDefExpr(false));
+        }
+        if (check(TokenType::TRAIT) && definitionStarts()) {
+            advance();
+            return applyModifiers(classDefExpr(true));
+        }
+        if (check(TokenType::NAMESPACE) && definitionStarts()) {
+            advance();
+            return applyModifiers(namespaceExpr());
+        }
+        if (check(TokenType::ENUM) && definitionStarts()) {
+            advance();
+            return applyModifiers(enumExpr());
+        }
+
+        return nullptr;
+    }
+
+    std::unique_ptr<Expr> Parser::assignment() {
+        [[maybe_unused]] int startPos = peek().position;
+        bool isLocal = false, isRef = false, isState = false, isConst = false;
+        while (true) {
+            if (match({ TokenType::LOCAL })) {
+                if (isLocal) JC2_THROW(ParserError, "Duplicate 'local' modifier.");
+                isLocal = true;
+            } else if (match({ TokenType::REF })) {
+                if (isRef) JC2_THROW(ParserError, "Duplicate 'ref' modifier.");
+                isRef = true;
+            } else if (match({ TokenType::STATE })) {
+                if (isState) JC2_THROW(ParserError, "Duplicate 'state' modifier.");
+                isState = true;
+            } else if (match({ TokenType::CONST })) {
+                if (isConst) JC2_THROW(ParserError, "Duplicate 'const' modifier.");
+                isConst = true;
+            } else {
+                break;
+            }
+        }
+        if (isLocal && (isRef || isState)) JC2_THROW(ParserError, "Cannot combine 'local' with 'ref' or 'state'.");
+        if (isRef && isState) JC2_THROW(ParserError, "Cannot combine 'ref' and 'state'.");
 
         // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
         if (atDestructPattern()) {

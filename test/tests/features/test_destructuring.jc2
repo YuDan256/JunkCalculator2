@@ -332,3 +332,30 @@ test_atomic_destructuring() = {
     assert(a == 1 && b == 1, "default may read earlier staged target")
 }
 test_atomic_destructuring()
+
+
+test_state_targets() = {
+    f() = {
+        @[state a, state b] = @[1, 2]
+        return a + b
+    }
+    assert(f() == 3, "target state init")
+    assert(f() == 3, "target state persists")
+
+    outer = 1
+    g() = {
+        @[ref outer, state s] = @[7, 8]
+        return s
+    }
+    assert(g() == 8, "ref + state target")
+    assert(outer == 7, "ref writes outer")
+
+    bad() = {
+        @[ref outer, state s: int] = @[9, "x"]
+    }
+    threw = false
+    try { bad() } catch (e) { threw = true }
+    assert(threw, "mixed state/ref failure")
+    assert(outer == 7, "failed mixed pattern must not write ref")
+}
+test_state_targets()

@@ -4856,11 +4856,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     // Two-phase destructuring for non-state patterns. Match into a staging
     // scope, then commit only after the whole pattern succeeded. State targets
     // keep the existing lazy-state path for now.
-    bool usesState = expr->isState;
-    for (const auto& varTuple : boundVars) {
-        if (std::get<1>(varTuple) == ScopeModifier::State) { usesState = true; break; }
-    }
-    if (!usesState) {
+    if (!expr->isState) {
         auto savedLocalVars = currentLocalVars;
         auto savedConstVars = currentConstVars;
         bool savedStaging = stagingPatternBindings_;
@@ -4923,12 +4919,64 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         }
 
         for (const auto& b : staged) {
-            bool isLocal = b.mod == ScopeModifier::Local;
-            writeVariable(b.name, b.node, b.sym, isLocal, b.isConst);
-            if (b.mod == ScopeModifier::Ref &&
-                b.sym.scope == VarScope::Global &&
-                currentSeq->op == IROp::SetGlobal) {
-                currentSeq->op = IROp::SetGlobalRef;
+            if (b.mod == ScopeModifier::State) {
+                // Commit a target-level state with lazy initialization.
+                IRNode* getVal = readVariable(b.name, b.sym);
+                IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+                isUninit->addData(getVal);
+                link(isUninit);
+
+                IRNode* ifNode = createCFGNode(IROp::If);
+                ifNode->addData(isUninit);
+                link(ifNode);
+
+                IRNode* ifTrue = createCFGNode(IROp::IfTrue);
+                ifTrue->setControl(ifNode);
+                IRNode* ifFalse = createCFGNode(IROp::IfFalse);
+                ifFalse->setControl(ifNode);
+
+                auto baseEnv = envStack;
+                currentSeq = ifTrue;
+                writeVariable(b.name, b.node, b.sym, false, b.isConst);
+                IRNode* trueCtrl = currentSeq;
+                auto trueEnv = envStack;
+                currentSeq = ifFalse;
+                auto falseEnv = baseEnv;
+
+                IRNode* merge = createCFGNode(IROp::Merge);
+                merge->addData(trueCtrl);
+                merge->addData(ifFalse);
+
+                envStack = baseEnv;
+                for (size_t i = 0; i < baseEnv.size(); ++i) {
+                    std::unordered_set<std::string> modifiedVars;
+                    for (const auto& pair : trueEnv[i]) {
+                        if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) {
+                            modifiedVars.insert(pair.first);
+                        }
+                    }
+                    for (const auto& nameVar : modifiedVars) {
+                        IRNode* tNode = trueEnv[i].count(nameVar) ? trueEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                        IRNode* fNode = falseEnv[i].count(nameVar) ? falseEnv[i].at(nameVar) : baseEnv[i].at(nameVar);
+                        if (tNode != fNode) {
+                            IRNode* phi = graph->createValueNode(IROp::Phi);
+                            phi->setControl(merge);
+                            phi->addData(tNode);
+                            phi->addData(fNode);
+                            phi->name = nameVar;
+                            envStack[i][nameVar] = phi;
+                        }
+                    }
+                }
+                currentSeq = merge;
+            } else {
+                bool isLocal = b.mod == ScopeModifier::Local;
+                writeVariable(b.name, b.node, b.sym, isLocal, b.isConst);
+                if (b.mod == ScopeModifier::Ref &&
+                    b.sym.scope == VarScope::Global &&
+                    currentSeq->op == IROp::SetGlobal) {
+                    currentSeq->op = IROp::SetGlobalRef;
+                }
             }
         }
 

@@ -525,6 +525,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         if (vp->name.lexeme != "_") {
             auto it = patternSymbols->find(pat);
             ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+            if (vp->modifier != ScopeModifier::None &&
+                globalMod != ScopeModifier::None &&
+                vp->modifier != globalMod) {
+                error("Destructuring modifier conflict for '" + vp->name.lexeme +
+                      "': target modifier differs from pattern modifier.");
+            }
             ScopeModifier mod = vp->modifier != ScopeModifier::None ? vp->modifier : globalMod;
             
             bool isExplicitConst = vp->isConst || globalConst;
@@ -807,6 +813,12 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 if (restPat->name.lexeme != "_") {
                     auto it = patternSymbols->find(restPat);
                     ResolvedSym sym = it != patternSymbols->end() ? it->second : ResolvedSym{};
+                    if (restPat->modifier != ScopeModifier::None &&
+                        globalMod != ScopeModifier::None &&
+                        restPat->modifier != globalMod) {
+                        error("Destructuring modifier conflict for '" + restPat->name.lexeme +
+                              "': target modifier differs from pattern modifier.");
+                    }
                     ScopeModifier mod = restPat->modifier != ScopeModifier::None ? restPat->modifier : globalMod;
                     bool isExplicitConst = restPat->isConst || globalConst;
                     

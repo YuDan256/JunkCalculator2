@@ -3976,6 +3976,11 @@ namespace jc {
                 );
             }
 
+            if (isStatic && !value) {
+                JC2_THROW(ParserError,
+                    "Static member '" + memberName.lexeme + "' requires an initializer.");
+            }
+
             if (isStatic) {
                 staticProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract });
             } else {

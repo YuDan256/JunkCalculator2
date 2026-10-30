@@ -1,3 +1,8 @@
+class StaticSample {
+    static const X = 1
+}
+assert(StaticSample.X == 1, "static const initializer")
+
 namespace A {
     class C {}
     namespace N {}

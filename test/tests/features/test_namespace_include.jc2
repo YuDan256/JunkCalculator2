@@ -35,4 +35,10 @@ try {
 }
 assert(leaked, "pending namespace context must be cleaned")
 
+// 	ry include import math must still bind math in the namespace.
+namespace WithTry {
+    try include import math
+}
+assert(WithTry.math != none, "try include import binds math")
+
 print("namespace include battery OK")

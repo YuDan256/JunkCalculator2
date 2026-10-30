@@ -1884,6 +1884,14 @@ void IRBuilder::hoistBlock(Block* block) {
         }
         // 注意：不进入 LambdaExpr —— 那是另一个函数，有自己的作用域。
 
+        // include 的 operand 里可能藏着赋值（include import math 即
+        // include (math = import math)），必须继续下探，否则 try/catch
+        // 的变量汇合看不到这个新绑定。
+        if (auto* inc = dynamic_cast<IncludeExpr*>(e)) {
+            hoistStmt(inc->value.get());
+            return;
+        }
+
         if (auto* assign = dynamic_cast<Assign*>(e)) {
             if (!assign->isRef && !assign->isState) {
                 auto it = exprSymbols->find(assign);

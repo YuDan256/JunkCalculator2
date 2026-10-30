@@ -29,6 +29,11 @@ static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string,
 }
 
 IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
+    if (stagingPatternBindings_) {
+        auto stageIt = stagingBindingValues_.find(name);
+        if (stageIt != stagingBindingValues_.end()) return stageIt->second;
+    }
+
     // 优先检查是否是递归调用当前闭包
     // 只有当它不是当前作用域的局部变量（即没有被 shadow）时，才使用 GetCurrentClosure
     if (currentFunction && currentFunction->name == name && sym.scope != VarScope::Local && sym.scope != VarScope::State && sym.scope != VarScope::RefParam) {
@@ -377,6 +382,12 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
 void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
     auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
         if (!allowInternalNames && isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
+        if (stagingPatternBindings_) {
+            // Two-phase destructuring: publish only to the staging scope.
+            envStack.back()[name] = vNode;
+            stagingBindingValues_[name] = vNode;
+            return;
+        }
         bool isLocal = mod == ScopeModifier::Local;
         if (mod == ScopeModifier::State) {
             IRNode* getVal = readVariable(name, sym);
@@ -4840,6 +4851,89 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
             if (std::get<1>(varTuple) == ScopeModifier::State) { usesState = true; break; }
         }
         if (usesState) error("Syntax Error: 'state' modifier cannot be used at the top level.");
+    }
+
+    // Two-phase destructuring for non-state patterns. Match into a staging
+    // scope, then commit only after the whole pattern succeeded. State targets
+    // keep the existing lazy-state path for now.
+    bool usesState = expr->isState;
+    for (const auto& varTuple : boundVars) {
+        if (std::get<1>(varTuple) == ScopeModifier::State) { usesState = true; break; }
+    }
+    if (!usesState) {
+        auto savedLocalVars = currentLocalVars;
+        auto savedConstVars = currentConstVars;
+        bool savedStaging = stagingPatternBindings_;
+        auto savedStagingValues = stagingBindingValues_;
+
+        pushScope();
+        stagingPatternBindings_ = true;
+        stagingBindingValues_.clear();
+
+        expr->value->accept(*this);
+        IRNode* valNode = lastValue;
+        IRNode* failMerge = createCFGNode(IROp::Merge);
+
+        ScopeModifier patternMod = ScopeModifier::None;
+        if (expr->isLocal) patternMod = ScopeModifier::Local;
+        else if (expr->isRef) patternMod = ScopeModifier::Ref;
+
+        buildPatternMatch(expr->pattern.get(), valNode, failMerge,
+            patternMod, expr->isConst, true);
+
+        struct StagedBinding {
+            std::string name;
+            IRNode* node;
+            ResolvedSym sym;
+            ScopeModifier mod;
+            bool isConst;
+        };
+        std::vector<StagedBinding> staged;
+        for (const auto& varTuple : boundVars) {
+            const std::string& name = std::get<0>(varTuple);
+            if (name == "_") continue;
+            ScopeModifier targetMod = std::get<1>(varTuple);
+            bool targetConst = std::get<2>(varTuple);
+            Pattern* pat = std::get<3>(varTuple);
+            auto it = envStack.back().find(name);
+            if (it == envStack.back().end()) continue;
+            auto sit = patternSymbols->find(pat);
+            ResolvedSym sym = sit != patternSymbols->end() ? sit->second : ResolvedSym{};
+            staged.push_back({name, it->second, sym,
+                targetMod != ScopeModifier::None ? targetMod : patternMod,
+                targetConst || expr->isConst});
+        }
+
+        popScope();
+        currentLocalVars = savedLocalVars;
+        currentConstVars = savedConstVars;
+        stagingPatternBindings_ = savedStaging;
+        stagingBindingValues_ = savedStagingValues;
+
+        if (!failMerge->dataInputs.empty()) {
+            IRNode* throwNode = createCFGNode(IROp::ThrowTyped);
+            throwNode->setControl(failMerge);
+            IRNode* errStr = graph->createConstant(Value("Destructuring pattern match failed."));
+            errStr->setControl(failMerge);
+            throwNode->addData(errStr);
+            IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));
+            typeStr->setControl(failMerge);
+            throwNode->addData(typeStr);
+            recordExitNode(throwNode);
+        }
+
+        for (const auto& b : staged) {
+            bool isLocal = b.mod == ScopeModifier::Local;
+            writeVariable(b.name, b.node, b.sym, isLocal, b.isConst);
+            if (b.mod == ScopeModifier::Ref &&
+                b.sym.scope == VarScope::Global &&
+                currentSeq->op == IROp::SetGlobal) {
+                currentSeq->op = IROp::SetGlobalRef;
+            }
+        }
+
+        lastValue = valNode;
+        return;
     }
 
     std::vector<std::string> tempStateNames;

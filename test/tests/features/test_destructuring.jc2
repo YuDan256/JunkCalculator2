@@ -314,3 +314,21 @@ test_modifier_conflict() = {
     assert(a == 1, "matching pattern/target modifiers")
 }
 test_modifier_conflict()
+
+
+test_atomic_destructuring() = {
+    a = 10
+    b = 20
+    threw = false
+    try {
+        @[a, b: int] = @[1, "x"]
+    } catch (e) {
+        threw = true
+    }
+    assert(threw, "type mismatch must fail")
+    assert(a == 10 && b == 20, "failed destructuring must not commit")
+
+    @[a, b = a] = @[1]
+    assert(a == 1 && b == 1, "default may read earlier staged target")
+}
+test_atomic_destructuring()

@@ -359,3 +359,35 @@ test_state_targets() = {
     assert(outer == 7, "failed mixed pattern must not write ref")
 }
 test_state_targets()
+
+
+pattern_state_calls = 0
+pattern_retry_calls = 0
+test_pattern_state() = {
+    f() = {
+        state @[a, b] = @[ (pattern_state_calls += 1), 2 ]
+        return a + b + pattern_state_calls
+    }
+    assert(f() == 4, "pattern state first")
+    assert(f() == 4, "pattern state cached")
+    assert(pattern_state_calls == 1, "pattern state expr once")
+
+    bad() = {
+        state @[c, d: int] = @[ (pattern_retry_calls += 1), "x" ]
+        return c
+    }
+    threw = 0
+    try { bad() } catch (e) { threw += 1 }
+    try { bad() } catch (e) { threw += 1 }
+    assert(threw == 2, "pattern state retries after failure")
+    assert(pattern_retry_calls == 2, "pattern state retry evaluates expr again")
+
+    threw = false
+    try {
+        eval("f() = { const state @[x, y] = @[1, 2]; x = 9 }")
+    } catch (e) {
+        threw = true
+    }
+    assert(threw, "const state pattern is read-only")
+}
+test_pattern_state()

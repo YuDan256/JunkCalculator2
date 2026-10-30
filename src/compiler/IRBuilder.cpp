@@ -96,6 +96,9 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
 
 void IRBuilder::writeVariable(const std::string& name, IRNode* value, ResolvedSym sym, bool isExplicitLocal, bool isExplicitConst) {
     if (name == "_") return;
+    if (currentConstVars.count(name) && !isExplicitConst) {
+        error("Runtime Error: Cannot modify const variable '" + name + "'.");
+    }
     namedValueNodes[name] = value;
     if (sym.scope == VarScope::Global) {
         IROp op = isExplicitConst ? IROp::DefineConstGlobal : IROp::SetGlobal;
@@ -4853,10 +4856,9 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         if (usesState) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     }
 
-    // Two-phase destructuring for non-state patterns. Match into a staging
-    // scope, then commit only after the whole pattern succeeded. State targets
-    // keep the existing lazy-state path for now.
-    if (!expr->isState) {
+    // Two-phase destructuring: match into a staging scope, then commit only
+    // after the whole pattern succeeded.
+    auto runStagedPattern = [&]() -> IRNode* {
         auto savedLocalVars = currentLocalVars;
         auto savedConstVars = currentConstVars;
         bool savedStaging = stagingPatternBindings_;
@@ -4873,6 +4875,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
         ScopeModifier patternMod = ScopeModifier::None;
         if (expr->isLocal) patternMod = ScopeModifier::Local;
         else if (expr->isRef) patternMod = ScopeModifier::Ref;
+        else if (expr->isState) patternMod = ScopeModifier::State;
 
         buildPatternMatch(expr->pattern.get(), valNode, failMerge,
             patternMod, expr->isConst, true);
@@ -4980,132 +4983,87 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
             }
         }
 
+        for (const auto& b : staged) {
+            if (b.isConst) currentConstVars.insert(b.name);
+        }
+
         lastValue = valNode;
+        return valNode;
+    };
+
+    if (!expr->isState) {
+        runStagedPattern();
         return;
     }
 
-    std::vector<std::string> tempStateNames;
-    std::vector<std::pair<std::string, std::pair<int, IRNode*>>> hiddenVars;
-
-    std::vector<std::string> patVarsToHide;
+    // Pattern-level state: evaluate/commit the whole pattern only while the
+    // first state target is uninitialized. Staging guarantees that a failure
+    // leaves every state target uninitialized so the next call retries.
+    std::vector<std::pair<std::string, ResolvedSym>> stateNames;
     for (const auto& varTuple : boundVars) {
-        const std::string& name = std::get<0>(varTuple);
-        ScopeModifier mod = std::get<1>(varTuple);
-        bool isConst = std::get<2>(varTuple);
-        
-        if (expr->isLocal || expr->isState || expr->isConst || 
-            mod == ScopeModifier::Local || mod == ScopeModifier::State || isConst) {
-            patVarsToHide.push_back(name);
-        }
-        
-        if (mod == ScopeModifier::None) {
-            if (expr->isState) mod = ScopeModifier::State;
-        }
-        if (mod == ScopeModifier::State) {
-            tempStateNames.push_back(name);
-        }
+        ScopeModifier targetMod = std::get<1>(varTuple);
+        ScopeModifier effective = targetMod;
+        if (effective == ScopeModifier::None) effective = ScopeModifier::State;
+        if (effective != ScopeModifier::State) continue;
+        Pattern* pat = std::get<3>(varTuple);
+        auto sit = patternSymbols->find(pat);
+        ResolvedSym sym = sit != patternSymbols->end() ? sit->second : ResolvedSym{};
+        stateNames.push_back({std::get<0>(varTuple), sym});
     }
 
-    for (const auto& name : patVarsToHide) {
-        for (int i = static_cast<int>(envStack.size()) - 1; i >= 0; --i) {
-            auto it = envStack[i].find(name);
-            if (it != envStack[i].end()) {
-                hiddenVars.push_back({name, {i, it->second}});
-                envStack[i].erase(it);
-                break;
-            }
-        }
-    }
-    
     IRNode* skipMerge = nullptr;
     auto baseEnv = envStack;
-    
-    if (expr->isState && !tempStateNames.empty() && currentFunction) {
-        ResolvedSym sym; sym.scope = VarScope::State;
-        IRNode* getVal = readVariable(tempStateNames[0], sym);
+    if (!stateNames.empty() && currentFunction) {
+        ResolvedSym firstSym;
+        firstSym.scope = VarScope::State;
+        IRNode* getVal = readVariable(stateNames[0].first, firstSym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
         link(isUninit);
-            
+
         IRNode* ifNode = createCFGNode(IROp::If);
         ifNode->addData(isUninit);
         link(ifNode);
-            
+
         IRNode* ifTrue = createCFGNode(IROp::IfTrue);
         ifTrue->setControl(ifNode);
-            
         IRNode* ifFalse = createCFGNode(IROp::IfFalse);
         ifFalse->setControl(ifNode);
-            
+
         skipMerge = createCFGNode(IROp::Merge);
         skipMerge->addData(ifFalse);
-            
         currentSeq = ifTrue;
     }
-        
-    expr->value->accept(*this);
-    IRNode* valNode = lastValue;
-    
-    for (const auto& hv : hiddenVars) {
-        envStack[hv.second.first][hv.first] = hv.second.second;
-    }
 
-    IRNode* failMerge = createCFGNode(IROp::Merge);
-    
-    ScopeModifier mod = ScopeModifier::None;
-    if (expr->isLocal) mod = ScopeModifier::Local;
-    else if (expr->isRef) mod = ScopeModifier::Ref;
-    else if (expr->isState) mod = ScopeModifier::State;
+    IRNode* valNode = runStagedPattern();
 
-    buildPatternMatch(expr->pattern.get(), valNode, failMerge, mod, expr->isConst, true);
-    
-    if (!failMerge->dataInputs.empty()) {
-        IRNode* throwNode = createCFGNode(IROp::ThrowTyped);
-        throwNode->setControl(failMerge);
-        IRNode* errStr = graph->createConstant(Value("Destructuring pattern match failed."));
-        errStr->setControl(failMerge);
-        throwNode->addData(errStr);
-        IRNode* typeStr = graph->createConstant(Value(jc::err::MatchErrorClass));
-        typeStr->setControl(failMerge);
-        throwNode->addData(typeStr);
-        recordExitNode(throwNode);
-    }
-    
     if (skipMerge) {
         auto trueEnv = envStack;
         skipMerge->addData(currentSeq);
-        currentSeq = skipMerge;
-        
         envStack = baseEnv;
+        std::unordered_set<std::string> stateNameSet;
+        for (const auto& sn : stateNames) stateNameSet.insert(sn.first);
         for (size_t i = 0; i < baseEnv.size(); ++i) {
-            std::unordered_set<std::string> modifiedVars;
-            for (const auto& pair : trueEnv[i]) {
-                if (baseEnv[i].count(pair.first) && baseEnv[i].at(pair.first) != pair.second) modifiedVars.insert(pair.first);
-            }
-            for (const auto& name : modifiedVars) {
+            for (const auto& name : stateNameSet) {
+                if (!baseEnv[i].count(name)) continue;
                 IRNode* tNode = trueEnv[i].count(name) ? trueEnv[i].at(name) : baseEnv[i].at(name);
                 IRNode* fNode = baseEnv[i].at(name);
                 if (tNode != fNode) {
                     IRNode* phi = graph->createValueNode(IROp::Phi);
                     phi->setControl(skipMerge);
-                    phi->addData(fNode); // Index 0: ifFalse
-                    phi->addData(tNode); // Index 1: ifTrue_end
+                    phi->addData(fNode);
+                    phi->addData(tNode);
                     phi->name = name;
                     envStack[i][name] = phi;
                 }
             }
         }
-        
-        IRNode* phi = graph->createValueNode(IROp::Phi);
-        phi->setControl(skipMerge);
-        IRNode* noneNode = graph->createConstant(Value::none());
-        noneNode->setControl(skipMerge);
-        phi->addData(noneNode); // Index 0: ifFalse
-        phi->addData(valNode);  // Index 1: ifTrue_end
-        lastValue = phi;
-    } else {
-        lastValue = valNode;
+        currentSeq = skipMerge;
     }
+
+    lastValue = valNode;
+    return;
+
 }
 
 void IRBuilder::visitFStringExpr(FStringExpr* expr) {

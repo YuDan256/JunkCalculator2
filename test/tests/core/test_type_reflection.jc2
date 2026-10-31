@@ -166,3 +166,36 @@ test_type_identity_and_union() = {
     assert(threw, "bool is not int for type assertions")
 }
 test_type_identity_and_union()
+
+
+test_value_copy_and_index() = {
+    a = @[1, 2]
+    b = a
+    b.push(3)
+    assert(a.len() == 3, "assignment shares the list")
+
+    n = @[@[1]]
+    d = copy(n)
+    d[0].push(2)
+    assert(n[0].len() == 1 && d[0].len() == 2, "copy is deep")
+
+    u = copy(n, false)
+    u[0].push(3)
+    assert(n[0].len() == 1 && u[0].len() == 2, "copy false is mutable")
+
+    f = copy(n, true)
+    threw = false
+    try { f[0].push(4) } catch (e) { threw = true }
+    assert(threw, "copy true is frozen")
+
+    l = @[10, 20, 30]
+    assert(l[-1] == 30, "negative index")
+    assert(l[1:3] == @[20, 30], "slice")
+    threw = false
+    try { l[9] } catch (e) { threw = true }
+    assert(threw, "out of bounds")
+
+    assert("abc"[1] == "b", "string index")
+    assert("abc"[1:3] == "bc", "string slice")
+}
+test_value_copy_and_index()

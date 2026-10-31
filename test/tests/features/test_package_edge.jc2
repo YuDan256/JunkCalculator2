@@ -11,4 +11,26 @@ try {
     assert(e.type == "RuntimeError", "cycle error type")
 }
 
+// A failed package import must not be cached as a success; retry must fail the same way.
+for (attempt in @[0, 1]) {
+    threw = false
+    try {
+        import "../../fixtures/pkgcycle/a"
+    } catch (e) {
+        threw = true
+        assert(e.type == "RuntimeError", "cycle retry error type")
+    }
+    assert(threw, "cycle retry must still fail")
+}
+
+for (attempt in @[0, 1]) {
+    threw = false
+    try {
+        import "../../fixtures/does_not_exist_pkg"
+    } catch (e) {
+        threw = true
+    }
+    assert(threw, "missing package retry must fail")
+}
+
 print("package edge battery OK")

@@ -433,3 +433,14 @@ test_complex_lvalue_modifiers() = {
     }
 }
 test_complex_lvalue_modifiers()
+
+
+state_default_calls = 0
+state_default_side() = { state_default_calls += 1; return 8 }
+test_state_default_once() = {
+    f() = { @[state a, state b = state_default_side()] = @[1]; return @[a, b] }
+    assert(f() == @[1, 8], "state default first")
+    assert(f() == @[1, 8], "state default cached")
+    assert(state_default_calls == 1, "state default must not re-evaluate")
+}
+test_state_default_once()

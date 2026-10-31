@@ -487,6 +487,73 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
     };
 
     if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) {
+        // A state target already has a value on later calls. Do not evaluate
+        // its default again; reuse the stored state value for matching.
+        std::string stateName;
+        ScopeModifier innerMod = globalMod;
+        if (auto* vp = dynamic_cast<VariablePattern*>(dp->inner.get())) {
+            stateName = vp->name.lexeme;
+            if (vp->modifier != ScopeModifier::None) innerMod = vp->modifier;
+        } else if (auto* rp = dynamic_cast<RestPattern*>(dp->inner.get())) {
+            stateName = rp->name.lexeme;
+            if (rp->modifier != ScopeModifier::None) innerMod = rp->modifier;
+        }
+        if (innerMod == ScopeModifier::State && !stateName.empty() && stateName != "_" &&
+            patternSymbols->count(dp->inner.get())) {
+            ResolvedSym stateSym = patternSymbols->at(dp->inner.get());
+            IRNode* stateVal = readVariable(stateName, stateSym);
+            IRNode* stateUninit = graph->createValueNode(IROp::IsUninit);
+            stateUninit->addData(stateVal);
+            link(stateUninit);
+
+            IRNode* incomingUninit = graph->createValueNode(IROp::IsUninit);
+            incomingUninit->addData(valNode);
+            link(incomingUninit);
+
+            IRNode* ifIncoming = createCFGNode(IROp::If);
+            ifIncoming->addData(incomingUninit);
+            link(ifIncoming);
+            IRNode* ifIncomingTrue = createCFGNode(IROp::IfTrue);
+            ifIncomingTrue->setControl(ifIncoming);
+            IRNode* ifIncomingFalse = createCFGNode(IROp::IfFalse);
+            ifIncomingFalse->setControl(ifIncoming);
+
+            currentSeq = ifIncomingTrue;
+            IRNode* ifState = createCFGNode(IROp::If);
+            ifState->addData(stateUninit);
+            link(ifState);
+            IRNode* ifStateTrue = createCFGNode(IROp::IfTrue);
+            ifStateTrue->setControl(ifState);
+            IRNode* ifStateFalse = createCFGNode(IROp::IfFalse);
+            ifStateFalse->setControl(ifState);
+
+            currentSeq = ifStateTrue;
+            dp->defaultExpr->accept(*this);
+            IRNode* defVal = lastValue;
+            IRNode* defCtrl = currentSeq;
+            currentSeq = ifStateFalse;
+
+            IRNode* missingMerge = createCFGNode(IROp::Merge);
+            missingMerge->addData(defCtrl);
+            missingMerge->addData(ifStateFalse);
+            IRNode* missingPhi = graph->createValueNode(IROp::Phi);
+            missingPhi->setControl(missingMerge);
+            missingPhi->addData(defVal);
+            missingPhi->addData(stateVal);
+            currentSeq = missingMerge;
+
+            IRNode* chooseMerge = createCFGNode(IROp::Merge);
+            chooseMerge->addData(missingMerge);
+            chooseMerge->addData(ifIncomingFalse);
+            IRNode* choosePhi = graph->createValueNode(IROp::Phi);
+            choosePhi->setControl(chooseMerge);
+            choosePhi->addData(missingPhi);
+            choosePhi->addData(valNode);
+            currentSeq = chooseMerge;
+            buildPatternMatch(dp->inner.get(), choosePhi, failMerge, globalMod, globalConst, isAssignment);
+            return;
+        }
+
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         link(isUninit);
         isUninit->addData(valNode);

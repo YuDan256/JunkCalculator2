@@ -133,3 +133,36 @@ test_getfields_lists_only_accessible() = {
     }
 }
 test_getfields_lists_only_accessible()
+
+test_basic_truthiness() = {
+    assert(!list(), "empty list is falsy")
+    assert(!dict(), "empty dict is falsy")
+    assert(!set(), "empty set is falsy")
+    assert(!"", "empty string is falsy")
+    assert(!none, "none is falsy")
+    assert(!0 && !0.0, "numeric zero is falsy")
+
+    assert(list(1), "non-empty list is truthy")
+    assert({a: 1}, "non-empty dict is truthy")
+    assert(set(1), "non-empty set is truthy")
+    assert("x", "non-empty string is truthy")
+    assert(1 && -1, "non-zero numbers are truthy")
+}
+test_basic_truthiness()
+
+test_type_identity_and_union() = {
+    assert(type(1) == int, "type(1) == int")
+    assert(type(1.0) == float, "type(1.0) == float")
+    assert(type(int) == type, "type of a type is type")
+    assert(1 in int, "primitive membership in int")
+    assert(!isinstance(1, int), "isinstance is for class instances, not primitives")
+
+    x: int | float = 1
+    y: int | float = 1.0
+    assert(x == 1 && y == 1.0, "union type accepts both")
+
+    threw = false
+    try { eval("bad: int = true") } catch (e) { threw = true }
+    assert(threw, "bool is not int for type assertions")
+}
+test_type_identity_and_union()

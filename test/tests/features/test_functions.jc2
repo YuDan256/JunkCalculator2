@@ -339,3 +339,30 @@ test_partial_all_holes() = {
     assert(threw, "partial application requires all holes in one call")
 }
 test_partial_all_holes()
+
+
+test_param_default_evaluation() = {
+    order = list()
+    d(n) = { order.push(n); return n }
+    f(a = d("a"), b = d("b"), c = d("c")) = @[a, b, c]
+
+    assert(f() == @["a", "b", "c"], "all defaults")
+    assert(order == @["a", "b", "c"], "defaults evaluate in parameter order")
+
+    while (order.len() > 0) { order.pop() }
+    assert(f(c = 9) == @["a", "b", 9], "kwarg skips its default")
+    assert(order == @["a", "b"], "only missing defaults evaluate")
+
+    while (order.len() > 0) { order.pop() }
+    assert(f(b = 8, a = 7) == @[7, 8, "c"], "reverse kwarg order")
+    assert(order == @["c"], "provided kwargs do not evaluate defaults")
+
+    threw = false
+    try { f(z = 1) } catch (e) { threw = true }
+    assert(threw, "unknown keyword")
+
+    threw = false
+    try { f(1, a = 2) } catch (e) { threw = true }
+    assert(threw, "duplicate positional/keyword")
+}
+test_param_default_evaluation()

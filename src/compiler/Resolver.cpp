@@ -765,6 +765,7 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             else if (mod == ScopeModifier::Ref) {
                 ResolvedSym existing = resolveName(vp->name.lexeme);
                 scope = existing.scope;
+                isConst = isConst || existing.isConst;
             }
             declareVariable(vp->name.lexeme, scope, isConst, mod == ScopeModifier::Local || mod == ScopeModifier::Ref);
             patternSymbols[pat] = resolveName(vp->name.lexeme);
@@ -782,6 +783,7 @@ void Resolver::resolvePattern(Pattern* pat, bool isAssignment, ScopeModifier glo
             else if (mod == ScopeModifier::Ref) {
                 ResolvedSym existing = resolveName(rp->name.lexeme);
                 scope = existing.scope;
+                isConst = isConst || existing.isConst;
             }
             declareVariable(rp->name.lexeme, scope, isConst, mod == ScopeModifier::Local || mod == ScopeModifier::Ref);
             patternSymbols[pat] = resolveName(rp->name.lexeme);

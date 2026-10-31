@@ -4921,6 +4921,24 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
             recordExitNode(throwNode);
         }
 
+        // Commit preflight: reject const rebinding before any write, and force
+        // every ref target to be read once so a missing alias fails before the
+        // first real write.
+        for (const auto& b : staged) {
+            if (b.mod == ScopeModifier::Ref && b.sym.isConst) {
+                error("Runtime Error: Cannot modify const variable '" + b.name + "'.");
+            }
+            if (b.mod != ScopeModifier::Ref && b.mod != ScopeModifier::State &&
+                currentConstVars.count(b.name)) {
+                error("Runtime Error: Cannot redefine const variable '" + b.name + "'.");
+            }
+        }
+        for (const auto& b : staged) {
+            if (b.mod == ScopeModifier::Ref) {
+                readVariable(b.name, b.sym);
+            }
+        }
+
         for (const auto& b : staged) {
             if (b.mod == ScopeModifier::State) {
                 // Commit a target-level state with lazy initialization.

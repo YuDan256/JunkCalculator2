@@ -391,3 +391,22 @@ test_pattern_state() = {
     assert(threw, "const state pattern is read-only")
 }
 test_pattern_state()
+
+
+test_commit_preflight() = {
+    a = 1
+    f() = { ref @[a, missing] = @[9, 8] }
+    threw = false
+    try { f() } catch (e) { threw = true }
+    assert(threw, "missing ref must fail")
+    assert(a == 1, "missing ref must not partially commit")
+
+    threw = false
+    try {
+        eval("a = 1; const b = 2; f() = { ref @[a, b] = @[9, 8] }; f()")
+    } catch (e) {
+        threw = true
+    }
+    assert(threw, "ref to const must fail before writes")
+}
+test_commit_preflight()

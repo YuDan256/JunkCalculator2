@@ -186,3 +186,25 @@ test_private_inheritance() = {
     assert(throws(() => c.try_call()), "Child should not access parent's private method")
 }
 test_private_inheritance()
+
+
+// Inherited and overridden init
+test_inherited_init() = {
+    class InitBase {
+        x
+        init(v) = { self.x = v }
+    }
+    class InitChild extends InitBase {}
+    assert(InitChild(5).x == 5, "inherited init runs")
+
+    class InitOverride extends InitBase {
+        init(v) = { self.x = v + 1 }
+    }
+    assert(InitOverride(5).x == 6, "override init runs")
+
+    class InitSuper extends InitBase {
+        init(v) = { super.init(v * 2) }
+    }
+    assert(InitSuper(5).x == 10, "super.init runs")
+}
+test_inherited_init()

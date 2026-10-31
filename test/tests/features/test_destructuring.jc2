@@ -463,3 +463,20 @@ test_forin_complex_modifiers() = {
     assert(a[0] == 7, "plain complex for-in target")
 }
 test_forin_complex_modifiers()
+
+
+test_match_forward_ref() = {
+    b = 99
+    f(x) = match (x) {
+        @[a = b, b = 1] => @[a, b],
+        _ => @[-1, -1]
+    }
+    assert(f(@[]) == @[-1, -1], "match forward ref must not read outer name")
+
+    g(x) = match (x) {
+        @[a, b = a] => @[a, b],
+        _ => @[-1, -1]
+    }
+    assert(g(@[7]) == @[7, 7], "match backward default still works")
+}
+test_match_forward_ref()

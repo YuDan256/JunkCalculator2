@@ -694,8 +694,37 @@ void Resolver::resolveMatchBranches(std::vector<MatchBranch>& branches) {
             }
         }
         beginScope();
+        // Predeclare every branch target as an uninitialized local. A default
+        // expression that references a later target must see that local slot,
+        // not silently fall back to an outer variable of the same name.
+        auto collectTargetNames = [](Pattern* p, std::set<std::string>& out, auto& self) -> void {
+            if (!p) return;
+            if (auto* vp = dynamic_cast<VariablePattern*>(p)) {
+                if (vp->name.lexeme != "_" && !vp->name.lexeme.empty()) out.insert(vp->name.lexeme);
+            } else if (auto* rp = dynamic_cast<RestPattern*>(p)) {
+                if (rp->name.lexeme != "_" && !rp->name.lexeme.empty()) out.insert(rp->name.lexeme);
+            } else if (auto* lp = dynamic_cast<ListPattern*>(p)) {
+                for (auto& e : lp->elements) self(e.get(), out, self);
+                if (lp->rest) self(lp->rest.get(), out, self);
+            } else if (auto* mp = dynamic_cast<MatrixPattern*>(p)) {
+                for (auto& row : mp->rows) for (auto& e : row) self(e.get(), out, self);
+                if (mp->restRow) self(mp->restRow.get(), out, self);
+            } else if (auto* dp = dynamic_cast<DictPattern*>(p)) {
+                for (auto& e : dp->entries) self(e.second.get(), out, self);
+                if (dp->rest) self(dp->rest.get(), out, self);
+            } else if (auto* defp = dynamic_cast<DefaultPattern*>(p)) {
+                self(defp->inner.get(), out, self);
+            }
+        };
+        std::set<std::string> branchTargets;
+        if (!b.patterns.empty()) {
+            collectTargetNames(b.patterns[0].get(), branchTargets, collectTargetNames);
+        }
+        for (const auto& name : branchTargets) {
+            declareVariable(name, VarScope::Local, false, true);
+        }
         for (size_t i = 0; i < b.patterns.size(); ++i) {
-            resolvePattern(b.patterns[i].get(), false, ScopeModifier::Local, false, i > 0);
+            resolvePattern(b.patterns[i].get(), false, ScopeModifier::Local, false, true);
         }
         if (b.guard) resolve(b.guard.get());
         resolve(b.body.get());

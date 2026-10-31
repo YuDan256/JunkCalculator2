@@ -245,3 +245,22 @@ test_inheritance_field_order() = {
     assert(c.fromBase == "base1", "child field default can read inherited field")
 }
 test_inheritance_field_order()
+
+
+test_reflected_and_call_dunders() = {
+    class Ops {
+        init(x) = { self.x = x }
+        __add__(o) = Ops(self.x + (type(o) == Ops ? o.x : o))
+        __radd__(o) = Ops(o + self.x)
+        __call__(y) = self.x + y
+        __getitem__(i) = self.x * i
+    }
+    a = Ops(2)
+    b = Ops(3)
+    assert((a + b).x == 5, "__add__")
+    assert((a + 5).x == 7, "__add__ scalar")
+    assert((5 + a).x == 7, "__radd__")
+    assert(a(10) == 12, "__call__")
+    assert(a[3] == 6, "__getitem__")
+}
+test_reflected_and_call_dunders()

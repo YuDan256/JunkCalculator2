@@ -1372,13 +1372,16 @@ namespace jc {
     struct ObjNamespace : public Obj {
         std::string name;
         std::unordered_map<std::string, NamespaceField> fields;
+        // Keys copied in by `include`; a direct namespace field cannot silently
+        // overwrite one of these at BUILD_NAMESPACE.
+        std::unordered_set<std::string> includedFields;
         bool is_frozen = false;
         // 包命名空间不允许在成员缺失时回落到全局内建函数。
         bool is_package = false;
         ObjNamespace() { type = ObjType::NAMESPACE; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Namespace."); }
-        void clear() override { clearFields(); }
-        void clearTotal() override { fields.clear(); }
+        void clear() override { clearFields(); includedFields.clear(); }
+        void clearTotal() override { fields.clear(); includedFields.clear(); }
 
         void removeField(const std::string& key) {
             checkModify();

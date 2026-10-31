@@ -66,4 +66,24 @@ threw = false
 try { ConstDst.c = 9 } catch (e) { threw = true }
 assert(threw, "included const field remains read-only")
 
+// A direct namespace field must not overwrite an included member.
+try {
+    namespace BadBefore {
+        c = 1
+        include ConstSrc
+    }
+    assert(false, "direct field before include must conflict")
+} catch (e) {
+    assert("Include conflict" in e.message, "direct-before conflict message")
+}
+try {
+    namespace BadAfter {
+        include ConstSrc
+        c = 1
+    }
+    assert(false, "direct field after include must conflict")
+} catch (e) {
+    assert("Include conflict" in e.message, "direct-after conflict message")
+}
+
 print("namespace include battery OK")

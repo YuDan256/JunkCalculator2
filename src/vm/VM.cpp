@@ -2873,6 +2873,10 @@ static void mergeIncludedNamespace(ObjNamespace* target, ObjNamespace* src) {
         merged[k] = { uv, field.isConst };
     }
     target->fields.swap(merged);
+    for (const auto& [k, field] : src->fields) {
+        (void)field;
+        target->includedFields.insert(k);
+    }
 }
 
 Value VM::execPackageImport(const std::string& name) {
@@ -7925,6 +7929,9 @@ Value VM::run(int targetFrameDepth) {
                     
                     std::string key = keyVal.asString();
                     bool isConst = isConstVal.truthy();
+                    if (ns->includedFields.count(key)) {
+                        JC2_THROW(RuntimeError, "Include conflict for member '" + key + "'.");
+                    }
                     
                     ObjUpVal* upval = GcHeap::get().allocate<ObjUpVal>();
                     upval->closed = fieldVal;

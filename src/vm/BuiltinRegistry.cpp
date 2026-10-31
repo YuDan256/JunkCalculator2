@@ -3282,11 +3282,34 @@ void BuiltinRegistry::registerStringFunctions() {
 
     auto ordFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "ord() expects a string."); const std::string& s=self.asString(); if (s.empty()) JC2_THROW(RuntimeError, "ord() requires a non-empty string."); return Value::fromInt32(utf8::codepoint(s, 0)); };
     regMethod(VM::activeVM->stringProto, "ord", {}, ordFn);
+    reg("ord", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) JC2_THROW(TypeError, "ord() expects a string.");
+        const std::string& s = args[0].asString();
+        if (s.empty()) JC2_THROW(RuntimeError, "ord() requires a non-empty string.");
+        return Value::fromInt32(utf8::codepoint(s, 0));
+    }, {"s"});
 
     reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asFloat())); if (code<0||code>0x10FFFF) JC2_THROW(RuntimeError, "chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
 
     auto parseNumFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string."); const std::string& s=self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { JC2_THROW(MathError, "Cannot parse '"+trimmed+"' as a number."); } };
     regMethod(VM::activeVM->stringProto, "parseNum", {}, parseNumFn);
+    reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) JC2_THROW(TypeError, "parseNum() expects a string.");
+        const std::string& s = args[0].asString();
+        size_t a = s.find_first_not_of(" \t\r\n");
+        if (a == std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number.");
+        size_t b = s.find_last_not_of(" \t\r\n");
+        std::string trimmed = s.substr(a, b - a + 1);
+        try {
+            if (trimmed.find('.') != std::string::npos || trimmed.find('e') != std::string::npos ||
+                trimmed.find('E') != std::string::npos) {
+                return Value(std::stod(trimmed));
+            }
+            return Value(BigInt(trimmed));
+        } catch (...) {
+            JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
+        }
+    }, {"s"});
 }
 
 // =================================================================

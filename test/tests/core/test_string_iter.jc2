@@ -58,3 +58,34 @@ test_string_methods_handle_empty() = {
     assert("".reduce((acc, c) => acc + c, "S") == "S", "reduce of an empty string returns the init value")
 }
 test_string_methods_handle_empty()
+
+
+test_string_conversion_and_formatting() = {
+    assert(ord("A") == 65 && "A".ord() == 65, "ord global and method")
+    assert(ord("中") == 20013, "ord Unicode codepoint")
+    assert(chr(65) == "A" && chr(20013) == "中", "chr Unicode")
+    assert(parseNum("42") == 42 && "42".parseNum() == 42, "parseNum int")
+    assert(parseNum("3.5") == 3.5 && "3.5".parseNum() == 3.5, "parseNum float")
+    assert(parseNum(" 42 ") == 42, "parseNum trims whitespace")
+    threw = false
+    try { parseNum("bad") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum invalid")
+
+    assert("abc" * 3 == "abcabcabc", "string repetition")
+    assert(3 * "ha" == "hahaha", "string commutative repetition")
+    assert("hello"[::-1] == "olleh", "reverse slice")
+    assert("hello"[1:5:2] == "el", "step slice")
+    assert(r"\n" == "\\n", "raw string")
+    assert(len(r"\n") == 2, "raw string length")
+
+    name = "Alice"
+    assert(f"{255::x}" == "ff", "hex format")
+    assert(f"{7::+03d}" == "+07", "sign/width format")
+    assert(f"{10000::,}" == "10,000", "grouping format")
+    assert(f"{3.14159::.2f}" == "3.14", "fixed format")
+    assert(f"{name::>10}" == "     Alice", "right align")
+    assert(f"{name::^10}" == "  Alice   ", "center align")
+    assert(f"{0.25::%}" == "25%", "percent format")
+    assert(f"{name::.3s}" == "Ali", "string precision")
+}
+test_string_conversion_and_formatting()

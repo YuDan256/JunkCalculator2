@@ -332,3 +332,51 @@ test_comptime_import() = {
     io.remove("temp_macro_lib.jc2")
 }
 test_comptime_import()
+
+
+// Successful syntax macro expansion and token manipulation.
+syntax macro_passthrough(stream) = stream.parse()
+syntax macro_one(stream) = stream.parseOne()
+syntax macro_plus_to_star(stream) = {
+    for (t in stream.tokens()) {
+        if (t.type == "PLUS") {
+            t.type = "STAR"
+            t.lexeme = "*"
+        }
+    }
+    return stream.parse()
+}
+
+test_syntax_macros_success() = {
+    assert((@macro_passthrough { 1 + 2 }) == 3, "syntax passthrough")
+    assert((@macro_one { 5 * 6 }) == 30, "syntax parseOne")
+    assert((@macro_plus_to_star { 2 + 3 }) == 6, "syntax token mutation")
+}
+test_syntax_macros_success()
+
+// Recursive macro expansion and gensym hygiene.
+macro fold_plus_macro(node) = {
+    match (node) {
+        {type: "Binary", op: "+", left: l, right: r} => {
+            return quote @fold_plus_macro($l) * @fold_plus_macro($r)
+        }
+        _ => node
+    }
+}
+
+macro gensym_pair() = {
+    import ast
+    a = ast.gensym("tmp")
+    b = ast.gensym("tmp")
+    return quote {
+        local $a = 1
+        local $b = 2
+        $a + $b
+    }
+}
+
+test_recursive_and_gensym_macros() = {
+    assert((@fold_plus_macro(6 + 7 + 8)) == 336, "recursive macro expands")
+    assert((@gensym_pair()) == 3, "gensym names are distinct")
+}
+test_recursive_and_gensym_macros()

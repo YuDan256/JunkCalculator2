@@ -1335,9 +1335,20 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
+    std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> compVars;
+    collectPatternVars(clause.pattern.get(), compVars);
+    std::unordered_set<std::string> compShadows;
+    for (const auto& v : compVars) compShadows.insert(std::get<0>(v));
+
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
+            // Comprehension targets are local. Keep the outer binding node
+            // untouched and skip its loop-carried update; do not shadow it.
+            if (i + 1 < envStack.size() && compShadows.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+                continue;
+            }
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(loopNode);
             phi->addData(pair.second);
@@ -1402,6 +1413,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
+            if (compShadows.count(pair.first) && i + 1 < loopPhisStack.size()) continue;
             ResolvedSym rs; rs.scope = VarScope::Local;
             pair.second->addData(readVariable(pair.first, rs));
             if (!condFailMerge->dataInputs.empty()) {
@@ -5254,9 +5266,20 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
+    std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> compVars;
+    collectPatternVars(clause.pattern.get(), compVars);
+    std::unordered_set<std::string> compShadows;
+    for (const auto& v : compVars) compShadows.insert(std::get<0>(v));
+
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
+            // Comprehension targets are local. Keep the outer binding node
+            // untouched and skip its loop-carried update; do not shadow it.
+            if (i + 1 < envStack.size() && compShadows.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+                continue;
+            }
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(loopNode);
             phi->addData(pair.second);
@@ -5321,6 +5344,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
+            if (compShadows.count(pair.first) && i + 1 < loopPhisStack.size()) continue;
             ResolvedSym rs; rs.scope = VarScope::Local;
             pair.second->addData(readVariable(pair.first, rs));
             if (!condFailMerge->dataInputs.empty()) {
@@ -5380,9 +5404,20 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     IRNode* loopNode = createCFGNode(IROp::Loop);
     loopNode->addData(currentSeq);
     
+    std::vector<std::tuple<std::string, ScopeModifier, bool, Pattern*>> compVars;
+    collectPatternVars(clause.pattern.get(), compVars);
+    std::unordered_set<std::string> compShadows;
+    for (const auto& v : compVars) compShadows.insert(std::get<0>(v));
+
     std::vector<std::unordered_map<std::string, IRNode*>> loopPhisStack(envStack.size());
     for (size_t i = 0; i < envStack.size(); ++i) {
         for (const auto& pair : envStack[i]) {
+            // Comprehension targets are local. Keep the outer binding node
+            // untouched and skip its loop-carried update; do not shadow it.
+            if (i + 1 < envStack.size() && compShadows.count(pair.first)) {
+                loopPhisStack[i][pair.first] = pair.second;
+                continue;
+            }
             IRNode* phi = graph->createValueNode(IROp::Phi);
             phi->setControl(loopNode);
             phi->addData(pair.second);
@@ -5447,6 +5482,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     
     for (size_t i = 0; i < loopPhisStack.size(); ++i) {
         for (auto& pair : loopPhisStack[i]) {
+            if (compShadows.count(pair.first) && i + 1 < loopPhisStack.size()) continue;
             ResolvedSym rs; rs.scope = VarScope::Local;
             pair.second->addData(readVariable(pair.first, rs));
             if (!condFailMerge->dataInputs.empty()) {

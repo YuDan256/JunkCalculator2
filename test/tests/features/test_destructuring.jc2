@@ -480,3 +480,33 @@ test_match_forward_ref() = {
     assert(g(@[7]) == @[7, 7], "match backward default still works")
 }
 test_match_forward_ref()
+
+
+test_match_comp_local_scopes() = {
+    x = 100
+    r = [x for (x in @[1, 2, 3])]
+    assert(r[0, 0] == 1 && r[0, 1] == 2 && r[0, 2] == 3, "comprehension values")
+    assert(x == 100, "comprehension variable shadows outer local")
+
+    f() = {
+        y = 100
+        q = [y for (y in @[1, 2])]
+        return y
+    }
+    assert(f() == 100, "comprehension variable does not mutate outer")
+
+    m(v) = match (v) {
+        @[a] => a,
+        _ => 0
+    }
+    assert(m(@[1]) == 1, "match branch value")
+
+    threw = false
+    try { eval("n(v) = match (v) { @[a] => a, _ => 0 }; n(@[1]); a") } catch (e) { threw = true }
+    assert(threw, "match branch variable is local")
+
+    threw = false
+    try { eval("p(v) = match (v) { @[const c] => { c = 9 }, _ => 0 }; p(@[1])") } catch (e) { threw = true }
+    assert(threw, "match const target is read-only")
+}
+test_match_comp_local_scopes()

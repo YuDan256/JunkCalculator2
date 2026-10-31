@@ -86,4 +86,16 @@ try {
     assert("Include conflict" in e.message, "direct-after conflict message")
 }
 
+// Namespace functions are lexical closures: exported x is the final value,
+// but later N.x writes do not rewrite the captured binding.
+namespace Lex {
+    x = 1
+    f() = x
+    x = 2
+}
+assert(Lex.x == 2, "namespace exports captured final value")
+assert(Lex.f() == 2, "namespace function sees captured value")
+Lex.x = 5
+assert(Lex.f() == 2, "namespace function keeps lexical capture")
+
 print("namespace include battery OK")

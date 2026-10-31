@@ -4483,6 +4483,10 @@ void IRBuilder::visitNamespaceDecl(NamespaceDecl* expr) {
     for (const auto& [k, v] : envStack.back()) {
         if (currentLocalVars.count(k)) continue;
         IRNode* target = v;
+        if (capturedLocals.count(k)) {
+            auto nit = namedValueNodes.find(k);
+            if (nit != namedValueNodes.end()) target = nit->second;
+        }
         if (target->op == IROp::Constant && target->constVal.isUninit()) {
             auto cit = classValueNodes.find(k);
             if (cit != classValueNodes.end()) {

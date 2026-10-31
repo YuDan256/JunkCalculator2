@@ -226,3 +226,22 @@ test_finalize() = {
     assert(threw, "finalize cannot be called manually")
 }
 test_finalize()
+
+
+field_order_events = @[]
+field_order_record(x) = { field_order_events.push(x); return x }
+
+test_inheritance_field_order() = {
+    class BaseOrder {
+        a = field_order_record("base")
+    }
+    class ChildOrder extends BaseOrder {
+        b = field_order_record("child")
+        fromBase = str(self.a) + "1"
+    }
+    c = ChildOrder()
+    assert(field_order_events == @["base", "child"], "base fields initialize before child fields")
+    assert(c.a == "base" && c.b == "child", "inherited/own field values")
+    assert(c.fromBase == "base1", "child field default can read inherited field")
+}
+test_inheritance_field_order()

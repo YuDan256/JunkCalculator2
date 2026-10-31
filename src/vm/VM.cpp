@@ -574,7 +574,10 @@ void VM::runFieldInitializers(ObjClass* cls, const Value& self) {
         if (!fn->isBytecode()) return;
         callVMFunction(fn->compiledFnIndex, {}, fn, self, Value(ownerChain ? ownerChain : declClass));
     };
-    for (ObjClass* p = cls; p; p = p->parent) {
+    std::vector<ObjClass*> chain;
+    for (ObjClass* p = cls; p; p = p->parent) chain.push_back(p);
+    std::reverse(chain.begin(), chain.end());
+    for (ObjClass* p : chain) {
         for (auto* t : p->traits) runOne(t, t);
         runOne(p, p);
     }

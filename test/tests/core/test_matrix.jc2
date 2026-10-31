@@ -166,3 +166,29 @@ test_isapprox_matrix() = {
 }
 
 test_isapprox_matrix()
+
+
+test_matrix_index_shape_and_immutability() = {
+    A = [1, 2; 3, 4]
+    assert(A.rows() == 2 && A.cols() == 2 && len(A) == 4, "matrix shape/len")
+    assert(A[0] == [1; 3], "single index is a column")
+    assert(A[0, :] == [1, 2], "row slice")
+    assert(A[:, 0] == [1; 3], "column slice")
+    assert(A[0:2, 0:2] == [1, 2; 3, 4], "block slice")
+
+    threw = false
+    try { A[0, 0] = 9 } catch (e) { threw = true }
+    assert(threw, "matrix index write is rejected")
+
+    B = A.setElement(0, 0, 9)
+    assert(B[0, 0] == 9 && A[0, 0] == 1, "setElement returns a new matrix")
+
+    cols = @[]
+    for (c in A) { cols.push(c) }
+    assert(cols[0] == [1; 3] && cols[1] == [2; 4], "matrix iterates columns")
+
+    assert(A.trans() == [1, 3; 2, 4], "transpose")
+    assert(isapprox(A / A, [1, 0; 0, 1], 1e-12, 1e-12), "right division")
+    assert(isapprox(A \ [1; 0], [-2; 3 / 2]), "left division solves")
+}
+test_matrix_index_shape_and_immutability()

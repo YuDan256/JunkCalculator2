@@ -208,3 +208,21 @@ test_inherited_init() = {
     assert(InitSuper(5).x == 10, "super.init runs")
 }
 test_inherited_init()
+
+
+test_finalize() = {
+    import sys
+    class Fin {
+        static count = 0
+        finalize() = { Fin.count += 1 }
+    }
+    f = Fin()
+    f = none
+    sys.gc()
+    sys.gc()
+    assert(Fin.count == 1, "GC runs finalize once")
+    threw = false
+    try { Fin().finalize() } catch (e) { threw = true }
+    assert(threw, "finalize cannot be called manually")
+}
+test_finalize()

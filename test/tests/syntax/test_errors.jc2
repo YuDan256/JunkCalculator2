@@ -91,3 +91,47 @@ test_assert() = {
     assert(caught, "assert failed to throw")
 }
 test_assert()
+
+
+test_error_model() = {
+    try {
+        1 + "x"
+    } catch (e) {
+        assert(e.type == "TypeError", "builtin error type field")
+        assert(type(e) == TypeError, "builtin error class")
+        assert("Cannot add" in e.message, "builtin error message")
+        assert(type(e.traceback) == string, "traceback is a string")
+    }
+
+    r = try {
+        throw Exception("HttpError", {code: 500, detail: "down"})
+    } catch (e) {
+        assert(e.type == "HttpError", "structured error type")
+        assert(e.message.code == 500 && e.message.detail == "down", "structured message")
+        e
+    }
+    assert(r.type == "HttpError", "catch returns value")
+
+    r2 = try {
+        throw {code: 404, msg: "Not Found"}
+    } catch (e) {
+        assert(e.type == "Exception", "raw value wrapped as Exception")
+        assert(e.message.code == 404, "raw dict becomes message")
+        e.message.msg
+    }
+    assert(r2 == "Not Found", "raw dict catch value")
+
+    assert((try { throw "x" }) == none, "bare try swallows and returns none")
+
+    caught = false
+    try {
+        assert("eq", 1, 2)
+    } catch (e) {
+        caught = true
+        assert(e.type == "RuntimeError", "three-arg assert type")
+        assert("[eq]" in e.message, "three-arg assert label")
+        assert("Expected" in e.message && "Got" in e.message, "three-arg assert detail")
+    }
+    assert(caught, "three-arg assert throws")
+}
+test_error_model()

@@ -1025,7 +1025,6 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                 }
                 if (rowHasRest) {
                     hasRestCol = true;
-                    reqCols = static_cast<int>(mp->rows[i].size() - 1);
                 }
                 if (reqCols > maxReqCols) maxReqCols = reqCols;
             }

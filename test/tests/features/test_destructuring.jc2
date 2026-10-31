@@ -510,3 +510,12 @@ test_match_comp_local_scopes() = {
     assert(threw, "match const target is read-only")
 }
 test_match_comp_local_scopes()
+
+
+test_matrix_default_rest() = {
+    [a, b = 10, ...rest] = [5]
+    assert(a == 5, "matrix default: first column")
+    assert(b == 10, "matrix default: missing column uses default")
+    assert(rest == [], "matrix default: rest is empty")
+}
+test_matrix_default_rest()

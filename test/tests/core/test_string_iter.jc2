@@ -67,9 +67,16 @@ test_string_conversion_and_formatting() = {
     assert(parseNum("42") == 42 && "42".parseNum() == 42, "parseNum int")
     assert(parseNum("3.5") == 3.5 && "3.5".parseNum() == 3.5, "parseNum float")
     assert(parseNum(" 42 ") == 42, "parseNum trims whitespace")
+    assert(parseNum("1e3") == 1000.0, "parseNum exponent")
     threw = false
     try { parseNum("bad") } catch (e) { threw = e.type == "MathError" }
     assert(threw, "parseNum invalid")
+    threw = false
+    try { parseNum("0xFF") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum rejects hex without consuming a prefix")
+    threw = false
+    try { parseNum("0b101") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum rejects binary without consuming a prefix")
 
     assert("abc" * 3 == "abcabcabc", "string repetition")
     assert(3 * "ha" == "hahaha", "string commutative repetition")

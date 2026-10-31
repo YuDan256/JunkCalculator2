@@ -3291,24 +3291,50 @@ void BuiltinRegistry::registerStringFunctions() {
 
     reg("chr", { 1 }, [](const std::vector<Value>& args) -> Value { int code=static_cast<int>(std::round(args[0].asFloat())); if (code<0||code>0x10FFFF) JC2_THROW(RuntimeError, "chr() code out of Unicode range."); return Value(utf8::fromCodepoint(code)); }, {"code"});
 
-    auto parseNumFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string."); const std::string& s=self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); if (a==std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number."); size_t b=s.find_last_not_of(" \t\r\n"); std::string trimmed=s.substr(a,b-a+1); try { if (trimmed.find('.')!=std::string::npos||trimmed.find('e')!=std::string::npos||trimmed.find('E')!=std::string::npos) return Value(std::stod(trimmed)); return Value(BigInt(trimmed)); } catch (...) { JC2_THROW(MathError, "Cannot parse '"+trimmed+"' as a number."); } };
-    regMethod(VM::activeVM->stringProto, "parseNum", {}, parseNumFn);
-    reg("parseNum", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) JC2_THROW(TypeError, "parseNum() expects a string.");
-        const std::string& s = args[0].asString();
+    auto parseNumString = [](const std::string& s) -> Value {
         size_t a = s.find_first_not_of(" \t\r\n");
         if (a == std::string::npos) JC2_THROW(MathError, "Cannot parse empty string as number.");
         size_t b = s.find_last_not_of(" \t\r\n");
         std::string trimmed = s.substr(a, b - a + 1);
-        try {
-            if (trimmed.find('.') != std::string::npos || trimmed.find('e') != std::string::npos ||
-                trimmed.find('E') != std::string::npos) {
-                return Value(std::stod(trimmed));
+        bool floatSyntax = trimmed.find('.') != std::string::npos ||
+                           trimmed.find('e') != std::string::npos ||
+                           trimmed.find('E') != std::string::npos;
+        if (!floatSyntax) {
+            size_t i = 0;
+            if (i < trimmed.size() && (trimmed[i] == '+' || trimmed[i] == '-')) i++;
+            if (i == trimmed.size()) JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
+            for (; i < trimmed.size(); ++i) {
+                if (trimmed[i] < '0' || trimmed[i] > '9') {
+                    JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
+                }
             }
-            return Value(BigInt(trimmed));
+            try {
+                return Value(BigInt(trimmed));
+            } catch (...) {
+                JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
+            }
+        }
+        try {
+            size_t consumed = 0;
+            double d = std::stod(trimmed, &consumed);
+            if (consumed != trimmed.size()) {
+                JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
+            }
+            return Value(d);
         } catch (...) {
             JC2_THROW(MathError, "Cannot parse '" + trimmed + "' as a number.");
         }
+    };
+
+    auto parseNumFn = [parseNumString](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "parseNum() expects a string.");
+        return parseNumString(self.asString());
+    };
+    regMethod(VM::activeVM->stringProto, "parseNum", {}, parseNumFn);
+    reg("parseNum", { 1 }, [parseNumString](const std::vector<Value>& args) -> Value {
+        if (!args[0].isString()) JC2_THROW(TypeError, "parseNum() expects a string.");
+        return parseNumString(args[0].asString());
     }, {"s"});
 }
 

@@ -599,6 +599,10 @@ namespace jc {
                             }
 
                             if (isDestruct) {
+                                if (isParamConst && patternHasComplexLValue(patNode.get())) {
+                                    JC2_THROW(ParserError,
+                                        "Const destructuring parameters require variable bindings.");
+                                }
                                 int patStart = patNode->startPos;
                                 auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + static_cast<int>(paramTok.lexeme.length()));
                                 int rhsEnd = rhs->endPos;
@@ -2070,6 +2074,10 @@ namespace jc {
                         }
 
                         if (isDestruct) {
+                            if (isConst && patternHasComplexLValue(patNode.get())) {
+                                JC2_THROW(ParserError,
+                                    "Const destructuring parameters require variable bindings.");
+                            }
                             int patStart = patNode->startPos;
                             auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + static_cast<int>(paramTok.lexeme.length()));
                             int rhsEnd = rhs->endPos;
@@ -3936,6 +3944,10 @@ namespace jc {
                         }
 
                         if (isDestruct) {
+                            if (isParamConst && patternHasComplexLValue(patNode.get())) {
+                                JC2_THROW(ParserError,
+                                    "Const destructuring parameters require variable bindings.");
+                            }
                             int patStart = patNode->startPos;
                             auto rhs = withPos(std::make_unique<Variable>(paramTok), paramTok.position, paramTok.position + static_cast<int>(paramTok.lexeme.length()));
                             int rhsEnd = rhs->endPos;

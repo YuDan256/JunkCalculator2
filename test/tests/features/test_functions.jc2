@@ -275,3 +275,33 @@ test_ufcs() = {
     assert(res2 == "OLLEH", "UFCS chained failed")
 }
 test_ufcs()
+
+
+param_default_calls = 0
+param_side() = { param_default_calls += 1; return 10 }
+test_destructured_params() = {
+    dist({x, y}) = x + y
+    assert(dist({x: 3, y: 4}) == 7, "dict destructured parameter")
+
+    process(@[a, b = 10, ...rest]) = a + b + rest.sum()
+    assert(process(@[5]) == 15, "list destructured parameter default")
+    assert(process(@[5, 20, 1, 2]) == 28, "list destructured parameter rest")
+
+    get_info(const {name, age = 20}) = name + ":" + str(age)
+    assert(get_info({name: "Bob"}) == "Bob:20", "const destructured parameter")
+
+    threw = false
+    try { eval("f(const {x}) = { x = 9 }; f({x: 1})") } catch (e) { threw = true }
+    assert(threw, "const destructured parameter is read-only")
+
+    threw = false
+    try { eval("a = @[0]; f(const @[a[0]]) = a[0]") } catch (e) { threw = true }
+    assert(threw, "const complex parameter target rejected")
+
+    f(@[a, b = param_side()]) = @[a, b]
+    assert(f(@[1, 2]) == @[1, 2], "provided parameter skips default")
+    assert(param_default_calls == 0, "provided parameter default not evaluated")
+    assert(f(@[1]) == @[1, 10], "missing parameter default")
+    assert(param_default_calls == 1, "parameter default evaluated once")
+}
+test_destructured_params()

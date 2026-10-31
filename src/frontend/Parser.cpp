@@ -12,6 +12,38 @@
 
 namespace jc {
 
+    // A destructuring target is a binding only when it is a VariablePattern
+    // (possibly nested). Index/property targets are ExprPattern: they are
+    // assignable l-values, but local/ref/state/const cannot describe them.
+    static bool patternHasComplexLValue(const Pattern* pat) {
+        if (!pat) return false;
+        if (dynamic_cast<const ExprPattern*>(pat)) return true;
+        if (auto* dp = dynamic_cast<const DefaultPattern*>(pat)) {
+            return patternHasComplexLValue(dp->inner.get());
+        }
+        if (auto* lp = dynamic_cast<const ListPattern*>(pat)) {
+            for (const auto& e : lp->elements) {
+                if (patternHasComplexLValue(e.get())) return true;
+            }
+            return patternHasComplexLValue(lp->rest.get());
+        }
+        if (auto* mp = dynamic_cast<const MatrixPattern*>(pat)) {
+            for (const auto& row : mp->rows) {
+                for (const auto& e : row) {
+                    if (patternHasComplexLValue(e.get())) return true;
+                }
+            }
+            return patternHasComplexLValue(mp->restRow.get());
+        }
+        if (auto* dp = dynamic_cast<const DictPattern*>(pat)) {
+            for (const auto& e : dp->entries) {
+                if (patternHasComplexLValue(e.second.get())) return true;
+            }
+            return patternHasComplexLValue(dp->rest.get());
+        }
+        return false;
+    }
+
     struct MacroScopeGuard {
         Parser* p;
         MacroScopeGuard(Parser* p) : p(p) { p->pushMacroScope(); }
@@ -760,6 +792,12 @@ namespace jc {
                 // 确认是解构赋值，直接解析为纯正的 Pattern！
                 auto pat = parsePrimaryPattern();
                 int patStart = pat->startPos;
+                if ((isLocal || isRef || isState || isConst) &&
+                    patternHasComplexLValue(pat.get())) {
+                    JC2_THROW(ParserError,
+                        "Destructuring modifiers require variable bindings; "
+                        "index/property targets cannot be modified.");
+                }
                 consume(TokenType::ASSIGN, "Parser Error: Expect '=' after destructuring pattern.");
                 auto value = assignment();
                 int valEnd = value->endPos;

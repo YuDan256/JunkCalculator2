@@ -410,3 +410,26 @@ test_commit_preflight() = {
     assert(threw, "ref to const must fail before writes")
 }
 test_commit_preflight()
+
+
+test_complex_lvalue_modifiers() = {
+    a = @[0]
+    b = @[0]
+    @[a[0], b[0]] = @[5, 6]
+    assert(a[0] == 5 && b[0] == 6, "plain complex l-values")
+
+    cases = @[
+        "a = @[0]; local @[a[0]] = @[5]",
+        "a = @[0]; ref @[a[0]] = @[5]",
+        "a = @[0]; const @[a[0]] = @[5]",
+        "a = @[0]; local @[{k: a[0]}] = @[{k: 5}]",
+        "a = @[0]; local @[a[0] = 1] = @[5]",
+        "f() = { local a = @[0]; state @[a[0]] = @[5] }"
+    ]
+    for (src in cases) {
+        threw = false
+        try { eval(src) } catch (e) { threw = true }
+        assert(threw, "modifier on complex l-value must fail: " + src)
+    }
+}
+test_complex_lvalue_modifiers()

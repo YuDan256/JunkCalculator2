@@ -135,3 +135,15 @@ test_error_model() = {
     assert(caught, "three-arg assert throws")
 }
 test_error_model()
+
+
+test_error_hierarchy() = {
+    assert(TypeError <: Exception, "builtin error class extends Exception")
+    caught = false
+    try { 1 + "x" } catch { e: Exception => caught = true }
+    assert(caught, "base Exception catches builtin errors")
+    caught = false
+    try { throw TypeError("tm") } catch (e) { caught = type(e) == TypeError && e.type == "TypeError" && e.message == "tm" }
+    assert(caught, "throwing an error class keeps type and message")
+}
+test_error_hierarchy()

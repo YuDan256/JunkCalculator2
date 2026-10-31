@@ -444,3 +444,22 @@ test_state_default_once() = {
     assert(state_default_calls == 1, "state default must not re-evaluate")
 }
 test_state_default_once()
+
+
+test_forin_complex_modifiers() = {
+    cases = @[
+        "a = @[0]; for (const @[a[0]] in @[@[1]]) {}",
+        "a = @[0]; for (local @[a[0]] in @[@[1]]) {}"
+    ]
+    for (src in cases) {
+        threw = false
+        try { eval(src) } catch (e) { threw = true }
+        assert(threw, "for-in modifier on complex l-value must fail")
+    }
+
+    a = @[0]
+    for (@[a[0]] in @[@[7]]) {
+    }
+    assert(a[0] == 7, "plain complex for-in target")
+}
+test_forin_complex_modifiers()

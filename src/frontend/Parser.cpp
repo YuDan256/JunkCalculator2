@@ -1617,18 +1617,27 @@ namespace jc {
         }
 
         // ★ 统一尝试解析 for-in 模式
+        bool isForIn = false;
+        std::unique_ptr<Pattern> forInPattern;
         try {
-            auto pat = parsePrimaryPattern();
-            if (check(TokenType::IN)) {
-                advance(); // consume 'in'
-                auto iterable = expression();
-                consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
-                auto body = parseStatementOrBlock();
-                int endPos = body->endPos;
-                return withPos(std::make_unique<ForInExpr>(std::move(pat), std::move(iterable), std::move(body), isLocal, isConst), startPos, endPos);
-            }
+            forInPattern = parsePrimaryPattern();
+            if (check(TokenType::IN)) isForIn = true;
         } catch (...) {
             // Fall through to normal for loop parsing
+        }
+
+        if (isForIn) {
+            if ((isLocal || isConst) && patternHasComplexLValue(forInPattern.get())) {
+                JC2_THROW(ParserError,
+                    "Destructuring modifiers require variable bindings; "
+                    "index/property targets cannot be modified.");
+            }
+            advance(); // consume 'in'
+            auto iterable = expression();
+            consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
+            auto body = parseStatementOrBlock();
+            int endPos = body->endPos;
+            return withPos(std::make_unique<ForInExpr>(std::move(forInPattern), std::move(iterable), std::move(body), isLocal, isConst), startPos, endPos);
         }
         
         // 不是 for-in，回退到 '(' 之后，让 expression() 正常解析 init

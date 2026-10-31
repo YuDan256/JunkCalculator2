@@ -136,3 +136,42 @@ test_operator_semantics() = {
     assert(7 / 2 == frac(7, 2), "fraction value")
 }
 test_operator_semantics()
+
+
+test_numeric_promotion_and_errors() = {
+    assert(type(1 + 2) == int, "int + int")
+    assert(type(1 + 2.0) == float, "int + float")
+    assert(type(1 + frac(1, 2)) == fraction, "int + fraction")
+    assert(type(1 + 1i) == complex, "int + complex")
+    assert(type(1 + sym("x")) == symbolic, "int + symbolic")
+
+    assert(type(2 ^ 31) == int && 2 ^ 31 == 2147483648, "large int stays int")
+    assert(2147483647 + 1 == 2147483648, "int does not overflow at int32")
+    assert(type(2 ^ 100) == int, "big integer type")
+
+    assert(1 / 3 == frac(1, 3), "division exact fraction")
+    assert(type(1 / 3) == fraction, "division type")
+    assert(isinf(1.0e308 * 10.0), "float overflow becomes inf")
+
+    checks = @[
+        () => 0 / 0,
+        () => 1 % 0,
+        () => frac(1, 0),
+        () => float(2 ^ 1024),
+        () => 0 ^ -1
+    ]
+    for (f in checks) {
+        threw = false
+        try { f() } catch (e) { threw = e.type == "MathError" }
+        assert(threw, "numeric boundary raises MathError")
+    }
+
+    assert(str(sqrt(-1)) == "i", "sqrt(-1) is the symbolic imaginary unit")
+    assert(type(sqrt(-1)) == symbolic, "sqrt(-1) type")
+
+    assert(hash(1) == hash(1.0), "equal numeric hash")
+    assert(hash(1 + 0i) == hash(1), "complex zero-imag hash")
+    assert(hash(frac(1, 2)) == hash(0.5), "fraction/float hash")
+    assert(hash(-0.0) == hash(0.0), "signed zero hash")
+}
+test_numeric_promotion_and_errors()

@@ -93,3 +93,46 @@ test_non_finite() = {
     assert(inf() > 1.0e308, "inf() should exceed max double")
 }
 test_non_finite()
+
+
+test_operator_semantics() = {
+    assert(2 ^ 3 ^ 2 == 512, "power is right-associative")
+    assert(-2 ^ 2 == -4, "unary minus binds below power")
+
+    assert(7 ~/ 2 == 3, "integer division")
+    assert(-7 ~/ 2 == -3, "integer division truncates toward zero")
+    assert(7 ~/ -2 == -3, "integer division negative divisor")
+    assert((-7) % 3 == -1 && 7 % -3 == 1, "truncated modulo")
+    assert(8 \ 2 == 1 / 4, "left division")
+
+    assert(5 ^^ 3 == 6, "bitwise xor")
+    assert((1 | 2) == 3, "bitwise or")
+    assert(1 | 2 == 3, "bitwise binds above comparison")
+
+    assert((1 && "x") == true, "logical and returns bool")
+    assert((0 || "x") == true, "logical or returns bool")
+    assert(!@[], "empty list is falsy")
+
+    calls = @[0]
+    mid() = { calls[0] += 1; return 5 }
+    assert(0 <= mid() <= 10, "chained comparison")
+    assert(calls[0] == 1, "middle evaluated once")
+
+    calls[0] = 0
+    assert((false && mid()) == false, "short-circuit and")
+    assert(calls[0] == 0, "and does not evaluate right")
+    assert((true || mid()) == true, "short-circuit or")
+    assert(calls[0] == 0, "or does not evaluate right")
+
+    calls[0] = 0
+    assert((true ? 1 : mid()) == 1, "ternary true branch")
+    assert(calls[0] == 0, "ternary skips false branch")
+    assert((false ? mid() : 2) == 2, "ternary false branch")
+    assert(calls[0] == 0, "ternary skips true branch")
+
+    assert(int("42") == 42, "int string")
+    assert(int("0xFF") == 255, "int hex string")
+    assert(type(7 / 2) == fraction, "division is exact fraction")
+    assert(7 / 2 == frac(7, 2), "fraction value")
+}
+test_operator_semantics()

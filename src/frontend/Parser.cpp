@@ -589,6 +589,7 @@ namespace jc {
 
                             if (match({ TokenType::ASSIGN })) {
                                 if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
+                                if (isParamRef) JC2_THROW(ParserError, "Ref parameter cannot have a default value.");
                                 if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
                                 else defaultExprs.push_back(std::shared_ptr<Expr>(ternary().release()));
                             } else {
@@ -2072,6 +2073,7 @@ namespace jc {
 
                         if (match({ TokenType::ASSIGN })) {
                             if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
+                            if (isRef) JC2_THROW(ParserError, "Ref parameter cannot have a default value.");
                             auto defExpr = ternary();
                             if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
                             else lambdaDefaults.push_back(std::shared_ptr<Expr>(defExpr.release()));
@@ -3942,6 +3944,7 @@ namespace jc {
 
                         if (match({ TokenType::ASSIGN })) {
                             if (isRest) JC2_THROW(ParserError, "Rest/kwargs parameter cannot have a default value.");
+                            if (isParamRef) JC2_THROW(ParserError, "Ref parameter cannot have a default value.");
                             auto defExpr = ternary();
                             if (inKwOnly) kwargDefaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));
                             else defaultExprs.push_back(std::shared_ptr<Expr>(defExpr.release()));

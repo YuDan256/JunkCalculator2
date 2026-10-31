@@ -305,3 +305,37 @@ test_destructured_params() = {
     assert(param_default_calls == 1, "parameter default evaluated once")
 }
 test_destructured_params()
+
+
+test_ref_param_defaults() = {
+    threw = false
+    try { eval("f(ref x = 1) = x") } catch (e) { threw = true }
+    assert(threw, "ref parameter default must be rejected")
+
+    threw = false
+    try { eval("g = (ref x = 1) => x") } catch (e) { threw = true }
+    assert(threw, "lambda ref parameter default must be rejected")
+
+    threw = false
+    try { eval("class C { m(ref x = 1) = x }") } catch (e) { threw = true }
+    assert(threw, "method ref parameter default must be rejected")
+
+    a = 5
+    h(const ref x) = x
+    assert(h(a) == 5, "const ref parameter reads")
+
+    threw = false
+    try { eval("a = 1; bad(const ref x) = { x = 2; return x }") } catch (e) { threw = true }
+    assert(threw, "const ref parameter is read-only")
+}
+test_ref_param_defaults()
+
+test_partial_all_holes() = {
+    f(a, b, c) = @[a, b, c]
+    p = f(_, _, _)
+    assert(p(1, 2, 3) == @[1, 2, 3], "all placeholders in one call")
+    threw = false
+    try { p(1)(2)(3) } catch (e) { threw = true }
+    assert(threw, "partial application requires all holes in one call")
+}
+test_partial_all_holes()

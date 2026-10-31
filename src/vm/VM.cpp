@@ -2863,13 +2863,14 @@ static void mergeIncludedNamespace(ObjNamespace* target, ObjNamespace* src) {
         auto it = merged.find(k);
         if (it != merged.end()) {
             Value existing = *(it->second.upval->location);
-            if (existing.as_bits == incoming.as_bits) continue;
+            if (existing.as_bits == incoming.as_bits &&
+                it->second.isConst == field.isConst) continue;
             JC2_THROW(RuntimeError, "Include conflict for member '" + k + "'.");
         }
         ObjUpVal* uv = GcHeap::get().allocate<ObjUpVal>();
         uv->closed = incoming;
         uv->location = &uv->closed;
-        merged[k] = { uv, false };
+        merged[k] = { uv, field.isConst };
     }
     target->fields.swap(merged);
 }

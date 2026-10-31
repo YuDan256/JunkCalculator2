@@ -48,4 +48,22 @@ namespace WithLocal {
 assert(!("math" in getFields(WithLocal)), "local import must not become a field")
 assert(WithLocal.PI != none, "include still merges math fields")
 
+// Private fields stay private; const fields keep their constness.
+namespace ConstSrc {
+    const c = 1
+    local hidden = 2
+    vis = 3
+    get() = hidden
+}
+namespace ConstDst {
+    include ConstSrc
+}
+assert(ConstDst.c == 1, "include copies const field")
+assert(ConstDst.vis == 3, "include copies public field")
+assert(ConstDst.get() == 2, "include keeps closure over private field")
+assert(!("hidden" in getFields(ConstDst)), "include does not copy private field")
+threw = false
+try { ConstDst.c = 9 } catch (e) { threw = true }
+assert(threw, "included const field remains read-only")
+
 print("namespace include battery OK")

@@ -2,9 +2,9 @@
   <strong>English</strong> | <a href="README_zh-CN.md">简体中文</a>
 </div>
 
-# Junk Calculator 2.6.4.0
+# Junk Calculator 2.6.5.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.4.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.5.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.17+-064F8C.svg?style=flat-square&logo=cmake)
@@ -28,12 +28,12 @@ Developed by Yu Liangyang, Tsinghua University.
 ### Language Semantics
 - **Identifiers**: Full UTF-8 identifier support, plus backtick-quoted identifiers (`` `text` ``) that wrap keywords, spaces, or punctuation as a name (`` `if` = 1 ``, `` obj.`key name` ``).
 - **Type System & Memory Management**: NaN-boxing backed dynamic typing supporting 20+ internal types (including hidden types). 
-  - *Value Types*: Scalars (double, BigInt, Complex) and Matrices (Real, Complex) use contiguous memory and pass-by-value semantics.
+  - *Value Types*: Scalars (float, BigInt, Fraction, Complex, Symbolic) and Matrices (real, complex, symbolic) use contiguous memory and pass-by-value semantics.
   - *Reference Types*: Containers (`List`, `Dict`, `Set`) and OOP `Instance`s use pass-by-reference semantics (backed by PIMPL architecture and `std::shared_ptr`).
-- **Gradual Typing**: Optional runtime type contracts for function parameters and return values (e.g., `func(a: double, b: matrix) -> bool = ...`). Supports base types, containers, and class inheritance definitions.
+- **Gradual Typing**: Optional runtime type contracts for function parameters and return values (e.g., `func(a: float, b: matrix) -> bool = ...`). Supports base types, containers, and class inheritance definitions.
 - **Garbage Collection (GC)**: Mark-and-Sweep Garbage Collector (`GcHeap`) executing on top of the VM stack. Traces GC roots (Globals, Stack, Upvalues, and Contexts) to resolve cyclic references.
 - **Object-Oriented Programming**: Single inheritance (`extends`), `super` dispatching, and operator overloading via dunder methods (e.g., `__add__`). Instances support destructuring assignment.
-- **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `switch/case`, `match` (with deep destructuring and dependent binding), `break/continue/return`, and `defer` for resource cleanup.
+- **Control Flow & Pattern Matching**: `if/else`, `while`, `for`, `for-in`, `match` (with deep destructuring and dependent binding), `break/continue/return`, and `defer` for resource cleanup.
 - **Error Handling**: `try/catch/throw` constructs with structured `Exception` objects, stack tracebacks, and match-style catch chains (`catch { pattern => body, ... }`) with soft type matching and guards.
 - **Metaprogramming**: AST-based compile-time macro system (`macro`) with code quoting (`quote`), unquoting (`$`), and hygienic macros (`gensym`) for code generation.
 - **Execution Control**: Robust `Ctrl+C` interrupt mechanism to safely halt infinite loops or heavy CAS computations without crashing the VM. Pressing `Ctrl+C` three times consecutively triggers an immediate hard exit.
@@ -61,45 +61,61 @@ Native C++ extensions exposed to the execution context:
 - `latex`: Bi-directional LaTeX engine. Serializes JC2 objects to LaTeX, and parses raw LaTeX formulas into executable closures.
 - `ffi`: Zero-dependency Foreign Function Interface (cross-platform: Windows/Linux/macOS). Supports dynamic loading of shared libraries, direct C ABI invocation, zero-copy multi-dimensional array views, and nested struct support.
 - `regex`: High-performance native regular expression engine (bytecode VM with full-state memoization).
+- `crypto`: SHA-256/384/512, AES-GCM, X25519, P-256/384/521, and X.509 chain verification.
+- `tls`: TLS 1.2 / 1.3 client over TCP.
+- `inflate`: gzip / zlib decoding.
 - `tensor`: N-dimensional tensor engine with autograd.
 - `decimal`: Arbitrary-precision decimal arithmetic.
 
 JC2 standard libraries loaded via `import`:
-- `collections`: Data structures including `Stack`, `Queue`, `Deque`, `PriorityQueue` (Heap), and Search Trees.
-- `discrete`: Discrete mathematics toolkit covering combinatorics, binary relations, and graph traversal.
+- `collections`: `Stack`, `Queue`, `Deque`, `PriorityQueue` (Heap), search trees, LRU cache, and UnionFind.
+- `macros`: compile-time macros with platform gates.
+- `cre`: Chemical reaction engineering helpers.
+- `discrete`: combinatorics, `Prop` / `Relation`, CNF/DNF, satisfiability, graph algorithms, and Hasse diagrams.
 - `engine`: Game framework abstraction over the `window` module for render loops and event state management.
 - `net`: OOP wrapper for TCP streams (`TcpSocket` and `TcpServer`).
-- `http`: HTTP/1.1 client supporting URL parsing and GET/POST requests.
+- `http`: HTTP/1.1 and HTTPS client with URL parsing, GET/POST, redirects, and chunked bodies.
 
 ---
 
-## What's New in v2.6.4.0
+## What's New in v2.6.5.0
 
 ### Language
-- **Initializer-less members**: a class member may be declared without a value (`const id`, `local balance`, `name`). It must then be assigned in `init`; otherwise construction throws `member 'x' was not initialized in init()`. A `const` member accepts exactly one such assignment.
-- **Traits and interfaces**: `trait` / `with` composition, abstract methods, frozen constraints, and the `istrait(x)` predicate.
-- **Built-in error types are classes**: `TypeError`, `ValueError` and friends can be caught by type and subclassed like user classes.
-- **Iteration ends with `StopIteration`** instead of returning `none`.
-- **Renames (breaking)**: `double` → `float` (with `sqrtF` / `cbrtF` / `rootF`); the `is*` predicates are all lowercase; `pi` / `e` / `i` live in `math`; the `switch` expression is replaced by `match`.
-- **CAS**: broader factoring and solving (perfect powers, multivariate forms, `RootOf` for degree ≥ 4) and branch-safe rewrite guards.
+- **Compile-time directives**: `#version`, `#platform`, `#warning`, and `#error` with version/platform checks.
+- **Package imports and include**: package entry points, submodules, `include import`, and namespace field merging.
+- **Comparison and ordering**: `<=>`, split `sort` / `sorted`, and natural ordering through `__lt__` + `__eq__` when `__cmp__` is absent.
+- **Definition names**: raw and quoted definition names; f-strings remain rejected.
+- **Safer bindings**: atomic destructuring commits, staged `state` targets, duplicate enum rejection, and stricter `ref` / modifier checks.
+- **Smaller additions**: `reverse` / `reversed`, `getName` reflection, constant enum folding, and `ast` literal helpers.
 
-### Standard Library & Networking
-- **`http` module**: `httpGet` plus request helpers, chunked bodies, redirects, and `https` (TLS 1.3 **and** TLS 1.2).
-- **`tls.connect` / `TcpStream`**: raw TCP and TLS sockets for scripts.
-- **`crypto` module**: SHA-256/384/512, AES-GCM, X25519, P-256/384/521 and X.509 chain verification.
-- **`gzip` / `zlib` decoding** for compressed bodies.
+### Standard Library & Modules
+- **`macros` package** with platform gates and compile-time helpers.
+- **`math`**: numerical ODE solver, callable dense solutions, and `math.e()` / `math.E` forms.
+- **`collections`**: LRU cache, UnionFind, and binary-tree helpers.
+- **Graph algorithms**: MST, shortest paths, and strongly connected components.
+- **`discrete`**: `Prop` and `Relation` text, CNF/DNF, satisfiability, and Hasse diagrams.
+- **Runtime helpers**: `exec` / `system`, `process` / environment access, `sys.globals`, bytecode dumping, and annotated disassembly.
+- **Reflection APIs**: `getName` and `getFieldInfo`.
+- **Help and LSP**: script-side help registration, nested help lookup, extension LSP indexing/outline support, and `include` semantic highlighting.
 
-### Fixes & Performance
-- **Catch handlers keep live values**: a parameter read inside `catch` no longer comes back as `none` after a call in the `try` body.
-- **`regex` is linear**: the dedup table is reused and a literal-prefix prefilter skips non-matching regions (a real 160 KB page: ~86 s → 0.013 s).
-- **`Set` aggregates and predicates**: `sum`, `prod`, `max`, `min`, `span`, `any`, `all` now work on sets.
-- **Initializer-less private fields are per-instance**, no longer shared between instances.
-- **GC fixes** for instances, class member tables and closure copies.
+### Fixes
+- Base-class fields initialize before derived fields.
+- `parseNum` rejects partial input; `ord` and `parseNum` are available as globals.
+- Matrix default/rest destructuring and include merging are atomic.
+- Comprehension variables stay local; match branch targets are predeclared.
+- Empty containers are falsy; private methods are hidden from `getFields`; GC and JIT shutdown/stack fixes landed.
+- Use-before-init diagnostics, function-scoped block assignments, and atomic workspace writes were tightened.
 
-### Tooling
-- **Semantic highlighting**: token spans now come from the source text (multi-line strings and comments no longer bleed into the next line) and f-string `{...}` interpolations are coloured as expressions.
-- **VS Code extension 6.4.0**, bundled help re-synced.
-- **Test layout**: suites now live under `test/`; `jc2 test test/tests` ships in the package, while `test/http_tests` (vector and network tests plus their fixtures) is an on-demand download.
+### Tooling & Docs
+- Chinese **JC2 Language Specification, Volume 1** draft added.
+- Help topics were synchronized with the runtime, including ordered containers, matrix iteration, slice assignment, and `math.i()`.
+- Developer tooling: commit-message checker, PowerShell build wrapper, and JC2 regression runner.
+- CAS: positive-radical merging and irreducible-cubic integration.
+
+### Compatibility
+- `math.i` is now a function; use `math.i()` or the literal `1i`. `math.I` remains the constant form.
+- The global `e` is gone; use `math.e()` or `math.E`.
+- Duplicate enum members now raise `SyntaxError`.
 
 ## Building
 

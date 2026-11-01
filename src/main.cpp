@@ -189,7 +189,7 @@ static void requireVersion(const std::string& rawArgs, const std::string& source
         }
     }
     if (spec.empty()) {
-        JC2_THROW(ParserError, "#version expects a version, e.g. #version >= 2.6.4.0.");
+        JC2_THROW(ParserError, "#version expects a version, e.g. #version >= 2.6.5.0.");
     }
     auto required = parseVersionParts(spec);
     auto current = parseVersionParts(jc::VERSION);

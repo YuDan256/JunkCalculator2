@@ -18,9 +18,9 @@ BEGIN
         BLOCK "040904b0" 
         BEGIN
             VALUE "FileDescription", "Junk Calculator 2"
-            VALUE "FileVersion", "2.6.4.0"
+            VALUE "FileVersion", "2.6.5.0"
             VALUE "ProductName", "Junk Calculator 2"
-            VALUE "ProductVersion", "2.6.4.0"
+            VALUE "ProductVersion", "2.6.5.0"
             VALUE "LegalCopyright", "Copyright (C) 2026 Yu Liangyang. MIT License."
             VALUE "CompanyName", "Yu Liangyang"
             // ↓ 把下面这句话换成你选中的彩蛋：

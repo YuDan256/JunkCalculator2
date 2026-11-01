@@ -1235,7 +1235,7 @@ namespace lsp {
                             case TokenType::TRUE_KW: case TokenType::FALSE_KW: case TokenType::NONE_KW:
                             case TokenType::CLASS: case TokenType::ENUM: case TokenType::NAMESPACE:
                             case TokenType::TRAIT: case TokenType::WITH:
-                            case TokenType::IMPORT: case TokenType::MACRO: case TokenType::SYNTAX:
+                            case TokenType::IMPORT: case TokenType::INCLUDE: case TokenType::MACRO: case TokenType::SYNTAX:
                             case TokenType::QUOTE:
                             case TokenType::STATIC: case TokenType::LOCAL: case TokenType::CONST:
                             case TokenType::REF: case TokenType::STATE: case TokenType::DELETE:

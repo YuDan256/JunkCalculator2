@@ -2,9 +2,9 @@
   <a href="README.md">English</a> | <strong>简体中文</strong>
 </div>
 
-# Junk Calculator 2.6.4.0
+# Junk Calculator 2.6.5.0
 
-![Version](https://img.shields.io/badge/Version-v2.6.4.0-orange.svg?style=flat-square)
+![Version](https://img.shields.io/badge/Version-v2.6.5.0-orange.svg?style=flat-square)
 ![C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg?style=flat-square&logo=c%2B%2B)
 ![Zero Dependencies](https://img.shields.io/badge/Dependencies-0-brightgreen.svg?style=flat-square)
 ![CMake](https://img.shields.io/badge/CMake-3.17+-064F8C.svg?style=flat-square&logo=cmake)
@@ -30,10 +30,10 @@
 - **类型系统与内存管理**：由 NaN-boxing (NaN 装箱) 驱动的动态类型系统，内部包含 20 余种数据类型（含隐藏类型）。
   - *值类型*：标量（双精度浮点数、大整数、复数）与矩阵（实数矩阵、复数矩阵）采用连续内存，遵循“值传递 (pass-by-value)”语义。
   - *引用类型*：容器 (`List`, `Dict`, `Set`) 与面向对象 `Instance` 采用“引用传递”语义（底层基于 PIMPL 架构和 `std::shared_ptr`）。
-- **渐进式类型 (Gradual Typing)**：支持对函数参数和返回值进行运行时类型契约校验（例如 `func(a: double, b: matrix) -> bool = ...`）。涵盖基础类型、容器类型及类的继承校验。
+- **渐进式类型 (Gradual Typing)**：支持对函数参数和返回值进行运行时类型契约校验（例如 `func(a: float, b: matrix) -> bool = ...`）。涵盖基础类型、容器类型及类的继承校验。
 - **垃圾回收 (GC)**：运行于 VM 栈上的标记-清扫 (Mark-and-Sweep) 垃圾回收器 (`GcHeap`)。追踪 GC 根节点（全局变量、调用栈、闭包上值及上下文）以打破并清除循环引用。
 - **面向对象 (OOP)**：支持单继承 (`extends`)、`super` 超类分发以及通过魔术方法（如 `__add__`）实现的运算符重载。实例对象支持解构赋值。
-- **控制流与模式匹配**：包含 `if/else`、`while`、`for`、`for-in`、`switch/case`、`match`（支持深度解构与依赖绑定）、`break/continue/return` 以及用于资源清理的 `defer`。
+- **控制流与模式匹配**：包含 `if/else`、`while`、`for`、`for-in`、`match`（支持深度解构与依赖绑定）、`break/continue/return` 以及用于资源清理的 `defer`。
 - **错误处理**：提供 `try/catch/throw` 结构与支持栈追踪的结构化 `Exception` 对象，并支持 match 风格 catch 链（`catch { pattern => body, ... }`），包含软类型匹配与 guard。
 - **元编程 (Metaprogramming)**：支持基于 AST 的编译时宏系统 (`macro`)，提供代码引用 (`quote`)、解引用 (`$`) 以及卫生宏 (`gensym`) 能力，允许在编译阶段进行代码生成。
 - **执行控制**：具备强大的 `Ctrl+C` 中断机制，可在不崩溃虚拟机的前提下安全暂停死循环或重型 CAS 计算。连续三次 `Ctrl+C` 将触发强制退出。
@@ -61,45 +61,61 @@
 - `latex`：双向 LaTeX 引擎。可将 JC2 数学对象序列化为 LaTeX 代码，或将原始 LaTeX 公式解析并即时编译为可执行的 JC2 闭包函数。
 - `ffi`：零依赖的外部函数接口（跨平台：Windows/Linux/macOS）。支持动态加载共享库、直接调用 C ABI 函数、零拷贝多维数组视图、嵌套结构体支持。
 - `regex`：高性能原生正则表达式引擎（字节码虚拟机 + 全状态记忆化）。
+- `crypto`：SHA-256/384/512、AES-GCM、X25519、P-256/384/521 与 X.509 证书链校验。
+- `tls`：基于 TCP 的 TLS 1.2 / 1.3 客户端。
+- `inflate`：gzip / zlib 解码。
 - `tensor`：支持自动求导的 N 维张量引擎。
 - `decimal`：任意精度十进制运算。
 
 通过 `import` 加载的 JC2 标准库：
-- `collections`：常用数据结构，包含栈、队列、双端队列、优先队列（堆）以及多种搜索树。
-- `discrete`：离散数学工具箱，涵盖组合数学、二元关系和图遍历。
+- `collections`：栈、队列、双端队列、优先队列（堆）、搜索树、LRU 缓存与 UnionFind。
+- `macros`：带平台门控的编译期宏。
+- `cre`：化学反应工程辅助库。
+- `discrete`：组合数学、`Prop` / `Relation`、CNF/DNF、可满足性、图算法与 Hasse 图。
 - `engine`：面向对象的可视化/游戏框架，在 `window` 模块基础上抽象了渲染主循环与事件状态机。
 - `net`：TCP 数据流的高级 OOP 封装（`TcpSocket` 和 `TcpServer`）。
-- `http`：现代 HTTP/1.1 客户端，支持 URL 解析及 GET/POST 请求。
+- `http`：HTTP/1.1 与 HTTPS 客户端，支持 URL 解析、GET/POST、重定向与分块传输。
 
 ---
 
-## v2.6.4.0 版本更新说明
+## v2.6.5.0 版本更新说明
 
 ### 语言
-- **成员可省略初值**：类体成员可以只写名字不写初值（`const id`、`local balance`、`name`），此时必须由 `init` 赋值，否则构造时报 `member 'x' was not initialized in init()`；`const` 成员只接受一次这样的赋值。
-- **trait 与 interface**：`trait` / `with` 组合、抽象方法、冻结约束，以及 `istrait(x)` 谓词。
-- **内置错误类型改为类**：`TypeError`、`ValueError` 等可按类型捕获，也能像用户类一样继承。
-- **迭代以 `StopIteration` 结束**，不再以返回 `none` 表示结束。
-- **重命名（破坏性变更）**：`double` → `float`（配套 `sqrtF` / `cbrtF` / `rootF`）；`is*` 谓词统一为全小写；`pi` / `e` / `i` 迁入 `math`；`switch` 表达式由 `match` 取代。
-- **CAS**：因式分解与求解覆盖面更广（完全幂、多元形式、次数 ≥ 4 的 `RootOf`），并加入分支安全的改写护栏。
+- **编译期指令**：`#version`、`#platform`、`#warning` 与 `#error`，支持版本和平台检查。
+- **包导入与 include**：package 入口、子模块、`include import` 与 namespace 字段合并。
+- **比较与排序**：`<=>`、拆分 `sort` / `sorted`；缺少 `__cmp__` 时由 `__lt__` + `__eq__` 提供自然序。
+- **定义名**：支持 raw 与反引号定义名；继续拒绝 f-string 定义名。
+- **绑定安全**：解构原子提交、`state` 目标 staging、enum 重复成员拒绝，以及更严格的 `ref` / 修饰符检查。
+- **小型补充**：`reverse` / `reversed`、`getName` 反射、常量 enum 折叠与 `ast` 字面量辅助。
 
-### 标准库与网络
-- **`http` 模块**：`httpGet` 及请求辅助函数、分块传输、重定向，以及 `https`（TLS 1.3 **与** TLS 1.2）。
-- **`tls.connect` / `TcpStream`**：脚本可直接使用 TCP 与 TLS 套接字。
-- **`crypto` 模块**：SHA-256/384/512、AES-GCM、X25519、P-256/384/521 与 X.509 证书链校验。
-- **`gzip` / `zlib` 解码**：可直接解压压缩过的响应体。
+### 标准库与模块
+- **`macros` 包**：平台门控与编译期辅助。
+- **`math`**：数值 ODE 求解器、可调用稠密解，以及 `math.e()` / `math.E` 形式。
+- **`collections`**：LRU 缓存、UnionFind 与二叉树辅助。
+- **图算法**：最小生成树、最短路径与强连通分量。
+- **`discrete`**：`Prop` / `Relation` 文本、CNF/DNF、可满足性与 Hasse 图。
+- **运行时辅助**：`exec` / `system`、`process` / 环境访问、`sys.globals`、字节码导出与带注释反汇编。
+- **反射 API**：`getName` 与 `getFieldInfo`。
+- **帮助与 LSP**：脚本侧帮助注册、嵌套帮助查找，扩展 LSP 索引/大纲支持，以及 `include` 语义高亮。
 
-### 修复与性能
-- **catch 处理器保值**：`try` 体内发生调用后，在 `catch` 里读取形参不再变成 `none`。
-- **`regex` 线性化**：复用去重表并以字面前缀预筛跳过不匹配区域（真实 160 KB 页面：约 86 秒 → 0.013 秒）。
-- **`Set` 聚合与谓词**：`sum`、`prod`、`max`、`min`、`span`、`any`、`all` 现在都支持集合。
-- **省略初值的私有字段改为每实例存储**，不再跨实例共享。
-- **GC 修复**：实例、类成员表与闭包副本的标记。
+### 修复
+- 基类字段先于派生类字段初始化。
+- `parseNum` 拒绝部分输入；`ord` 与 `parseNum` 作为全局函数可用。
+- 矩阵默认值/rest 解构与 include 合并保持原子性。
+- comprehension 变量保持局部；match 分支目标预先声明。
+- 空容器为假；private 方法从 `getFields` 隐藏；GC 与 JIT 关闭/栈修复落地。
+- 使用前初始化诊断、块内赋值作用域与 workspace 原子写入得到加强。
 
-### 工具
-- **语义高亮**：着色区间改从源文本取（多行字符串与注释不再串到下一行），f-string 的 `{...}` 插值按表达式独立着色。
-- **VS Code 扩展 6.4.0**，并同步了捆绑的帮助文档。
-- **测试目录重构**：套件统一移到 `test/` 下；`jc2 test test/tests` 随包发布，`test/http_tests`（向量与网络测试及其夹具）改为按需下载。
+### 工具与文档
+- 新增《JC2 语言规范》第一卷中文草案。
+- 帮助文档与运行时同步，覆盖有序容器、矩阵迭代、slice 赋值与 `math.i()`。
+- 开发工具：提交消息检查器、PowerShell 构建包装器与 JC2 回归运行器。
+- CAS：正根式合并与不可约三次积分。
+
+### 兼容性
+- `math.i` 改为函数；使用 `math.i()` 或字面量 `1i`。`math.I` 保留常量形式。
+- 全局 `e` 移除；使用 `math.e()` 或 `math.E`。
+- enum 重复成员现在产生 `SyntaxError`。
 
 ## 构建指南
 

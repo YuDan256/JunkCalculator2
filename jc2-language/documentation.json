@@ -1,7 +1,7 @@
 {
   "global_functions": {
     "i": {
-      "signature": "math.i"
+      "signature": "math.i()"
     },
     "complex": {
       "signature": "complex(real, [imag])"
@@ -645,7 +645,7 @@
       "signature": "static name = expr  |  static method(...) = ..."
     },
     "delete": {
-      "signature": "delete variable"
+      "signature": "delete name[, name...] | delete @macro"
     },
     "try": {
       "signature": "try { body } [catch (pattern) { handler } | catch { branch, ... }]"

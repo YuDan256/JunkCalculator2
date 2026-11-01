@@ -1,7 +1,7 @@
 {
   "topics": {
     "main": [
-      "=================== Junk Calculator 2.6.4.0 — Help ===================",
+      "=================== Junk Calculator 2.6.5.0 — Help ===================",
       "",
       "  See also: help(\"repl\") for session commands, help(\"cli\") for the command line.",
       "",
@@ -3900,8 +3900,8 @@
       "    Require an engine version. op is one of >= > == = <= <; default is >=.",
       "    Missing components are treated as 0: 2.6 == 2.6.0.0.",
       "",
-      "    #version >= 2.6.4.0",
-      "    #version == 2.6.4.0",
+      "    #version >= 2.6.5.0",
+      "    #version == 2.6.5.0",
       "",
       "  #platform windows|linux|macos",
       "    Require the current host platform; otherwise compilation fails.",
@@ -3921,9 +3921,9 @@
       "  op is one of >= > == = <= <; omitted op means >=.",
       "  Version parts are numeric; missing parts are 0.",
       "",
-      "  #version >= 2.6.4.0",
-      "  #version == 2.6.4.0",
-      "  #version 2.6.4.0",
+      "  #version >= 2.6.5.0",
+      "  #version == 2.6.5.0",
+      "  #version 2.6.5.0",
       "",
       "  Failure is a ParserError reporting the running version."
     ],
@@ -7621,7 +7621,7 @@
     },
     "version": {
       "signature": "sys.version()",
-      "desc": "Returns the JC2 version string, e.g. \"2.6.4.0\".",
+      "desc": "Returns the JC2 version string, e.g. \"2.6.5.0\".",
       "examples": [
         "sys.version()"
       ]

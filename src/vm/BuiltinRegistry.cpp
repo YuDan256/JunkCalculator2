@@ -589,7 +589,9 @@ void BuiltinRegistry::populateMathConstants() {
     if (!math_ns) return;
     math_ns->setField("PI", Value(3.14159265358979323846));
     math_ns->setField("E", Value(2.71828182845904523536));
-    math_ns->setField("i", Value(Complex(0.0, 1.0)));
+    regModule(math_ns, "i", { 0 }, [](const std::vector<Value>&) -> Value {
+        return Value(Complex(0.0, 1.0));
+        }, {});
     math_ns->setField("I", Value(Complex(0.0, 1.0)));
 }
 

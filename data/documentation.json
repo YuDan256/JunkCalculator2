@@ -435,15 +435,15 @@
       "  ──────────────────────",
       "    math.PI     3.14159265358979…        (constant in the math namespace)",
       "    math.E      2.71828182845904…        (constant in the math namespace)",
-      "    math.i      Imaginary unit (i² = −1) (constant in the math namespace)",
-      "    math.I      Alias of math.i",
+      "    math.i()    Imaginary unit (i² = −1) (function in the math namespace)",
+      "    math.I      Imaginary unit (constant value)",
       "    true / false                          (keywords, act as 1 and 0 in math)",
       "    none        None value                (keyword, immutable)",
       "",
-      "    ★ The four constants above live in the `math` namespace, so `import math`",
+      "    ★ math.PI, math.E and math.I live in the `math` namespace; math.i() is a",
       "      is required to reach them. They are deliberately NOT bare globals: `i` is",
       "      an extremely common loop variable, and a top-level `for (i in ...)` used to",
-      "      silently overwrite the imaginary unit. sys.resetConst() restores all four.",
+      "      silently overwrite the imaginary unit. sys.resetConst() restores them.",
       "",
       "    Values available without any import:",
       "      math.pi()              → 3.14159265358979…  (also symbolic π inside CAS expressions)",
@@ -581,7 +581,7 @@
       "      3 + 4*i                         // BROKEN (i is now 9)",
       "",
       "    To recover the variable i after it has been overwritten:",
-      "      i = 1i              // imaginary literal; i() does not exist",
+      "      i = 1i              // imaginary literal; math.i() is the function form",
       "      // Or simply use the literal suffix: 3 + 4i",
       "",
       "    Numeric forms supported:",
@@ -1678,11 +1678,11 @@
       "",
       "  System Constants & Recovery",
       "  ──────────────────────",
-      "    math.PI, math.E, math.i, math.I are constants inside the `math` namespace",
+      "    math.PI, math.E and math.I are constants inside the `math` namespace; math.i() is the function form",
       "    (import math). They are stored as ordinary namespace fields, so they can be",
       "    reassigned and restored:",
       "",
-      "    sys.resetConst()      Restores all four constants at once",
+      "    sys.resetConst()      Restores the math constants and math.i()",
       "    math.PI = 3.14        Reassign individually (namespace field)",
       "",
       "    No import needed:",
@@ -1996,7 +1996,7 @@
       "        `const state x = 1` : Lazy, read-only persistent state (evaluates once).",
       "      Function Parameters:",
       "        `f(const x) = ...`  : Prevents accidental reassignment of `x` inside `f`.",
-      "    • System Constants: math.PI, math.E, math.i, math.I can be reassigned.",
+      "    • System Constants: math.PI, math.E and math.I can be reassigned; math.i() is a function.",
       "      Restore via `sys.resetConst()` or factory functions like `math.pi()`.",
       "    • Built-ins: Can be freely shadowed by user variables. Built-ins themselves",
       "      cannot be deleted. `delete sin` only removes the shadowing variable.",
@@ -3949,10 +3949,10 @@
   },
   "global_functions": {
     "i": {
-      "signature": "math.i",
-      "desc": "The imaginary unit (0 + 1i). It is a constant in the math namespace (math.i, alias math.I), so `import math` is required; without an import use the imaginary literal suffix `1i` / `3i` instead. It is NOT a function -- `i()` does not exist.",
+      "signature": "math.i()",
+      "desc": "Returns the imaginary unit (0 + 1i) as a function. Requires `import math`; math.I is the constant form, and the literal suffix `1i` works without an import.",
       "examples": [
-        "z = 3 + 4 * 1i"
+        "import math; z = 3 + 4 * math.i()"
       ]
     },
     "complex": {
@@ -7717,7 +7717,7 @@
         "import math; import sys; sys.resetConst()",
         "import math; math.PI"
       ],
-      "desc": "Restores the four math constants (math.PI, math.E, math.i, math.I) to their predefined values. They are ordinary namespace fields, so they can be reassigned; this puts them back. Requires the math namespace (import math).",
+      "desc": "Restores math.PI, math.E, math.I and the math.i function to their predefined values. They are ordinary namespace fields, so they can be reassigned; this puts them back. Requires the math namespace (import math).",
       "signature": "sys.resetConst()"
     },
     "resetType": {

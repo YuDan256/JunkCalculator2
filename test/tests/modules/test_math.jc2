@@ -2,6 +2,13 @@ import prob
 import math
 import latex
 
+test_math_i() = {
+    assert(type(math.i) == function, "math.i must be a function")
+    assert(math.i() == 1i, "math.i() must return the imaginary unit")
+    assert(math.I == 1i, "math.I must remain a constant")
+}
+test_math_i()
+
 
 test_prob_normal() = {
     d = prob.Normal(0, 1)

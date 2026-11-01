@@ -35,7 +35,7 @@
       "    array       Array functions over lists, sets, and strings",
       "    list        Heterogeneous list (any type, nestable)",
       "    dict        Dictionary (key-value store)",
-      "    set         Unordered deduplicated Set (reference semantics)",
+      "    set         Insertion-ordered deduplicated Set (reference semantics)",
       "    class       Classes, instances, inheritance, operator overloading",
       "    enum        Compile-time zero-overhead enumerations",
       "    macro       Compile-time Metaprogramming (AST Macros)",
@@ -310,9 +310,10 @@
       "      _ = heavy_computation()            Discard return value",
       "",
       "      ★ The underscore `_` is a strict language-level placeholder.",
-      "        It is NOT a real variable. It cannot be read (e.g., `print(_)` is an error).",
+      "        It is NOT a real variable. It cannot be read as a value (`_ + 1` is an error).",
       "        Assigning to `_` has ZERO overhead—it does not allocate memory, does not",
       "        pollute the scope, and completely bypasses the Garbage Collector.",
+      "        As a call argument it creates a partial closure; `print(_)` returns `(__ph_0) => print(__ph_0)`.",
       ""
     ],
     "operators": [
@@ -333,8 +334,8 @@
       "    &                   Set Intersection / Base-2 Bitwise AND",
       "    ^^                  Set Symmetric Difference / Base-2 Bitwise XOR",
       "    ~                   Base-2 Bitwise NOT (prefix unary)",
-      "    <<                  Bitwise Shift Left (requires shift count >= 0)",
-      "    >>                  Bitwise Shift Right (requires shift count >= 0)",
+      "    <<                  Bitwise Shift Left (requires shift count >= 0; negative -> MathError)",
+      "    >>                  Bitwise Shift Right (requires shift count >= 0; negative -> MathError)",
       "    ",
       "    * Note: To prevent syntax ambiguity and precedence issues with polynomials, ",
       "      the caret (^) is STRICTLY reserved for exponentiation. ",
@@ -2197,7 +2198,7 @@
       "  Structure Operations",
       "  ──────────────────────",
       "    v.reversed()        Reversed copy (List / String); lists also have in-place reverse()",
-      "    M.flatten()         Flatten 2D matrix or nested list → 1D",
+      "    toList(M).flatten() Flatten matrix rows into a 1D list",
       "    v.unique()          Remove duplicates (exact equality)",
       "",
       "  Search",
@@ -2450,7 +2451,7 @@
     "dict": [
       "═══ Dictionary (Key-Value Store) ═══",
       "",
-      "  dicts store unordered key-value mappings in JC2. Keys can be ANY hashable type",
+      "  dicts store insertion-ordered key-value mappings in JC2. Keys can be ANY hashable type",
       "  (strings, numbers, instances with __hash__, or frozen containers). Values can ",
       "  be of any type.",
       "",
@@ -2611,7 +2612,7 @@
       "    * Loop copy: b = dict(); for (@[k, v] in a) b[k] = v"
     ],
     "set": [
-      "═══ set (Unordered Deduplicated Collection) ═══",
+      "═══ set (Insertion-Ordered Deduplicated Collection) ═══",
       "",
       "  sets store unique elements only. Duplicate insertions are silently ignored.",
       "  Elements can be of any type. sets use REFERENCE SEMANTICS (like lists/dicts).",

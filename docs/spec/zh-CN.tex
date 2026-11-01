@@ -171,6 +171,8 @@ UTF-8 解码按最长合法序列进行。解码失败时，在出现位置产�
 
 词法分析在圆括号与方括号内部忽略换行；花括号内部保留换行。
 换行作为表达式序列的分隔符；连续换行与分号等价。
+行末为二元运算符时，下一行继续同一表达式；\jc{if}、\jc{while}、\jc{for}、
+\jc{catch}、\jc{class} 等关键字与其后的 \jc{(} 或名称位于同一行。
 
 \subsection{注释}
 
@@ -363,6 +365,7 @@ f-string      = "f" ( '"' { any-char } '"' | "'" { any-char } "'"
 \end{center}
 
 \texttt{\#version} 的比较运算符包括 \jc{>=}、\jc{<=}、\jc{==}、\jc{=}、\jc{>}、\jc{<}。
+版本号按四段比较，缺省段补零，例如 \jc{2.6} 等价于 \jc{2.6.0.0}。
 其他指令名产生 \jc{ParserError}。指令只在行首出现；行首空白计入行首位置。
 
 \subsection{词法错误与位置}
@@ -429,12 +432,12 @@ block          = "{" { expression } "}" ;
 \begin{lstlisting}
 binding        = [ "const" ] [ "local" | "ref" | "state" ]
                  binding-target [ ":" expression ]
-                 [ "=" expression ] ;
+                 [ "=" assign-expr ] ;
 binding-target = identifier | pattern ;
 function-binding = [ "const" ] [ "local" | "ref" | "state" ]
                  identifier "(" [ params ] ")"
                  [ "->" expression ] "=" function-body ;
-function-body  = expression | block ;
+function-body  = assign-expr | block ;
 
 name-spec      = [ "$" ] identifier | string ;
 import-expr    = "import" [ "@" ] ( module-path | string ) ;
@@ -449,12 +452,12 @@ trait-list     = expression { "," expression } ;
 class-body     = "{" { class-member } "}" ;
 class-member   = { member-modifier } ( field-decl | method-decl ) ;
 member-modifier = "static" | "local" | "const" ;
-field-decl     = member-name [ "=" expression ] ;
+field-decl     = member-name [ "=" ternary ] ;
 method-decl    = member-name "(" [ params ] ")" [ "->" expression ]
                  [ "=" function-body ] ;
 member-name    = identifier | keyword ;
 enum-expr      = "enum" [ name-spec ] "{" { enum-member } "}" ;
-enum-member    = ( identifier | keyword ) [ "=" expression ] ;
+enum-member    = ( identifier | keyword ) [ "=" ternary ] ;
 macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")" "=" function-body ;
 macro-params   = macro-param { "," macro-param } ;
 macro-param    = [ "..." ] identifier ;
@@ -488,10 +491,10 @@ try-expr       = "try" expression [ catch-clause ] ;
 catch-clause   = "catch" ( "(" branch-patterns ")" expression
                          | "{" match-arms "}" ) ;
 defer-expr     = "defer" expression ;
-return-expr    = "return" [ expression ] ;
+return-expr    = "return" [ assign-expr ] ;
 break-expr     = "break" ;
 continue-expr  = "continue" ;
-throw-expr     = "throw" expression ;
+throw-expr     = "throw" assign-expr ;
 \end{lstlisting}
 
 \subsection{表达式}
@@ -499,6 +502,7 @@ throw-expr     = "throw" expression ;
 \begin{lstlisting}
 expression     = sequence ;
 sequence       = assignment { "," assignment } ;
+assign-expr    = assignment ;
 assignment     = ternary [ assign-op assignment ] ;
 assign-op      = "=" | "+=" | "-=" | "*=" | "/=" | "%="
                | "~/=" | "\\="
@@ -527,7 +531,7 @@ postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 
 call-suffix    = "(" [ arguments ] ")" ;
 index-suffix   = "[" index-arg { "," index-arg } "]" ;
-index-arg      = expression
+index-arg      = assign-expr
                | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 
@@ -554,24 +558,29 @@ primary        = literal | identifier | "(" expression ")"
 
 \begin{lstlisting}
 list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
-set-literal    = "@{" [ expression { "," expression } ] "}" ;
+set-literal    = "@{" [ assign-expr { "," assign-expr } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
-dict-entry     = expression ":" expression
-               | "..." expression
+dict-entry     = assign-expr ":" assign-expr
+               | "..." assign-expr
                | identifier ;
 matrix-literal = "[" [ matrix-row { ";" matrix-row } ] "]" ;
-matrix-row     = expression { "," expression } ;
-lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
+matrix-row     = assign-expr { "," assign-expr } ;
+lambda         = "(" [ params ] ")" "=>" ( assign-expr | block ) ;
 quote-expr     = "quote" ( block | expression ) ;
 macro-call     = "@" identifier [ "(" [ arguments ] ")" ] [ block ] ;
 comp-clause    = "for" "(" for-pattern "in" expression ")"
                  { "if" "(" expression ")" } ;
 comp-clauses   = comp-clause { comp-clause } ;
-list-comprehension   = "@[" expression comp-clauses "]" ;
-matrix-comprehension = "[" expression comp-clauses "]" ;
-set-comprehension    = "@{" expression comp-clauses "}" ;
-dict-comprehension   = "{" expression ":" expression comp-clauses "}" ;
+list-comprehension   = "@[" assign-expr comp-clauses "]" ;
+matrix-comprehension = "[" assign-expr comp-clauses "]" ;
+set-comprehension    = "@{" assign-expr comp-clauses "}" ;
+dict-comprehension   = "{" assign-expr ":" assign-expr comp-clauses "}" ;
 \end{lstlisting}
+
+\jc{assign-expr} 用于参数、容器元素、\jc{return}/\jc{throw} 值、普通绑定初始化器与索引参数；
+这些位置的逗号属于分隔符，不构成逗号序列。
+class 字段初值、enum 成员值与模式默认值使用 \jc{ternary}；
+条件、迭代源、match 主题与 guard 使用 \jc{expression}，允许逗号序列。
 
 \subsection{参数与实参}
 
@@ -580,11 +589,11 @@ params         = param { "," param } [ ";" param { "," param } ]
                | ";" param { "," param } ;
 param          = [ "const" ] [ "ref" | "local" | "state" ]
                  ( "..." identifier | pattern [ ":" expression ]
-                   [ "=" expression ] ) ;
+                   [ "=" assign-expr ] ) ;
 arguments      = argument { "," argument } [ ";" argument { "," argument } ]
                | ";" argument { "," argument } ;
-argument       = expression | identifier "=" expression
-               | "..." expression ;
+argument       = assign-expr | identifier "=" assign-expr
+               | "..." assign-expr ;
 \end{lstlisting}
 
 参数列表中的 \jc{;} 分隔位置参数与仅关键字参数。
@@ -593,7 +602,7 @@ argument       = expression | identifier "=" expression
 \subsection{模式}
 
 \begin{lstlisting}
-pattern        = primary-pattern [ "=" expression ] ;
+pattern        = primary-pattern [ "=" ternary ] ;
 primary-pattern = "_" | variable-pattern | literal
                | list-pattern | matrix-pattern
                | dict-pattern | rest-pattern | dynamic-assert-pattern
@@ -608,7 +617,7 @@ pattern-row    = pattern { "," pattern } ;
 dict-pattern   = "{" [ field-pattern { "," field-pattern }
                  [ "," rest-pattern ] ] "}" ;
 field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
-                 [ ":" pattern | "=" expression ]
+                 [ ":" pattern | "=" ternary ]
                | string ":" pattern ;
 dynamic-assert-pattern = "(" expression ")" ;
 branch-patterns = pattern { "," pattern } ;
@@ -683,6 +692,7 @@ b = 2
   \item 参数列表中 \jc{;} 出现至多一次；\jc{...rest} 与 \jc{...kw} 位于各自区域末尾。
   \item 默认参数位于必填位置参数之后；仅关键字参数位于 \jc{;} 之后。
   \item pattern 中 \jc{...rest} 出现至多一次；rest 目标可以位于 list 或 matrix 行的任意位置，捕获固定头尾之间的元素。
+\item 同一行出现默认值时，默认值位于 rest 之前，rest 位于该行末尾。
   \item class 体成员名在同类中唯一；重复成员产生 \jc{SyntaxError}。
   \item enum 成员名在 enum 内唯一；重复成员产生 \jc{SyntaxError}。
   \item 匿名定义的关键字与左花括号位于同一行。
@@ -1016,6 +1026,7 @@ $|a-b| \le \max(\mathrm{atol}, \mathrm{rtol}\cdot\max(|a|,|b|))$；
 空值 & \jc{none} \\
 容器 & 空 list、空 dict、空 set \\
 矩阵 & 零元素矩阵 \\
+实例 & \jc{__bool__()} 返回假值或数值零 \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -1045,6 +1056,8 @@ $|a-b| \le \max(\mathrm{atol}, \mathrm{rtol}\cdot\max(|a|,|b|))$；
 整数 \jc{/} 产生精确 \jc{fraction}。\jc{~/} 向零截断。
 除法、模运算与 fraction 构造在零分母处产生 \jc{MathError}。
 浮点溢出产生 \jc{inf}。任意精度整数转换为浮点数超出范围时产生 \jc{MathError}。
+精确整数或 fraction 遇到分数指数且结果不是有理数时，提升为 \jc{symbolic}；
+例如 \jc{2 ^ (1/2)} 得到 \jc{sqrt(2)}，保持精确表示。
 
 \jc{nan()} 产生规范 NaN 值。NaN 与任何值比较相等的结果为假；NaN 可以作为 dict key 或 set 元素；NaN 参与 \jc{<=>} 时产生 \jc{TypeError}。
 \jc{inf()} 与 \jc{-inf()} 参与普通浮点比较与算术。
@@ -1101,8 +1114,11 @@ hash(1) == hash(true) // true
 \subsection{复制与冻结}
 
 \jc{copy(x)} 产生深拷贝，并保持源锁状态。
+\jc{copy(x, none)} 与 \jc{copy(x)} 等价；\jc{none} 是第二参数的默认值。
 \jc{copy(x, false)} 产生深拷贝，结果完全可写。
 \jc{copy(x, true)} 产生深拷贝，结果完全只读。
+\jc{freeze(x)} 原地锁定容器、namespace 或实例，并返回 \jc{x} 自身。
+\jc{isfrozen(x)} 在对象处于冻结状态时返回 \jc{true}。
 只读容器的修改操作产生 \jc{RuntimeError}。
 
 \section{表达式求值}
@@ -1234,7 +1250,9 @@ obj |> .method()      // obj.method()
 三元表达式 \jc{c ? a : b} 在 \jc{c} 为真时求值 \jc{a}，否则求值 \jc{b}。
 
 比较按第~\ref{sec:equality} 节的相等、同一性与排序规则求值。
-\jc{in} 对容器执行成员测试，对类型执行值成员测试，对实例调用 \jc{__contains__} 或字段回退。
+\jc{in} 对容器执行成员测试，对类型执行值成员测试，对 class 执行成员或一致性测试：
+字符串左侧检查 class 成员存在性，实例左侧等价于 \jc{isinstance}。
+对实例调用 \jc{__contains__} 或字段回退。
 \jc{<:} 对集合执行子集测试，对类型执行类型子集测试，对 class 执行继承或 trait 组合测试。
 \jc{is} 只比较对象 identity。
 NaN 与其他值的相等结果为假；NaN 参与 \jc{<=>} 时产生 \jc{TypeError}。
@@ -1348,6 +1366,7 @@ return、break、continue、throw & 控制转移 \\
 \jc{for (p in e) body} 对 \jc{e} 的迭代值依次匹配模式 \jc{p} 并执行 \jc{body}。
 list 按存储顺序迭代；dict 按键插入顺序迭代；set 按插入顺序迭代；string 按 code point 迭代；
 matrix 按列迭代；实现 \jc{__iter__}/\jc{__next__} 的实例按迭代协议产生值。
+未实现 \jc{__iter__} 的实例按 public 字段迭代，键为字段名。
 循环变量默认提升到函数或 namespace 作用域；\jc{local} 修饰保持块级。
 for-in 按迭代协议求值：取得迭代器，重复调用 \jc{__next__} 并把结果与模式匹配；
 \jc{StopIteration} 结束循环，模式匹配失败产生 \jc{MatchError}。
@@ -1390,6 +1409,7 @@ try 体产生错误时，按 catch 分支顺序匹配：
 \end{itemize}
 
 \jc{catch} 支持解构、类型匹配、or-pattern 与 guard。
+\jc{catch (p1, p2)} 简写支持逗号 or-pattern；guard 需要写成 \texttt{catch \{ p if (cond) => body \}}。
 \texttt{try \{ ... \}} 与 catch 子句并肩出现；catch 子句省略时，表达式吸收错误并返回 \jc{none}。
 
 catch 匹配按以下顺序执行：
@@ -1492,8 +1512,10 @@ g(1, 2, 3, b = 4, x = 5)
 \subsection{占位符与部分应用}
 
 \jc{_} 作为调用实参时产生部分应用闭包。
+例如 \jc{print(_)} 返回 \jc{(__ph_0) => print(__ph_0)}，而不是读取一个值。
 部分应用闭包记录已提供的实参与 hole 数量。
 调用部分应用闭包时，一次调用提供全部 hole；hole 数量少于记录值时产生 \jc{RuntimeError}。
+\jc{_} 出现在普通表达式位置时产生 \jc{SyntaxError}；\jc{_ = expr} 与模式中的 \jc{_} 表示丢弃，不建立绑定。
 
 \begin{lstlisting}
 add(a, b, c) = a + b + c
@@ -1626,7 +1648,7 @@ local class Temp { ... }    // 局部绑定
 \end{lstlisting}
 
 标识符名称建立同名绑定；字符串名称设置定义名，绑定由外围赋值建立。
-字符串名称使用字符串字面量；f-string 作为定义名产生 \jc{ParserError}。
+字符串名称使用普通或 raw 字符串字面量；f-string 作为定义名产生 \jc{ParserError}。
 \jc{local}、\jc{const} 等修饰符需要变量绑定；字符串名称与修饰符组合产生 \jc{SyntaxError}。
 匿名 class 的 \texttt{\{} 与 \jc{class} 位于同一行；\jc{extends} 形式同样保持同行。
 
@@ -1642,10 +1664,15 @@ local class Temp { ... }    // 局部绑定
 \jc{static} & 类级属性，定义时求值 \\
 \jc{const} & 属性的只读属性 \\
 \jc{local} & private 属性，作用域限于声明体 \\
+\jc{static const} & 只读 static 属性 \\
 \jc{static local} & private static 属性 \\
+\jc{static const local} & private 只读 static 属性 \\
 \bottomrule
 \end{tabular}
 \end{center}
+
+修饰符的标准顺序为 \jc{static}、\jc{const}、\jc{local}/\jc{ref}/\jc{state}；
+例如 \jc{static const local MAX = 999}。
 
 数据属性默认值在实例构造时初始化。方法属性绑定闭包值。
 实例属性省略初始化器时，构造结束前必须由 \jc{init} 赋值；缺失时产生 \jc{RuntimeError}。
@@ -1784,7 +1811,7 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 \jc{getClass(obj)} & 实例的 class 定义 \\
 \jc{getParent(C)} & 父类或 \jc{none} \\
 \jc{getName(x)} & class、实例、trait、namespace 或 enum 的名称 \\
-\jc{getFields(obj)} & public 实例属性名列表，含数据与方法属性 \\
+\jc{getFields(x)} & dict 键、实例属性、class 实例属性或 namespace/enum 名称 \\
 \jc{getFields(C)} & class 的实例属性名列表，含继承属性 \\
 \jc{getStatics(C)} & class 的 public static 属性名列表，含继承属性 \\
 \jc{hasField(obj, name)} & public 属性存在性 \\
@@ -1945,7 +1972,8 @@ const local lib = import "lib.jc2"
 \jc{macro} 在编译期执行。参数为 AST 节点，返回 AST 节点或 AST 节点列表。
 宏定义体为 \jc{function-body}：单个表达式或一个块。
 宏调用形式为 \jc{@name(...)}、\texttt{@name(...) \{ ... \}} 或 \texttt{@name \{ ... \}}。
-尾随块作为最后一个参数。可变参数收集剩余 AST 节点。
+尾随块作为最后一个参数。宏参数只按位置绑定；\jc{@m(a = 1)} 把赋值节点作为位置实参。
+宏调用中的分号、关键字实参和 spread 产生 \jc{ParserError}。可变参数收集剩余 AST 节点。
 
 \texttt{quote \{ ... \}} 产生 Block 节点；\jc{quote expr} 产生单个表达式节点。
 \texttt{\$} 在 quote 内插入 AST 节点。
@@ -2011,25 +2039,36 @@ Literal & value、isString、isImaginary、isKeyword \\
 Variable、Unary、Binary & name；op、right；op、left、right \\
 GroupingExpr、SequenceExpr & expression；expressions \\
 Assign、DestructAssign & name/pattern、value、isRef、isState、isLocal、isConst、typeHint \\
+TypeAssertExpr & name、value、typeHint \\
+ExprAssign、LocalDecl/RefDecl/StateDecl/ConstDecl & target、value；name、isConst \\
+DeleteExpr & names \\
 CompoundAssign & target、op、value、isRef、isState、isLocal \\
 Block、IfExpr & statements；condition、thenBranch、elseBranch \\
 WhileExpr、ForExpr & condition、body；initializer、condition、update、body \\
 ForInExpr、MatchExpr & pattern、iterable、body、isLocal、isConst；subject、branches \\
 TryCatchExpr、DeferExpr & tryBody、branches；body \\
+BreakExpr、ContinueExpr、ReturnExpr、ThrowExpr & 无字段；无字段；value；value \\
 Call、InvokeExpr、MethodCallExpr & callee、arguments；callee；object、method、arguments \\
-LambdaExpr & name、params、paramIsRef、paramIsConst、defaultExprs、restName、paramTypes、returnType \\
+SpreadExpr、KeywordArgExpr & value、isKeyword；name、value \\
+LambdaExpr & name、params、paramIsRef、paramIsConst、defaultExprs、restName、paramTypes、returnType、kwargParams、kwargIsRef、kwargIsConst、kwargDefaultExprs、kwargTypes、kwargsName、rawBody、body \\
 MatrixNode、ListNode、SetLiteral & elements \\
 DictLiteral & entries（键值节点对） \\
 IndexAccess、DotAccess & object、indices；object、field \\
 FStringExpr & literals、exprs、formatSpecs \\
+ListCompExpr、SetCompExpr、DictCompExpr、MatrixCompExpr & valueExpr、clauses；keyExpr、valueExpr、clauses \\
+SliceExpr & start、end、step \\
+IndexAssign、DotAssign & name、objectExpr、indexChain、value；object、field、value \\
 ClassDefExpr & name、superClassExpr、staticProperties、instanceProperties \\
 NamespaceDecl & name、body \\
+SuperExpr、SelfExpr、ContextKeyword & 无字段；无字段；kind \\
 EnumDefExpr、ImportExpr & name、members；path \\
 MacroDefExpr、MacroCallExpr & name、params、restName、isTokenMacro、body；macroName、arguments \\
 QuoteExpr、UnquoteExpr & body；expr \\
 VariablePattern、RestPattern & name、modifier、isConst、typeHint \\
+LiteralPattern、ExprPattern、DynamicAssertPattern & literal；expr；expr \\
 ListPattern、MatrixPattern & elements、rest；rows、restRow \\
 DictPattern、DefaultPattern & entries、rest；inner、defaultExpr \\
+CompClause、MatchBranch & pattern、iterable、conditions；patterns、guard、body \\
 \bottomrule
 \end{longtable}
 \end{center}
@@ -2046,8 +2085,9 @@ DictPattern、DefaultPattern & entries、rest；inner、defaultExpr \\
 \jc{stream.parse()} 解析剩余 token；\jc{stream.parseOne()} 解析一个节点。
 Token 的 \jc{type} 与 \jc{lexeme} 同步更新；解析器检查两者一致。
 syntax 返回 AST 节点或列表，平铺规则与 macro 相同。
-TokenStream 提供 \jc{tokens}、\jc{peek}、\jc{advance}、\jc{match}、\jc{consume}、\jc{insert}、
+TokenStream 提供 \jc{tokens}、\jc{peek}、\jc{previous}、\jc{advance}、\jc{match}、\jc{consume}、\jc{insert}、
 \jc{set}、\jc{remove} 与 \jc{isAtEnd}；Token 包含 \jc{type}、\jc{lexeme}、\jc{line}、\jc{position}。
+\jc{Token(type, lexeme, [line], [position])} 可以构造并修改 token；\jc{previous()} 返回最近消费的 token。
 Token 类型与 lexeme 保持一致；两者出现差异时产生 \jc{TypeError}；token 流缺少闭合时产生 \jc{ParserError}。
 
 \begin{lstlisting}
@@ -2077,7 +2117,7 @@ syntax plus_to_star(stream) = {
 
 字符串是只读值，长度、索引、切片与迭代按 UTF-8 code point 计算。
 负索引从末尾回绕。切片形式为 \jc{s[i:j:k]}。
-字符串支持 \jc{+} 拼接与 \jc{*} 重复。
+字符串支持 \jc{+} 拼接与 \jc{*} 重复；重复满足交换位置，\jc{3 * "abc"} 与 \jc{"abc" * 3} 等价。
 字符串索引赋值产生 \jc{RuntimeError}。
 
 \jc{ord(s)} 返回首字符 code point；\jc{chr(n)} 返回对应字符。
@@ -2139,11 +2179,13 @@ list 越界访问产生 \jc{ValueError}。
 \subsubsection{dict}
 
 dict 按键插入顺序迭代。键读取缺失时产生 \jc{RuntimeError}；键赋值新增或更新。
+\jc{dict + dict} 合并键，右侧覆盖左侧；\jc{dict - keys} 返回剔除指定键的新 dict。
 
 \subsubsection{set}
 
 set 保持插入顺序，忽略重复元素。集合运算包括并 \jc{|}、交 \jc{&}、差 \jc{-}、
 对称差 \texttt{\textasciicircum\textasciicircum}。集合相等比较元素集合，迭代按插入顺序。
+\jc{set * set} 产生笛卡尔积，元素为冻结二元 list。
 
 \subsubsection{哈希与键}
 
@@ -2157,6 +2199,10 @@ dict key 与 set 元素必须可哈希。可哈希值集合与相等规则由第
 
 矩阵字面量为 \jc{[row; row; ...]}。\jc{matrix(r,c,...)}、\jc{toMatrix(list)} 按行构造。
 \jc{toList(matrix)} 按行输出。
+矩阵字面量元素本身是矩阵时执行块拼接：\jc{[A, B; C, D]} 要求每行拼接后的列数一致。
+嵌套的 \jc{[[1,2],[3,4]]} 按水平拼接产生一行矩阵。
+矩阵推导式 \jc{[expr for ...]} 对标量产生一行矩阵；元素为矩阵时按行方向拼接分块矩阵。
+list 推导式 \jc{@[expr for ...]} 始终产生 list。
 
 \jc{A[i]} 返回第 i 列；\jc{A[i,j]} 返回元素。
 \jc{A[r,:]}、\jc{A[:,c]}、\jc{A[r0:r1,c0:c1]} 返回行、列或子矩阵。
@@ -2375,6 +2421,7 @@ block          = "{" { expression } "}" ;
 
 expression     = sequence ;
 sequence       = assignment { "," assignment } ;
+assign-expr    = assignment ;
 assignment     = ternary [ assign-op assignment ] ;
 assign-op      = "=" | "+=" | "-=" | "*=" | "/=" | "%="
                | "~/=" | "\\=" | "^=" | "&=" | "|=" | "^^="
@@ -2400,7 +2447,7 @@ as-expr        = postfix { "as" postfix } ;
 postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 call-suffix    = "(" [ arguments ] ")" ;
 index-suffix   = "[" index-arg { "," index-arg } "]" ;
-index-arg      = expression
+index-arg      = assign-expr
                | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 \end{lstlisting}
@@ -2423,14 +2470,14 @@ primary        = literal | identifier | "(" expression ")"
                | return-expr | break-expr | continue-expr | throw-expr ;
 
 list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
-set-literal    = "@{" [ expression { "," expression } ] "}" ;
+set-literal    = "@{" [ assign-expr { "," assign-expr } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
-dict-entry     = expression ":" expression
-               | "..." expression
+dict-entry     = assign-expr ":" assign-expr
+               | "..." assign-expr
                | identifier ;
 matrix-literal = "[" [ matrix-row { ";" matrix-row } ] "]" ;
-matrix-row     = expression { "," expression } ;
-lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
+matrix-row     = assign-expr { "," assign-expr } ;
+lambda         = "(" [ params ] ")" "=>" ( assign-expr | block ) ;
 quote-expr     = "quote" ( block | expression ) ;
 macro-call     = "@" identifier [ "(" [ arguments ] ")" ] [ block ] ;
 \end{lstlisting}
@@ -2439,12 +2486,12 @@ macro-call     = "@" identifier [ "(" [ arguments ] ")" ] [ block ] ;
 
 \begin{lstlisting}
 binding        = [ "const" ] [ "local" | "ref" | "state" ]
-                 binding-target [ ":" expression ] [ "=" expression ] ;
+                 binding-target [ ":" expression ] [ "=" assign-expr ] ;
 binding-target = identifier | pattern ;
 function-binding = [ "const" ] [ "local" | "ref" | "state" ]
                  identifier "(" [ params ] ")" [ "->" expression ]
                  "=" function-body ;
-function-body  = expression | block ;
+function-body  = assign-expr | block ;
 
 name-spec      = [ "$" ] identifier | string ;
 import-expr    = "import" [ "@" ] ( module-path | string ) ;
@@ -2459,12 +2506,12 @@ trait-list     = expression { "," expression } ;
 class-body     = "{" { class-member } "}" ;
 class-member   = { member-modifier } ( field-decl | method-decl ) ;
 member-modifier = "static" | "local" | "const" ;
-field-decl     = member-name [ "=" expression ] ;
+field-decl     = member-name [ "=" ternary ] ;
 method-decl    = member-name "(" [ params ] ")" [ "->" expression ]
                  [ "=" function-body ] ;
 member-name    = identifier | keyword ;
 enum-expr      = "enum" [ name-spec ] "{" { enum-member } "}" ;
-enum-member    = ( identifier | keyword ) [ "=" expression ] ;
+enum-member    = ( identifier | keyword ) [ "=" ternary ] ;
 macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")"
                  "=" function-body ;
 macro-params   = macro-param { "," macro-param } ;
@@ -2491,10 +2538,10 @@ try-expr       = "try" expression [ catch-clause ] ;
 catch-clause   = "catch" ( "(" branch-patterns ")" expression
                          | "{" match-arms "}" ) ;
 defer-expr     = "defer" expression ;
-return-expr    = "return" [ expression ] ;
+return-expr    = "return" [ assign-expr ] ;
 break-expr     = "break" ;
 continue-expr  = "continue" ;
-throw-expr     = "throw" expression ;
+throw-expr     = "throw" assign-expr ;
 \end{lstlisting}
 
 \subsection{参数、实参与推导式}
@@ -2504,24 +2551,24 @@ params         = param { "," param } [ ";" param { "," param } ]
                | ";" param { "," param } ;
 param          = [ "const" ] [ "ref" | "local" | "state" ]
                  ( "..." identifier | pattern [ ":" expression ]
-                   [ "=" expression ] ) ;
+                   [ "=" assign-expr ] ) ;
 arguments      = argument { "," argument } [ ";" argument { "," argument } ]
                | ";" argument { "," argument } ;
-argument       = expression | identifier "=" expression | "..." expression ;
+argument       = assign-expr | identifier "=" assign-expr | "..." assign-expr ;
 
 comp-clause    = "for" "(" for-pattern "in" expression ")"
                  { "if" "(" expression ")" } ;
 comp-clauses   = comp-clause { comp-clause } ;
-list-comprehension   = "@[" expression comp-clauses "]" ;
-matrix-comprehension = "[" expression comp-clauses "]" ;
-set-comprehension    = "@{" expression comp-clauses "}" ;
-dict-comprehension   = "{" expression ":" expression comp-clauses "}" ;
+list-comprehension   = "@[" assign-expr comp-clauses "]" ;
+matrix-comprehension = "[" assign-expr comp-clauses "]" ;
+set-comprehension    = "@{" assign-expr comp-clauses "}" ;
+dict-comprehension   = "{" assign-expr ":" assign-expr comp-clauses "}" ;
 \end{lstlisting}
 
 \subsection{模式}
 
 \begin{lstlisting}
-pattern        = primary-pattern [ "=" expression ] ;
+pattern        = primary-pattern [ "=" ternary ] ;
 primary-pattern = "_" | variable-pattern | literal
                | list-pattern | matrix-pattern
                | dict-pattern | rest-pattern | dynamic-assert-pattern
@@ -2535,7 +2582,7 @@ pattern-row    = pattern { "," pattern } ;
 dict-pattern   = "{" [ field-pattern { "," field-pattern }
                  [ "," rest-pattern ] ] "}" ;
 field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
-                 [ ":" pattern | "=" expression ]
+                 [ ":" pattern | "=" ternary ]
                | string ":" pattern ;
 dynamic-assert-pattern = "(" expression ")" ;
 branch-patterns = pattern { "," pattern } ;

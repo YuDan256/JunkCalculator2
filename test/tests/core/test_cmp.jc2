@@ -57,6 +57,20 @@ assert(L[0].x == 1 && L[1].x == 2 && L[2].x == 3, "natural sort uses __cmp__")
 assert(@[Cmp(3), Cmp(1), Cmp(2)].min().x == 1, "min uses __cmp__")
 assert(@[Cmp(3), Cmp(1), Cmp(2)].max().x == 3, "max uses __cmp__")
 
+// ── __lt__ + __eq__ 驱动自然序 ──
+class LtCmp {
+    x = 0
+    init(v) = { self.x = v }
+    __eq__(o) = self.x == o.x
+    __lt__(o) = self.x < o.x
+}
+LL = @[LtCmp(3), LtCmp(1), LtCmp(2)]
+LL.sort()
+assert(LL[0].x == 1 && LL[1].x == 2 && LL[2].x == 3, "natural sort uses __lt__/__eq__")
+assert((LtCmp(1) <=> LtCmp(2)) == -1, "__lt__/__eq__ drive <=>")
+assert(@[LtCmp(3), LtCmp(1), LtCmp(2)].min().x == 1, "min uses __lt__/__eq__")
+
+
 // ── 比较器返回数值取符号；返回 bool 报错 ──
 assert(@[3, 1, 2].sorted((x, y) => x <=> y) == @[1, 2, 3], "sorted with <=>")
 assert(@[3, 1, 2].sorted((x, y) => y <=> x) == @[3, 2, 1], "sorted descending with <=>")

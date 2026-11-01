@@ -1082,7 +1082,9 @@ $|a-b| \le \max(\mathrm{atol}, \mathrm{rtol}\cdot\max(|a|,|b|))$；
 \end{itemize}
 
 \jc{is} 比较对象 identity；相等不要求 \jc{is}。
-\jc{<=>} 返回 \jc{-1}、\jc{0}、\jc{1}，其定义域为数值、字符串与实现 \jc{__cmp__} 的实例。
+\jc{<=>} 返回 \jc{-1}、\jc{0}、\jc{1}，其定义域为数值、字符串、实现 \jc{__cmp__}/\jc{__rcmp__} 的实例，
+或由 \jc{__lt__} 与 \jc{__eq__} 推导全序的实例。
+自然序的 \jc{sort}、\jc{sorted}、\jc{min} 与 \jc{max} 使用同一比较规则。
 
 \subsubsection{哈希规则}
 
@@ -1789,7 +1791,9 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 
 协议方法沿 class 链查找。\jc{__cmp__} 返回实数，符号决定顺序；返回 bool 或 NaN 时产生 \jc{TypeError}。
 \jc{__eq__} 与 \jc{__hash__} 同时存在时，相等实例产生相同 hash。
-\jc{__eq__} 与 \jc{__lt__} 可以推断 \jc{!=}、\jc{<=}、\jc{>}、\jc{>=}；完全序场景使用推断，偏序场景显式实现其余比较方法。
+\jc{__eq__} 与 \jc{__lt__} 可以推断 \jc{!=}、\jc{<=}、\jc{>}、\jc{>=} 与 \jc{<=>}；
+\jc{__cmp__}/\jc{__rcmp__} 可作为 \jc{<}、\jc{<=}、\jc{>}、\jc{>=}、\jc{==}、\jc{!=} 与 \jc{<=>} 的回退。
+完全序场景使用推断，偏序场景显式实现其余比较方法。
 
 隐式协议调用使用 class 属性，实例上的同名覆盖只影响显式调用。
 \jc{__match__} 返回 list 或 dict 作为匹配视图；\jc{__unpack__} 返回位置 spread 的 list；

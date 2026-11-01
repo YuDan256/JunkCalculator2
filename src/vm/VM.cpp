@@ -10807,6 +10807,30 @@ int VM::compareValues(const Value& a, const Value& b) {
         auto [m2, o2] = findDunder(b, DUNDER_CMP);
         if (m2) return -compareResultSign(callDunder(b, m2, o2, { a }), DUNDER_CMP);
     }
+    // __lt__ / __eq__ 组合提供自然序。sort / min / max / <=> 使用同一入口。
+    bool hasLt = false;
+    bool lessAB = false;
+    bool lessBA = false;
+    if (a.isInstance()) {
+        auto [m, owner] = findDunder(a, DUNDER_LT);
+        if (m) {
+            hasLt = true;
+            lessAB = evaluateTruthiness(callDunder(a, m, owner, { b }));
+        }
+    }
+    if (b.isInstance()) {
+        auto [m, owner] = findDunder(b, DUNDER_LT);
+        if (m) {
+            hasLt = true;
+            lessBA = evaluateTruthiness(callDunder(b, m, owner, { a }));
+        }
+    }
+    if (hasLt) {
+        if (lessAB) return -1;
+        if (lessBA) return 1;
+        if (Value::equals(a, b)) return 0;
+        JC2_THROW(TypeError, "Values are not totally ordered with __lt__/__eq__: " + a.typeName() + " and " + b.typeName() + ".");
+    }
     auto orderable = [](const Value& v) {
         return v.isNumber() || v.isBigInt() || v.isObjType(ObjType::FRACTION) || v.isString();
     };

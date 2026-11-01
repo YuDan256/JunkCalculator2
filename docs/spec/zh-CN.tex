@@ -323,12 +323,24 @@ quoted-identifier = "`" { any-char-except-backtick-and-newline } "`" ;
 letter        = "A".."Z" | "a".."z" | "_" | unicode-letter ;
 number        = decimal-integer | hex-integer | bin-integer
               | oct-integer | float-number | imaginary-number ;
+decimal-integer = digit { [ "_" ] digit } ;
+hex-integer   = ( "0x" | "0X" ) hexdigit { [ "_" ] hexdigit } ;
+bin-integer   = ( "0b" | "0B" ) bindigit { [ "_" ] bindigit } ;
+oct-integer   = ( "0o" | "0O" ) octdigit { [ "_" ] octdigit } ;
+float-number  = digit { [ "_" ] digit } "." digit { [ "_" ] digit } [ exponent ]
+              | digit { [ "_" ] digit } exponent ;
+exponent      = ( "e" | "E" ) [ "+" | "-" ] digit { digit } ;
+imaginary-number = ( decimal-integer | hex-integer | bin-integer
+              | oct-integer | float-number ) "i" ;
 string        = quoted-string | triple-string | raw-string | f-string ;
-raw-string    = ordinary-raw | delimited-raw ;
+raw-string    = ordinary-raw | raw-triple | delimited-raw ;
 ordinary-raw  = 'r"' { any-char-except-quote } '"' | "r'" { any-char-except-quote } "'" ;
+raw-triple    = 'r"""' { any-char } '"""' | "r'''" { any-char } "'''" ;
 delimited-raw = 'r"' [ raw-delimiter ] "(" { any-char } ")" [ raw-delimiter ] '"'
               | "r'" [ raw-delimiter ] "(" { any-char } ")" [ raw-delimiter ] "'" ;
 raw-delimiter = identifier ;
+f-string      = "f" ( '"' { any-char } '"' | "'" { any-char } "'"
+              | '"""' { any-char } '"""' | "'''" { any-char } "'''" ) ;
 \end{lstlisting}
 
 \subsection{编译器指令}
@@ -447,7 +459,7 @@ macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")" "=" functio
 macro-params   = macro-param { "," macro-param } ;
 macro-param    = [ "..." ] identifier ;
 syntax-def     = "syntax" [ "$" ] identifier "(" identifier ")" "=" function-body ;
-host-class-expr = "class" ;
+context-self-expr = "class" | "namespace" ;
 \end{lstlisting}
 
 \jc{name-spec} 为标识符时建立同名绑定；为字符串时设置定义名，绑定由外围赋值完成。
@@ -498,9 +510,7 @@ pipe-step      = "." ( identifier | keyword ) [ "(" [ arguments ] ")" ]
                | logical-or ;
 logical-or     = logical-and { "||" logical-and } ;
 logical-and    = comparison { "&&" comparison } ;
-comparison     = bitwise-or [ compare-tail ] ;
-compare-tail   = compare-op bitwise-or
-               | { compare-op bitwise-or } ;
+comparison     = bitwise-or { compare-op bitwise-or } ;
 compare-op     = "==" | "!=" | "<" | "<=" | ">" | ">="
                | "<=>" | "in" | "is" | "<:" ;
 
@@ -529,7 +539,7 @@ primary        = literal | identifier | "(" expression ")"
                | binding | function-binding | import-expr
                | include-expr
                | delete-expr
-               | host-class-expr
+               | context-self-expr
                | class-expr | trait-expr | namespace-expr
                | enum-expr | macro-def | syntax-def
                | if-expr | while-expr | for-expr | for-in-expr
@@ -541,7 +551,7 @@ primary        = literal | identifier | "(" expression ")"
 \subsection{字面量与构造}
 
 \begin{lstlisting}
-list-literal   = "@[" [ expression { "," expression } ] "]" ;
+list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
 set-literal    = "@{" [ expression { "," expression } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = expression ":" expression
@@ -564,11 +574,13 @@ dict-comprehension   = "{" expression ":" expression comp-clauses "}" ;
 \subsection{参数与实参}
 
 \begin{lstlisting}
-params         = param { "," param } [ ";" param { "," param } ] ;
+params         = param { "," param } [ ";" param { "," param } ]
+               | ";" param { "," param } ;
 param          = [ "const" ] [ "ref" | "local" | "state" ]
                  ( "..." identifier | pattern [ ":" expression ]
                    [ "=" expression ] ) ;
-arguments      = argument { "," argument } [ ";" argument { "," argument } ] ;
+arguments      = argument { "," argument } [ ";" argument { "," argument } ]
+               | ";" argument { "," argument } ;
 argument       = expression | identifier "=" expression
                | "..." expression ;
 \end{lstlisting}
@@ -722,7 +734,7 @@ local x = 2       // SyntaxError: Variable 'x' has already been declared
 
 普通赋值更新既有绑定。内层作用域可以声明同名绑定，内层绑定遮蔽外层绑定。
 声明自身采用先求值右侧、后注册左侧的顺序，因此 \jc{local x = x} 捕获外层 \jc{x}。
-独立声明 \jc{local x} 捕获外层 \jc{x} 的当前值；外层 \jc{x} 缺失时产生 \jc{SyntaxError}。
+独立声明 \jc{local x} 捕获外层 \jc{x} 的当前值；外层 \jc{x} 缺失时产生 \jc{RuntimeError}。
 
 局部名字在声明点之后可用；在声明点之前读取产生 \jc{SyntaxError}。
 函数名与其他全局或命名空间绑定在调用时解析，因此后定义的函数可以从先定义的函数体调用。
@@ -1152,7 +1164,7 @@ chained comparison 的中间表达式只求值一次。
 \midrule
 1 & 后缀 \jc{()}、\jc{[]}、\jc{.} & 左 \\
 2 & \jc{as} & 左 \\
-3 & 前缀 \jc{!}、\jc{-}、\jc{+}、\jc{~} & 右 \\
+3 & 前缀 \jc{!}、\jc{-}、\jc{+}、\texttt{\textasciitilde} & 右 \\
 4 & \jc{^} & 右 \\
 5 & \jc{*}、\jc{/}、\texttt{\textasciitilde/}、\texttt{\textbackslash}、\texttt{\%} & 左 \\
 6 & \jc{+}、\jc{-} & 左 \\
@@ -2001,7 +2013,8 @@ MatrixNode、ListNode、SetLiteral & elements \\
 DictLiteral & entries（键值节点对） \\
 IndexAccess、DotAccess & object、indices；object、field \\
 FStringExpr & literals、exprs、formatSpecs \\
-ClassDefExpr、NamespaceDecl & name、superClassExpr、properties；name、body \\
+ClassDefExpr & name、superClassExpr、staticProperties、instanceProperties \\
+NamespaceDecl & name、body \\
 EnumDefExpr、ImportExpr & name、members；path \\
 MacroDefExpr、MacroCallExpr & name、params、restName、isTokenMacro、body；macroName、arguments \\
 QuoteExpr、UnquoteExpr & body；expr \\
@@ -2292,21 +2305,24 @@ quoted-identifier = "`" { any-char-except-backtick-newline } "`" ;
 letter        = "A".."Z" | "a".."z" | "_" | unicode-letter ;
 digit         = "0".."9" ;
 decimal-integer = digit { [ "_" ] digit } ;
-hex-integer   = "0x" hexdigit { [ "_" ] hexdigit } ;
-bin-integer   = "0b" bindigit { [ "_" ] bindigit } ;
-oct-integer   = "0o" octdigit { [ "_" ] octdigit } ;
+hex-integer   = ( "0x" | "0X" ) hexdigit { [ "_" ] hexdigit } ;
+bin-integer   = ( "0b" | "0B" ) bindigit { [ "_" ] bindigit } ;
+oct-integer   = ( "0o" | "0O" ) octdigit { [ "_" ] octdigit } ;
 float-number  = digit { [ "_" ] digit } "." digit { [ "_" ] digit }
-              [ exponent ] ;
+              [ exponent ]
+              | digit { [ "_" ] digit } exponent ;
 exponent      = ( "e" | "E" ) [ "+" | "-" ] digit { digit } ;
 imaginary-number = ( decimal-integer | hex-integer | bin-integer | oct-integer | float-number ) "i" ;
 quoted-string = '"' { string-char } '"' | "'" { string-char } "'" ;
 triple-string = '"""' { any-char } '"""' | "'''" { any-char } "'''" ;
-raw-string    = ordinary-raw | delimited-raw ;
+raw-string    = ordinary-raw | raw-triple | delimited-raw ;
 ordinary-raw  = 'r"' { any-char-except-quote } '"' | "r'" { any-char-except-quote } "'" ;
+raw-triple    = 'r"""' { any-char } '"""' | "r'''" { any-char } "'''" ;
 delimited-raw = 'r"' [ raw-delimiter ] "(" { any-char } ")" [ raw-delimiter ] '"'
               | "r'" [ raw-delimiter ] "(" { any-char } ")" [ raw-delimiter ] "'" ;
 raw-delimiter = identifier ;
-f-string      = "f" ( '"' { any-char } '"' | "'" { any-char } "'" ) ;
+f-string      = "f" ( '"' { any-char } '"' | "'" { any-char } "'"
+              | '"""' { any-char } '"""' | "'''" { any-char } "'''" ) ;
 number        = decimal-integer | hex-integer | bin-integer
               | oct-integer | float-number | imaginary-number ;
 string        = quoted-string | triple-string | raw-string | f-string ;
@@ -2360,8 +2376,7 @@ pipe-step      = "." ( identifier | keyword ) [ "(" [ arguments ] ")" ]
                | logical-or ;
 logical-or     = logical-and { "||" logical-and } ;
 logical-and    = comparison { "&&" comparison } ;
-comparison     = bitwise-or [ compare-tail ] ;
-compare-tail   = compare-op bitwise-or | { compare-op bitwise-or } ;
+comparison     = bitwise-or { compare-op bitwise-or } ;
 compare-op     = "==" | "!=" | "<" | "<=" | ">" | ">="
                | "<=>" | "in" | "is" | "<:" ;
 bitwise-or     = bitwise-xor { "|" bitwise-xor } ;
@@ -2390,13 +2405,13 @@ primary        = literal | identifier | "(" expression ")"
                | quote-expr | macro-call | block
                | binding | function-binding | import-expr | include-expr
                | delete-expr
-               | host-class-expr | class-expr | trait-expr
+               | context-self-expr | class-expr | trait-expr
                | namespace-expr | enum-expr | macro-def | syntax-def
                | if-expr | while-expr | for-expr | for-in-expr
                | match-expr | try-expr | defer-expr
                | return-expr | break-expr | continue-expr | throw-expr ;
 
-list-literal   = "@[" [ expression { "," expression } ] "]" ;
+list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
 set-literal    = "@{" [ expression { "," expression } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = expression ":" expression
@@ -2445,7 +2460,7 @@ macro-params   = macro-param { "," macro-param } ;
 macro-param    = [ "..." ] identifier ;
 syntax-def     = "syntax" [ "$" ] identifier "(" identifier ")"
                  "=" function-body ;
-host-class-expr = "class" ;
+context-self-expr = "class" | "namespace" ;
 \end{lstlisting}
 
 \subsection{控制表达式}
@@ -2474,11 +2489,13 @@ throw-expr     = "throw" expression ;
 \subsection{参数、实参与推导式}
 
 \begin{lstlisting}
-params         = param { "," param } [ ";" param { "," param } ] ;
+params         = param { "," param } [ ";" param { "," param } ]
+               | ";" param { "," param } ;
 param          = [ "const" ] [ "ref" | "local" | "state" ]
                  ( "..." identifier | pattern [ ":" expression ]
                    [ "=" expression ] ) ;
-arguments      = argument { "," argument } [ ";" argument { "," argument } ] ;
+arguments      = argument { "," argument } [ ";" argument { "," argument } ]
+               | ";" argument { "," argument } ;
 argument       = expression | identifier "=" expression | "..." expression ;
 
 comp-clause    = "for" "(" for-pattern "in" expression ")"

@@ -175,7 +175,7 @@ UTF-8 解码按最长合法序列进行。解码失败时，在出现位置产�
 \subsection{注释}
 
 行注释以 \jc{//} 开始，延续到行尾。
-块注释以 \jc{/*} 开始，以 \jc{*/} 结束；块注释可以跨行。
+块注释以 \jc{/*} 开始，以 \jc{*/} 结束；块注释可以跨行，并支持嵌套。
 注释在词法分析阶段结束，注释内容进入诊断信息的方式由实现决定。
 
 \subsection{词法单元}
@@ -315,7 +315,8 @@ whitespace    = " " | "\t" | "\f" | newline ;
 newline       = "\n" | "\r\n" | "\r" ;
 comment       = line-comment | block-comment ;
 line-comment  = "//" { any-char-except-newline } newline ;
-block-comment = "/*" { any-char | newline } "*/" ;
+block-comment = "/*" { block-comment | comment-text } "*/" ;
+comment-text  = ? any char except "*/" ? ;
 identifier    = plain-identifier | quoted-identifier ;
 plain-identifier = letter { letter | digit | "_" } ;
 quoted-identifier = "`" { any-char-except-backtick-and-newline } "`" ;
@@ -442,10 +443,10 @@ method-decl    = member-name "(" [ params ] ")" [ "->" expression ]
 member-name    = identifier | keyword ;
 enum-expr      = "enum" [ name-spec ] "{" { enum-member } "}" ;
 enum-member    = ( identifier | keyword ) [ "=" expression ] ;
-macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")" function-body ;
+macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")" "=" function-body ;
 macro-params   = macro-param { "," macro-param } ;
 macro-param    = [ "..." ] identifier ;
-syntax-def     = "syntax" [ "$" ] identifier "(" identifier ")" function-body ;
+syntax-def     = "syntax" [ "$" ] identifier "(" identifier ")" "=" function-body ;
 host-class-expr = "class" ;
 \end{lstlisting}
 
@@ -543,7 +544,9 @@ primary        = literal | identifier | "(" expression ")"
 list-literal   = "@[" [ expression { "," expression } ] "]" ;
 set-literal    = "@{" [ expression { "," expression } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
-dict-entry     = expression ":" expression ;
+dict-entry     = expression ":" expression
+               | "..." expression
+               | identifier ;
 matrix-literal = "[" matrix-row { ";" matrix-row } "]" ;
 matrix-row     = expression { "," expression } ;
 lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
@@ -578,7 +581,7 @@ argument       = expression | identifier "=" expression
 \begin{lstlisting}
 pattern        = primary-pattern [ "=" expression ] ;
 primary-pattern = "_" | variable-pattern | literal
-               | list-pattern | matrix-pattern | set-pattern
+               | list-pattern | matrix-pattern
                | dict-pattern | rest-pattern | dynamic-assert-pattern
                | [ "local" | "ref" | "state" | "const" ] primary-pattern ;
 
@@ -587,11 +590,13 @@ rest-pattern   = "..." identifier [ ":" expression ] ;
 list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
 matrix-pattern = "[" [ pattern-row { ";" pattern-row } ] "]" ;
 pattern-row    = pattern { "," pattern } ;
-set-pattern    = "@{" [ pattern { "," pattern } ] "}" ;
-dict-pattern   = "{" [ field-pattern { "," field-pattern } ] "}" ;
-field-pattern  = ( identifier | string ) ":" pattern
-               | identifier [ "=" expression ] ;
-dynamic-assert-pattern = "(" expression ")" | set-literal ;
+
+dict-pattern   = "{" [ field-pattern { "," field-pattern }
+                 [ "," rest-pattern ] ] "}" ;
+field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
+                 [ ":" pattern | "=" expression ]
+               | string ":" pattern ;
+dynamic-assert-pattern = "(" expression ")" ;
 branch-patterns = pattern { "," pattern } ;
 \end{lstlisting}
 
@@ -633,6 +638,7 @@ branch-patterns = pattern { "," pattern } ;
   \item 仅由标识符与逗号组成的序列产生简写 dict，例如 \texttt{\{a, b\}}，
         等价于 \texttt{\{"a": a, "b": b\}}。
   \item 简写条目与显式键值条目可以混合，例如 \texttt{\{a, b, c: 3\}}。
+  \item \jc{...expr} 条目展开 dict 并合并其键值，例如 \texttt{\{a, ...d\}}。
   \item 其余情况按块解析。
 \end{enumerate}
 
@@ -662,7 +668,7 @@ b = 2
   \item \jc{local}、\jc{ref}、\jc{state} 三者互斥；\jc{const} 可以与任一者组合。
   \item 参数列表中 \jc{;} 出现至多一次；\jc{...rest} 与 \jc{...kw} 位于各自区域末尾。
   \item 默认参数位于必填位置参数之后；仅关键字参数位于 \jc{;} 之后。
-  \item pattern 中 \jc{...rest} 出现至多一次；rest 目标位于 pattern 末尾。
+  \item pattern 中 \jc{...rest} 出现至多一次；rest 目标可以位于 list 或 matrix 行的任意位置，捕获固定头尾之间的元素。
   \item class 体成员名在同类中唯一；重复成员产生 \jc{TypeError}。
   \item enum 成员名在 enum 内唯一；重复成员产生 \jc{TypeError}。
   \item 匿名定义的关键字与左花括号位于同一行。
@@ -1543,8 +1549,9 @@ rest 模式 \jc{...name} 捕获剩余元素；同一行最多一个 rest。
 行内 rest 位于分号前时捕获该行剩余列；位于末尾 \jc{]} 前时捕获剩余行。
 
 dict 模式 \texttt{\{...\}} 匹配 dict、实例字段与 namespace 字段。
+字段可以带 \jc{local}、\jc{ref}、\jc{state}、\jc{const} 修饰符。
 简写 \texttt{\{name\}} 等价于 \texttt{\{"name": name\}}。
-rest 捕获剩余字段并绑定为 dict。
+rest 捕获剩余字段并绑定为 dict，位于字段列表末尾。
 
 \subsubsection{视图提取}
 
@@ -1600,6 +1607,7 @@ local class Temp { ... }    // 局部绑定
 \end{lstlisting}
 
 标识符名称建立同名绑定；字符串名称设置定义名，绑定由外围赋值建立。
+字符串名称使用字符串字面量；f-string 作为定义名产生 \jc{ParserError}。
 \jc{local}、\jc{const} 等修饰符需要变量绑定；字符串名称与修饰符组合产生 \jc{SyntaxError}。
 匿名 class 的 \texttt{\{} 与 \jc{class} 位于同一行；\jc{extends} 形式同样保持同行。
 
@@ -1715,7 +1723,7 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 \midrule
 \jc{__add__}、\jc{__sub__}、\jc{__mul__}、\jc{__div__}、\jc{__idiv__}、\jc{__ldiv__}、\jc{__mod__}、\jc{__pow__} & 算术 \\
 \jc{__lshift__}、\jc{__rshift__}、\jc{__bitand__}、\jc{__bitor__}、\jc{__bitxor__} & 位移与位运算 \\
-\jc{__radd__}、\jc{__rsub__}、\jc{__rmul__}、\jc{__rdiv__}、\jc{__rmod__}、\jc{__rpow__} & 反射算术 \\
+\jc{__radd__}、\jc{__rsub__}、\jc{__rmul__}、\jc{__rdiv__}、\jc{__ridiv__}、\jc{__rldiv__}、\jc{__rmod__}、\jc{__rpow__}、\jc{__rlshift__}、\jc{__rrshift__}、\jc{__rbitand__}、\jc{__rbitor__}、\jc{__rbitxor__} & 反射算术与位运算 \\
 \jc{__neg__}、\jc{__bitnot__} & 一元运算 \\
 \jc{__eq__}、\jc{__neq__}、\jc{__lt__}、\jc{__le__}、\jc{__gt__}、\jc{__ge__} & 比较 \\
 \jc{__cmp__}、\jc{__rcmp__} & 三向比较与反射 \\
@@ -1822,6 +1830,7 @@ enum 可作为 dict key 或 set 元素。
 namespace 是词法作用域。顶层变量中的 public 绑定在 namespace 构造结束时导出为 public 字段。
 导出值为该变量在构造结束时的值。
 \jc{local} 绑定的作用域终止于 namespace 体。
+具名 namespace 在体内建立同名 \jc{const} 自绑定；对该名字赋值在编译期产生 \jc{SyntaxError}。
 
 namespace 函数是普通闭包。函数体中的自由名字按词法环境解析。
 \jc{self} 在调用时绑定到调用目标；\jc{self.name} 访问该目标的字段。
@@ -1968,7 +1977,8 @@ y = 2
 \subsection{ASTNode 结构}
 
 每个 AST 节点是 \jc{ASTNode} 实例，包含 \jc{type}（字符串）、\jc{line} 与 \jc{position}；
-其余字段按节点类别保存。
+其余字段按节点类别保存。本表列出规范使用的核心字段；宏系统暴露的完整字段集合由
+\jc{ast} 模块定义。
 
 \begin{center}
 \small
@@ -2051,7 +2061,7 @@ syntax plus_to_star(stream) = {
 \jc{ord(s)} 返回首字符 code point；\jc{chr(n)} 返回对应字符。
 \jc{ord} 的参数为空字符串时产生 \jc{RuntimeError}。
 \jc{parseNum(s)} 解析十进制整数、浮点与指数形式。
-\jc{int(s)} 解析十进制、十六进制与二进制整数字符串。
+\jc{int(s)} 解析十进制、十六进制、二进制与八进制整数字符串。
 
 格式化字符串的插值形式为 \texttt{f"text \{expr::spec\} text"}。
 格式说明支持填充、对齐、符号、\texttt{\#}、零填充、宽度、分组、精度与类型。
@@ -2135,6 +2145,8 @@ dict key 与 set 元素必须可哈希。可哈希值集合与相等规则由第
 
 \jc{A * B} 为矩阵乘法；\jc{A / B} 为右除 $A \cdot B^{-1}$；
 \texttt{A \textbackslash{} B} 为左除 $A^{-1} \cdot B$；\jc{A ^ n} 为整数幂。
+矩阵与标量相加 \jc{A + c}、\jc{c + A} 在方阵上对对角线加 $c$，非方阵产生 \jc{MathError}；
+矩阵与矩阵相加按同形状逐元素进行。
 
 零元素矩阵规范化为 $0 \times 0$ 矩阵。
 
@@ -2146,6 +2158,7 @@ A = [1, 2; 3, 4]
 A[0, 1]        // 2
 A[0]           // [1; 3]
 A[0:2, 0:2]    // [1, 2; 3, 4]
+A + 1          // [2, 2; 3, 5]
 A \ [1; 0]     // [-2; 3/2]
 \end{lstlisting}
 
@@ -2269,8 +2282,10 @@ token         = identifier | keyword | number | string
               | operator | delimiter | newline | error-token ;
 whitespace    = " " | "\t" | "\f" | newline ;
 newline       = "\n" | "\r\n" | "\r" ;
-comment       = "//" { any-char-except-newline } newline
-              | "/*" { any-char | newline } "*/" ;
+comment       = line-comment | block-comment ;
+line-comment  = "//" { any-char-except-newline } newline ;
+block-comment = "/*" { block-comment | comment-text } "*/" ;
+comment-text  = ? any char except "*/" ? ;
 identifier    = plain-identifier | quoted-identifier ;
 plain-identifier = letter { letter | digit | "_" } ;
 quoted-identifier = "`" { any-char-except-backtick-newline } "`" ;
@@ -2283,7 +2298,7 @@ oct-integer   = "0o" octdigit { [ "_" ] octdigit } ;
 float-number  = digit { [ "_" ] digit } "." digit { [ "_" ] digit }
               [ exponent ] ;
 exponent      = ( "e" | "E" ) [ "+" | "-" ] digit { digit } ;
-imaginary-number = ( decimal-integer | float-number ) "i" ;
+imaginary-number = ( decimal-integer | hex-integer | bin-integer | oct-integer | float-number ) "i" ;
 quoted-string = '"' { string-char } '"' | "'" { string-char } "'" ;
 triple-string = '"""' { any-char } '"""' | "'''" { any-char } "'''" ;
 raw-string    = ordinary-raw | delimited-raw ;
@@ -2384,7 +2399,9 @@ primary        = literal | identifier | "(" expression ")"
 list-literal   = "@[" [ expression { "," expression } ] "]" ;
 set-literal    = "@{" [ expression { "," expression } ] "}" ;
 dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
-dict-entry     = expression ":" expression ;
+dict-entry     = expression ":" expression
+               | "..." expression
+               | identifier ;
 matrix-literal = "[" matrix-row { ";" matrix-row } "]" ;
 matrix-row     = expression { "," expression } ;
 lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
@@ -2423,11 +2440,11 @@ member-name    = identifier | keyword ;
 enum-expr      = "enum" [ name-spec ] "{" { enum-member } "}" ;
 enum-member    = ( identifier | keyword ) [ "=" expression ] ;
 macro-def      = "macro" [ "$" ] identifier "(" [ macro-params ] ")"
-                 function-body ;
+                 "=" function-body ;
 macro-params   = macro-param { "," macro-param } ;
 macro-param    = [ "..." ] identifier ;
 syntax-def     = "syntax" [ "$" ] identifier "(" identifier ")"
-                 function-body ;
+                 "=" function-body ;
 host-class-expr = "class" ;
 \end{lstlisting}
 
@@ -2478,7 +2495,7 @@ dict-comprehension   = "{" expression ":" expression comp-clauses "}" ;
 \begin{lstlisting}
 pattern        = primary-pattern [ "=" expression ] ;
 primary-pattern = "_" | variable-pattern | literal
-               | list-pattern | matrix-pattern | set-pattern
+               | list-pattern | matrix-pattern
                | dict-pattern | rest-pattern | dynamic-assert-pattern
                | [ "local" | "ref" | "state" | "const" ] primary-pattern ;
 variable-pattern = identifier [ ":" expression ] ;
@@ -2486,11 +2503,13 @@ rest-pattern   = "..." identifier [ ":" expression ] ;
 list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
 matrix-pattern = "[" [ pattern-row { ";" pattern-row } ] "]" ;
 pattern-row    = pattern { "," pattern } ;
-set-pattern    = "@{" [ pattern { "," pattern } ] "}" ;
-dict-pattern   = "{" [ field-pattern { "," field-pattern } ] "}" ;
-field-pattern  = ( identifier | string ) ":" pattern
-               | identifier [ "=" expression ] ;
-dynamic-assert-pattern = "(" expression ")" | set-literal ;
+
+dict-pattern   = "{" [ field-pattern { "," field-pattern }
+                 [ "," rest-pattern ] ] "}" ;
+field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
+                 [ ":" pattern | "=" expression ]
+               | string ":" pattern ;
+dynamic-assert-pattern = "(" expression ")" ;
 branch-patterns = pattern { "," pattern } ;
 \end{lstlisting}
 

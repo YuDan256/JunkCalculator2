@@ -49,7 +49,7 @@
       "  ────────────────────────────────────────────────────────────────────",
       "    if  else  while  for  in  is  as  break  continue  return  match  defer",
       "    class  trait  with  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
-      "    try  catch  throw  import  true  false  none  macro  syntax  quote",
+      "    try  catch  throw  import  include  true  false  none  macro  syntax  quote",
       "",
       "  Native Libraries (require `import` before use, use `/help <library>` for details)",
       "  ────────────────────────────────────────────────────────────────────",
@@ -350,6 +350,7 @@
       "    x /= expr           x %= expr           x ^= expr",
       "    x &= expr           x |= expr           x ^^= expr",
       "    x <<= expr          x >>= expr",
+      "    x ~/= expr          x \\= expr",
       "    Also works on indexed elements: l[0] += 1, d.flag |= @{\"X\"}",
       "",
       "",
@@ -417,7 +418,7 @@
       "    ★ Note: Unlike Python or JS, && and || ALWAYS return a strict boolean",
       "      (true or false), never the original operands.",
       "    Truthiness:",
-      "      Falsy:  0, 0.0, int(0), Fraction(0/n), none, \"\", sym(0), empty matrix, range(0)",
+      "      Falsy:  0, 0.0, int(0), Fraction(0/n), none, \"\", sym(0), empty matrix, empty list, empty dict, empty set, range(0)",
       "      Truthy: everything else",
       "",
       "",
@@ -580,7 +581,7 @@
       "      3 + 4*i                         // BROKEN (i is now 9)",
       "",
       "    To recover the variable i after it has been overwritten:",
-      "      i = i()             // i() is a factory function, always available",
+      "      i = 1i              // imaginary literal; i() does not exist",
       "      // Or simply use the literal suffix: 3 + 4i",
       "",
       "    Numeric forms supported:",
@@ -1062,6 +1063,7 @@
       "    g(x, y) = sqrt(x^2 + y^2)          Multi variable",
       "    h(a, b) = { t = a+b; t^2 }         Block body (auto-local t)",
       "    f(x, k = 1) = sin(k * x)           Default parameters supported!",
+      "    f(x: int) -> int = x + 1           Return type annotation",
       "    f(a; b, c = 0) = ...               ';' after = keyword-only parameters",
       "    f(; ...kw) = ...                   kwargs collection (dict of extra keywords)",
       "    f(...args)                         call-site spread (unpack a list/set/matrix/string)",
@@ -1584,7 +1586,7 @@
       "  ──────────────────────",
       "    Because `int`, `string`, etc., are ordinary global variables, you can",
       "    accidentally overwrite them (e.g., `int = 5`).",
-      "    If this happens, use `resetType()` to restore all built-in type objects",
+      "    If this happens, use `sys.resetType()` to restore all built-in type objects",
       "    to the global scope.",
       "",
       "  Type Checking (`in` and `<:`)",
@@ -1817,7 +1819,7 @@
       "",
       "  Truthiness",
       "  ──────────────────────",
-      "    Falsy:  0, 0.0, int(0), Fraction(0/n), none, \"\", sym(0), empty matrix, range(0)",
+      "    Falsy:  0, 0.0, int(0), Fraction(0/n), none, \"\", sym(0), empty matrix, empty list, empty dict, empty set, range(0)",
       "    Truthy: Everything else (non-empty strings, matrices, classes, instances)",
       "    bool(x)             Explicit conversion to true or false",
       "",
@@ -1995,7 +1997,7 @@
       "      Function Parameters:",
       "        `f(const x) = ...`  : Prevents accidental reassignment of `x` inside `f`.",
       "    • System Constants: math.PI, math.E, math.i, math.I can be reassigned.",
-      "      Restore via `resetConst()` or factory functions like `math.pi()`.",
+      "      Restore via `sys.resetConst()` or factory functions like `math.pi()`.",
       "    • Built-ins: Can be freely shadowed by user variables. Built-ins themselves",
       "      cannot be deleted. `delete sin` only removes the shadowing variable.",
       "",
@@ -2475,11 +2477,11 @@
       "    2. Explicit Blocks: If it contains a semicolon `;`, assignment `=`, or ",
       "       ternary `?` at the top level, it's a Block.",
       "         { a = 1 }                    → Block",
-      "    3. Pure Shorthand dicts: If it contains ONLY identifiers, scope modifiers ",
-      "       (local/ref/state/const), rest patterns (...), and commas, it's a dict.",
+      "    3. Pure Shorthand dicts: If it contains ONLY identifiers, spread entries ",
+      "       (...expr), and commas, it's a dict.",
       "         {}                           → Empty dict",
       "         {a, b}                       → Shorthand dict {\"a\": a, \"b\": b}",
-      "         {local a, ...rest}           → Shorthand dict",
+      "         {a, ...d}                    → Shorthand dict",
       "    4. Complex Expressions: If it contains numbers, strings, operators, or ",
       "       function calls without a colon `:`, it's parsed as a Block.",
       "         { 1, 2 }                     → Block (comma expression)",
@@ -3146,6 +3148,8 @@
       "  ──────────────────────",
       "    Matches dicts, instances, and namespaces.",
       "    Extracts values by key/field. Supports shorthand `{a}` for `{\"a\": a}`.",
+      "    Fields may carry `local`, `ref`, `state`, or `const`; `{local a, ...rest}`",
+      "    binds `a` locally and captures the remaining fields in `rest`.",
       "    (Note: For instances, it only matches data fields. For namespaces, it matches everything including methods).",
       "    The `...rest` pattern always returns a standard dict containing the remaining fields.",
       "      match (user) {",
@@ -3440,7 +3444,7 @@
       "",
       "    Keywords",
       "      IF  ELSE  WHILE  FOR  IN  IS  AS  BREAK  CONTINUE  RETURN",
-      "      LOCAL  REF  STATE  CONST  STATIC  DELETE  THROW  TRY  CATCH  IMPORT",
+      "      LOCAL  REF  STATE  CONST  STATIC  DELETE  THROW  TRY  CATCH  IMPORT  INCLUDE",
       "      MATCH  MACRO  SYNTAX  QUOTE  DEFER",
       "      CLASS  TRAIT  WITH  EXTENDS  NAMESPACE  ENUM  SUPER  SELF",
       "      TRUE  FALSE  NONE",
@@ -5071,9 +5075,9 @@
     },
     "__next__": {
       "signature": "__next__()",
-      "desc": "Dunder method: Returns the next value in an iteration, or none to stop.",
+      "desc": "Dunder method: Returns the next value; throws StopIteration when exhausted.",
       "examples": [
-        "__next__() = { if (self.idx >= len(self.data)) return none; local v = self.data[self.idx]; self.idx = self.idx + 1; return v }"
+        "__next__() = { if (self.idx >= len(self.data)) throw StopIteration; local v = self.data[self.idx]; self.idx = self.idx + 1; return v }"
       ]
     },
     "__getattr__": {
@@ -5784,9 +5788,11 @@
       ]
     },
     "delete": {
-      "signature": "delete variable",
+      "signature": "delete name[, name...] | delete @macro",
       "desc": [
         "Removes a variable from the current scope entirely.",
+        "Accepts a comma-separated list of names.",
+        "`delete @macro` removes a compile-time macro definition.",
         "Works on ordinary variables and namespace constants (like math.PI).",
         "Cannot be used to delete variables declared with `const`.",
         "Built-in functions cannot be deleted. If a built-in is shadowed,",
@@ -5795,7 +5801,7 @@
       ],
       "examples": [
         "x = 42; delete x",
-        "delete PI         // use resetConst() to restore"
+        "delete PI         // use sys.resetConst() to restore"
       ]
     },
     "try": {

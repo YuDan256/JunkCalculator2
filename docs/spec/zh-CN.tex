@@ -526,7 +526,9 @@ as-expr        = postfix { "as" postfix } ;
 postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 
 call-suffix    = "(" [ arguments ] ")" ;
-index-suffix   = "[" expression { "," expression } "]" ;
+index-suffix   = "[" index-arg { "," index-arg } "]" ;
+index-arg      = expression
+               | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 
 primary        = literal | identifier | "(" expression ")"
@@ -557,7 +559,7 @@ dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = expression ":" expression
                | "..." expression
                | identifier ;
-matrix-literal = "[" matrix-row { ";" matrix-row } "]" ;
+matrix-literal = "[" [ matrix-row { ";" matrix-row } ] "]" ;
 matrix-row     = expression { "," expression } ;
 lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
 quote-expr     = "quote" ( block | expression ) ;
@@ -600,7 +602,7 @@ primary-pattern = "_" | variable-pattern | literal
 variable-pattern = identifier [ ":" expression ] ;
 rest-pattern   = "..." identifier [ ":" expression ] ;
 list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
-matrix-pattern = "[" [ pattern-row { ";" pattern-row } ] "]" ;
+matrix-pattern = "[" [ pattern-row { ";" pattern-row } [ ";" ] ] "]" ;
 pattern-row    = pattern { "," pattern } ;
 
 dict-pattern   = "{" [ field-pattern { "," field-pattern }
@@ -681,8 +683,8 @@ b = 2
   \item 参数列表中 \jc{;} 出现至多一次；\jc{...rest} 与 \jc{...kw} 位于各自区域末尾。
   \item 默认参数位于必填位置参数之后；仅关键字参数位于 \jc{;} 之后。
   \item pattern 中 \jc{...rest} 出现至多一次；rest 目标可以位于 list 或 matrix 行的任意位置，捕获固定头尾之间的元素。
-  \item class 体成员名在同类中唯一；重复成员产生 \jc{TypeError}。
-  \item enum 成员名在 enum 内唯一；重复成员产生 \jc{TypeError}。
+  \item class 体成员名在同类中唯一；重复成员产生 \jc{SyntaxError}。
+  \item enum 成员名在 enum 内唯一；重复成员产生 \jc{SyntaxError}。
   \item 匿名定义的关键字与左花括号位于同一行。
 \end{enumerate}
 
@@ -721,7 +723,10 @@ catch 变量 & 值绑定 & catch 体 & 错误匹配时 \\
 \end{tabular}
 \end{center}
 
-待初始化的值绑定处于待初始化状态；读取待初始化绑定产生 \jc{RuntimeError}。只读绑定在首次提交后保持只读。
+class 数据属性省略初始化器时进入待初始化状态。
+读取待初始化属性产生 \jc{RuntimeError}。
+普通 \jc{local}、\jc{ref}、\jc{state} 声明省略初始化器时捕获外层绑定，不进入待初始化状态。
+只读绑定在首次提交后保持只读。
 
 \subsubsection{重声明与遮蔽}
 
@@ -1551,6 +1556,7 @@ match (val) {
 
 list 模式 \jc{@[...]} 匹配 list；矩阵模式 \jc{[...]} 匹配矩阵，逗号分隔列、分号分隔行。
 矩阵模式按行列匹配：\jc{[x, y]} 匹配一行两列，\jc{[x; y]} 匹配两行一列。
+尾随分号固定行数，例如 \jc{[a, b;]} 精确匹配一行，剩余行不进入 rest。
 默认目标允许输入缺少对应列，rest 捕获剩余列或行：
 
 \begin{lstlisting}
@@ -1563,6 +1569,7 @@ rest 模式 \jc{...name} 捕获剩余元素；同一行最多一个 rest。
 dict 模式 \texttt{\{...\}} 匹配 dict、实例字段与 namespace 字段。
 字段可以带 \jc{local}、\jc{ref}、\jc{state}、\jc{const} 修饰符。
 简写 \texttt{\{name\}} 等价于 \texttt{\{"name": name\}}。
+\texttt{\{a: int\}} 把字段 \jc{a} 解构到名为 \jc{int} 的变量；类型断言写作 \texttt{\{a: a: int\}}。
 rest 捕获剩余字段并绑定为 dict，位于字段列表末尾。
 
 \subsubsection{视图提取}
@@ -1594,7 +1601,7 @@ pattern 级 \jc{state} 的右侧表达式按闭包首次调用求值一次，整
 \subsection{变量声明}
 
 变量声明建立绑定，并可按类型注解检查初始值。
-省略初始化器时，绑定进入待初始化状态；读取该绑定产生 \jc{RuntimeError}。
+\jc{local}、\jc{ref}、\jc{state} 省略初始化器时捕获外层绑定；class 数据属性省略初始化器时进入待初始化状态，读取该属性产生 \jc{RuntimeError}。
 \jc{const} 绑定在初始化后保持只读；再次赋值产生 \jc{RuntimeError}。
 
 \subsection{class 与 trait}
@@ -1768,7 +1775,8 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 反射函数读取 class 与实例结构：
 
 \begin{center}
-\begin{tabular}{@{}ll@{}}
+\small
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}p{10.2cm}@{}}
 \toprule
 函数 & 结果 \\
 \midrule
@@ -1780,6 +1788,7 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 \jc{getFields(C)} & class 的实例属性名列表，含继承属性 \\
 \jc{getStatics(C)} & class 的 public static 属性名列表，含继承属性 \\
 \jc{hasField(obj, name)} & public 属性存在性 \\
+\jc{getFieldInfo(obj, name)} & 属性描述 dict：\jc{isMethod}、\jc{isStatic}、\jc{isConst}、\jc{isAbstract}；未知属性返回 \jc{none} \\
 \jc{isinstance(obj)} & 任意 class 实例 \\
 \jc{isinstance(obj, C)} & class 或父类/组合 trait 的实例 \\
 \jc{istrait(x)} & trait 定义 \\
@@ -2164,7 +2173,7 @@ dict key 与 set 元素必须可哈希。可哈希值集合与相等规则由第
 零元素矩阵规范化为 $0 \times 0$ 矩阵。
 
 矩阵形状条件失败时，加、乘、除与拼接产生 \jc{ValueError} 或 \jc{TypeError}。
-矩阵使用列主序展平；迭代按列产生列向量。
+矩阵使用列主序存储；\jc{toList} 按行输出嵌套 list；迭代按列产生列向量。
 
 \begin{lstlisting}
 A = [1, 2; 3, 4]
@@ -2390,7 +2399,9 @@ power          = as-expr [ "^" unary ] ;
 as-expr        = postfix { "as" postfix } ;
 postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 call-suffix    = "(" [ arguments ] ")" ;
-index-suffix   = "[" expression { "," expression } "]" ;
+index-suffix   = "[" index-arg { "," index-arg } "]" ;
+index-arg      = expression
+               | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 \end{lstlisting}
 
@@ -2417,7 +2428,7 @@ dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = expression ":" expression
                | "..." expression
                | identifier ;
-matrix-literal = "[" matrix-row { ";" matrix-row } "]" ;
+matrix-literal = "[" [ matrix-row { ";" matrix-row } ] "]" ;
 matrix-row     = expression { "," expression } ;
 lambda         = "(" [ params ] ")" "=>" ( expression | block ) ;
 quote-expr     = "quote" ( block | expression ) ;
@@ -2518,7 +2529,7 @@ primary-pattern = "_" | variable-pattern | literal
 variable-pattern = identifier [ ":" expression ] ;
 rest-pattern   = "..." identifier [ ":" expression ] ;
 list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
-matrix-pattern = "[" [ pattern-row { ";" pattern-row } ] "]" ;
+matrix-pattern = "[" [ pattern-row { ";" pattern-row } [ ";" ] ] "]" ;
 pattern-row    = pattern { "," pattern } ;
 
 dict-pattern   = "{" [ field-pattern { "," field-pattern }

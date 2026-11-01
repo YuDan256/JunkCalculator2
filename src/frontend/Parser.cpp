@@ -9,6 +9,7 @@
 #include "../vm/VM.h"
 #include "ASTConverter.h"
 #include <functional>
+#include <unordered_set>
 
 namespace jc {
 
@@ -3706,6 +3707,7 @@ namespace jc {
         consume(TokenType::LBRACE, "Parser Error: Expect '{' after enum definition.");
 
         std::vector<std::pair<Token, std::unique_ptr<Expr>>> members;
+        std::unordered_set<std::string> memberNames;
 
         while (!check(TokenType::RBRACE) && !isAtEnd()) {
             while (match({ TokenType::NEWLINE })) {}
@@ -3723,6 +3725,10 @@ namespace jc {
                 } else {
                     JC2_THROW(ParserError, "Expect enum member name.");
                 }
+            }
+
+            if (!memberNames.insert(memberName.lexeme).second) {
+                JC2_THROW(SyntaxError, "Enum member '" + memberName.lexeme + "' is redefined.");
             }
 
             std::unique_ptr<Expr> value = nullptr;

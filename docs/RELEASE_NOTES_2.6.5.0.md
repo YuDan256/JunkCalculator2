@@ -16,7 +16,7 @@ edge cases. This note covers all 248 commits since v2.6.4.0: 63 features, 75 fix
 
 ### Standard Library & Modules
 * **`macros` package**: platform gates and compile-time helpers.
-* **`math`**: numerical ODE solver, callable dense solutions, and `math.e()` / `math.e` namespace forms.
+* **`math`**: numerical ODE solver, callable dense solutions, and `math.e()` / `math.E` namespace forms.
 * **`cre` module**: chemical reaction engineering helpers.
 * **`collections`**: LRU cache, UnionFind, and binary-tree helpers.
 * **Graph algorithms**: MST, shortest paths, and strongly connected components.
@@ -35,7 +35,7 @@ edge cases. This note covers all 248 commits since v2.6.4.0: 63 features, 75 fix
 * Matrix default/rest destructuring matches smaller shapes correctly.
 * Empty containers are falsy; private methods are hidden from `getFields`; workspace/bytecode writes are atomic.
 * GC and JIT fixes cover shutdown, stack safety, slot flags, and member-name resolution.
-* Diagnostics and scoping: use-before-initialization diagnostics, function-scoped block assignments, tail-call restoration, and atomic workspace/bytecode writes.
+* Diagnostics and scoping: use-before-initialization diagnostics, function-scoped block assignments, and tail-call restoration.
 
 ### Tooling & Docs
 * **JC2 Language Specification, Volume 1** Chinese draft: 63 pages, with a self-contained grammar appendix and conformance matrix.

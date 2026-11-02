@@ -743,11 +743,20 @@ namespace jc {
 
         if (check(TokenType::CLASS) && definitionStarts()) {
             advance();
-            return applyModifiers(classDefExpr(false));
+            auto expr = applyModifiers(classDefExpr(false));
+            // A named class is a binding statement. An anonymous class is an
+            // expression, so reparse it through assignment()/call() and allow
+            // postfix calls such as `class "C" { ... }()`.
+            if (dynamic_cast<Assign*>(expr.get())) return expr;
+            current = saved;
+            return nullptr;
         }
         if (check(TokenType::TRAIT) && definitionStarts()) {
             advance();
-            return applyModifiers(classDefExpr(true));
+            auto expr = applyModifiers(classDefExpr(true));
+            if (dynamic_cast<Assign*>(expr.get())) return expr;
+            current = saved;
+            return nullptr;
         }
         if (check(TokenType::NAMESPACE) && definitionStarts()) {
             advance();

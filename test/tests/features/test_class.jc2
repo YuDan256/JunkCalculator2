@@ -264,3 +264,12 @@ test_reflected_and_call_dunders() = {
     assert(a[3] == 6, "__getitem__")
 }
 test_reflected_and_call_dunders()
+
+test_anonymous_class_call() = {
+    // A class literal at statement start must keep its postfix call.
+    class "Anon" { init() = { self.ready = true } }()
+
+    C = class "Anon2" { init(x) = { self.x = x }; get() = self.x }
+    assert(C(7).get() == 7, "anonymous class assignment call")
+}
+test_anonymous_class_call()

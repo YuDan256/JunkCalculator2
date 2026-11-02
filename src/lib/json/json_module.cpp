@@ -358,7 +358,7 @@ int jc2_init(jc2::Module& mod) {
         "  ──────────────────────\n"
         "    import json\n\n"
         "    // 1. Serialization (Object to String)\n"
-        "    d = { name: \"Alice\", active: true, scores: [85, 92] }\n"
+        "    d = %{ name: \"Alice\", active: true, scores: [85, 92] }\n"
         "    s = stringify(d)             \n"
         "    // → '{\"name\": \"Alice\", \"active\": true, \"scores\": [85, 92]}'\n\n"
         "    // 2. Pretty Print (Perfect for writing config files)\n"
@@ -381,9 +381,9 @@ int jc2_init(jc2::Module& mod) {
         "    loaded = json.parse(readFile(\"config.json\"))"
     );
 
-    mod.register_function_help("json.encode", "json.encode(val)", "Serializes a JC2 value into a JSON string.", "json.encode({a: 1})");
+    mod.register_function_help("json.encode", "json.encode(val)", "Serializes a JC2 value into a JSON string.", "json.encode(%{a: 1})");
     mod.register_function_help("json.decode", "json.decode(str)", "Parses a JSON string into a JC2 value.", "json.decode(\"{\\\"a\\\": 1}\")");
-    mod.register_function_help("json.pretty", "json.pretty(val, [indent])", "Serializes a JC2 value into a pretty-printed JSON string.", "json.pretty({a: 1}, 2)");
+    mod.register_function_help("json.pretty", "json.pretty(val, [indent])", "Serializes a JC2 value into a pretty-printed JSON string.", "json.pretty(%{a: 1}, 2)");
 
     return 0;
 }

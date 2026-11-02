@@ -1022,7 +1022,7 @@ try {
     })
     sys.registerEntry("http.planRead", %{
         kind: "method", signature: "planRead(status, headers, method)",
-        desc: "Pure framing plan: returns {mode, length} where mode is none, length, chunked or eof."
+        desc: "Pure framing plan: returns %{mode, length} where mode is none, length, chunked or eof."
     })
     sys.registerEntry("http.HttpResponse", %{
         kind: "class", signature: "HttpResponse",

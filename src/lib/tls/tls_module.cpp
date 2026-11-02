@@ -410,11 +410,11 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("tls.Socket.recv", "s.recv(max_bytes)", "Reads and decrypts application data; empty string means the peer closed.", "");
     mod.register_function_help("tls.Socket.close", "s.close()", "Sends close_notify and closes the socket.", "");
     mod.register_function_help("tls.Socket.certificate", "s.certificate()", "Leaf certificate DER of the peer as hex.", "");
-    mod.register_function_help("tls.Client", "tls.Client(options)", "Creates a TLS 1.3 client; feeds and returns record bytes as hex.", "c = tls.Client({\"serverName\": \"example.com\"})");
+    mod.register_function_help("tls.Client", "tls.Client(options)", "Creates a TLS 1.3 client; feeds and returns record bytes as hex.", "c = tls.Client(%{\"serverName\": \"example.com\"})");
     mod.register_function_help("tls.Client.start", "c.start()", "Returns the ClientHello record as hex.", "");
     mod.register_function_help("tls.Client.feed", "c.feed(bytes)", "Feeds server records (hex) and returns the bytes to send back.", "");
     mod.register_function_help("tls.Client.data", "c.data()", "Returns (and clears) decrypted application data as hex.", "");
-    mod.register_function_help("tls.Client.status", "c.status()", "Returns {ok, complete, reason, detail}.", "");
+    mod.register_function_help("tls.Client.status", "c.status()", "Returns %{ok, complete, reason, detail}.", "");
     mod.register_function_help("tls.Client.secrets", "c.secrets()", "Handshake key-schedule values (hex); meant for tests and diagnostics.", "");
     mod.register_function_help("tls.Client.certificate", "c.certificate()", "Leaf certificate DER of the server as hex.", "");
 
@@ -426,11 +426,11 @@ int jc2_init(jc2::Module& mod) {
         "    s = tls.connect(\"example.com\", 443)   // 一条龙：TCP + 握手 + 证书链校验\n"
         "    s.send(\"GET / HTTP/1.1\\r\\nHost: example.com\\r\\nConnection: close\\r\\n\\r\\n\")\n"
         "    while (true) { chunk = s.recv(16384); if (chunk == \"\") break; print(chunk) }\n\n"
-        "    c = tls.Client({\"serverName\": \"example.com\"})\n"
+        "    c = tls.Client(%{\"serverName\": \"example.com\"})\n"
         "    c.start()        → the ClientHello record (hex) to write to the socket\n"
         "    c.feed(bytes)    → feed server records, returns the bytes to send back\n"
         "    c.data()         → decrypted application data\n"
-        "    c.status()       → {ok, complete, reason, detail}\n\n"
+        "    c.status()       → %{ok, complete, reason, detail}\n\n"
         "  Options: serverName, verifyChain (default true), roots (trust anchors as hex DER),\n"
         "           time (verification instant), alpn. The deterministic-injection options\n"
         "           (clientRandom / x25519Private / clientHello ...) exist for replaying recorded\n"

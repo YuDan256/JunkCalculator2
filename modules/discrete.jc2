@@ -178,7 +178,7 @@ local _propToDnf(n: dict) -> list = {
 }
 
 // 子句级 DPLL：化简 + 单元传播 + 分裂。clauses 为子句列表，字面量 @[变量名, 是否取反]；
-// assign 为部分赋值。返回 {sat: bool, env: dict}
+// assign 为部分赋值。返回 %{sat: bool, env: dict}
 local _dpllSolve(clauses: list, assign: dict) -> dict = {
     work = @[]
     for (cl in clauses) {
@@ -322,7 +322,7 @@ class Prop {
     }
     // 三值求值：未赋值的变量返回 none（用于搜索剪枝）
     // DPLL 风格的分裂搜索：部分赋值下先做三值化简，已判假的分支不再展开；
-    // 找到第一组可满足赋值即返回。返回 {found: bool, env: dict}
+    // 找到第一组可满足赋值即返回。返回 %{found: bool, env: dict}
     satisfiableBySearch() -> dict = {
         varList = toList(self.vars()).sort()
         return self._search(varList, 0, %{})
@@ -353,7 +353,7 @@ class Prop {
     cnf() -> list = return _propToCnf(_propNnf(self, false))
     dnf() -> list = return _propToDnf(_propNnf(self, false))
 
-    // 子句级 DPLL（对 cnf() 求解），返回 {sat: bool, env: dict}；env 为完整赋值
+    // 子句级 DPLL（对 cnf() 求解），返回 %{sat: bool, env: dict}；env 为完整赋值
     satisfiableDpll() -> dict = {
         r = _dpllSolve(self.cnf(), %{})
         if (!r.sat) return %{sat: false, env: %{}}
@@ -739,7 +739,7 @@ class Relation {
     }
 
     // Hasse 图：偏序的覆盖关系（a ≺ b 当且仅当 aRb 且不存在严格居中的 c）。
-    // 返回 {nodes: list, covers: list}，covers 中的元素为 @[a, b]。O(|S|^3)。
+    // 返回 %{nodes: list, covers: list}，covers 中的元素为 @[a, b]。O(|S|^3)。
     hasseDiagram() -> dict = {
         if (!self.isPartialOrder()) throw RelationError("hasseDiagram subject must be a partial order")
         nodes = toList(self.S)
@@ -1074,7 +1074,7 @@ class Graph {
         return %{edges: chosen, weight: total, components: uf.componentCount()}
     }
 
-    // Floyd–Warshall 全源最短路，O(V^3)；返回 {dist: {u: {v: d}}, negativeCycle: bool}
+    // Floyd–Warshall 全源最短路，O(V^3)；返回 %{dist: %{u: %{v: d}}, negativeCycle: bool}
     floydWarshall() -> dict = {
         vs = self.vertices()
         d = %{}

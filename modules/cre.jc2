@@ -34,7 +34,7 @@ local _bisect(f, lo, hi, tol = 1e-10) = {
 // Arrhenius: k(T) from k1 at T1 and Ea [J/mol]
 kT(k1, T1, Ea, T) = k1 * exp(-Ea / R_GAS * (1.0 / T - 1.0 / T1))
 
-// Linear fit of ln k vs 1/T. Returns {Ea, A, kf, R2}.
+// Linear fit of ln k vs 1/T. Returns %{Ea, A, kf, R2}.
 arrfit(T, k) = {
     n = len(T)
     if (n < 2) throw ValueError("cre.arrfit: need at least two points")
@@ -115,7 +115,7 @@ pfr(negR, FA0, X) = FA0 * _integ((x) => 1.0 / negR(x), 0.0, X)
 
 pbr(negR, FA0, X) = pfr(negR, FA0, X)
 
-// n equal-volume CSTRs in series. Returns {Vtotal, Xs}.
+// n equal-volume CSTRs in series. Returns %{Vtotal, Xs}.
 series(negR, FA0, X, n) = {
     if (n < 1) throw ValueError("cre.series: n must be >= 1")
     Vref = pfr(negR, FA0, X)
@@ -224,7 +224,7 @@ sys.registerHelp("cre", r"DOC(
   Kinetics
   ──────────────────────
     cre.kT(k1, T1, Ea, T)          Arrhenius rate constant, Ea in J/mol
-    cre.arrfit(T, k)               ln k vs 1/T fit -> {Ea, A, kf, R2}
+    cre.arrfit(T, k)               ln k vs 1/T fit -> %{Ea, A, kf, R2}
     cre.delta(a, b, c, d)          Moles change per mole A
     cre.eps(delta, yA0)            Expansion factor
     cre.rate(n, k, CA0, [opts])    Returns negR(X); opts: eps, Keq (n = 1)
@@ -236,7 +236,7 @@ sys.registerHelp("cre", r"DOC(
     cre.cstr(negR, FA0, X)         V = FA0 X / (-rA)
     cre.pfr(negR, FA0, X)          V = FA0 ∫0^X dX/(-rA)
     cre.pbr(negR, FA0, X)          Same integral, W instead of V
-    cre.series(negR, FA0, X, n)    n equal CSTRs -> {Vtotal, Xs}
+    cre.series(negR, FA0, X, n)    n equal CSTRs -> %{Vtotal, Xs}
     cre.recycle(negR, FA0, R, X2)  Recycle PFR volume
     cre.findX(kind, negR, FA0, V)  Solve for X (kind: pfr / pbr / cstr)
     cre.equil(negR)                Equilibrium conversion, negR(X) = 0
@@ -261,7 +261,7 @@ sys.registerEntry("cre.kT", %{
 })
 sys.registerEntry("cre.arrfit", %{
     kind: "function", signature: "cre.arrfit(T, k)",
-    desc: "Fits ln k against 1/T by least squares; returns {Ea, A, kf, R2}.",
+    desc: "Fits ln k against 1/T by least squares; returns %{Ea, A, kf, R2}.",
     examples: @["cre.arrfit(@[300, 320, 340], @[0.001, 0.01, 0.08])"]
 })
 sys.registerEntry("cre.delta", %{
@@ -306,7 +306,7 @@ sys.registerEntry("cre.pbr", %{
 })
 sys.registerEntry("cre.series", %{
     kind: "function", signature: "cre.series(negR, FA0, X, n)",
-    desc: "n equal-volume CSTRs in series; returns {Vtotal, Xs}.",
+    desc: "n equal-volume CSTRs in series; returns %{Vtotal, Xs}.",
     examples: @["cre.series(negR, 5, 0.99, 2)"]
 })
 sys.registerEntry("cre.recycle", %{
@@ -326,12 +326,12 @@ sys.registerEntry("cre.equil", %{
 })
 sys.registerEntry("cre.lev", %{
     kind: "function", signature: "cre.lev(negR, FA0, X)",
-    desc: "Levenspiel comparison: returns {Vp, Vc}.",
+    desc: "Levenspiel comparison: returns %{Vp, Vc}.",
     examples: @["cre.lev(negR, 5, 0.99)"]
 })
 sys.registerEntry("cre.pbrDp", %{
     kind: "function", signature: "cre.pbrDp(negRW, FA0, Xtgt, Wmax)",
-    desc: "Finds catalyst weight W reaching Xtgt; returns {W, X, reached}.",
+    desc: "Finds catalyst weight W reaching Xtgt; returns %{W, X, reached}.",
     examples: @["cre.pbrDp(negRW, 1, 0.7, 100)"]
 })
 sys.registerEntry("cre.findXPbr", %{

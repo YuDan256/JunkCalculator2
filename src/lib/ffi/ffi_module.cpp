@@ -1430,14 +1430,14 @@ int jc2_init(jc2::Module& mod) {
         "  ──────────────────────\n"
         "    You can define C-compatible structs using `ffi.Struct`.\n"
         "    It automatically handles memory alignment and padding.\n"
-        "      Point = ffi.Struct({x: \"i32\", y: \"i32\"})\n"
+        "      Point = ffi.Struct(%{x: \"i32\", y: \"i32\"})\n"
         "      p = Point()\n"
         "      p.x = 100\n"
         "      c_func(p)              // Pass struct by value\n"
         "      c_func_ptr(p)          // Pass struct by pointer (auto-extracted!)\n\n"
         "    Anonymous Nested Structs & Arrays:\n"
-        "      Data = ffi.Struct({\n"
-        "          rect: {x: \"i32\", y: \"i32\"}, // Anonymous nested struct\n"
+        "      Data = ffi.Struct(%{\n"
+        "          rect: %{x: \"i32\", y: \"i32\"}, // Anonymous nested struct\n"
         "          matrix: \"f32[4][4]\",        // Multi-dimensional inline array\n"
         "          points: @[Point, 10]        // Array of structs\n"
         "      })\n"
@@ -1475,7 +1475,7 @@ int jc2_init(jc2::Module& mod) {
     
     mod.register_function_help("ffi.FFILibrary", "ffi.FFILibrary(path)", "Loads a native dynamic library (.dll) into memory.", "lib = ffi.FFILibrary(\"msvcrt.dll\")");
     mod.register_function_help("FFILibrary.bind", "lib.bind(func_name, ret_type, [arg_types...])", "Binds a C function from the loaded library with the specified return type and argument types.", "puts = lib.bind(\"puts\", \"i32\", \"string\")");
-    mod.register_function_help("ffi.Struct", "ffi.Struct(layout_dict)", "Defines a C-compatible struct layout with automatic memory alignment and padding.", "Point = ffi.Struct({x: \"i32\", y: \"i32\"})\np = Point()");
+    mod.register_function_help("ffi.Struct", "ffi.Struct(layout_dict)", "Defines a C-compatible struct layout with automatic memory alignment and padding.", "Point = ffi.Struct(%{x: \"i32\", y: \"i32\"})\np = Point()");
     mod.register_function_help("ffi.Callback", "ffi.Callback(func, ret_type, [arg_types...])", "Wraps a JC2 function into a C-compatible function pointer.", "cb = ffi.Callback(my_func, \"i32\", \"i32\", \"i32\")");
     mod.register_function_help("ffi.readMemory", "ffi.readMemory(address, type)", "Reads a value of the specified FFI type from a raw memory address.", "val = ffi.readMemory(ptr, \"i32\")");
     mod.register_function_help("ffi.writeMemory", "ffi.writeMemory(address, type, value)", "Writes a value of the specified FFI type to a raw memory address.", "ffi.writeMemory(ptr, \"i32\", 42)");

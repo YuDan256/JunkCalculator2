@@ -546,7 +546,7 @@ int jc2_init(jc2::Module& mod) {
     mod.register_function_help("crypto.hkdfExtract", "crypto.hkdfExtract(salt, ikm)", "HKDF-Extract (RFC 5869), returns the 32-byte PRK as hex.", "crypto.hkdfExtract(\"\", \"0b0b\")");
     mod.register_function_help("crypto.hkdfExpand", "crypto.hkdfExpand(prk, info, length)", "HKDF-Expand; prk is 32 bytes of hex, returns length bytes as hex.", "crypto.hkdfExpand(prk, \"\", 42)");
     mod.register_function_help("crypto.hkdfExpandLabel", "crypto.hkdfExpandLabel(secret, label, context, length)", "TLS 1.3 HKDF-Expand-Label; label is text, the rest is hex.", "");
-    mod.register_function_help("crypto.aesGcmSeal", "crypto.aesGcmSeal(key, iv, aad, pt)", "AES-128-GCM encryption; returns {ct, tag} as hex.", "");
+    mod.register_function_help("crypto.aesGcmSeal", "crypto.aesGcmSeal(key, iv, aad, pt)", "AES-128-GCM encryption; returns %{ct, tag} as hex.", "");
     mod.register_function_help("crypto.aesGcmOpen", "crypto.aesGcmOpen(key, iv, aad, ct, tag)", "AES-128-GCM decryption; raises CryptoError if the tag does not match.", "");
     mod.register_function_help("crypto.x25519", "crypto.x25519(scalar, point)", "X25519 scalar multiplication (RFC 7748); raises CryptoError on an all-zero result.", "");
     mod.register_function_help("crypto.x25519Base", "crypto.x25519Base(scalar)", "X25519 with the standard base point u = 9.", "");
@@ -566,7 +566,7 @@ int jc2_init(jc2::Module& mod) {
         "Like ecdsaVerify but with r/s instead of a DER signature (NIST vector friendly).", "");
     mod.register_function_help("crypto.ecdsaVerify", "crypto.ecdsaVerify(curve, public, hash, message, signature)",
         "Verifies a DER ECDSA signature over message with sha256/sha384/sha512.", "");
-    mod.register_function_help("crypto.x509Verify", "crypto.x509Verify(leaf, intermediates, roots, hostname, time)", "Verifies a certificate chain at the given Unix time; returns {ok, reason, chainLength, detail}.", "");
+    mod.register_function_help("crypto.x509Verify", "crypto.x509Verify(leaf, intermediates, roots, hostname, time)", "Verifies a certificate chain at the given Unix time; returns %{ok, reason, chainLength, detail}.", "");
     mod.register_function_help("crypto.systemRoots", "crypto.systemRoots()", "Returns the system trust store (Windows ROOT) as a list of DER certificates in hex.", "");
     mod.register_function_help("crypto.randomBytes", "crypto.randomBytes(length)", "Cryptographically secure random bytes (system CSPRNG) as hex.", "");
 
@@ -583,7 +583,7 @@ int jc2_init(jc2::Module& mod) {
         "    crypto.hkdfExpand(prk, info, length)      HKDF-Expand\n"
         "    crypto.hkdfExpandLabel(secret, label, context, length)   TLS 1.3 HKDF-Expand-Label\n\n"
         "  AEAD\n"
-        "    crypto.aesGcmSeal(key, iv, aad, pt)       AES-128-GCM, returns {ct, tag}\n"
+        "    crypto.aesGcmSeal(key, iv, aad, pt)       AES-128-GCM, returns %{ct, tag}\n"
         "    crypto.aesGcmOpen(key, iv, aad, ct, tag)  AES-128-GCM, raises CryptoError on tag mismatch\n\n"
         "  Key exchange\n"
         "    crypto.x25519(scalar, point)              RFC 7748\n"

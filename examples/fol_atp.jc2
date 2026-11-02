@@ -1,0 +1,496 @@
+// ═══════════════════════════════════════════════════════════════
+// JC2 Industrial-Grade First-Order Logic ATP
+//
+// Core engine: Resolution Refutation
+// Industrial optimizations:
+//   1. Set of Support Strategy (SOS)
+//   2. Tautology Deletion
+//   3. O(1) forward/backward exact subsumption deletion (<:)
+//   4. Internal clause factoring
+// ═══════════════════════════════════════════════════════════════
+
+// ==========================================
+// 1. First-order logic AST and operator overloading
+// ==========================================
+class Expr {
+    __hash__() = hash(str(self))
+    __eq__(other) = str(self) == str(other)
+
+    __bitnot__()     = Not(self)
+    __bitand__(o)    = And(self, o)
+    __bitor__(o)     = Or(self, o)
+    __rshift__(o)    = Implies(self, o)
+}
+
+class Var extends Expr {
+    init(name) = { self.name = name }
+    __str__() = self.name
+}
+
+class Const extends Expr {
+    init(name) = { self.name = name }
+    __str__() = self.name
+}
+
+class Func extends Expr {
+    init(name, ...args) = { self.name = name; self.args = args }
+    __str__() = f"{self.name}({self.args.join(', ')})"
+}
+
+class Pred extends Expr {
+    init(name, ...args) = { self.name = name; self.args = args }
+    __str__() = f"{self.name}({self.args.join(', ')})"
+}
+
+class Not extends Expr {
+    init(arg) = { self.arg = arg }
+    __str__() = f"~{self.arg}"
+}
+
+class And extends Expr {
+    init(left, right) = { self.left = left; self.right = right }
+    __str__() = f"({self.left} & {self.right})"
+}
+
+class Or extends Expr {
+    init(left, right) = { self.left = left; self.right = right }
+    __str__() = f"({self.left} | {self.right})"
+}
+
+class Implies extends Expr {
+    init(left, right) = { self.left = left; self.right = right }
+    __str__() = f"({self.left} -> {self.right})"
+}
+
+class ForAll extends Expr {
+    init(var, body) = { self.var = var; self.body = body }
+    __str__() = f"(∀{self.var} {self.body})"
+}
+
+class Exists extends Expr {
+    init(var, body) = { self.var = var; self.body = body }
+    __str__() = f"(∃{self.var} {self.body})"
+}
+
+∀(var, body) = ForAll(var, body)
+∃(var, body) = Exists(var, body)
+
+
+// ==========================================
+// 2. Substitution and variable renaming
+// ==========================================
+apply_theta(theta, expr) = match (expr) {
+    e: Var   => (e in theta) ? apply_theta(theta, theta[e]) : e,
+    e: Const => e,
+    e: Func  => Func(e.name, ...e.args.map((a) => apply_theta(theta, a))),
+    e: Pred  => Pred(e.name, ...e.args.map((a) => apply_theta(theta, a))),
+    e: Not   => Not(apply_theta(theta, e.arg)),
+    e: And   => And(apply_theta(theta, e.left), apply_theta(theta, e.right)),
+    e: Or    => Or(apply_theta(theta, e.left), apply_theta(theta, e.right)),
+    _        => expr
+}
+
+rename_vars_in_expr(expr, suffix) = match (expr) {
+    e: Var   => Var(e.name + suffix),
+    e: Const => e,
+    e: Func  => Func(e.name, ...e.args.map((a) => rename_vars_in_expr(a, suffix))),
+    e: Pred  => Pred(e.name, ...e.args.map((a) => rename_vars_in_expr(a, suffix))),
+    e: Not   => Not(rename_vars_in_expr(e.arg, suffix)),
+    _        => expr
+}
+
+
+// ==========================================
+// 3. Core unification algorithm
+// ==========================================
+occurs_in(var, x, theta) = {
+    if (var == x) return true
+    match (x) {
+        v: Var if (v in theta) => occurs_in(var, theta[v], theta),
+        f: Func => f.args.any((arg) => occurs_in(var, arg, theta)),
+        p: Pred => p.args.any((arg) => occurs_in(var, arg, theta)),
+        _ => false
+    }
+}
+
+unify_var(var, x, theta) = {
+    if (var in theta) return unify(theta[var], x, theta)
+    if (x in Var && x in theta) return unify(var, theta[x], theta)
+    if (occurs_in(var, x, theta)) return none
+
+    new_theta = copy(theta)
+    new_theta[var] = x
+    return new_theta
+}
+
+unify(x, y, theta) = {
+    if (theta is none) return none
+    if (x == y) return theta
+
+    match (@[x, y]) {
+        @[vx: Var, _] => unify_var(vx, y, theta),
+        @[_, vy: Var] => unify_var(vy, x, theta),
+
+        @[fx: Func, fy: Func] if (fx.name == fy.name && len(fx.args) == len(fy.args)) => {
+            t = theta
+            for (i in range(len(fx.args))) {
+                t = unify(fx.args[i], fy.args[i], t)
+                if (t is none) return none
+            }
+            return t
+        },
+
+        @[px: Pred, py: Pred] if (px.name == py.name && len(px.args) == len(py.args)) => {
+            t = theta
+            for (i in range(len(px.args))) {
+                t = unify(px.args[i], py.args[i], t)
+                if (t is none) return none
+            }
+            return t
+        },
+        _ => none
+    }
+}
+
+
+// ==========================================
+// 4. First-order logic preprocessing (CNF conversion)
+// ==========================================
+eliminate_implications(expr) = match (expr) {
+    e: Not     => Not(eliminate_implications(e.arg)),
+    e: And     => And(eliminate_implications(e.left), eliminate_implications(e.right)),
+    e: Or      => Or(eliminate_implications(e.left), eliminate_implications(e.right)),
+    e: Implies => Or(Not(eliminate_implications(e.left)), eliminate_implications(e.right)),
+    e: ForAll  => ForAll(e.var, eliminate_implications(e.body)),
+    e: Exists  => Exists(e.var, eliminate_implications(e.body)),
+    _          => expr
+}
+
+to_nnf(expr) = match (expr) {
+    e: And     => And(to_nnf(e.left), to_nnf(e.right)),
+    e: Or      => Or(to_nnf(e.left), to_nnf(e.right)),
+    e: ForAll  => ForAll(e.var, to_nnf(e.body)),
+    e: Exists  => Exists(e.var, to_nnf(e.body)),
+    e: Not     => match (e.arg) {
+        inner: Not    => to_nnf(inner.arg),
+        inner: And    => Or(to_nnf(Not(inner.left)), to_nnf(Not(inner.right))),
+        inner: Or     => And(to_nnf(Not(inner.left)), to_nnf(Not(inner.right))),
+        inner: ForAll => Exists(inner.var, to_nnf(Not(inner.body))),
+        inner: Exists => ForAll(inner.var, to_nnf(Not(inner.body))),
+        _             => e
+    },
+    _ => expr
+}
+
+skolemize(expr, univ_vars = @[]) = {
+    state skolem_counter = 1
+    match (expr) {
+        e: And => And(skolemize(e.left, univ_vars), skolemize(e.right, univ_vars)),
+        e: Or  => Or(skolemize(e.left, univ_vars), skolemize(e.right, univ_vars)),
+        e: ForAll => skolemize(e.body, cat(univ_vars, @[e.var])),
+        e: Exists => {
+            sk_name = f"sk_{skolem_counter}"
+            skolem_counter += 1
+            sk_term = (len(univ_vars) > 0) ? Func(sk_name, ...univ_vars) : Const(sk_name)
+            new_body = apply_theta(%{(e.var): sk_term}, e.body)
+            return skolemize(new_body, univ_vars)
+        },
+        _ => expr
+    }
+}
+
+distribute_or(expr) = match (expr) {
+    e: And => And(distribute_or(e.left), distribute_or(e.right)),
+    e: Or  => {
+        left = distribute_or(e.left)
+        right = distribute_or(e.right)
+        match (@[left, right]) {
+            @[l: And, r] => distribute_or(And(Or(l.left, r), Or(l.right, r))),
+            @[l, r: And] => distribute_or(And(Or(l, r.left), Or(l, r.right))),
+            _ => Or(left, right)
+        }
+    },
+    _ => expr
+}
+
+extract_clauses(cnf_expr) = {
+    build(node) = match (node) {
+        n: Pred => @{n},
+        n: Not  => @{n},
+        n: Or   => build(n.left) | build(n.right),
+        _       => @{}
+    }
+
+    traverse(node) = match (node) {
+        n: And => traverse(n.left) | traverse(n.right),
+        _      => @{ copy(build(node), true) }
+    }
+
+    cnf_expr |> eliminate_implications |> to_nnf |> skolemize |> distribute_or |> traverse
+}
+
+
+// ==========================================
+// 5. Industrial heuristic pruning
+// ==========================================
+
+// [Optimization 1] Tautology deletion: a clause containing P and ~P is useless.
+is_tautology(c) = c.any((lit) => (Not(lit) in c) || (lit in Not && lit.arg in c))
+
+// [Optimization 2] Internal factoring: redundant literals can collapse
+// within a clause.
+factorize(clause) = {
+    res = @[]
+    l_list = toList(clause)
+    for (i in range(len(l_list))) {
+        for (j in range(i + 1, len(l_list))) {
+            p1 = l_list[i]; p2 = l_list[j]
+            if (type(p1) == type(p2)) {
+                t1 = (p1 in Not) ? p1.arg : p1
+                t2 = (p2 in Not) ? p2.arg : p2
+                if (t1.name == t2.name) {
+                    theta = unify(t1, t2, %{})
+                    if (theta != none) {
+                        fc = @{ apply_theta(theta, lit) for (lit in clause) }
+                        res.push(copy(fc, true))
+                    }
+                }
+            }
+        }
+    }
+    return res
+}
+
+
+// ==========================================
+// 6. SOS resolution engine (Set of Support)
+// ==========================================
+resolve_clauses_fol(c1, c2) = {
+    state rename_counter = 1
+    resolvents = @[]
+
+    sc1 = @{ rename_vars_in_expr(lit, f"_a{rename_counter}") for (lit in c1) }
+    sc2 = @{ rename_vars_in_expr(lit, f"_b{rename_counter}") for (lit in c2) }
+    rename_counter += 1
+
+    for (@[l1, l2] in sc1 * sc2) {
+        is_comp = false
+        p1 = none; p2 = none
+
+        match (@[l1, l2]) {
+            @[p: Pred, n: Not] if (p.name == n.arg.name) => { is_comp = true; p1 = p; p2 = n.arg },
+            @[n: Not, p: Pred] if (n.arg.name == p.name) => { is_comp = true; p1 = n.arg; p2 = p },
+            _ => none
+        }
+
+        if (is_comp) {
+            theta = unify(p1, p2, %{})
+            if (theta != none) {
+                new_c = @{ apply_theta(theta, lit) for (lit in sc1) if (lit != l1) } |
+                @{ apply_theta(theta, lit) for (lit in sc2) if (lit != l2) }
+
+                frozen_c = copy(new_c, true)
+                resolvents.push(frozen_c)
+
+                // Add factorized clauses to preserve completeness.
+                for (fc in factorize(new_c)) resolvents.push(fc)
+            }
+        }
+    }
+    return resolvents
+}
+
+fol_resolution_prover(premises, conclusion) = {
+    print("=" * 65)
+    print("1. [First-order logic] Formalization and goal:")
+    print("   Premises:")
+    for (p in premises) print(f"    - {p}")
+    print(f"   Goal: {conclusion}")
+
+    // [Optimization 3] Split the initial database into Usable and SOS.
+    usable = (len(premises) > 0) ? extract_clauses(premises.reduce(And)) : @{}
+    sos = extract_clauses(Not(conclusion))
+
+    print("\n2. [Set of support] Initializing the CNF space:")
+    for (@[i, c] in toList(usable).enumerate(1)) print(f"   [Usable] U{i}: [ {toList(c).map(str).join(' ∨ ')} ]")
+    for (@[i, c] in toList(sos).enumerate(1))    print(f"   [Support] S{i}: [ {toList(c).map(str).join(' ∨ ')} ]")
+
+    if (sos.any((c) => len(c) == 0)) return true // Immediate success.
+
+    parents = %{}
+    for (c in usable) parents[c] = @["Initial", "Initial"]
+    for (c in sos) parents[c] = @["Initial", "Initial"]
+
+    generated_order = @[]
+    empty_clause = @{}
+
+    print("\n3. Directed unification and resolution search (SOS-directed)...\n")
+    const MAX_CLAUSES = 5000
+
+    search_result = while :search (len(sos) > 0) {
+        new_sos = @{}
+        pool = usable | sos
+
+        for (c1 in sos) {
+            for (c2 in pool) {
+                for (res_clause in resolve_clauses_fol(c1, c2)) {
+
+                    // [Filter 1] Tautology deletion.
+                    if (is_tautology(res_clause)) continue
+
+                    // [Filter 2] Forward exact subsumption: one O(1) line to
+                    // reject redundant clauses.
+                    if (usable.any((c) => c <: res_clause) || sos.any((c) => c <: res_clause) || new_sos.any((c) => c <: res_clause)) {
+                        continue
+                    }
+
+                    // [Filter 3] Backward exact subsumption: remove older
+                    // clauses subsumed by the new clause.
+                    usable = @{ c for (c in usable) if (!(res_clause <: c)) }
+                    sos = @{ c for (c in sos) if (!(res_clause <: c)) }
+                    new_sos = @{ c for (c in new_sos) if (!(res_clause <: c)) }
+
+                    // Confirm a high-value new clause and add it to the new support set.
+                    if (!(res_clause in new_sos)) {
+                        new_sos.add(res_clause)
+                        parents[res_clause] = @[c1, c2]
+                        generated_order.push(res_clause)
+
+                        if (len(res_clause) == 0) {
+                            empty_clause = res_clause
+                            break :search true
+                        }
+                    }
+                }
+            }
+        }
+
+        // The old SOS has been exhausted; merge it into Usable. The new SOS
+        // becomes the spearhead for the next round.
+        usable |= sos
+        sos = new_sos
+
+        if (len(usable) + len(sos) > MAX_CLAUSES) {
+            print("   (Guard hit: search depth exceeded; derivation terminated)")
+            return false
+        }
+    }
+
+    if (search_result != true) {
+        print("\nConclusion: support set exhausted; no contradiction found. (Invalid/Undecidable)")
+        print("=" * 65)
+        return false
+    }
+
+    print("4. Extracting a valid proof path (including the unification trace):")
+    useful_clauses = @{}
+
+    trace_back(c) = {
+        if (c in useful_clauses) return none
+        useful_clauses.add(c)
+        p1 = parents[c][0]; p2 = parents[c][1]
+        if (p1 != "Initial") trace_back(p1)
+        if (p2 != "Initial") trace_back(p2)
+    }
+    trace_back(empty_clause)
+
+    // Remove noise: keep only steps from the initial clauses to the empty
+    // clause; do not print the other generated clauses.
+    proof_steps = @[]
+    for (res in generated_order) {
+        if (res in useful_clauses) proof_steps.push(res)
+    }
+    if (generated_order.len() > proof_steps.len()) {
+        print(f"   (Pruned {generated_order.len() - proof_steps.len()} irrelevant clauses)")
+    }
+
+    step = 1
+    for (res in proof_steps) {
+        p1 = parents[res][0]; p2 = parents[res][1]
+        res_str = (len(res) > 0) ? toList(res).map(str).join(" ∨ ") : "empty clause [] (absolute contradiction!)"
+        print(f"   Step {step}: resolve [ {toList(p1).map(str).join(' ∨ ')} ] with [ {toList(p2).map(str).join(' ∨ ')} ]")
+        print(f"   --> Derived: [ {res_str} ]")
+        step += 1
+    }
+
+    print("\nConclusion: proof succeeded! The first-order entailment is valid.")
+    print("=" * 65)
+    return true
+}
+
+
+// ==========================================
+// 7. Building the language: a minimal syntax macro
+// ==========================================
+syntax prove(stream) = {
+    if (!stream.isAtEnd() && stream.peek().type == "LBRACE") stream.advance()
+
+    premises = @[]
+    target = none
+
+    while (!stream.isAtEnd() && stream.peek().type != "RBRACE") {
+        t = stream.advance()
+        if (t.type == "NEWLINE" || t.type == "SEMICOLON") continue
+
+        if (t.type == "IDENTIFIER" && (t.lexeme == "premise" || t.lexeme == "goal")) {
+            stream.consume("COLON", "Expected ':'")
+            expr_ast = stream.parseOne()
+
+            if (t.lexeme == "premise") premises.push(expr_ast)
+            if (t.lexeme == "goal") target = expr_ast
+        } else {
+            throw f"Unexpected token in @prove block: {t.lexeme}"
+        }
+    }
+
+    if (!stream.isAtEnd()) stream.advance()
+
+    import ast
+
+    lst_var = ast.gensym("premises")
+    res = @[]
+    res.push(quote { $lst_var = @[] })
+    for (p in premises) res.push(quote { $lst_var.push($p) })
+    res.push(quote { fol_resolution_prover($lst_var, $target) })
+
+    return res
+}
+
+
+// ==========================================
+// 8. Witness: writing philosophy in JC2
+// ==========================================
+print("\n[Setup: defining logic variables, constants, and predicates]")
+x = Var("x"); y = Var("y"); z = Var("z")
+Jack = Const("Jack")
+Curiosity = Const("Curiosity")
+Tuna = Const("Tuna")
+
+Animal(a) = Pred("Animal", a)
+Loves(a, b) = Pred("Loves", a, b)
+Kills(a, b) = Pred("Kills", a, b)
+
+
+print("\n[Test: classic textbook puzzle — curiosity killed the cat]")
+@prove {
+    // 1. Anyone who loves every animal is loved by someone:
+    //    ∀x ((∀y (Animal(y) >> Loves(x, y))) >> ∃y Loves(y, x))
+    premise: ∀(x, ∀(y, Animal(y) >> Loves(x, y)) >> ∃(y, Loves(y, x)))
+
+    // 2. Anyone who kills an animal is loved by no one:
+    //    ∀x (∀y ((Animal(y) & Kills(x, y)) >> ∀z ~Loves(z, x)))
+    premise: ∀(x, ∀(y, (Animal(y) & Kills(x, y)) >> ∀(z, ~Loves(z, x))))
+
+    // 3. Jack loves every animal:
+    //    ∀x (Animal(x) >> Loves(Jack, x))
+    premise: ∀(x, Animal(x) >> Loves(Jack, x))
+
+    // 4. Either Jack or Curiosity killed Tuna.
+    premise: Kills(Jack, Tuna) | Kills(Curiosity, Tuna)
+
+    // 5. Tuna is an animal.
+    premise: Animal(Tuna)
+
+    // Goal: Curiosity killed Tuna.
+    goal: Kills(Curiosity, Tuna)
+}

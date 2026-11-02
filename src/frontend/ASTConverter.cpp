@@ -279,7 +279,9 @@ public:
         expr->condition->accept(*this); Value cond = result;
         GcValueGuard condGuard(cond);
         expr->body->accept(*this); Value body = result;
-        result = makeASTNode("WhileExpr", 0, {{"condition", cond}, {"body", body}});
+        auto props = std::vector<std::pair<std::string, Value>>{{"condition", cond}, {"body", body}};
+        if (!expr->label.empty()) props.push_back({"label", Value(expr->label)});
+        result = makeASTNode("WhileExpr", 0, props);
     }
     void visitForExpr(ForExpr* expr) override {
         expr->initializer->accept(*this); Value init = result;
@@ -289,10 +291,22 @@ public:
         expr->update->accept(*this); Value upd = result;
         GcValueGuard updGuard(upd);
         expr->body->accept(*this); Value body = result;
-        result = makeASTNode("ForExpr", 0, {{"initializer", init}, {"condition", cond}, {"update", upd}, {"body", body}});
+        auto props = std::vector<std::pair<std::string, Value>>{{"initializer", init}, {"condition", cond}, {"update", upd}, {"body", body}};
+        if (!expr->label.empty()) props.push_back({"label", Value(expr->label)});
+        result = makeASTNode("ForExpr", 0, props);
     }
-    void visitBreakExpr(BreakExpr* expr) override { result = makeASTNode("BreakExpr", expr->keyword.line, {}); }
-    void visitContinueExpr(ContinueExpr* expr) override { result = makeASTNode("ContinueExpr", expr->keyword.line, {}); }
+    void visitBreakExpr(BreakExpr* expr) override {
+        Value val = Value::none();
+        if (expr->value) { expr->value->accept(*this); val = result; }
+        auto props = std::vector<std::pair<std::string, Value>>{{"value", val}};
+        if (!expr->label.empty()) props.push_back({"label", Value(expr->label)});
+        result = makeASTNode("BreakExpr", expr->keyword.line, props);
+    }
+    void visitContinueExpr(ContinueExpr* expr) override {
+        auto props = std::vector<std::pair<std::string, Value>>{};
+        if (!expr->label.empty()) props.push_back({"label", Value(expr->label)});
+        result = makeASTNode("ContinueExpr", expr->keyword.line, props);
+    }
     void visitReturnExpr(ReturnExpr* expr) override {
         Value val = Value::none();
         if (expr->value) { expr->value->accept(*this); val = result; }
@@ -457,13 +471,15 @@ public:
         expr->iterable->accept(*this); Value iter = result;
         GcValueGuard iterGuard(iter);
         expr->body->accept(*this); Value body = result;
-        result = makeASTNode("ForInExpr", 0, {
+        auto props = std::vector<std::pair<std::string, Value>>{
             {"pattern", patternToJC2(expr->pattern.get())},
             {"iterable", iter},
             {"body", body},
             {"isLocal", Value(expr->isLocal)},
             {"isConst", Value(expr->isConst)}
-        });
+        };
+        if (!expr->label.empty()) props.push_back({"label", Value(expr->label)});
+        result = makeASTNode("ForInExpr", 0, props);
     }
 
     void visitTryCatchExpr(TryCatchExpr* expr) override {
@@ -985,13 +1001,16 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
     } else if (type == "IfExpr") {
         return std::make_unique<IfExpr>(toAST(getProp("condition")), toAST(getProp("thenBranch")), toAST(getProp("elseBranch")));
     } else if (type == "WhileExpr") {
-        return std::make_unique<WhileExpr>(toAST(getProp("condition")), toAST(getProp("body")));
+        return std::make_unique<WhileExpr>(toAST(getProp("condition")), toAST(getProp("body")), getProp("label").isString() ? getProp("label").asString() : std::string());
     } else if (type == "ForExpr") {
-        return std::make_unique<ForExpr>(toAST(getProp("initializer")), toAST(getProp("condition")), toAST(getProp("update")), toAST(getProp("body")));
+        return std::make_unique<ForExpr>(toAST(getProp("initializer")), toAST(getProp("condition")), toAST(getProp("update")), toAST(getProp("body")), getProp("label").isString() ? getProp("label").asString() : std::string());
     } else if (type == "BreakExpr") {
-        return std::make_unique<BreakExpr>(Token(TokenType::BREAK, "break", line));
+        return std::make_unique<BreakExpr>(Token(TokenType::BREAK, "break", line),
+            getProp("label").isString() ? getProp("label").asString() : std::string(),
+            toAST(getProp("value")));
     } else if (type == "ContinueExpr") {
-        return std::make_unique<ContinueExpr>(Token(TokenType::CONTINUE, "continue", line));
+        return std::make_unique<ContinueExpr>(Token(TokenType::CONTINUE, "continue", line),
+            getProp("label").isString() ? getProp("label").asString() : std::string());
     } else if (type == "ReturnExpr") {
         return std::make_unique<ReturnExpr>(Token(TokenType::RETURN, "return", line), toAST(getProp("value")));
     } else if (type == "IndexAccess") {
@@ -1119,7 +1138,8 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
             toAST(getProp("iterable")),
             toAST(getProp("body")),
             getProp("isLocal").truthy(),
-            getProp("isConst").truthy()
+            getProp("isConst").truthy(),
+            getProp("label").isString() ? getProp("label").asString() : std::string()
         );
     } else if (type == "TryCatchExpr") {
         std::vector<MatchBranch> branches;

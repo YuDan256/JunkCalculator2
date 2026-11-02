@@ -98,6 +98,9 @@ private:
         IRNode* continueMerge;
         std::vector<std::vector<std::unordered_map<std::string, IRNode*>>> continueEnvs;
         int tryDepthAtLoopStart;
+        std::string label;
+        std::vector<IRNode*> breakValues;
+        std::vector<IRNode*> breakPaths;
     };
     std::vector<IRLoopInfo> loopStack;
 

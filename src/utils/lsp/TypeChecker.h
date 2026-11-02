@@ -49,7 +49,7 @@ namespace lsp {
         void visitIfExpr(IfExpr* e) override;
         void visitWhileExpr(WhileExpr* e) override;
         void visitForExpr(ForExpr* e) override;
-        void visitBreakExpr(BreakExpr*) override {}
+        void visitBreakExpr(BreakExpr* e) override;
         void visitContinueExpr(ContinueExpr*) override {}
         void visitReturnExpr(ReturnExpr* e) override;
         void visitIndexAccess(IndexAccess* e) override;

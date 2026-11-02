@@ -868,7 +868,7 @@
       "",
       "  Least-Squares (forced)",
       "  ──────────────────────",
-      "    A.lstsq(b)          Normal-equation path: solves (A*A)x = A*b"
+      "    A.lstsq(b)          Normal-equation path: solves (A*A)x = A&b"
     ],
     "matfunc": [
       "═══ Matrix Transcendental Functions ═══",
@@ -1865,8 +1865,8 @@
       "",
       "  Control Statements & Scope Safety",
       "  ──────────────────────",
-      "    break              Exit innermost loop",
-      "    continue           Skip to next iteration",
+      "    break [&label] [expr]  Exit loop; expr is the loop value (none if omitted)",
+      "    continue [&label]      Skip to next iteration",
       "    return expr        Exit function returning the evaluated expr",
       "                       (Note: `return` does NOT consume newlines. A newline",
       "                       immediately after `return` evaluates as `return none`).",
@@ -3105,7 +3105,7 @@
       "      ",
       "    match (val) {",
       "        (math.pi()) => \"Matches the math.pi() constant factory\",",
-      "        [a, (2*a)] => \"Matches if the second element is exactly twice the first!\",",
+      "        [a, (2&a)] => \"Matches if the second element is exactly twice the first!\",",
       "        {\"x\": a, \"y\": (a^2)} => \"Matches if y is the square of x!\",",
       "        x if (x < 0) => \"Negative: \" + str(x),",
       "        x => \"Positive or zero\"",
@@ -4786,7 +4786,7 @@
     },
     "__ldiv__": {
       "signature": "__ldiv__(other)",
-      "desc": "Dunder method: Overloads the left division operator (\\). a\\b equals b/a for scalars, or inv(a)*b for matrices.",
+      "desc": "Dunder method: Overloads the left division operator (\\). a\\b equals b/a for scalars, or inv(a)&b for matrices.",
       "examples": [
         "__ldiv__(m) = m ~/ self.den"
       ]
@@ -5360,12 +5360,15 @@
       ]
     },
     "while": {
-      "signature": "while (condition) { body }",
+      "signature": "while [&label] (condition) { body }",
       "desc": [
         "Loop that repeats the body as long as the condition is truthy.",
         "Braces {} are optional for single-statement bodies.",
+        "Optional `&label` names the loop; `break &label [expr]` exits it and",
+        "`continue &label` goes to its next iteration.",
         "Use `break` to exit early, `continue` to skip to next iteration.",
-        "Note: The `(` MUST be on the same line as `while`.",
+        "`break expr` makes `expr` the loop value; bare `break` yields `none`.",
+        "Note: The `(` MUST be on the same line as `while` and its label.",
         "See also: /help control"
       ],
       "examples": [
@@ -5374,7 +5377,7 @@
       ]
     },
     "for": {
-      "signature": "for (init; cond; update) { body }  |  for (var in iterable) { body }",
+      "signature": "for [&label] (init; cond; update) { body }  |  for [&label] (var in iterable) { body }",
       "desc": [
         "C-style for loop or for-in iteration loop.",
         "",
@@ -5388,7 +5391,9 @@
         "  Supports local scope: for (local x in arr) { ... }",
         "",
         "Braces {} are optional for single-statement bodies.",
-        "Note: The `(` MUST be on the same line as `for`.",
+        "Optional `&label` names the loop; `break &label [expr]` exits it and",
+        "`continue &label` goes to its next iteration. `break expr` sets the loop value.",
+        "Note: The `(` MUST be on the same line as `for` and its label.",
         "See also: /help control"
       ],
       "examples": [
@@ -5460,26 +5465,31 @@
       ]
     },
     "break": {
-      "signature": "break",
+      "signature": "break [&label] [expr]",
       "desc": [
-        "Immediately exits the innermost enclosing loop (for or while).",
+        "Exits the innermost enclosing loop, or the loop named by `&label`.",
+        "`break expr` makes `expr` the loop value; bare `break` yields `none`.",
+        "`break` and its label/value must stay on the same line.",
         "Cannot be used outside of a loop body.",
         "See also: /help control"
       ],
       "examples": [
         "for (i = 0; i < 100; i += 1) { if (i == 5) break }",
+        "for &outer (x in xs) { if (found) break &outer x }",
         "while (true) { if (done()) break }"
       ]
     },
     "continue": {
-      "signature": "continue",
+      "signature": "continue [&label]",
       "desc": [
         "Skips the remainder of the current loop iteration and jumps",
         "to the next iteration (or the condition check for while loops).",
+        "`continue &label` targets the named loop.",
         "See also: /help control"
       ],
       "examples": [
-        "for (i = 0; i < 10; i += 1) { if (i % 2 == 0) continue; print(i) }"
+        "for (i = 0; i < 10; i += 1) { if (i % 2 == 0) continue; print(i) }",
+        "for &outer (x in xs) { if (skip) continue &outer }"
       ]
     },
     "return": {

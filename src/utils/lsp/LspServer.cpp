@@ -1219,6 +1219,27 @@ namespace lsp {
                             }
                         }
 
+                        bool isLoopLabel = false;
+                        if (t.type == TokenType::IDENTIFIER) {
+                            int ampIdx = static_cast<int>(i) - 1;
+                            while (ampIdx >= 0 && (tokens[ampIdx].type == TokenType::COMMENT ||
+                                                    tokens[ampIdx].type == TokenType::NEWLINE)) {
+                                ampIdx--;
+                            }
+                            if (ampIdx >= 0 && tokens[ampIdx].type == TokenType::BIT_AND) {
+                                int ownerIdx = ampIdx - 1;
+                                while (ownerIdx >= 0 && (tokens[ownerIdx].type == TokenType::COMMENT ||
+                                                         tokens[ownerIdx].type == TokenType::NEWLINE)) {
+                                    ownerIdx--;
+                                }
+                                if (ownerIdx >= 0) {
+                                    const auto owner = tokens[ownerIdx].type;
+                                    isLoopLabel = owner == TokenType::WHILE || owner == TokenType::FOR ||
+                                                  owner == TokenType::BREAK || owner == TokenType::CONTINUE;
+                                }
+                            }
+                        }
+
                         bool isKeyword = false;
                         bool isControlFlow = false;
 
@@ -1246,8 +1267,10 @@ namespace lsp {
                                 break;
                         }
 
-                        if (isControlFlow || isKeyword || t.type == TokenType::IDENTIFIER) {
-                            if (isAfterDot) {
+                        if (isControlFlow || isKeyword || isLoopLabel || t.type == TokenType::IDENTIFIER) {
+                            if (isLoopLabel) {
+                                tokenType = 15; // controlFlow
+                            } else if (isAfterDot) {
                                 tokenType = 9; // property（默认）
                                 Position dotPos = doc->offsetToPosition(t.position);
                                 const NameRes* dotNr = resolver.resolveAtPos(dotPos);

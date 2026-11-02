@@ -1,0 +1,115 @@
+// Labeled loops and loop values.
+
+// Normal completion is none.
+x = for (i in @[1, 2, 3]) { i * 2 }
+assert(x == none, "normal loop completion returns none")
+
+// break expr returns the value of the innermost loop.
+x = for (i in @[1, 2, 3]) {
+    if (i == 2) { break 42 }
+    i
+}
+assert(x == 42, "break value returns from innermost loop")
+
+// break &label returns from the named outer loop.
+x = for &outer (i in @[1, 2, 3]) {
+    for &inner (j in @[10, 20]) {
+        if (i * j == 40) { break &outer i + j }
+    }
+}
+assert(x == 22, "labeled break returns from outer loop")
+
+// C-style for and while also carry break values through the optimized path.
+x = for (i = 0; i < 3; i += 1) {
+    if (i == 1) { break i * 10 }
+}
+assert(x == 10, "C-style for break value")
+
+x = while (true) { break 7 }
+assert(x == 7, "while break value")
+
+// Bare labeled break returns none.
+x = for &outer (i in @[1, 2]) {
+    for (j in @[1, 2]) { break &outer }
+    42
+}
+assert(x == none, "bare labeled break returns none")
+
+// continue &label continues the named outer loop.
+seen = none
+x = for &outer (i in @[1, 2, 3]) {
+    for &inner (j in @[10, 20]) {
+        if (i == 2 && j == 10) { continue &outer }
+        seen = i * j
+    }
+    0
+}
+assert(x == none, "continue does not set a loop value")
+assert(seen == 60, "continue &outer advances the outer loop")
+
+// A labeled continue from a C-style loop still runs the update.
+last = -1
+for &outer (i = 0; i < 3; i += 1) {
+    if (i == 1) { continue &outer }
+    last = i
+}
+assert(last == 2, "continue &outer runs the for update")
+
+// A labeled continue from a for-in loop advances the iterator.
+sum = 0
+for &outer (v in @[1, 2, 3, 4]) {
+    if (v == 2) { continue &outer }
+    sum += v
+}
+assert(sum == 8, "continue &outer advances for-in")
+
+// while loop label.
+hits = 0
+for &outer (i in @[1, 2]) {
+    while &inner (true) {
+        hits += 1
+        break &inner
+    }
+}
+assert(hits == 2, "labeled while runs once per outer iteration")
+
+// Sibling loops may reuse a label; only active nesting is forbidden.
+count = 0
+for &same (i in @[1, 2]) { count += i }
+for &same (j in @[3]) { count += j }
+assert(count == 6, "sibling loops may reuse a label")
+
+// break value is evaluated before defer cleanup.
+order = @[]
+x = for &outer (i in @[1]) {
+    defer order.push("defer")
+    order.push("value")
+    break &outer 1
+}
+assert(x == 1, "break value expression is evaluated")
+assert(order == @["value", "defer"], "defer runs after break value evaluation")
+
+// A leading block whose first statement has a loop label is not a dict literal.
+{
+    local ordered = @[]
+    local result = for &outer (i in @[10]) {
+        defer ordered.push("outer_defer")
+        for &inner (j in @[20]) {
+            defer ordered.push("inner_defer")
+            break &outer { ordered.push("eval_break_val"); i + j }
+        }
+    }
+    assert(result == 30, "labeled loop block expression yields the break value")
+    assert(ordered == @["eval_break_val", "inner_defer", "outer_defer"],
+        "break value runs before inner and outer defers")
+}
+
+// Loop value can be returned from a function.
+f() = {
+    return for &outer (i in @[1, 2, 3]) {
+        if (i == 2) { break &outer i * 10 }
+    }
+}
+assert(f() == 20, "loop value can be returned")
+
+print("labeled loops OK")

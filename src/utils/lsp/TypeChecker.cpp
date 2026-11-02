@@ -235,6 +235,9 @@ namespace lsp {
         if (e->update) e->update->accept(*this);
         if (e->body) e->body->accept(*this);
     }
+    void TypeChecker::visitBreakExpr(BreakExpr* e) {
+        if (e->value) e->value->accept(*this);
+    }
     void TypeChecker::visitReturnExpr(ReturnExpr* e) {
         if (e->value) e->value->accept(*this);
     }

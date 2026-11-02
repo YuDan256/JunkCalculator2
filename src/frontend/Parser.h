@@ -34,6 +34,7 @@ namespace jc {
         int current = 0;
         std::string sourceFile;
         int quoteDepth = 0;
+        std::vector<std::string> activeLabels;
 
     public:
         bool disableMacroExpansion = false;
@@ -66,6 +67,8 @@ namespace jc {
         std::unique_ptr<Expr> ifExpr();
         std::unique_ptr<Expr> whileExpr();
         std::unique_ptr<Expr> forExpr();
+        std::string parseLoopLabel();
+        void requireActiveLabel(const Token& label, const char* keyword);
         std::unique_ptr<Expr> matchExpr();     // ★
         std::unique_ptr<Expr> macroDefExpr(bool isTokenMacro);  // ★
         std::unique_ptr<Expr> quoteExpr();     // ★

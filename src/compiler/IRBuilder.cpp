@@ -2566,7 +2566,7 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
     
     IRNode* breakMerge = createCFGNode(IROp::Merge);
     IRNode* continueMerge = createCFGNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount, expr->label, {}, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2633,13 +2633,33 @@ void IRBuilder::visitWhileExpr(WhileExpr* expr) {
         }
     }
     
+    {
+        auto& finishedLoop = loopStack.back();
+        if (!finishedLoop.breakValues.empty()) {
+            IRNode* resultPhi = graph->createValueNode(IROp::Phi);
+            resultPhi->setControl(finishedLoop.breakMerge);
+            IRNode* noneNode = graph->createConstant(Value::none());
+            for (IRNode* ctrl : finishedLoop.breakMerge->dataInputs) {
+                auto it = std::find(finishedLoop.breakPaths.begin(),
+                                    finishedLoop.breakPaths.end(), ctrl);
+                if (it != finishedLoop.breakPaths.end()) {
+                    resultPhi->addData(finishedLoop.breakValues[
+                        static_cast<size_t>(it - finishedLoop.breakPaths.begin())]);
+                } else {
+                    resultPhi->addData(noneNode); // normal completion
+                }
+            }
+            lastValue = resultPhi;
+        } else {
+            lastValue = graph->createConstant(Value::none());
+            link(lastValue);
+        }
+    }
+
     loopStack.pop_back();
     
     envStack = exitEnvStack;
     popScope(); // 离开块级作用域
-    
-    lastValue = graph->createConstant(Value::none());
-    link(lastValue);
 }
 
 void IRBuilder::visitForExpr(ForExpr* expr) {
@@ -2664,7 +2684,7 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
     
     IRNode* breakMerge = createCFGNode(IROp::Merge);
     IRNode* continueMerge = createCFGNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount, expr->label, {}, {}});
     
     expr->condition->accept(*this);
     IRNode* condVal = lastValue;
@@ -2733,20 +2753,59 @@ void IRBuilder::visitForExpr(ForExpr* expr) {
         }
     }
     
+    {
+        auto& finishedLoop = loopStack.back();
+        if (!finishedLoop.breakValues.empty()) {
+            IRNode* resultPhi = graph->createValueNode(IROp::Phi);
+            resultPhi->setControl(finishedLoop.breakMerge);
+            IRNode* noneNode = graph->createConstant(Value::none());
+            for (IRNode* ctrl : finishedLoop.breakMerge->dataInputs) {
+                auto it = std::find(finishedLoop.breakPaths.begin(),
+                                    finishedLoop.breakPaths.end(), ctrl);
+                if (it != finishedLoop.breakPaths.end()) {
+                    resultPhi->addData(finishedLoop.breakValues[
+                        static_cast<size_t>(it - finishedLoop.breakPaths.begin())]);
+                } else {
+                    resultPhi->addData(noneNode); // normal completion
+                }
+            }
+            lastValue = resultPhi;
+        } else {
+            lastValue = graph->createConstant(Value::none());
+            link(lastValue);
+        }
+    }
+
     loopStack.pop_back();
     
     envStack = exitEnvStack;
     popScope(); // 离开块级作用域
-    
-    lastValue = graph->createConstant(Value::none());
-    link(lastValue);
 }
 
 void IRBuilder::visitBreakExpr(BreakExpr* expr) {
     graph->currentLine = expr->keyword.line;
     if (loopStack.empty()) error("Syntax Error: 'break' outside loop.");
-    auto& loop = loopStack.back();
-    
+
+    int target = static_cast<int>(loopStack.size()) - 1;
+    if (!expr->label.empty()) {
+        target = -1;
+        for (int i = static_cast<int>(loopStack.size()) - 1; i >= 0; --i) {
+            if (loopStack[i].label == expr->label) { target = i; break; }
+        }
+        if (target < 0) error("Syntax Error: Unknown loop label '&" + expr->label + "'.");
+    }
+
+    // Evaluate the break value before cleanup. A nested loop in the value may
+    // grow loopStack, so reacquire the target by index afterwards.
+    IRNode* valueNode = nullptr;
+    if (expr->value) {
+        expr->value->accept(*this);
+        valueNode = lastValue;
+    } else {
+        valueNode = graph->createConstant(Value::none());
+    }
+
+    auto& loop = loopStack[target];
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
@@ -2765,18 +2824,29 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
         link(runNode);
         currentSeq = runNode;
     }
-    
+
+    loop.breakValues.push_back(valueNode);
+    loop.breakPaths.push_back(currentSeq);
     loop.breakMerge->addData(currentSeq);
     loop.breakEnvs.push_back(envStack);
-    
+
     currentSeq = createCFGNode(IROp::Merge); // Dead code
 }
 
 void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
     graph->currentLine = expr->keyword.line;
     if (loopStack.empty()) error("Syntax Error: 'continue' outside loop.");
-    auto& loop = loopStack.back();
-    
+
+    int target = static_cast<int>(loopStack.size()) - 1;
+    if (!expr->label.empty()) {
+        target = -1;
+        for (int i = static_cast<int>(loopStack.size()) - 1; i >= 0; --i) {
+            if (loopStack[i].label == expr->label) { target = i; break; }
+        }
+        if (target < 0) error("Syntax Error: Unknown loop label '&" + expr->label + "'.");
+    }
+
+    auto& loop = loopStack[target];
     int loopDepth = static_cast<int>(loop.loopPhisStack.size());
     int triesToPop = activeTryCount - loop.tryDepthAtLoopStart;
     for (int i = 0; i < triesToPop; ++i) {
@@ -2795,7 +2865,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
         link(runNode);
         currentSeq = runNode;
     }
-    
+
     if (loop.continueMerge) {
         loop.continueMerge->addData(currentSeq);
         loop.continueEnvs.push_back(envStack);
@@ -2808,7 +2878,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
             }
         }
     }
-    
+
     currentSeq = createCFGNode(IROp::Merge); // Dead code
 }
     
@@ -3822,7 +3892,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     
     IRNode* breakMerge = createCFGNode(IROp::Merge);
     IRNode* continueMerge = createCFGNode(IROp::Merge);
-    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount});
+    loopStack.push_back({loopNode, loopPhisStack, breakMerge, {}, continueMerge, {}, activeTryCount, expr->label, {}, {}});
     
     IRNode* nextNode = graph->createValueNode(IROp::IterNext);
     link(nextNode);
@@ -3902,13 +3972,33 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
         }
     }
     
+    {
+        auto& finishedLoop = loopStack.back();
+        if (!finishedLoop.breakValues.empty()) {
+            IRNode* resultPhi = graph->createValueNode(IROp::Phi);
+            resultPhi->setControl(finishedLoop.breakMerge);
+            IRNode* noneNode = graph->createConstant(Value::none());
+            for (IRNode* ctrl : finishedLoop.breakMerge->dataInputs) {
+                auto it = std::find(finishedLoop.breakPaths.begin(),
+                                    finishedLoop.breakPaths.end(), ctrl);
+                if (it != finishedLoop.breakPaths.end()) {
+                    resultPhi->addData(finishedLoop.breakValues[
+                        static_cast<size_t>(it - finishedLoop.breakPaths.begin())]);
+                } else {
+                    resultPhi->addData(noneNode); // normal completion
+                }
+            }
+            lastValue = resultPhi;
+        } else {
+            lastValue = graph->createConstant(Value::none());
+            link(lastValue);
+        }
+    }
+
     loopStack.pop_back();
     
     envStack = exitEnvStack;
     popScope(); // 离开块级作用域
-    
-    lastValue = graph->createConstant(Value::none());
-    link(lastValue);
 }
 
 void IRBuilder::visitThrowExpr(ThrowExpr* expr) {

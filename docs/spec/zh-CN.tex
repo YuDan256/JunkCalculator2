@@ -475,12 +475,13 @@ context-self-expr = "class" | "namespace" ;
 控制结构是表达式，并产生分支值或控制转移：
 
 \begin{lstlisting}
+loop-label     = "&" identifier ;
 if-expr        = "if" "(" expression ")" expression
                  [ "else" expression ] ;
-while-expr     = "while" "(" expression ")" expression ;
-for-expr       = "for" "(" [ expression ] ";" [ expression ] ";"
+while-expr     = "while" [ loop-label ] "(" expression ")" expression ;
+for-expr       = "for" [ loop-label ] "(" [ expression ] ";" [ expression ] ";"
                  [ expression ] ")" expression ;
-for-in-expr    = "for" "(" for-pattern "in" expression ")" expression ;
+for-in-expr    = "for" [ loop-label ] "(" for-pattern "in" expression ")" expression ;
 for-pattern    = [ "const" ] [ "local" ] pattern ;
 
 match-expr     = "match" "(" expression ")" "{" match-arms "}" ;
@@ -492,8 +493,8 @@ catch-clause   = "catch" ( "(" branch-patterns ")" expression
                          | "{" match-arms "}" ) ;
 defer-expr     = "defer" expression ;
 return-expr    = "return" [ assign-expr ] ;
-break-expr     = "break" ;
-continue-expr  = "continue" ;
+break-expr     = "break" [ loop-label ] [ assign-expr ] ;
+continue-expr  = "continue" [ loop-label ] ;
 throw-expr     = "throw" assign-expr ;
 \end{lstlisting}
 
@@ -1327,7 +1328,7 @@ class、trait、namespace、enum & 对应 class 对象、namespace 对象或类�
 import & 模块或命名空间值 \\
 include & \jc{none} \\
 if & 选中分支的值 \\
-while、for、for-in & \jc{none} \\
+while、for、for-in & 循环值：正常结束为 \jc{none}，\jc{break expr} 为 \jc{expr} \\
 match & 选中分支的值 \\
 try & try 体或选中 catch 分支的值 \\
 defer & \jc{none} \\
@@ -1354,6 +1355,18 @@ return、break、continue、throw & 控制转移 \\
 \jc{for (init; cond; step) e} 依次执行初始化、条件、循环体与步进；正常结束时值为 \jc{none}。
 循环体进入下一轮前执行 defer；\jc{break} 结束最近循环，\jc{continue} 进入下一轮。
 循环体中的 \jc{return} 结束当前函数，并按块清理规则执行 defer。
+
+循环可以带标签：\jc{for &outer (i in xs) e}、\jc{while &poll (c) e}。
+标签只标记循环，作用域到循环结束，不能跨函数或 lambda；同一活动作用域内
+禁止同名嵌套标签。\jc{break &outer} 跳出指定循环，\jc{continue &outer} 进入指定
+循环的下一轮；未知标签与重复活动标签都是语法错误。
+标签的 \jc{\&} 号属于标签语法，不参与字典字面量判定。
+
+\jc{break} 可以带值：\jc{break expr} 结束最近循环并把 \jc{expr} 作为循环值；
+\jc{break &outer expr} 结束指定循环并把 \jc{expr} 作为该循环的值。
+裸 \jc{break} 与裸 \jc{break &outer} 产生 \jc{none}。\jc{continue} 不设置循环值。
+\jc{break} 与 \jc{continue} 的标签和值必须与关键字同行，遇到换行即结束；
+循环关键字、标签与左括号也必须在同一行。
 
 分支体与循环体可以是由单个表达式组成的隐式块；隐式块中的 \jc{local} 绑定保持局部。
 \jc{return} 遇到行尾结束，返回值为 \jc{none}；显式返回值写在 \jc{return} 后。
@@ -2048,10 +2061,11 @@ ExprAssign、LocalDecl/RefDecl/StateDecl/ConstDecl & target、value；name、isC
 DeleteExpr & names \\
 CompoundAssign & target、op、value、isRef、isState、isLocal \\
 Block、IfExpr & statements；condition、thenBranch、elseBranch \\
-WhileExpr、ForExpr & condition、body；initializer、condition、update、body \\
-ForInExpr、MatchExpr & pattern、iterable、body、isLocal、isConst；subject、branches \\
+WhileExpr、ForExpr & label、condition、body；label、initializer、condition、update、body \\
+ForInExpr、MatchExpr & label、pattern、iterable、body、isLocal、isConst；subject、branches \\
 TryCatchExpr、DeferExpr & tryBody、branches；body \\
-BreakExpr、ContinueExpr、ReturnExpr、ThrowExpr & 无字段；无字段；value；value \\
+BreakExpr、ContinueExpr & label、value；label \\
+ReturnExpr、ThrowExpr & value；value \\
 Call、InvokeExpr、MethodCallExpr & callee、arguments；callee；object、method、arguments \\
 SpreadExpr、KeywordArgExpr & value、isKeyword；name、value \\
 LambdaExpr & name、params、paramIsRef、paramIsConst、defaultExprs、restName、paramTypes、returnType、kwargParams、kwargIsRef、kwargIsConst、kwargDefaultExprs、kwargTypes、kwargsName、rawBody、body \\
@@ -2528,12 +2542,13 @@ context-self-expr = "class" | "namespace" ;
 \subsection{控制表达式}
 
 \begin{lstlisting}
+loop-label     = "&" identifier ;
 if-expr        = "if" "(" expression ")" expression
                  [ "else" expression ] ;
-while-expr     = "while" "(" expression ")" expression ;
-for-expr       = "for" "(" [ expression ] ";" [ expression ] ";"
+while-expr     = "while" [ loop-label ] "(" expression ")" expression ;
+for-expr       = "for" [ loop-label ] "(" [ expression ] ";" [ expression ] ";"
                  [ expression ] ")" expression ;
-for-in-expr    = "for" "(" for-pattern "in" expression ")" expression ;
+for-in-expr    = "for" [ loop-label ] "(" for-pattern "in" expression ")" expression ;
 for-pattern    = [ "const" ] [ "local" ] pattern ;
 match-expr     = "match" "(" expression ")" "{" match-arms "}" ;
 match-arms     = match-arm { "," match-arm } ;
@@ -2543,8 +2558,8 @@ catch-clause   = "catch" ( "(" branch-patterns ")" expression
                          | "{" match-arms "}" ) ;
 defer-expr     = "defer" expression ;
 return-expr    = "return" [ assign-expr ] ;
-break-expr     = "break" ;
-continue-expr  = "continue" ;
+break-expr     = "break" [ loop-label ] [ assign-expr ] ;
+continue-expr  = "continue" [ loop-label ] ;
 throw-expr     = "throw" assign-expr ;
 \end{lstlisting}
 
@@ -2606,7 +2621,7 @@ branch-patterns = pattern { "," pattern } ;
 名字与作用域 & 第 4 节 & 绑定、重声明、遮蔽、提升、\jc{ref}、\jc{state}、\jc{const} \\
 类型与值 & 第 5 节 & 类型对象、联合类型、类型注解、\jc{as} 断言、真值与哈希 \\
 表达式求值 & 第 6 节 & 求值顺序、短路、优先级、赋值目标、索引与切片 \\
-控制流 & 第 7 节 & 分支值、循环值、\jc{break}/\jc{continue}、defer、try/catch \\
+控制流 & 第 7 节 & 分支值、循环值、标签、\jc{break}/\jc{continue}、defer、try/catch \\
 函数 & 第 8 节 & 默认值、关键字参数、rest/kwargs、spread、ref 参数、partial \\
 模式 & 第 9 节 & 分支顺序、guard、or-pattern、矩阵 rest、staging/commit \\
 class 与 trait & 第 10 节 & 成员查找、static、trait 一致性、dunder、init/finalize、enum \\

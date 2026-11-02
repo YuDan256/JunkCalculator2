@@ -423,8 +423,10 @@ struct IncludeExpr;
     struct WhileExpr : public Expr {
         std::unique_ptr<Expr> condition;
         std::unique_ptr<Expr> body;
-        WhileExpr(std::unique_ptr<Expr> condition, std::unique_ptr<Expr> body)
-            : condition(std::move(condition)), body(std::move(body)) {
+        std::string label;
+        WhileExpr(std::unique_ptr<Expr> condition, std::unique_ptr<Expr> body,
+                  std::string label = "")
+            : condition(std::move(condition)), body(std::move(body)), label(std::move(label)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitWhileExpr(this); }
     };
@@ -435,23 +437,30 @@ struct IncludeExpr;
         std::unique_ptr<Expr> condition;
         std::unique_ptr<Expr> update;
         std::unique_ptr<Expr> body;
+        std::string label;
         ForExpr(std::unique_ptr<Expr> init, std::unique_ptr<Expr> cond,
-            std::unique_ptr<Expr> upd, std::unique_ptr<Expr> body)
+            std::unique_ptr<Expr> upd, std::unique_ptr<Expr> body,
+            std::string label = "")
             : initializer(std::move(init)), condition(std::move(cond)),
-            update(std::move(upd)), body(std::move(body)) {
+            update(std::move(upd)), body(std::move(body)), label(std::move(label)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitForExpr(this); }
     };
 
     struct BreakExpr : public Expr {
         Token keyword;
-        explicit BreakExpr(Token keyword) : keyword(std::move(keyword)) {}
+        std::string label;
+        std::unique_ptr<Expr> value;
+        BreakExpr(Token keyword, std::string label = "", std::unique_ptr<Expr> value = nullptr)
+            : keyword(std::move(keyword)), label(std::move(label)), value(std::move(value)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitBreakExpr(this); }
     };
 
     struct ContinueExpr : public Expr {
         Token keyword;
-        explicit ContinueExpr(Token keyword) : keyword(std::move(keyword)) {}
+        std::string label;
+        ContinueExpr(Token keyword, std::string label = "")
+            : keyword(std::move(keyword)), label(std::move(label)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitContinueExpr(this); }
     };
 
@@ -591,11 +600,14 @@ struct IncludeExpr;
         std::unique_ptr<Expr> body;
         bool isLocal;
         bool isConst;
+        std::string label;
 
         ForInExpr(std::unique_ptr<Pattern> pattern, std::unique_ptr<Expr> iterable,
-            std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false)
+            std::unique_ptr<Expr> body, bool isLocal = false, bool isConst = false,
+            std::string label = "")
             : pattern(std::move(pattern)),
-            iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal), isConst(isConst) {
+            iterable(std::move(iterable)), body(std::move(body)), isLocal(isLocal),
+            isConst(isConst), label(std::move(label)) {
         }
 
         void accept(ExprVisitor& visitor) override { visitor.visitForInExpr(this); }

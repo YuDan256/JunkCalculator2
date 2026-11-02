@@ -1,0 +1,47 @@
+// Labeled-loop syntax errors and line-boundary rules, exercised through eval.
+
+expect(code, kind) = {
+    try {
+        eval(code)
+        return false
+    } catch (e) {
+        return e.type == kind
+    }
+}
+
+assert(expect(
+    "for &a (i in @[1]) { for &a (j in @[1]) { break &a } }",
+    "SyntaxError"), "nested duplicate label is rejected")
+assert(expect(
+    "for &a (i in @[1]) { break &b }",
+    "SyntaxError"), "unknown break label is rejected")
+assert(expect(
+    "for &a (i in @[1]) { continue &b }",
+    "SyntaxError"), "unknown continue label is rejected")
+assert(expect(
+    "for &a\n(i in @[1]) { }",
+    "ParserError"), "for header must stay on one line")
+assert(expect(
+    "for &a\n(x in @[1]) { }",
+    "ParserError"), "for-in header must stay on one line")
+assert(expect(
+    "while &a\n(true) { }",
+    "ParserError"), "while header must stay on one line")
+assert(expect(
+    "for &a (i in @[1]) { f = () => { break &a } }",
+    "SyntaxError"), "labels cannot cross a lambda boundary")
+assert(expect(
+    "while &a (true) { for &a (j in @[1]) { break &a } }",
+    "SyntaxError"), "nested while/for duplicate label is rejected")
+
+// Same-line label and value are valid.
+assert(eval("for &a (i in @[1]) { break &a 1 }") == 1, "labeled break value")
+
+// A newline ends bare break; 42 is the next expression, not a value.
+assert(eval("for &a (i in @[1]) { break\n42 }") == none, "break does not swallow the next line")
+assert(eval("for &a (i in @[1]) { break &a\n42 }") == none, "labeled break does not swallow the next line")
+
+// continue keeps the loop's normal none result.
+assert(eval("for &a (i in @[1]) { continue &a }") == none, "continue has no loop value")
+
+print("labeled loop errors OK")

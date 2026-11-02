@@ -633,9 +633,12 @@ namespace jc {
                     while (match({ TokenType::NEWLINE })) {}
                     consume(TokenType::ASSIGN, "Parser Error: Expect '=' after function signature.");
 
-                    // 解析函数体
+                    // 解析函数体：标签不能跨函数
                     int bodyStart = current;
+                    auto savedLabels = activeLabels;
+                    activeLabels.clear();
                     auto rawB = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                    activeLabels = std::move(savedLabels);
                     int bodyEnd = current;
 
                     std::string rawBodyStr = "";
@@ -1585,8 +1588,29 @@ namespace jc {
         return withPos(std::make_unique<IfExpr>(std::move(condition), std::move(thenBranch), std::move(elseBranch)), startPos, endPos);
     }
 
+    std::string Parser::parseLoopLabel() {
+        if (!match({ TokenType::BIT_AND })) return {};
+        Token label = consume(TokenType::IDENTIFIER, "Parser Error: Expect label after '&'.");
+        for (const auto& active : activeLabels) {
+            if (active == label.lexeme) {
+                JC2_THROW(SyntaxError, "Loop label '&" + label.lexeme + "' is already active.");
+            }
+        }
+        return label.lexeme;
+    }
+
+    void Parser::requireActiveLabel(const Token& label, const char* keyword) {
+        for (const auto& active : activeLabels) {
+            if (active == label.lexeme) return;
+        }
+        JC2_THROW(SyntaxError, "Unknown loop label '&" + label.lexeme + "' in '" + keyword + "'.");
+    }
+
     std::unique_ptr<Expr> Parser::whileExpr() {
         int startPos = previous().position;
+        std::string label = parseLoopLabel();
+        size_t labelDepth = activeLabels.size();
+        if (!label.empty()) activeLabels.push_back(label);
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'while'.");
         auto condition = expression();
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after while condition.");
@@ -1594,7 +1618,8 @@ namespace jc {
         auto body = parseStatementOrBlock(); // ★ 修改处
 
         int endPos = body->endPos;
-        return withPos(std::make_unique<WhileExpr>(std::move(condition), std::move(body)), startPos, endPos);
+        activeLabels.resize(labelDepth);
+        return withPos(std::make_unique<WhileExpr>(std::move(condition), std::move(body), std::move(label)), startPos, endPos);
     }
 
     // =================================================================
@@ -1602,6 +1627,9 @@ namespace jc {
     // =================================================================
     std::unique_ptr<Expr> Parser::forExpr() {
         int startPos = previous().position;
+        std::string label = parseLoopLabel();
+        size_t labelDepth = activeLabels.size();
+        if (!label.empty()) activeLabels.push_back(label);
         consume(TokenType::LPAREN, "Parser Error: Expect '(' after 'for'.");
 
         int savedPos = current;
@@ -1639,7 +1667,8 @@ namespace jc {
             consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-in iterable.");
             auto body = parseStatementOrBlock();
             int endPos = body->endPos;
-            return withPos(std::make_unique<ForInExpr>(std::move(forInPattern), std::move(iterable), std::move(body), isLocal, isConst), startPos, endPos);
+            activeLabels.resize(labelDepth);
+            return withPos(std::make_unique<ForInExpr>(std::move(forInPattern), std::move(iterable), std::move(body), isLocal, isConst, std::move(label)), startPos, endPos);
         }
         
         // 不是 for-in，回退到 '(' 之后，让 expression() 正常解析 init
@@ -1654,7 +1683,8 @@ namespace jc {
         consume(TokenType::RPAREN, "Parser Error: Expect ')' after for-clauses.");
         auto body = parseStatementOrBlock();
         int endPos = body->endPos;
-        return withPos(std::make_unique<ForExpr>(std::move(init), std::move(cond), std::move(update), std::move(body)), startPos, endPos);
+        activeLabels.resize(labelDepth);
+        return withPos(std::make_unique<ForExpr>(std::move(init), std::move(cond), std::move(update), std::move(body), std::move(label)), startPos, endPos);
     }
 
     // =================================================================
@@ -1776,14 +1806,42 @@ namespace jc {
         if (match({ TokenType::WHILE }))    return whileExpr();
         if (match({ TokenType::FOR }))      return forExpr();
         if (match({ TokenType::BREAK })) {
-            int startPos = previous().position;
-            int endPos = startPos + static_cast<int>(previous().lexeme.length());
-            return withPos(std::make_unique<BreakExpr>(previous()), startPos, endPos);
+            Token breakTok = previous();
+            std::string label;
+            Token labelTok(TokenType::ERROR, "");
+            bool hasLabel = false;
+            if (match({ TokenType::BIT_AND })) {
+                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after '&'.");
+                requireActiveLabel(labelTok, "break");
+                label = labelTok.lexeme;
+                hasLabel = true;
+            }
+            std::unique_ptr<Expr> value = nullptr;
+            if (!check(TokenType::RBRACE) &&
+                !check(TokenType::SEMICOLON) &&
+                !check(TokenType::NEWLINE) &&
+                !check(TokenType::END_OF_FILE)) {
+                value = assignment();
+            }
+            int endPos = value ? value->endPos
+                               : (hasLabel ? labelTok.position + static_cast<int>(labelTok.lexeme.length())
+                                           : breakTok.position + static_cast<int>(breakTok.lexeme.length()));
+            return withPos(std::make_unique<BreakExpr>(breakTok, std::move(label), std::move(value)), breakTok.position, endPos);
         }
         if (match({ TokenType::CONTINUE })) {
-            int startPos = previous().position;
-            int endPos = startPos + static_cast<int>(previous().lexeme.length());
-            return withPos(std::make_unique<ContinueExpr>(previous()), startPos, endPos);
+            Token continueTok = previous();
+            std::string label;
+            Token labelTok(TokenType::ERROR, "");
+            bool hasLabel = false;
+            if (match({ TokenType::BIT_AND })) {
+                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after '&'.");
+                requireActiveLabel(labelTok, "continue");
+                label = labelTok.lexeme;
+                hasLabel = true;
+            }
+            int endPos = hasLabel ? labelTok.position + static_cast<int>(labelTok.lexeme.length())
+                                  : continueTok.position + static_cast<int>(continueTok.lexeme.length());
+            return withPos(std::make_unique<ContinueExpr>(continueTok, std::move(label)), continueTok.position, endPos);
         }
         if (match({ TokenType::RETURN })) {
             Token retTok = previous();
@@ -2120,7 +2178,10 @@ namespace jc {
                 consume(TokenType::ARROW, "Parser Error: Expect '=>' for lambda.");
 
                 int bodyStart = current;
+                auto savedLabels = activeLabels;
+                activeLabels.clear();
                 auto body = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                activeLabels = std::move(savedLabels);
                 int bodyEnd = current;
 
                 std::string rawBody;
@@ -2496,7 +2557,10 @@ namespace jc {
         }
         defineMacro(name.lexeme, Value(dummyMacro));
 
+        auto savedLabels = activeLabels;
+        activeLabels.clear();
         auto body = parseStatementOrBlock();
+        activeLabels = std::move(savedLabels);
         int endPos = body->endPos;
         
         std::vector<bool> paramIsRef(params.size(), false);

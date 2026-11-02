@@ -344,6 +344,9 @@ namespace lsp {
         if (e->update) e->update->accept(*this);
         if (e->body) e->body->accept(*this);
     }
+    void TypeInferrer::visitBreakExpr(BreakExpr* e) {
+        if (e->value) inferExpr(e->value.get());
+    }
     void TypeInferrer::visitReturnExpr(ReturnExpr* e) {
         if (e->value) e->value->accept(*this);
     }

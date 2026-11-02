@@ -279,7 +279,9 @@ void Resolver::visitForExpr(ForExpr* expr) {
     endScope();
 }
 
-void Resolver::visitBreakExpr(BreakExpr* /*expr*/) {}
+void Resolver::visitBreakExpr(BreakExpr* expr) {
+    if (expr->value) resolve(expr->value.get());
+}
 void Resolver::visitContinueExpr(ContinueExpr* /*expr*/) {}
 
 void Resolver::visitReturnExpr(ReturnExpr* expr) {

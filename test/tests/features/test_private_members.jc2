@@ -6,13 +6,13 @@ throws(f) = {
 // ── 1. 不同类的同名私有互不干扰 ──
 class Alpha {
     local v = "alpha"
-    init() = { }
+    init() = %{ }
     read() = self.v
 }
 
 class Beta {
     local v = "beta"
-    init() = { }
+    init() = %{ }
     read() = self.v
 }
 
@@ -24,7 +24,7 @@ test_same_private_name_across_classes() = {
 // ── 2. 父子同名私有：词法解析，各自看自己那份 ──
 class Parent {
     local tag = "parent"
-    init() = { }
+    init() = %{ }
     readFromParent() = self.tag
 }
 
@@ -41,7 +41,7 @@ class ChildOwn extends Parent {
 // 私有属性（可调用）同样按词法解析
 class CallableParent {
     local who() = "parent"
-    init() = { }
+    init() = %{ }
     callWho() = self.who()
 }
 
@@ -65,13 +65,13 @@ test_inherited_private_is_lexical() = {
 // ── 3. 私有 static 按类隔离 ──
 class Counter1 {
     local static const NAME = "c1"
-    init() = { }
+    init() = %{ }
     name() = Counter1.NAME
 }
 
 class Counter2 {
     local static const NAME = "c2"
-    init() = { }
+    init() = %{ }
     name() = Counter2.NAME
 }
 
@@ -85,7 +85,7 @@ class Reflected {
     local hidden = 1
     local hiddenCall() = 2
     shown = 3
-    init() = { }
+    init() = %{ }
 }
 
 test_private_is_not_reflected() = {
@@ -102,7 +102,7 @@ test_private_is_not_reflected() = {
 // ── 5. 私有 const 不可改 ──
 class Locked {
     local const limit = 10
-    init() = { }
+    init() = %{ }
     tryBump() = self.limit = 11
     read() = self.limit
 }

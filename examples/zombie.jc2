@@ -95,7 +95,7 @@ class Raycaster3D extends engine.GameEngine {
         self.probe = FpsProbe(100)
         self.show_probe = false
 
-        self.tex = {
+        self.tex = %{
             "ZOMBIE": @[
                 ".XXXXXX.",
                 "XX0RR0X.",
@@ -139,7 +139,7 @@ class Raycaster3D extends engine.GameEngine {
         }
         
         // 调色板映射 (. = 透明背景)
-        self.pal = {
+        self.pal = %{
             "X": "#151515", "G": "#00AA44", "R": "#FF0033", 
             "0": "#FFFFFF", "W": "#EEEEEE", "Y": "#FFCC00", 
             "D": "#550011", "r": "#990022"
@@ -219,13 +219,13 @@ class Raycaster3D extends engine.GameEngine {
                         rng = random.rand()
                         if (rng > 0.88) {
                             z_hp = 100.0 + (self.level - 1) * 25.0 + float(random.randint(-10, 10)) // 动态递增难度血量
-                            self.zombies.push({x: float(r) + 0.5, y: float(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
+                            self.zombies.push(%{x: float(r) + 0.5, y: float(c) + 0.5, hp: z_hp, status: "ALIVE", hurt_timer: 0.0})
                         } else if (rng > 0.83) {
                             // 血包道具（白底红十字）
-                            self.items.push({x: float(r) + 0.5, y: float(c) + 0.5, type: "HP", active: true})
+                            self.items.push(%{x: float(r) + 0.5, y: float(c) + 0.5, type: "HP", active: true})
                         } else if (rng > 0.76) {
                             // 弹药盒（绿底黄束）
-                            self.items.push({x: float(r) + 0.5, y: float(c) + 0.5, type: "AMMO", active: true})
+                            self.items.push(%{x: float(r) + 0.5, y: float(c) + 0.5, type: "AMMO", active: true})
                         }
                     }
                 }

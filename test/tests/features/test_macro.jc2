@@ -15,7 +15,7 @@ test_basic_quote()
 test_ast_manipulation() = {
     macro swap(node) = {
         match (node) {
-            {type: "Block", statements: stmts} => {
+            %{type: "Block", statements: stmts} => {
                 a = stmts[0]
                 b = stmts[1]
                 return quote {
@@ -92,7 +92,7 @@ test_macro_expr_arg()
 test_ast_tamper() = {
     macro tamper(node) = {
         match (node) {
-            {type: "Block", statements: stmts} => {
+            %{type: "Block", statements: stmts} => {
                 bin_op = stmts[0]
                 // 把加号强行篡改为乘号
                 bin_op.op = "*"
@@ -187,7 +187,7 @@ test_multi_arg_macro()
 
 test_variadic_macro() = {
     macro build_list(...nodes) = {
-        return ASTNode("Call", 0, {
+        return ASTNode("Call", 0, %{
             callee: "list",
             arguments: nodes
         })
@@ -207,7 +207,7 @@ test_macro_identifier_unquote() = {
         cache_var = ast.gensym("cache")
         res_var = ast.gensym("res")
         return quote {
-            local $cache_var = {}
+            local $cache_var = %{}
             $func_name($arg_name) = {
                 if ($arg_name in $cache_var) {
                     return $cache_var[$arg_name]
@@ -357,7 +357,7 @@ test_syntax_macros_success()
 // Recursive macro expansion and gensym hygiene.
 macro fold_plus_macro(node) = {
     match (node) {
-        {type: "Binary", op: "+", left: l, right: r} => {
+        %{type: "Binary", op: "+", left: l, right: r} => {
             return quote @fold_plus_macro($l) * @fold_plus_macro($r)
         }
         _ => node

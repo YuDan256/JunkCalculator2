@@ -144,7 +144,7 @@ test_positive_vectors_roundtrip() = {
     positives = _vectors(all, "positive", "")
     assert(positives.len() >= 60, "the positive vector set must not shrink")
 
-    seen = {}
+    seen = %{}
     for (v in positives) {
         container = v["container"]
         decoded = _decode(container, v["payload"])
@@ -312,7 +312,7 @@ test_negative_vectors_raise_inflate_error() = {
     negatives = _vectors(all, "negative", "")
     assert(negatives.len() >= 20, "the negative vector set must not shrink")
 
-    seen = {}
+    seen = %{}
     for (v in negatives) {
         _expectError(v["name"], v["container"], v["payload"])
         if (seen.hasKey(v["container"])) {

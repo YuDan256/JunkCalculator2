@@ -2,13 +2,13 @@
 
 test_for_in_destruct() = {
     sum = 0
-    for (@[k, v] in {a: 1, b: 2, c: 3}) {
+    for (@[k, v] in %{a: 1, b: 2, c: 3}) {
         sum += v
     }
     assert(sum == 6, "for-in dict destruct failed")
     
     // 测试复杂左值在 for-in 中的解构
-    obj = {totals: @[0, 0]}
+    obj = %{totals: @[0, 0]}
     for (@[idx, val] in @[@[0, 10], @[1, 20]]) {
         obj.totals[idx] += val
     }
@@ -18,8 +18,8 @@ test_for_in_destruct()
 
 test_try_catch_destruct() = {
     try {
-        throw {code: 404, msg: "Not Found"}
-    } catch ({message: {code, msg}}) {
+        throw %{code: 404, msg: "Not Found"}
+    } catch (%{message: %{code, msg}}) {
         assert(code == 404, "catch destruct code")
         assert(msg == "Not Found", "catch destruct msg")
     }
@@ -27,8 +27,8 @@ test_try_catch_destruct() = {
     // 测试 catch 匹配失败时的 rethrow
     try {
         try {
-            throw {error: "Fatal"}
-        } catch ({value: {code}}) {
+            throw %{error: "Fatal"}
+        } catch (%{value: %{code}}) {
             assert(false, "Should not match this catch block")
         }
     } catch (e) {
@@ -39,14 +39,14 @@ test_try_catch_destruct()
 
 test_match_expr() = {
     process(data) = match (data) {
-        {type: "user", id} => f"User {id}"
-        {type: "admin", ..._} => "Admin"
+        %{type: "user", id} => f"User {id}"
+        %{type: "admin", ..._} => "Admin"
         @[a, b] if (a > b) => "Descending"
         _ => "Unknown"
     }
     
-    assert(process({type: "user", id: 123}) == "User 123", "Match dict pattern")
-    assert(process({type: "admin", level: 1}) == "Admin", "Match dict rest pattern")
+    assert(process(%{type: "user", id: 123}) == "User 123", "Match dict pattern")
+    assert(process(%{type: "admin", level: 1}) == "Admin", "Match dict rest pattern")
     assert(process(@[5, 2]) == "Descending", "Match list with guard")
     assert(process("hello") == "Unknown", "Match default")
 }
@@ -58,7 +58,7 @@ check(name, actual, expected) = {
 
 test_list_comp_destruct() = {
     // 字典解构推导
-    res1 = @[f"{k}:{v}" for (@[k, v] in {a: 1, b: 2})]
+    res1 = @[f"{k}:{v}" for (@[k, v] in %{a: 1, b: 2})]
     assert("a:1" in res1 && "b:2" in res1, "List comp dict destruct failed")
     
     // 列表解构推导带条件

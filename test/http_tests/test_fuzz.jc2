@@ -96,7 +96,7 @@ test_tls_fuzz_never_crashes_or_lies() = {
         seed_record = records[_next(st) % records.len()]
         mutated = _mutateHex(seed_record, st)
 
-        c = tls.Client({
+        c = tls.Client(%{
             "serverName": "server",
             "verifyChain": false,
             "clientHello": fx["client_hello_handshake"],
@@ -131,7 +131,7 @@ test_feed_hex_contract_is_a_caller_error() = {
     // feed 的参数是十六进制字符串：奇数长度/非十六进制属于**调用方**错误，
     // 用 TlsError 抛出是契约的一部分（网络字节永远经 unhex 合法化，不受对端影响）。
     fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -154,7 +154,7 @@ test_tls_fuzz_after_handshake() = {
     fx = json.parse(io.readFile("test/http_tests/data/crypto_vectors/tls/rfc8448.json"))["simple_1rtt"]
     st = @[99]
     for (roundIdx in range(200)) {
-        c = tls.Client({
+        c = tls.Client(%{
             "serverName": "server",
             "verifyChain": false,
             "clientHello": fx["client_hello_handshake"],

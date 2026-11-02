@@ -43,7 +43,7 @@ assert((2 <=> RCmp(3)) == -1, "__rcmp__ handles reflected compare")
 
 // ── __cmp__ 返回非法值 → TypeError ──
 class BadCmp {
-    init() = { }
+    init() = %{ }
     __cmp__(o) = true
 }
 threw = false

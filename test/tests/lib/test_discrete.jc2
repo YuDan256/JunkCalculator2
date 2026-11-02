@@ -16,8 +16,8 @@ test_propositional_logic() = {
     andpq = p & q
     assert(str(andpq) == "(p & q)", "expression printing")
     assert(andpq.vars() == @{"p", "q"}, "vars() collects symbols")
-    assert(andpq.eval({"p": 1, "q": 1}) == 1, "eval true case")
-    assert(andpq.eval({"p": 1, "q": 0}) == 0, "eval false case")
+    assert(andpq.eval(%{"p": 1, "q": 1}) == 1, "eval true case")
+    assert(andpq.eval(%{"p": 1, "q": 0}) == 0, "eval false case")
     assert((p | (-p)).isTautology(), "p | !p is a tautology")
     assert((p & (-p)).isContradiction(), "p & !p is a contradiction")
     assert((p | q).table().len() == 4, "table() enumerates 2^n rows")
@@ -391,7 +391,7 @@ test_prop_substitute() = {
     for (f in cases) {
         for (row in f.table()) {
             // 取该行赋值的一个真子集做代入，再在整行赋值下比较
-            part = {}
+            part = %{}
             first = true
             for (k in row.env.keys()) { if (first) { part[k] = row.env[k]; first = false } }
             sub = f.substitute(part)
@@ -399,29 +399,29 @@ test_prop_substitute() = {
             // 更强的语义性质：代入后该变量再翻转也不影响取值（内联常量 (v|-v)/(v&-v) 仍提到 v，
             // 但它已不再起作用，因此 vars() 不去除它属预期行为）
             for (k in part.keys()) {
-                flip = {}
+                flip = %{}
                 for (kk in row.env.keys()) { flip[kk] = row.env[kk] }
                 flip[k] = !row.env[k]
                 assert(sub.eval(flip) == sub.eval(row.env), "substituted variable is semantically irrelevant")
             }
         }
         // 全部变量代入后必为常量（重言或矛盾）
-        full = {}
+        full = %{}
         for (v in toList(f.vars())) { full[v] = true }
         allTrue = f.substitute(full)
         assert(allTrue.isTautology() || allTrue.isContradiction(), "full substitution yields a constant")
     }
     // 具体一例：a & b 代入 a=true 后等价于 b
-    r = (a & b).substitute({a: true})
+    r = (a & b).substitute(%{a: true})
     assert(r.isSatisfiable() && !r.isContradiction(), "a&b with a=true is satisfiable")
     // 代入后公式里仍内联提到 a，故 eval 需要完整赋值；顺带验证 a 已无关
-    assert(r.eval({a: true, b: false}) == false && r.eval({a: true, b: true}) == true, "a&b with a=true behaves like b")
-    assert(r.eval({a: false, b: true}) == r.eval({a: true, b: true}), "a is irrelevant after substitution")
-    r2 = (a & b).substitute({a: false})
+    assert(r.eval(%{a: true, b: false}) == false && r.eval(%{a: true, b: true}) == true, "a&b with a=true behaves like b")
+    assert(r.eval(%{a: false, b: true}) == r.eval(%{a: true, b: true}), "a is irrelevant after substitution")
+    r2 = (a & b).substitute(%{a: false})
     assert(r2.isContradiction(), "a&b with a=false is a contradiction")
     // 代入后 a 翻转不再影响结果（其名仍出现在内联常量里，属预期）
-    r3 = (a | b).substitute({a: false})
-    assert(r3.eval({a: true, b: false}) == r3.eval({a: false, b: false}), "a is irrelevant after substitution")
+    r3 = (a | b).substitute(%{a: false})
+    assert(r3.eval(%{a: true, b: false}) == r3.eval(%{a: false, b: false}), "a is irrelevant after substitution")
 }
 test_prop_substitute()
 
@@ -441,22 +441,22 @@ test_prop_parse() = {
     // 静态入口：Prop.parse 与模块级 parseProp 行为一致
     sp = discrete.Prop.parse("a & b")
     mp = discrete.parseProp("a & b")
-    assert(sp.eval({a: true, b: true}) == mp.eval({a: true, b: true}), "Prop.parse agrees with parseProp")
-    assert(sp.eval({a: true, b: false}) == false, "Prop.parse evaluates correctly")
+    assert(sp.eval(%{a: true, b: true}) == mp.eval(%{a: true, b: true}), "Prop.parse agrees with parseProp")
+    assert(sp.eval(%{a: true, b: false}) == false, "Prop.parse evaluates correctly")
 
     // 别名与括号
     x = discrete.parseProp("a -> b")
-    assert(x.eval({a: true, b: false}) == false, "'->' is implication")
+    assert(x.eval(%{a: true, b: false}) == false, "'->' is implication")
     y = discrete.parseProp("a <-> b")
-    assert(y.isTautology() == false && y.eval({a: true, b: true}) == true, "'<->' is equivalence")
+    assert(y.isTautology() == false && y.eval(%{a: true, b: true}) == true, "'<->' is equivalence")
     z = discrete.parseProp("!(a & b) | c")
-    assert(z.eval({a: true, b: true, c: false}) == false, "'!' and '&' and '|' together")
-    assert(discrete.parseProp("~a").eval({a: true}) == false, "'~' is negation")
-    assert(discrete.parseProp("(a)").eval({a: true}) == true, "redundant parentheses")
+    assert(z.eval(%{a: true, b: true, c: false}) == false, "'!' and '&' and '|' together")
+    assert(discrete.parseProp("~a").eval(%{a: true}) == false, "'~' is negation")
+    assert(discrete.parseProp("(a)").eval(%{a: true}) == true, "redundant parentheses")
     assert(discrete.parseProp("a_1 & b2").vars().len() == 2, "identifiers may contain digits after the first char")
     // 优先级：& 比 | 紧
     p1 = discrete.parseProp("a | b & c")
-    assert(p1.eval({a: false, b: true, c: false}) == false, "& binds tighter than |")
+    assert(p1.eval(%{a: false, b: true, c: false}) == false, "& binds tighter than |")
     // 错误输入
     for (bad in @["", "a &", "(a", "a )", "a $ b"]) {
         threw = false
@@ -579,11 +579,11 @@ test_prop_bool_eval() = {
     mk = (n) => discrete.Prop("var", n, none)
     a = mk("a"); b = mk("b")
     t1 = a & b
-    assert(t1.eval({a: true, b: true}) == true, "and both true -> true")
-    assert(t1.eval({a: true, b: false}) == false, "and one false -> false")
-    assert(t1({a: true, b: true}) == true, "__call__ forwards the bool")
-    assert((-a).eval({a: false}) == true, "negation -> bool")
-    assert(a.implies(b).eval({a: true, b: false}) == false, "implication -> bool")
+    assert(t1.eval(%{a: true, b: true}) == true, "and both true -> true")
+    assert(t1.eval(%{a: true, b: false}) == false, "and one false -> false")
+    assert(t1(%{a: true, b: true}) == true, "__call__ forwards the bool")
+    assert((-a).eval(%{a: false}) == true, "negation -> bool")
+    assert(a.implies(b).eval(%{a: true, b: false}) == false, "implication -> bool")
     assert(a.isSatisfiable() && t1.isSatisfiable(), "satisfiability unchanged")
     assert((a | -a).isTautology(), "tautology still detected")
     assert((a & -a).isContradiction(), "contradiction still detected")

@@ -27,7 +27,7 @@ print("\n[1/3] Parsing brackets and building jump tables...")
 // 2. AOT Lexical Analysis: Precompute all [ and ] jump addresses.
 // Finding matching brackets at runtime is slow. We pair them ahead of time in O(N) using a stack.
 // enumerate() gives index and character in one pass; a Dict takes the integer key directly.
-jumps = {}
+jumps = %{}
 stack = @[]
 
 t0 = sys.clock()
@@ -51,7 +51,7 @@ print("[2/3] Initializing Turing Machine Tape and Pointers...")
 
 // Use a hash Dict to simulate an "infinite" tape extending in both directions.
 // (Only stores non-zero data: extreme memory efficiency!)
-tape = {}
+tape = %{}
 dp = 0        // Data Pointer (points to the current tape cell)
 ip = 0        // Instruction Pointer (points to the current char in bf_code)
 

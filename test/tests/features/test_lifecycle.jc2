@@ -41,11 +41,11 @@ assert(Base4().readSeen() == "default", "field defaults are ready before init")
 
 log5 = @[]
 class Base5 {
-    init() = { }
+    init() = %{ }
     finalize() = log5.push("base")
 }
 class Child5 extends Base5 {
-    init() = { }
+    init() = %{ }
     finalize() = log5.push("child")
 }
 g5 = Child5()
@@ -55,7 +55,7 @@ assert(log5.join(",") == "child", "only the most derived finalize runs")
 
 log6 = @[]
 class Base6 {
-    init() = { }
+    init() = %{ }
     finalize() = log6.push("base")
 }
 class Child6 extends Base6 { }
@@ -66,11 +66,11 @@ assert(log6.join(",") == "base", "finalize is inherited")
 
 log7 = @[]
 class Base7 {
-    init() = { }
+    init() = %{ }
     finalize() = log7.push("base")
 }
 class Child7 extends Base7 {
-    init() = { }
+    init() = %{ }
     finalize() = {
         log7.push("child")
         super.finalize()
@@ -92,7 +92,7 @@ assert(log8.join(",") == "trait", "a trait can provide the constructor")
 hits9 = @[]
 trait HasField {
     tag = hits9.push("field")
-    init() = { }
+    init() = %{ }
 }
 class WithField with HasField { }
 _9 = WithField()
@@ -100,7 +100,7 @@ assert(hits9.len() == 1, "a trait field initializer runs exactly once")
 
 class Reflected {
     init() = { self.v = 1 }
-    finalize() = { }
+    finalize() = %{ }
     local hidden = 2
 }
 r = Reflected()

@@ -21,7 +21,7 @@ test_assign_var_fail()
 
 // ============ 属性赋值断言 ============
 test_assign_prop() = {
-    d = {a: 1}
+    d = %{a: 1}
     d.a: int = 5
     assert(d.a == 5, "Property assignment with int assertion should succeed")
 }
@@ -29,7 +29,7 @@ test_assign_prop()
 
 test_assign_prop_fail() = {
     try {
-        d = {a: 1}
+        d = %{a: 1}
         d.a: string = 1
         assert(false, "Should throw when assigning int to string-typed property")
     } catch (e) {
@@ -76,8 +76,8 @@ test_destruct_assert_fail()
 
 // ============ dict 解构断言 ============
 test_dict_assert() = {
-    d = {a: 1, b: "x"}
-    {a: av: int, b: bv: string} = d
+    d = %{a: 1, b: "x"}
+    %{a: av: int, b: bv: string} = d
     assert(av == 1 && bv == "x", "Dict destructuring with type assertions should succeed")
 }
 test_dict_assert()
@@ -125,7 +125,7 @@ test_as_assert() = {
     x = 5
     assert((x as int) == 5, "as assertion should return the value")
     assert(((3 + 4) as int) == 7, "as on arbitrary expression should work")
-    d = {a: 1}
+    d = %{a: 1}
     assert((d.a as int) == 1, "as on property should work")
 }
 test_as_assert()

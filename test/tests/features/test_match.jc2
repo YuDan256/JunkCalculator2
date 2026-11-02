@@ -52,20 +52,20 @@ test_strict_rows()
 
 test_dict() = {
     f(d) = match(d) {
-        {name, ...extras} => name + "&" + str(extras),
-        {} => "Empty",
+        %{name, ...extras} => name + "&" + str(extras),
+        %{} => "Empty",
         _ => "Fail"
     }
-    assert(f({"name": "JC2", "ver": 2}) == "JC2&{\"ver\": 2}", "Dict shorthand failed")
+    assert(f(%{"name": "JC2", "ver": 2}) == "JC2&%{\"ver\": 2}", "Dict shorthand failed")
 }
 test_dict()
 
 test_deep() = {
     f(data) = match(data) {
-        {"users": @[{id, name}, ..._]} => str(id) + ":" + name,
+        %{"users": @[%{id, name}, ..._]} => str(id) + ":" + name,
         _ => "Fail"
     }
-    payload = {"users": @[{"id": 101, "name": "Admin"}, {"id": 102, "name": "Guest"}]}
+    payload = %{"users": @[%{"id": 101, "name": "Admin"}, %{"id": 102, "name": "Guest"}]}
     assert(f(payload) == "101:Admin", "Deep nesting failed")
 }
 test_deep()

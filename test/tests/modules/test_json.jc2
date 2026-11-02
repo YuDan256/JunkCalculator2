@@ -1,7 +1,7 @@
 import json
 
 test_json_encode_decode() = {
-    d = { "name": "Alice", "age": 30, "active": true, "scores": @[85, 92] }
+    d = %{ "name": "Alice", "age": 30, "active": true, "scores": @[85, 92] }
     s = json.encode(d)
     assert(s in string, "json.encode should return a string")
     
@@ -14,7 +14,7 @@ test_json_encode_decode() = {
 test_json_encode_decode()
 
 test_json_pretty() = {
-    d = { "a": 1 }
+    d = %{ "a": 1 }
     s = json.pretty(d, 2)
     expected = "{\n  \"a\": 1\n}"
     assert(s == expected, "json.pretty failed")

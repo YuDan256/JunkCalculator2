@@ -2792,7 +2792,7 @@ void IRBuilder::visitBreakExpr(BreakExpr* expr) {
         for (int i = static_cast<int>(loopStack.size()) - 1; i >= 0; --i) {
             if (loopStack[i].label == expr->label) { target = i; break; }
         }
-        if (target < 0) error("Syntax Error: Unknown loop label '&" + expr->label + "'.");
+        if (target < 0) error("Syntax Error: Unknown loop label ':" + expr->label + "'.");
     }
 
     // Evaluate the break value before cleanup. A nested loop in the value may
@@ -2843,7 +2843,7 @@ void IRBuilder::visitContinueExpr(ContinueExpr* expr) {
         for (int i = static_cast<int>(loopStack.size()) - 1; i >= 0; --i) {
             if (loopStack[i].label == expr->label) { target = i; break; }
         }
-        if (target < 0) error("Syntax Error: Unknown loop label '&" + expr->label + "'.");
+        if (target < 0) error("Syntax Error: Unknown loop label ':" + expr->label + "'.");
     }
 
     auto& loop = loopStack[target];

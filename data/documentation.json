@@ -72,7 +72,7 @@
       "    z = 3 + 4i                     complex number",
       "    A = [1, 2; 3, 4]               2×2 matrix",
       "    L = @[1, \"hi\", [1,2]]          heterogeneous list",
-      "    d = {a: 1, b: 2}               dictionary literal",
+      "    d = %{a: 1, b: 2}               dictionary literal",
       "    s = @{1, 2, 3}                 set literal",
       "    [ref a, state b] = [1, 2]      destructuring with scope modifiers",
       "    d1 + d2                        merge dicts (right overwrites left)",
@@ -280,7 +280,7 @@
       "    [local a, ref b, const c] = [1, 2, 3] // Per-variable scope modifiers",
       "    const local [a, b] = [1, 2]       // Global modifier for the entire pattern",
       "    [a[1], b.prop] = [1, 2]           // Complex l-value destructuring",
-      "    { name, age: a } = { name: \"Bob\", age: 20 }  // dict destructuring",
+      "    %{ name, age: a } = %{ name: \"Bob\", age: 20 }  // dict destructuring",
       "    { x: ref a, y: local b } = obj    // dict destructuring with modifiers",
       "    { x: a[0], y: b.prop } = obj      // Complex dict destructuring",
       "    { sin, cos } = Math               // Extract methods from a namespace",
@@ -301,7 +301,7 @@
       "        • c uses `local` → strictly block-scoped (forgotten at end of block)",
       "        • d uses `const` → immutable constant (cannot be reassigned)",
       "        • e has no modifier → auto-local (overflows to function scope)",
-      "      {x: ref px, y: state py} = point",
+      "      %{x: ref px, y: state py} = point",
       "        • Same rules apply to dict destructuring targets",
       "",
       "    Variable Swap & Discard (Zero-Overhead):",
@@ -857,9 +857,9 @@
       "  Primary Solver",
       "  ──────────────────────",
       "    A.lsolve(b)         Automatic solver via Gaussian Elimination. Returns a Dict:",
-      "                          • Unique solution     → {status: \"unique\", solution: x}",
-      "                          • Infinite solutions  → {status: \"infinite\", particular: x, basis: B}",
-      "                          • No solution         → {status: \"least_squares\", approx: x, residual: r}",
+      "                          • Unique solution     → %{status: \"unique\", solution: x}",
+      "                          • Infinite solutions  → %{status: \"infinite\", particular: x, basis: B}",
+      "                          • No solution         → %{status: \"least_squares\", approx: x, residual: r}",
       "                        A must be an M×N matrix, b must be an M×1 column vector.",
       "",
       "  Diagnostics",
@@ -1087,7 +1087,7 @@
       "    You can directly destructure dicts, lists, or arrays in the parameter list.",
       "    This automatically unpacks the passed argument into local variables.",
       "      dist({x, y}) = sqrt(x^2 + y^2)",
-      "      dist({x: 3, y: 4})                 → 5",
+      "      dist(%{x: 3, y: 4})                 → 5",
       "",
       "      // Works with default values, rest patterns, and modifiers!",
       "      process(@[a, b = 10, ...rest]) = a + b + rest.sum()",
@@ -1189,7 +1189,7 @@
       "    Keyword-Only & kwargs: A `;` splits the parameter list",
       "      f(a, ...rest; b, ...kw) = ...  // ';' before: positional (incl. ...rest)",
       "                                     // ';' after: keyword-only (b) + kwargs (...kw)",
-      "      f(1, 2, 3, b=4, x=5)           // b=4 bound, {x:5} collected into kw",
+      "      f(1, 2, 3, b=4, x=5)           // b=4 bound, %{x:5} collected into kw",
       "",
       "    Apply: Unpacks a list/matrix into separate arguments",
       "      args = [1, 2, 3]",
@@ -1199,7 +1199,7 @@
       "      args = @[1, 2, 3]",
       "      f(...args)                  ≡ f(1, 2, 3)         // positional spread (list/set/matrix/string)",
       "      f(0, ...args, 9)            ≡ f(0, 1, 2, 3, 9)    // can appear anywhere",
-      "      opts = {b: 2, c: 3}",
+      "      opts = %{b: 2, c: 3}",
       "      f(1; ...opts)              ≡ f(1, b=2, c=3)      // keyword spread (dict, after ';')",
       "      f(...args; ...opts)         // positional + keyword together",
       "",
@@ -1217,7 +1217,7 @@
       "    [expr for (var in iterable)]                Matrix Comprehension",
       "    @[expr for (var in iterable)]               List Comprehension",
       "    @{expr for (var in iterable)}               Set Comprehension",
-      "    {k: v for (var in iterable)}                Dict Comprehension",
+      "    %{k: v for (var in iterable)}                Dict Comprehension",
       "    [expr for (var in iterable) if (condition)] With filter",
       "    [expr for (x in A) for (y in B)]            Nested (cartesian product)",
       "    @[expr for (@[a, b] in pairs)]               Destructured (list form)",
@@ -1243,7 +1243,7 @@
       "      @[f\"{k}={v}\" for (@[k,v] in dict(\"a\",1))]  → @[\"a=1\"]             (strings → list)",
       "      @[a + b for (@[a, b] in @[@[1, 2], @[3, 4]])] → @[3, 7]       (destructured)",
       "      @{x^2 for (x in range(5))}               → @{0, 1, 4, 9, 16}      (set)",
-      "      {x: x^2 for (x in range(3))}             → {0: 0, 1: 1, 2: 4}     (dict)",
+      "      %{x: x^2 for (x in range(3))}             → %{0: 0, 1: 1, 2: 4}     (dict)",
       "",
       "  Pipe Operator (|>) & Multi-line Rules",
       "  ──────────────────────",
@@ -1364,7 +1364,7 @@
       "    math.nextPrime(n)    Smallest prime > n",
       "    math.nthPrime(k)     k-th prime (requires mounted Prime.bin)",
       "    math.primePi(n)      π(n) — number of primes ≤ n",
-      "    math.factor(n)       Returns a dict of {Prime: Exponent}",
+      "    math.factor(n)       Returns a dict of %{Prime: Exponent}",
       "",
       "    ★ Prime Engine Acceleration:",
       "      If a JCP1 prime database (Prime.bin) is mounted via sys.mountPrimes(),",
@@ -1518,7 +1518,7 @@
       "      d.a: string = 1              Property assignment with type assertion",
       "      l[0]: int = 5                Indexed assignment with type assertion",
       "      [a: int, b: string] = data   Assert each destructured binding",
-      "      {key: var: type} = dict      Dict destructuring requires the full form",
+      "      %{key: var: type} = dict      Dict destructuring requires the full form",
       "      local x: int = 10            Assert on a scoped assignment",
       "",
       "      Assertions run once at the assignment/binding point and throw TypeError",
@@ -1578,7 +1578,7 @@
       "      bool(1)                  → true",
       "      string(42)               → \"42\"",
       "      list(1, 2, 3)            → @[1, 2, 3]",
-      "      dict(\"a\", 1, \"b\", 2)      → {\"a\": 1, \"b\": 2}",
+      "      dict(\"a\", 1, \"b\", 2)      → %{\"a\": 1, \"b\": 2}",
       "      set(1, 2, 2, 3)          → @{1, 2, 3}",
       "      slice(1, 5, 2)           → slice(1, 5, 2)",
       "      symmatrix(2, 2, ...)     → symbolic matrix",
@@ -1865,8 +1865,8 @@
       "",
       "  Control Statements & Scope Safety",
       "  ──────────────────────",
-      "    break [&label] [expr]  Exit loop; expr is the loop value (none if omitted)",
-      "    continue [&label]      Skip to next iteration",
+      "    break [:label] [expr]  Exit loop; expr is the loop value (none if omitted)",
+      "    continue [:label]      Skip to next iteration",
       "    return expr        Exit function returning the evaluated expr",
       "                       (Note: `return` does NOT consume newlines. A newline",
       "                       immediately after `return` evaluates as `return none`).",
@@ -1961,7 +1961,7 @@
       "  ──────────────────────",
       "    Each target variable can independently carry a scope modifier:",
       "      [ref a, state b, local c, const d, e] = [1, 2, 3, 4, 5]",
-      "      {x: ref px, y: state py, z: const pz} = point",
+      "      %{x: ref px, y: state py, z: const pz} = point",
       "    Modifiers can also be applied to the entire destructuring pattern:",
       "      const local [a, b] = [1, 2]",
       "      state [x, y] = compute_once()",
@@ -2284,7 +2284,7 @@
       "    v.enumerate([st])   Returns a list of @[index, value] pairs.",
       "                          @[\"a\", \"b\"].enumerate()       → @[@[0, \"a\"], @[1, \"b\"]]",
       "    v.groupBy(f)        Groups elements by f(x) into a dict.",
-      "                          [1,2,3,4].groupBy((x)=>x%2)  → {1: @[1,3], 0: @[2,4]}",
+      "                          [1,2,3,4].groupBy((x)=>x%2)  → %{1: @[1,3], 0: @[2,4]}",
       "",
       "  Pipe Operator",
       "  ──────────────────────",
@@ -2459,53 +2459,28 @@
       "  Creation",
       "  ──────────────────────",
       "    d = dict()                          Empty dictionary",
-      "    d = {name: \"Alice\", age: 30}        Literal syntax (recommended)",
-      "    d = {\"name\": \"Alice\", \"age\": 30}    Quoted string keys also work",
-      "    d = {x: x^2 for (x in range(5))}    Dict comprehension",
+      "    d = %{name: \"Alice\", age: 30}        Literal syntax (recommended)",
+      "    d = %{\"name\": \"Alice\", \"age\": 30}    Quoted string keys also work",
+      "    d = %{x: x^2 for (x in range(5))}    Dict comprehension",
       "    ",
-      "    Shorthand Properties (Variables directly to dict):",
+      "    Shorthand properties (variables directly to dict):",
       "      name = \"Bob\"; age = 25",
-      "      d = { name, age }                 → {\"name\": \"Bob\", \"age\": 25}",
-      "    For computed keys (using a variable's value as the key), wrap it in ",
-      "    parentheses or use the function form:",
-      "      d = { (dynamic_key): 42 }         → {\"[1]\": 42}",
-      "      d = dict(dynamic_key, 42)         → {\"[1]\": 42}",
+      "      d = %{ name, age }                 → %{\"name\": \"Bob\", \"age\": 25}",
+      "    Computed keys use parentheses:",
+      "      d = %{ (dynamic_key): 42 }         → %{\"[1]\": 42}",
+      "      d = dict(dynamic_key, 42)         → %{\"[1]\": 42}",
       "",
-      "  Block vs. dict Ambiguity Resolution",
+      "  Braces vs. Percent-Braces",
       "  ──────────────────────",
-      "    Because `{ ... }` is used for both code blocks and dictionaries, JC2 uses",
-      "    a smart lookahead scanner to resolve ambiguities:",
-      "    1. Explicit dicts: If it contains a colon `:` at the top level, it's a dict.",
-      "         { [1, 2]: \"matrix\" }         → dict",
-      "    2. Explicit Blocks: If it contains a semicolon `;`, assignment `=`, or ",
-      "       ternary `?` at the top level, it's a Block.",
-      "         { a = 1 }                    → Block",
-      "    3. Pure Shorthand dicts: If it contains ONLY identifiers, spread entries ",
-      "       (...expr), and commas, it's a dict.",
-      "         {}                           → Empty dict",
-      "         {a, b}                       → Shorthand dict {\"a\": a, \"b\": b}",
-      "         {a, ...d}                    → Shorthand dict",
-      "    4. Complex Expressions: If it contains numbers, strings, operators, or ",
-      "       function calls without a colon `:`, it's parsed as a Block.",
-      "         { 1, 2 }                     → Block (comma expression)",
-      "         { a + 1 }                    → Block",
-      "    * Tip: If you want a single-statement block that returns a variable,",
-      "      always add a semicolon to avoid it being parsed as a shorthand dict:",
-      "         { a; }                       → Block returning 'a'",
+      "    { ... }       code block",
+      "    %{ ... }      dict literal",
+      "    @{ ... }      set literal",
+      "    @[ ... ]      list literal",
       "",
-      "    ★ Statement-Required Braces Are ALWAYS Blocks:",
-      "      The ambiguity rules above only apply in EXPRESSION positions (e.g.,",
-      "      `d = {a: 1}` or `f({a: 1})`). In positions where the grammar REQUIRES a",
-      "      brace body, `{ ... }` is ALWAYS a code block, never a dict:",
-      "        f(x) = { ... }       function body       → Block",
-      "        if (x) { ... }       if/while/for body   → Block",
-      "        match (x) { ... }    match body          → Block",
-      "        try { ... } catch    try/catch body      → Block",
-      "        class X { ... }      class/enum/namespace body → Block",
-      "      So `f(x) = { a: 1 }` does NOT build a dict — it parses `a: 1` as a",
-      "      type annotation and throws. To return a dict from a block, write:",
-      "        f(x) = { return {a: 1} }   → {\"a\": 1}",
-      "        f(x) = { {a: 1} }          → {\"a\": 1}",
+      "    There is no lookahead ambiguity: a dict literal always starts with %{,",
+      "    and a block always starts with {. To return a dict from a block:",
+      "      f(x) = { return %{a: 1} }     → %{\"a\": 1}",
+      "      f(x) = { %{a: 1} }            → %{\"a\": 1}",
       "",
       "  Access & Modification",
       "  ──────────────────────",
@@ -2513,7 +2488,7 @@
       "    d[\"key\"] += 1                       Compound assignment directly on the value",
       "    d - @{\"key1\", \"key2\"}               Key omission (returns a NEW dict without the specified keys)",
       "    d - @[\"key1\", \"key2\"]               Key omission using a list",
-      "    d - {key1: 1}                       Key omission using another dict (ignores values)",
+      "    d - %{key1: 1}                       Key omission using another dict (ignores values)",
       "    ",
       "    * Note: d[a] evaluates the variable 'a' and uses its value as the key. ",
       "      If you want the literal string \"a\", use d[\"a\"]. For convenience, ",
@@ -2562,9 +2537,9 @@
       "  ──────────────────────",
       "    Callbacks receive an @[k, v] pair (frozen list), matching `for (@[k, v] in d)`.",
       "",
-      "    d.map(f)             → f returns @[new_k, new_v], result {new_k: new_v}",
-      "    d.mapValues(f)       → {k: f(v)}           apply f to each value only",
-      "    d.mapKeys(f)         → {f(k): v}           apply f to each key only",
+      "    d.map(f)             → f returns @[new_k, new_v], result %{new_k: new_v}",
+      "    d.mapValues(f)       → %{k: f(v)}           apply f to each value only",
+      "    d.mapKeys(f)         → %{f(k): v}           apply f to each key only",
       "    d.filter(f)          → keep pairs where f(@[k, v]) is truthy",
       "    d.reduce(f, [init])  → fold pairs with f(acc, @[k, v])",
       "    d.any(f) / d.all(f)  → any / all pairs satisfy f",
@@ -2573,7 +2548,7 @@
       "  Reference Semantics & GC",
       "  ──────────────────────",
       "    Identical to lists, dicts are passed by reference.",
-      "      d1 = {a: 1}",
+      "      d1 = %{a: 1}",
       "      d2 = d1",
       "      d2.a = 99                 // d1.a is now also 99",
       "      ",
@@ -3106,7 +3081,7 @@
       "    match (val) {",
       "        (math.pi()) => \"Matches the math.pi() constant factory\",",
       "        [a, (2&a)] => \"Matches if the second element is exactly twice the first!\",",
-      "        {\"x\": a, \"y\": (a^2)} => \"Matches if y is the square of x!\",",
+      "        %{\"x\": a, \"y\": (a^2)} => \"Matches if y is the square of x!\",",
       "        x if (x < 0) => \"Negative: \" + str(x),",
       "        x => \"Positive or zero\"",
       "    }",
@@ -3151,14 +3126,14 @@
       "  5. Dictionary Destructuring & Shorthand",
       "  ──────────────────────",
       "    Matches dicts, instances, and namespaces.",
-      "    Extracts values by key/field. Supports shorthand `{a}` for `{\"a\": a}`.",
+      "    Extracts values by key/field. Supports shorthand `%{a}` for `%{\"a\": a}`.",
       "    Fields may carry `local`, `ref`, `state`, or `const`; `{local a, ...rest}`",
       "    binds `a` locally and captures the remaining fields in `rest`.",
       "    (Note: For instances, it only matches data fields. For namespaces, it matches everything including methods).",
       "    The `...rest` pattern always returns a standard dict containing the remaining fields.",
       "      match (user) {",
       "          {name, age} if (age >= 18) => name + \" is an adult\",",
-      "          {\"id\": id, ...extras} => \"User \" + str(id) + \" with extra info\",",
+      "          %{\"id\": id, ...extras} => \"User \" + str(id) + \" with extra info\",",
       "          {} => \"Empty dict\"",
       "      }",
       "",
@@ -3282,7 +3257,7 @@
       "",
       "      macro fold_plus(node) = {",
       "          match (node) {",
-      "              {type: \"Binary\", op: \"+\", left: l, right: r} => {",
+      "              %{type: \"Binary\", op: \"+\", left: l, right: r} => {",
       "                  // Recursively transform left and right, then change + to *",
       "                  return quote @fold_plus($l) * @fold_plus($r)",
       "              }",
@@ -3324,7 +3299,7 @@
       "",
       "      macro swap(node) = {",
       "          match (node) {",
-      "              {type: \"Block\", statements: stmts} => {",
+      "              %{type: \"Block\", statements: stmts} => {",
       "                  a = stmts[0]",
       "                  b = stmts[1]",
       "                  return quote {",
@@ -3625,7 +3600,7 @@
       "",
       "    You can explicitly throw custom exceptions:",
       "      throw Exception(\"ValueError\", \"Index out of bounds\")",
-      "      throw Exception(\"HttpError\", {code: 500, detail: \"Server down\"})",
+      "      throw Exception(\"HttpError\", %{code: 500, detail: \"Server down\"})",
       "",
       "  Try / Catch Blocks",
       "  ──────────────────────",
@@ -3644,8 +3619,8 @@
       "      try {",
       "          risky_code()",
       "      } catch {",
-      "          {type: \"TypeError\", message}  => print(\"Type error:\", message),",
-      "          {type: \"ValueError\", message} => print(\"Value error:\", message),",
+      "          %{type: \"TypeError\", message}  => print(\"Type error:\", message),",
+      "          %{type: \"ValueError\", message} => print(\"Value error:\", message),",
       "          e             => print(\"Other error:\", e)",
       "      }",
       "    Branches are tried in order; the first matching branch wins.",
@@ -3664,7 +3639,7 @@
       "      try { 1 + \"x\" } catch { e: TypeError => print(e.message) }  // built-in error class",
       "",
       "    ★ Or-patterns (comma) & guards (if):",
-      "      catch { {type: \"TypeError\"}, {type: \"ValueError\"} => ... }   // either error type",
+      "      catch { %{type: \"TypeError\"}, %{type: \"ValueError\"} => ... }   // either error type",
       "      catch { e if (e.code == 404) => ... }          // guard",
       "",
       "    ★ Bare try (no catch):",
@@ -3678,8 +3653,8 @@
       "    You can directly destructure the thrown error object in the catch clause.",
       "    If the pattern match fails, the error is automatically re-thrown!",
       "      try {",
-      "          throw {code: 404, msg: \"Not Found\"}",
-      "      } catch ({message: {code, msg}}) {",
+      "          throw %{code: 404, msg: \"Not Found\"}",
+      "      } catch (%{message: %{code, msg}}) {",
       "          print(f\"Error {code}: {msg}\")",
       "      }",
       "",
@@ -4617,8 +4592,8 @@
       "signature": "hasField(obj, key)",
       "desc": "True if a Dict has this key (any hashable value), or an Instance, Namespace or Class has this public property name. Private properties are invisible.",
       "examples": [
-        "hasField({\"a\": 1}, \"a\")",
-        "hasField({42: \"x\"}, 42)",
+        "hasField(%{\"a\": 1}, \"a\")",
+        "hasField(%{42: \"x\"}, 42)",
         "hasField(instance, \"prop\")",
         "hasField(MyClass, \"method\")"
       ]
@@ -4635,8 +4610,8 @@
       "signature": "getFields(obj)",
       "desc": "The property names of an object, sorted alphabetically: a Dict's keys, an Instance's public properties (methods included), a Class's public instance properties (inherited ones included, statics excluded), or a Namespace's names.",
       "examples": [
-        "getFields({\"a\": 1})",
-        "getFields({42: \"x\"})",
+        "getFields(%{\"a\": 1})",
+        "getFields(%{42: \"x\"})",
         "getFields(instance)",
         "getFields(MyClass)"
       ]
@@ -5124,7 +5099,7 @@
       "signature": "__mapping__()",
       "desc": "Dunder method: Returns a dict to unpack the instance during keyword spread (f(; ...obj)).",
       "examples": [
-        "__mapping__() = { \"x\": self.x, \"y\": self.y }"
+        "__mapping__() = %{ \"x\": self.x, \"y\": self.y }"
       ]
     },
     "nan": {
@@ -5360,12 +5335,12 @@
       ]
     },
     "while": {
-      "signature": "while [&label] (condition) { body }",
+      "signature": "while [:label] (condition) { body }",
       "desc": [
         "Loop that repeats the body as long as the condition is truthy.",
         "Braces {} are optional for single-statement bodies.",
-        "Optional `&label` names the loop; `break &label [expr]` exits it and",
-        "`continue &label` goes to its next iteration.",
+        "Optional `:label` names the loop; `break :label [expr]` exits it and",
+        "`continue :label` goes to its next iteration.",
         "Use `break` to exit early, `continue` to skip to next iteration.",
         "`break expr` makes `expr` the loop value; bare `break` yields `none`.",
         "Note: The `(` MUST be on the same line as `while` and its label.",
@@ -5377,7 +5352,7 @@
       ]
     },
     "for": {
-      "signature": "for [&label] (init; cond; update) { body }  |  for [&label] (var in iterable) { body }",
+      "signature": "for [:label] (init; cond; update) { body }  |  for [:label] (var in iterable) { body }",
       "desc": [
         "C-style for loop or for-in iteration loop.",
         "",
@@ -5391,15 +5366,15 @@
         "  Supports local scope: for (local x in arr) { ... }",
         "",
         "Braces {} are optional for single-statement bodies.",
-        "Optional `&label` names the loop; `break &label [expr]` exits it and",
-        "`continue &label` goes to its next iteration. `break expr` sets the loop value.",
+        "Optional `:label` names the loop; `break :label [expr]` exits it and",
+        "`continue :label` goes to its next iteration. `break expr` sets the loop value.",
         "Note: The `(` MUST be on the same line as `for` and its label.",
         "See also: /help control"
       ],
       "examples": [
         "for (i = 0; i < 10; i += 1) { print(i) }",
         "for (x in [1, 2, 3]) print(x)",
-        "for ([k, v] in {a: 1, b: 2}) print(k, v)"
+        "for ([k, v] in %{a: 1, b: 2}) print(k, v)"
       ]
     },
     "is": {
@@ -5439,7 +5414,7 @@
       "examples": [
         "for (x in range(10)) print(x)",
         "3 in [1, 2, 3]          // → true",
-        "\"key\" in {key: 42}      // → true",
+        "\"key\" in %{key: 42}      // → true",
         "5 in (int | string)     // → true (Value in Type)"
       ]
     },
@@ -5465,9 +5440,9 @@
       ]
     },
     "break": {
-      "signature": "break [&label] [expr]",
+      "signature": "break [:label] [expr]",
       "desc": [
-        "Exits the innermost enclosing loop, or the loop named by `&label`.",
+        "Exits the innermost enclosing loop, or the loop named by `:label`.",
         "`break expr` makes `expr` the loop value; bare `break` yields `none`.",
         "`break` and its label/value must stay on the same line.",
         "Cannot be used outside of a loop body.",
@@ -5475,21 +5450,21 @@
       ],
       "examples": [
         "for (i = 0; i < 100; i += 1) { if (i == 5) break }",
-        "for &outer (x in xs) { if (found) break &outer x }",
+        "for :outer (x in xs) { if (found) break :outer x }",
         "while (true) { if (done()) break }"
       ]
     },
     "continue": {
-      "signature": "continue [&label]",
+      "signature": "continue [:label]",
       "desc": [
         "Skips the remainder of the current loop iteration and jumps",
         "to the next iteration (or the condition check for while loops).",
-        "`continue &label` targets the named loop.",
+        "`continue :label` targets the named loop.",
         "See also: /help control"
       ],
       "examples": [
         "for (i = 0; i < 10; i += 1) { if (i % 2 == 0) continue; print(i) }",
-        "for &outer (x in xs) { if (skip) continue &outer }"
+        "for :outer (x in xs) { if (skip) continue :outer }"
       ]
     },
     "return": {
@@ -5723,7 +5698,7 @@
         "",
         "Works in destructuring (per-variable):",
         "  [ref a, b] = [1, 2]         a writes to outer, b is auto-local",
-        "  {x: ref a, y: b} = obj      Same for dict destructuring",
+        "  %{x: ref a, y: b} = obj      Same for dict destructuring",
         "",
         "Pass-by-Reference Parameters:",
         "  addOne(ref x) = { x = x + 1 }",
@@ -5836,7 +5811,7 @@
       ],
       "examples": [
         "try { 1 / 0 } catch (e) { print(\"Error:\", e) }",
-        "try { riskyOp() } catch { {type: \"TypeError\", message} => message, e => \"other\" }",
+        "try { riskyOp() } catch { %{type: \"TypeError\", message} => message, e => \"other\" }",
         "result = try { riskyOp() } catch (e) { \"fallback\" }",
         "x = try { riskyOp() }            // error → x = none"
       ]
@@ -5857,8 +5832,8 @@
       ],
       "examples": [
         "try { error(\"oops\") } catch (e) { print(e) }",
-        "try { risky() } catch { {type: \"TypeError\", message} => print(message), e => print(\"other\") }",
-        "try { throw {code: 404} } catch ({message: {code}}) { print(code) }"
+        "try { risky() } catch { %{type: \"TypeError\", message} => print(message), e => print(\"other\") }",
+        "try { throw %{code: 404} } catch (%{message: %{code}}) { print(code) }"
       ]
     },
     "throw": {
@@ -5872,7 +5847,7 @@
       "examples": [
         "throw \"Invalid input\"",
         "throw Exception(\"HttpError\", { code: 404, msg: \"Not Found\" })",
-        "throw { code: 404, msg: \"Not Found\" }"
+        "throw %{ code: 404, msg: \"Not Found\" }"
       ]
     },
     "import": {
@@ -7271,14 +7246,14 @@
         "getFields"
       ],
       "examples": [
-        "{a: 1, b: 2}.keys()"
+        "%{a: 1, b: 2}.keys()"
       ]
     },
     "values": {
       "signature": "d.values()",
       "desc": "Returns a list of all values in a dictionary.",
       "examples": [
-        "{a: 1, b: 2}.values()"
+        "%{a: 1, b: 2}.values()"
       ]
     },
     "hasKey": {
@@ -7289,22 +7264,22 @@
         "hasField"
       ],
       "examples": [
-        "{a: 1}.hasKey(\"a\")"
+        "%{a: 1}.hasKey(\"a\")"
       ]
     },
     "get": {
       "signature": "d.get(key, default = none)",
       "desc": "Returns the value for key, or default when the key is absent. Never throws for a missing key.",
       "examples": [
-        "{a: 1}.get(\"a\")",
-        "{a: 1}.get(\"z\", 0)"
+        "%{a: 1}.get(\"a\")",
+        "%{a: 1}.get(\"z\", 0)"
       ]
     },
     "pop": {
       "signature": "d.pop(key)",
       "desc": "Removes key and returns its value. Throws if the key is absent.",
       "examples": [
-        "{a: 1}.pop(\"a\")"
+        "%{a: 1}.pop(\"a\")"
       ]
     },
     "merge": {
@@ -7318,7 +7293,7 @@
       "signature": "d.entries()",
       "desc": "Returns a list of @[key, value] pairs from a dict.",
       "examples": [
-        "{a: 1}.entries()"
+        "%{a: 1}.entries()"
       ]
     },
     "removeKey": {
@@ -7332,14 +7307,14 @@
       "signature": "d.mapKeys(fn)",
       "desc": "Returns a new Dictionary whose keys are mapped through a single-parameter function; values are kept.",
       "examples": [
-        "{a: 1}.mapKeys(k => k + \"!\")"
+        "%{a: 1}.mapKeys(k => k + \"!\")"
       ]
     },
     "mapValues": {
       "signature": "d.mapValues(fn)",
       "desc": "Returns a new Dictionary whose values are mapped through a single-parameter function; keys are kept.",
       "examples": [
-        "{a: 1}.mapValues(v => v * 10)"
+        "%{a: 1}.mapValues(v => v * 10)"
       ]
     },
     "len": {
@@ -7563,14 +7538,14 @@
       "signature": "sys.registerEntry(path, spec)",
       "desc": "Registers or merges a structured help entry. spec keys: kind, title, summary, signature, desc, examples, aliases, see_also. Re-registering merges: scalars replace, lists append without duplicates.",
       "examples": [
-        "sys.registerEntry(\"my.mod.f\", {kind: \"function\", signature: \"f(x)\", desc: \"Doubles x.\"})"
+        "sys.registerEntry(\"my.mod.f\", %{kind: \"function\", signature: \"f(x)\", desc: \"Doubles x.\"})"
       ]
     },
     "registerDirectory": {
       "signature": "sys.registerDirectory(path, spec)",
       "desc": "Registers or updates a directory title and summary. spec keys: title, summary, order.",
       "examples": [
-        "sys.registerDirectory(\"my.mod\", {title: \"my.mod\", summary: \"My module.\"})"
+        "sys.registerDirectory(\"my.mod\", %{title: \"my.mod\", summary: \"My module.\"})"
       ]
     },
     "unregisterHelp": {
@@ -7884,8 +7859,8 @@
       "desc": "Runs an external program without a shell. args is a list of strings. options: cwd, env (merged into the inherited environment), stdin (string), timeoutMs, shell (false by default), encoding (auto by default). Returns {code, stdout, stderr, timedOut}. On Windows encoding=auto validates UTF-8 and falls back to the OEM/ANSI codepage (e.g. gbk); use utf-8 to keep raw bytes or gbk to force CP936. Non-zero exit codes are returned, not thrown.",
       "examples": [
         "import sys; sys.exec(\"git\", @[\"--version\"])[\"stdout\"]",
-        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"auto\"})",
-        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], {encoding: \"gbk\"})"
+        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], %{encoding: \"auto\"})",
+        "import sys; sys.exec(\"pwsh\", @[\"-NoProfile\",\"-Command\",\"Format-Hex text.jc2\"], %{encoding: \"gbk\"})"
       ]
     },
     "globals": {
@@ -7934,7 +7909,7 @@
     },
     "factor": {
       "signature": "math.factor(n)",
-      "desc": "Factors a non-negative integer with Pollard rho and ECM, returning a dict of {prime: exponent}. For polynomial factorization use cas.factor.",
+      "desc": "Factors a non-negative integer with Pollard rho and ECM, returning a dict of %{prime: exponent}. For polynomial factorization use cas.factor.",
       "examples": [
         "import math; math.factor(12)"
       ]
@@ -8148,7 +8123,7 @@
       "desc": "Builds a callable y(t) from a math.ode() result matrix. method is \"linear\" (default) or \"hermite\"; hermite uses f(t, y) derivatives when f is supplied, otherwise finite-difference slopes. Evaluating outside the sampled interval throws, and systems return a column vector.",
       "examples": [
         "import math; r = math.ode((t, y) => y, 0, 1, 1); f = math.odeInterp(r, \"hermite\"); f(0.5)",
-        "import math; sol = math.ode((t, y) => y, 0, 1, 1, {dense: true}); sol(0.5)"
+        "import math; sol = math.ode((t, y) => y, 0, 1, 1, %{dense: true}); sol(0.5)"
       ]
     },
     "pi": {

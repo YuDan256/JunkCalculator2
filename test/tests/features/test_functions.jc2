@@ -16,10 +16,10 @@ test_const_params()
 
 test_destruct_params() = {
     // 测试函数参数直接解构
-    get_info(const {name, age=20}) = f"{name} is {age}"
+    get_info(const %{name, age=20}) = f"{name} is {age}"
     
-    assert(get_info({name: "Bob"}) == "Bob is 20", "Destruct param with default")
-    assert(get_info({name: "Charlie", age: 30}) == "Charlie is 30", "Destruct param provided")
+    assert(get_info(%{name: "Bob"}) == "Bob is 20", "Destruct param with default")
+    assert(get_info(%{name: "Charlie", age: 30}) == "Charlie is 30", "Destruct param provided")
 }
 test_destruct_params()
 
@@ -177,10 +177,10 @@ test_native_kwargs() = {
 test_native_kwargs()
 
 test_dict_defaults() = {
-    {a, b = 20, c: d = 30} = {a: 10}
+    %{a, b = 20, c: d = 30} = %{a: 10}
     assert(a == 10 && b == 20 && d == 30, "Dict Default Failed")
 
-    {x = 99, y = 88} = {x: 1, y: 88}
+    %{x = 99, y = 88} = %{x: 1, y: 88}
     assert(x == 1 && y == 88, "Dict Default (Existing Key) Failed")
 }
 test_dict_defaults()
@@ -207,10 +207,10 @@ test_lazy_eval() = {
         return 999
     }
 
-    {val1 = get_default()} = {val1: 1}
+    %{val1 = get_default()} = %{val1: 1}
     assert(val1 == 1 && side_effect_count == 0, "Lazy Eval (Dict Existing) Failed")
 
-    {val2 = get_default()} = {}
+    %{val2 = get_default()} = %{}
     assert(val2 == 999 && side_effect_count == 1, "Lazy Eval (Dict Missing) Failed")
 
     @[val3 = get_default()] = @[1]
@@ -242,7 +242,7 @@ test_nested_defaults() = {
     @[@[na, nb = 2] = @[1], nc = 3] = @[]
     assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
 
-    {nested: {nx, ny = 20} = {nx: 10}} = {}
+    %{nested: {nx, ny = 20} = %{nx: 10}} = %{}
     assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
 }
 test_nested_defaults()
@@ -289,18 +289,18 @@ test_ufcs()
 param_default_calls = 0
 param_side() = { param_default_calls += 1; return 10 }
 test_destructured_params() = {
-    dist({x, y}) = x + y
-    assert(dist({x: 3, y: 4}) == 7, "dict destructured parameter")
+    dist(%{x, y}) = x + y
+    assert(dist(%{x: 3, y: 4}) == 7, "dict destructured parameter")
 
     process(@[a, b = 10, ...rest]) = a + b + rest.sum()
     assert(process(@[5]) == 15, "list destructured parameter default")
     assert(process(@[5, 20, 1, 2]) == 28, "list destructured parameter rest")
 
-    get_info(const {name, age = 20}) = name + ":" + str(age)
-    assert(get_info({name: "Bob"}) == "Bob:20", "const destructured parameter")
+    get_info(const %{name, age = 20}) = name + ":" + str(age)
+    assert(get_info(%{name: "Bob"}) == "Bob:20", "const destructured parameter")
 
     threw = false
-    try { eval("f(const {x}) = { x = 9 }; f({x: 1})") } catch (e) { threw = true }
+    try { eval("f(const %{x}) = { x = 9 }; f(%{x: 1})") } catch (e) { threw = true }
     assert(threw, "const destructured parameter is read-only")
 
     threw = false

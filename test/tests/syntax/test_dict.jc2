@@ -1,28 +1,35 @@
 test_empty_dict() = {
-    d1 = {}
+    d1 = %{}
     assert(type(d1) == dict && len(d1) == 0, "Empty dict failed")
 }
 test_empty_dict()
 
+test_dict_rendering() = {
+    d = %{a: 1, "b": 2}
+    assert(str(d) == "%{\"a\": 1, \"b\": 2}", "dict str uses %{...}")
+    assert(repr(d) == "%{\"a\": 1, \"b\": 2}", "dict repr uses %{...}")
+}
+test_dict_rendering()
+
 test_standard_dict() = {
-    d2 = {a: 1, b: 2}
+    d2 = %{a: 1, b: 2}
     assert(type(d2) == dict && d2.a == 1 && d2.b == 2, "Standard dict failed")
 }
 test_standard_dict()
 
 test_shorthand_dict() = {
     a = 10
-    d3 = {a}
+    d3 = %{a}
     assert(type(d3) == dict && d3.a == 10, "Single shorthand dict failed")
 
     b = 20
-    d4 = {a, b}
+    d4 = %{a, b}
     assert(type(d4) == dict && d4.a == 10 && d4.b == 20, "Multiple shorthand dict failed")
 }
 test_shorthand_dict()
 
 test_block_ambiguity() = {
-    f1() = { x = 1; {x} }
+    f1() = { x = 1; %{x} }
     assert(type(f1()) == dict && f1().x == 1, "Block returning shorthand dict failed")
 
     f2() = { x = 1; }
@@ -52,7 +59,7 @@ test_multiline() = {
 
     a = 10
     b = 20
-    d5 = {
+    d5 = %{
         a,
         b
     }
@@ -67,16 +74,16 @@ test_multiline() = {
 test_multiline()
 
 test_computed_keys() = {
-    d6 = {"a": 1, "b": 2}
+    d6 = %{"a": 1, "b": 2}
     assert(type(d6) == dict && d6["a"] == 1, "Dict with string keys failed")
 
-    d7 = {(10): 100}
+    d7 = %{(10): 100}
     assert(type(d7) == dict && d7[10] == 100, "Dict with computed keys failed")
 
-    d8 = {a: true ? 1 : 2}
+    d8 = %{a: true ? 1 : 2}
     assert(type(d8) == dict && d8.a == 1, "Dict with ternary value failed")
 
-    d9 = {a: c = 99}
+    d9 = %{a: c = 99}
     assert(type(d9) == dict && d9.a == 99 && c == 99, "Dict with assignment value failed")
 }
 test_computed_keys()
@@ -84,7 +91,7 @@ test_computed_keys()
 test_destructuring_modifiers() = {
     y = 0
     f9() = {
-        {local x, ref y, const z} = {x: 1, y: 2, z: 3}
+        %{local x, ref y, const z} = %{x: 1, y: 2, z: 3}
         return x + y + z
     }
     assert(f9() == 6 && y == 2, "Destructuring dict pattern with modifiers failed")
@@ -93,7 +100,7 @@ test_destructuring_modifiers()
 
 
 test_get_and_pop() = {
-    d = {"a": 1, "b": 2}
+    d = %{"a": 1, "b": 2}
     assert(d.get("a") == 1, "get returns the value")
     assert(d.get("z") == none, "get returns none for a missing key")
     assert(d.get("z", 42) == 42, "get returns the default for a missing key")

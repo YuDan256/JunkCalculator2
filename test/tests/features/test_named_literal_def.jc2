@@ -48,7 +48,7 @@ D = trait "Drawable" {
     draw() = "drawing"
 }
 class Widget with D {
-    init() = { }
+    init() = %{ }
 }
 assert(Widget().draw() == "drawing", "a string-named trait can be composed")
 assert(undefined("Drawable"), "no variable is bound for trait \"Drawable\"")

@@ -1221,13 +1221,13 @@ namespace lsp {
 
                         bool isLoopLabel = false;
                         if (t.type == TokenType::IDENTIFIER) {
-                            int ampIdx = static_cast<int>(i) - 1;
-                            while (ampIdx >= 0 && (tokens[ampIdx].type == TokenType::COMMENT ||
-                                                    tokens[ampIdx].type == TokenType::NEWLINE)) {
-                                ampIdx--;
+                            int colonIdx = static_cast<int>(i) - 1;
+                            while (colonIdx >= 0 && (tokens[colonIdx].type == TokenType::COMMENT ||
+                                                    tokens[colonIdx].type == TokenType::NEWLINE)) {
+                                colonIdx--;
                             }
-                            if (ampIdx >= 0 && tokens[ampIdx].type == TokenType::BIT_AND) {
-                                int ownerIdx = ampIdx - 1;
+                            if (colonIdx >= 0 && tokens[colonIdx].type == TokenType::COLON) {
+                                int ownerIdx = colonIdx - 1;
                                 while (ownerIdx >= 0 && (tokens[ownerIdx].type == TokenType::COMMENT ||
                                                          tokens[ownerIdx].type == TokenType::NEWLINE)) {
                                     ownerIdx--;

@@ -23,7 +23,7 @@ _hexByte(v: int) -> string = {
 // ─── ClientHello 结构 ─────────────────────────────────────────
 
 test_client_hello_structure() = {
-    c = tls.Client({"serverName": "example.com"})
+    c = tls.Client(%{"serverName": "example.com"})
     rec = c.start()
     hello = c.hello()
 
@@ -47,7 +47,7 @@ test_client_hello_structure() = {
     assert(hello.contains("00170041"), "P-256 key share (kept at 65 bytes)")
 
     // 会话 id 恰好 32 字节（兼容模式），且两次随机数不同
-    d = tls.Client({"serverName": "example.com"})
+    d = tls.Client(%{"serverName": "example.com"})
     assert(d.hello() != hello, "each client uses a fresh random")
     assert(c.complete() == false, "not complete before the handshake")
     assert(c.data() == "", "no application data yet")
@@ -58,7 +58,7 @@ test_client_hello_structure()
 
 test_replay_rfc8448_simple_handshake() = {
     fx = _simple()
-    c = tls.Client({
+    c = tls.Client(%{
         "serverName": "server",
         "verifyChain": false,
         "clientHello": fx["client_hello_handshake"],
@@ -106,7 +106,7 @@ test_replay_rfc8448_simple_handshake()
 
 test_replay_application_data() = {
     fx = _simple()
-    c = tls.Client({
+    c = tls.Client(%{
         "serverName": "server",
         "verifyChain": false,
         "clientHello": fx["client_hello_handshake"],
@@ -142,7 +142,7 @@ test_fragmented_and_coalesced_records() = {
     fx = _simple()
 
     // 1) 逐字节喂（跨记录分片的最小粒度）
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -156,7 +156,7 @@ test_fragmented_and_coalesced_records() = {
     assert(st["ok"] && st["complete"], "byte-by-byte feed must work: " + st["reason"] + " " + st["detail"])
 
     // 2) 三条记录一次性喂进去（多记录合并）
-    d = tls.Client({"serverName": "server", "verifyChain": false,
+    d = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     d.start()
@@ -165,7 +165,7 @@ test_fragmented_and_coalesced_records() = {
     assert(st["ok"] && st["complete"], "coalesced feed must work: " + st["reason"] + " " + st["detail"])
 
     // 3) 兼容模式的 ChangeCipherSpec 记录必须被忽略
-    e = tls.Client({"serverName": "server", "verifyChain": false,
+    e = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     e.start()
@@ -180,7 +180,7 @@ test_fragmented_and_coalesced_records()
 
 test_hello_retry_request_is_rejected() = {
     fx = _simple()
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -195,7 +195,7 @@ test_hello_retry_request_is_rejected()
 
 test_plaintext_alert_is_reported() = {
     fx = _simple()
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -209,7 +209,7 @@ test_plaintext_alert_is_reported()
 
 test_encrypted_alert_after_handshake() = {
     fx = _simple()
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -236,7 +236,7 @@ test_record_and_chain_negatives() = {
     fx = _simple()
 
     // 超过 2^14+256 的记录长度必须直接拒绝
-    c = tls.Client({"serverName": "server", "verifyChain": false,
+    c = tls.Client(%{"serverName": "server", "verifyChain": false,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     c.start()
@@ -244,7 +244,7 @@ test_record_and_chain_negatives() = {
     assert(c.status()["reason"] == "record-too-large", "oversized record")
 
     // 打开链校验后，轨迹里的自签证书必须被拒（它不在系统信任库里）
-    d = tls.Client({"serverName": "server", "verifyChain": true,
+    d = tls.Client(%{"serverName": "server", "verifyChain": true,
                     "clientHello": fx["client_hello_handshake"],
                     "x25519Private": fx["client_private_key_x25519"]})
     d.start()

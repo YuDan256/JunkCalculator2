@@ -436,7 +436,7 @@ test_container_truthiness() = {
 test_container_truthiness()
 
 test_collection_order_and_indexing() = {
-    d = {b: 2, a: 1, c: 3}
+    d = %{b: 2, a: 1, c: 3}
     assert(d.keys() == @["b", "a", "c"], "dict preserves insertion order")
     assert(d.values() == @[2, 1, 3], "dict values follow insertion order")
     ks = @[]

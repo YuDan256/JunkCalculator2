@@ -17,7 +17,7 @@ test_basic_syntax_macro() = {
     syntax concat_tokens(stream) = {
         // 提取所有 token 的 lexeme 并拼接
         str_val = stream.tokens().map((t) => t.lexeme).join("")
-        return ASTNode("Literal", 0, {value: str_val, isString: true})
+        return ASTNode("Literal", 0, %{value: str_val, isString: true})
     }
     
     res = @concat_tokens { a b c 1 2 3 }
@@ -80,7 +80,7 @@ test_lexer_error_tolerance() = {
     syntax count_errors(stream) = {
         // 统计 ERROR 类型的 token 数量
         err_count = stream.tokens().countIf((t) => t.type == "ERROR")
-        return ASTNode("Literal", 0, {value: str(err_count), isString: false})
+        return ASTNode("Literal", 0, %{value: str(err_count), isString: false})
     }
     
     // 反引号 ` 在 JC2 中是非法字符，正常情况下 Lexer 会直接抛出异常。

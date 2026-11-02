@@ -3126,8 +3126,8 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
         case ObjType::DICT: {
             ObjDict* dict = static_cast<ObjDict*>(obj);
             RecursionGuard guard(visited, dict);
-            if (guard.isCycle) { os << "{...}"; break; }
-            os << "{";
+            if (guard.isCycle) { os << "%{...}"; break; }
+            os << "%{";
             size_t shown = 0;
             for (size_t i = 0; i < dict->elements.size(); ++i) {
                 if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }

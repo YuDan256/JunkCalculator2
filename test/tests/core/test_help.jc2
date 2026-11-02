@@ -1,13 +1,13 @@
 import sys
 
 // 帮助注册 API 的行为测试（动态层，结束后清理）
-sys.registerDirectory("zz_help_test", {
+sys.registerDirectory("zz_help_test", %{
     title: "ZZ Help Test",
     summary: "temporary directory",
     order: @["b", "a"]
 })
 sys.registerHelp("zz_help_test", "zz help body.")
-sys.registerEntry("zz_help_test.a", {
+sys.registerEntry("zz_help_test.a", %{
     kind: "function",
     signature: "a()",
     desc: "Returns A.",
@@ -15,7 +15,7 @@ sys.registerEntry("zz_help_test.a", {
     aliases: @["aa"],
     see_also: @["zz_help_test.b"]
 })
-sys.registerEntry("zz_help_test.b", {
+sys.registerEntry("zz_help_test.b", %{
     kind: "function",
     signature: "b()",
     desc: "Returns B."

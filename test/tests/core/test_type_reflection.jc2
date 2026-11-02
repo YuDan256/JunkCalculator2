@@ -119,7 +119,7 @@ test_native_container_truthiness()
 class Reflected {
     shown = 7
     local hidden() = return 1
-    init() = { }
+    init() = %{ }
 }
 
 test_getfields_lists_only_accessible() = {
@@ -143,7 +143,7 @@ test_basic_truthiness() = {
     assert(!0 && !0.0, "numeric zero is falsy")
 
     assert(list(1), "non-empty list is truthy")
-    assert({a: 1}, "non-empty dict is truthy")
+    assert(%{a: 1}, "non-empty dict is truthy")
     assert(set(1), "non-empty set is truthy")
     assert("x", "non-empty string is truthy")
     assert(1 && -1, "non-zero numbers are truthy")

@@ -27,7 +27,7 @@ test_string_higher_order_methods() = {
     assert(s.all((c) => c != "z"), "all sees characters")
     assert(s.countIf((c) => c == "a") == 1, "countIf counts characters")
     assert(s.sorted() == "abc", "sorted returns a string")
-    assert(str(s.groupBy((c) => c)) == '{"c": @["c"], "a": @["a"], "b": @["b"]}', "groupBy keys on characters")
+    assert(str(s.groupBy((c) => c)) == '%{"c": @["c"], "a": @["a"], "b": @["b"]}', "groupBy keys on characters")
 }
 test_string_higher_order_methods()
 

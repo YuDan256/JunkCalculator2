@@ -94,11 +94,11 @@ test_symbolic_numbers_compare_and_hash_like_numbers() = {
     assert(hash(d) == hash(1.0), "equal values must hash equally (float)")
 
     // ③ dict / set 双向混用
-    m = {}
+    m = %{}
     m[d] = "v"
     assert(m[cas.diff(x, x)] == "v", "symbolic key, symbolic lookup")
     assert(m[1] == "v", "symbolic key, native lookup")
-    n = {}
+    n = %{}
     n[1] = "w"
     assert(n[d] == "w", "native key, symbolic lookup")
 

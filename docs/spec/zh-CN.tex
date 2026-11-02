@@ -475,7 +475,7 @@ context-self-expr = "class" | "namespace" ;
 控制结构是表达式，并产生分支值或控制转移：
 
 \begin{lstlisting}
-loop-label     = "&" identifier ;
+loop-label     = ":" identifier ;
 if-expr        = "if" "(" expression ")" expression
                  [ "else" expression ] ;
 while-expr     = "while" [ loop-label ] "(" expression ")" expression ;
@@ -560,7 +560,7 @@ primary        = literal | identifier | "(" expression ")"
 \begin{lstlisting}
 list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
 set-literal    = "@{" [ assign-expr { "," assign-expr } ] "}" ;
-dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
+dict-literal   = "%{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = assign-expr ":" assign-expr
                | "..." assign-expr
                | identifier ;
@@ -575,7 +575,7 @@ comp-clauses   = comp-clause { comp-clause } ;
 list-comprehension   = "@[" assign-expr comp-clauses "]" ;
 matrix-comprehension = "[" assign-expr comp-clauses "]" ;
 set-comprehension    = "@{" assign-expr comp-clauses "}" ;
-dict-comprehension   = "{" assign-expr ":" assign-expr comp-clauses "}" ;
+dict-comprehension   = "%{" assign-expr ":" assign-expr comp-clauses "}" ;
 \end{lstlisting}
 
 \jc{assign-expr} 用于参数、容器元素、\jc{return}/\jc{throw} 值、普通绑定初始化器与索引参数；
@@ -615,7 +615,7 @@ list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
 matrix-pattern = "[" [ pattern-row { ";" pattern-row } [ ";" ] ] "]" ;
 pattern-row    = pattern { "," pattern } ;
 
-dict-pattern   = "{" [ field-pattern { "," field-pattern }
+dict-pattern   = "%{" [ field-pattern { "," field-pattern }
                  [ "," rest-pattern ] ] "}" ;
 field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
                  [ ":" pattern | "=" ternary ]
@@ -640,7 +640,7 @@ branch-patterns = pattern { "," pattern } ;
 \begin{enumerate}
   \item \jc{[} 位于表达式位置时开始矩阵字面量；位于后缀位置时开始索引或切片。
   \item \jc{@[} 开始 list 字面量；\texttt{@\{} 开始 set 字面量；\jc{@name} 开始宏调用。
-  \item \texttt{\{} 位于表达式位置时按块解析；键值对形式按 dict 字面量解析。
+  \item \texttt{\{} 永远开始块；\texttt{\%\{} 永远开始字典字面量。
   \item 匿名 class、trait、namespace、enum 的左花括号与关键字位于同一行。
   \item 形如 \jc{a = b} 的实参按关键字实参解析；括号内的 \jc{(a = b)} 按赋值表达式解析。
   \item 调用实参列表中的逗号分隔实参；括号外的逗号进入逗号序列表达式。
@@ -648,38 +648,31 @@ branch-patterns = pattern { "," pattern } ;
   \item \jc{<=>} 在连续比较链中出现时产生 \jc{SyntaxError}。
 \end{enumerate}
 
-\subsubsection{dict 字面量与块的区分}
+\subsubsection{字典字面量与块}
 
-花括号的解析分两步：先扫描配对花括号内部，记录深度、冒号、分号、赋值与三元运算符；
-再按以下规则分类：
+字典字面量以 \jc{\%\{} 开始，块以 \jc{\{} 开始，两者在词法起始处即可区分：
 
 \begin{enumerate}
-  \item \texttt{\{\}} 是空 dict。
-  \item 深度零处的冒号产生 dict 字面量，例如 \texttt{\{a: 1\}}、\texttt{\{"k": 2\}}。
-  \item 深度零处的分号产生块，例如 \texttt{\{a; b\}}。
-  \item 深度零处的赋值产生块，例如 \texttt{\{a = 1\}}。
-  \item 深度零处的三元运算符产生块，例如 \texttt{\{a ? b : c\}}。
-  \item 仅由标识符与逗号组成的序列产生简写 dict，例如 \texttt{\{a, b\}}，
-        等价于 \texttt{\{"a": a, "b": b\}}。
-  \item 简写条目与显式键值条目可以混合，例如 \texttt{\{a, b, c: 3\}}。
-  \item \jc{...expr} 条目展开 dict 并合并其键值，例如 \texttt{\{a, ...d\}}。
-  \item 其余情况按块解析。
+  \item \jc{\{\}} 是空块；\jc{\%\{\}} 是空字典。
+  \item \jc{\{ ... \}} 永远是块，不按键值对解释。
+  \item \jc{\%\{ ... \}} 永远是字典，不按块解释。
+  \item 字典条目可以是显式键值、简写条目或 \jc{...expr} 展开。
+  \item 字典推导式写作 \jc{\%\{k: v for (...) in ...\}}。
+  \item 字典模式写作 \jc{\%\{key: pattern, ...\}}。
 \end{enumerate}
 
-分类只检查配对花括号的最外层；括号、方括号与嵌套花括号内部的冒号与分号参与嵌套结构。
-块内的相邻表达式之间由换行或分号分隔；同一行相邻标识符产生 \jc{SyntaxError}。
-dict 键的规则：裸标识符键使用标识符文本；字符串键使用字面量；其他表达式键按表达式求值。
+字典键的规则：裸标识符键使用标识符文本；字符串键使用字面量；其他表达式键按表达式求值。
 简写键使用标识符文本，值读取同名变量。
 
 \begin{lstlisting}
 a = 1
 b = 2
-{a: 3}          // {"a": 3}
-{a, b}          // {"a": 1, "b": 2}
-{}              // {}
-{a = 4}         // 块，值为 4
-{a; b}          // 块，值为 2
-{a ? b : 3}     // 块，值为 2
+%{a: 3}          // %{"a": 3}
+%{a, b}          // %{"a": 1, "b": 2}
+%{}              // {}
+{a = 4}          // 块，值为 4
+{a; b}           // 块，值为 2
+{a ? b : 3}      // 块，值为 2
 \end{lstlisting}
 
 \subsection{文法的静态约束}
@@ -988,7 +981,7 @@ float(5)           // 5.0
 complex(1, 2)      // 1+2i
 string(42)         // "42"
 list(1, 2, 3)      // @[1, 2, 3]
-dict("a", 1)       // {"a": 1}
+dict("a", 1)       // %{"a": 1}
 set(1, 2, 2, 3)    // @{1, 2, 3}
 slice(1, 5, 2)     // slice(1, 5, 2)
 matrix(2, 2, 1, 2, 3, 4)
@@ -1356,15 +1349,15 @@ return、break、continue、throw & 控制转移 \\
 循环体进入下一轮前执行 defer；\jc{break} 结束最近循环，\jc{continue} 进入下一轮。
 循环体中的 \jc{return} 结束当前函数，并按块清理规则执行 defer。
 
-循环可以带标签：\jc{for &outer (i in xs) e}、\jc{while &poll (c) e}。
+循环可以带标签：\jc{for :outer (i in xs) e}、\jc{while :poll (c) e}。
 标签只标记循环，作用域到循环结束，不能跨函数或 lambda；同一活动作用域内
-禁止同名嵌套标签。\jc{break &outer} 跳出指定循环，\jc{continue &outer} 进入指定
+禁止同名嵌套标签。\jc{break :outer} 跳出指定循环，\jc{continue :outer} 进入指定
 循环的下一轮；未知标签与重复活动标签都是语法错误。
-标签的 \jc{\&} 号属于标签语法，不参与字典字面量判定。
+标签的 \jc{:} 号属于标签语法；字典以 \jc{\%\{} 开始，因此标签冒号不参与字典判定。
 
 \jc{break} 可以带值：\jc{break expr} 结束最近循环并把 \jc{expr} 作为循环值；
-\jc{break &outer expr} 结束指定循环并把 \jc{expr} 作为该循环的值。
-裸 \jc{break} 与裸 \jc{break &outer} 产生 \jc{none}。\jc{continue} 不设置循环值。
+\jc{break :outer expr} 结束指定循环并把 \jc{expr} 作为该循环的值。
+裸 \jc{break} 与裸 \jc{break :outer} 产生 \jc{none}。\jc{continue} 不设置循环值。
 \jc{break} 与 \jc{continue} 的标签和值必须与关键字同行，遇到换行即结束；
 循环关键字、标签与左括号也必须在同一行。
 
@@ -1521,7 +1514,7 @@ f(1, b = 3)     // 4
 
 g(a, ...rest; b, ...kw) = @[a, rest, b, kw]
 g(1, 2, 3, b = 4, x = 5)
-// @[1, @[2, 3], 4, {"x": 5}]
+// @[1, @[2, 3], 4, %{"x": 5}]
 \end{lstlisting}
 
 \subsection{占位符与部分应用}
@@ -1581,7 +1574,7 @@ or-pattern 的每个备选绑定相同的变量名集合；备选变量集合出
 \begin{lstlisting}
 match (val) {
     [a, (2 * a)] => "second is twice the first",
-    {x: a, y: (a ^ 2)} => "y is the square of x",
+    %{x: a, y: (a ^ 2)} => "y is the square of x",
     (math.pi()) => "pi",
     _ => "other"
 }
@@ -1605,8 +1598,8 @@ rest 模式 \jc{...name} 捕获剩余元素；同一行最多一个 rest。
 
 dict 模式 \texttt{\{...\}} 匹配 dict、实例字段与 namespace 字段。
 字段可以带 \jc{local}、\jc{ref}、\jc{state}、\jc{const} 修饰符。
-简写 \texttt{\{name\}} 等价于 \texttt{\{"name": name\}}。
-\texttt{\{a: int\}} 把字段 \jc{a} 解构到名为 \jc{int} 的变量；类型断言写作 \texttt{\{a: a: int\}}。
+简写 \texttt{\{name\}} 等价于 \texttt{\%\{"name": name\}}。
+\texttt{\%\{a: int\}} 把字段 \jc{a} 解构到名为 \jc{int} 的变量；类型断言写作 \texttt{\%\{a: a: int\}}。
 rest 捕获剩余字段并绑定为 dict，位于字段列表末尾。
 
 \subsubsection{视图提取}
@@ -2170,7 +2163,7 @@ L[1:3]          // @[20, 30]
 L[1:2] = @[9]   // @[10, 9, 30]
 
 d = {"a": 1}
-d.b = 2          // {"a": 1, "b": 2}
+d.b = 2          // %{"a": 1, "b": 2}
 d["a"]           // 1
 
 s = @{1, 2}
@@ -2178,7 +2171,7 @@ s | @{2, 3}     // @{1, 2, 3}
 
 @[x * 2 for (x in @[1, 2])]              // @[2, 4]
 @{x * 2 for (x in @[1, 2]) if (x > 1)}   // @{4}
-{x: x * 2 for (x in @[1, 2])}             // {1: 2, 2: 4}
+%{x: x * 2 for (x in @[1, 2])}             // %{1: 2, 2: 4}
 \end{lstlisting}
 \end{samepage}
 
@@ -2489,7 +2482,7 @@ primary        = literal | identifier | "(" expression ")"
 
 list-literal   = "@[" [ matrix-row { ";" matrix-row } ] "]" ;
 set-literal    = "@{" [ assign-expr { "," assign-expr } ] "}" ;
-dict-literal   = "{" [ dict-entry { "," dict-entry } ] "}" ;
+dict-literal   = "%{" [ dict-entry { "," dict-entry } ] "}" ;
 dict-entry     = assign-expr ":" assign-expr
                | "..." assign-expr
                | identifier ;
@@ -2542,7 +2535,7 @@ context-self-expr = "class" | "namespace" ;
 \subsection{控制表达式}
 
 \begin{lstlisting}
-loop-label     = "&" identifier ;
+loop-label     = ":" identifier ;
 if-expr        = "if" "(" expression ")" expression
                  [ "else" expression ] ;
 while-expr     = "while" [ loop-label ] "(" expression ")" expression ;
@@ -2581,7 +2574,7 @@ comp-clauses   = comp-clause { comp-clause } ;
 list-comprehension   = "@[" assign-expr comp-clauses "]" ;
 matrix-comprehension = "[" assign-expr comp-clauses "]" ;
 set-comprehension    = "@{" assign-expr comp-clauses "}" ;
-dict-comprehension   = "{" assign-expr ":" assign-expr comp-clauses "}" ;
+dict-comprehension   = "%{" assign-expr ":" assign-expr comp-clauses "}" ;
 \end{lstlisting}
 
 \subsection{模式}
@@ -2598,7 +2591,7 @@ list-pattern   = "@[" [ pattern { "," pattern } ] "]" ;
 matrix-pattern = "[" [ pattern-row { ";" pattern-row } [ ";" ] ] "]" ;
 pattern-row    = pattern { "," pattern } ;
 
-dict-pattern   = "{" [ field-pattern { "," field-pattern }
+dict-pattern   = "%{" [ field-pattern { "," field-pattern }
                  [ "," rest-pattern ] ] "}" ;
 field-pattern  = [ "const" ] [ "local" | "ref" | "state" ] identifier
                  [ ":" pattern | "=" ternary ]

@@ -7,7 +7,7 @@ assert(abs(r[-1, 0] - 1) < 1e-12, "final time")
 assert(abs(r[-1, 1] - math.e()) < 1e-6, "exp(1) accuracy")
 
 // 固定步长 RK4
-r4 = math.ode((t, y) => y, 0, 1, 1, {method: "rk4", h: 0.01})
+r4 = math.ode((t, y) => y, 0, 1, 1, %{method: "rk4", h: 0.01})
 assert(abs(r4[-1, 1] - math.e()) < 1e-6, "rk4 accuracy")
 
 // 一阶系统：谐振子 y'' = -y
@@ -22,7 +22,7 @@ assert(abs(b[-1, 1] - 1) < 1e-5, "backward integration")
 
 
 // 稠密输出：返回可调用对象
-sol = math.ode((t, y) => y, 0, 1, 1, {dense: true})
+sol = math.ode((t, y) => y, 0, 1, 1, %{dense: true})
 assert(iscallable(sol), "dense returns a callable")
 assert(abs(sol(0.5) - exp(0.5)) < 1e-5, "dense interpolation")
 
@@ -33,7 +33,7 @@ her = math.odeInterp(r, "hermite", (t, y) => y)
 assert(abs(her(0.5) - exp(0.5)) < 1e-5, "hermite interpolation")
 
 // 系统闭包
-syssol = math.ode((t, y) => [y[1, 0]; -y[0, 0]], 0, [1; 0], math.PI / 2, {dense: true})
+syssol = math.ode((t, y) => [y[1, 0]; -y[0, 0]], 0, [1; 0], math.PI / 2, %{dense: true})
 mid = syssol(math.PI / 4)
 assert(abs(mid[0, 0] - sqrt(2.0) / 2) < 1e-5, "dense system cos")
 assert(abs(mid[1, 0] + sqrt(2.0) / 2) < 1e-5, "dense system -sin")
@@ -45,7 +45,7 @@ hotf = (V, y) => {
     r = 0.08 * exp(-6000.0 * (1.0 / T - 1.0 / 350.0)) * (1.0 - X)
     return [r; (1.5e5 * r - 250.0 * (T - 340.0)) / 1000.0]
 }
-hotsol = math.ode(hotf, 0, [0.0; 350.0], 6.0, {dense: true})
+hotsol = math.ode(hotf, 0, [0.0; 350.0], 6.0, %{dense: true})
 Twrap = (V) => hotsol(V)[1, 0]
 Vhot = math.solve((V) => math.diff(Twrap, V), 1.2)
 assert(abs(Vhot - 3.9312) < 1e-2, "bracketed solve finds the hot spot")

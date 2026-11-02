@@ -62,7 +62,7 @@ _ecdsaCases(key: string, curve: string, hashName: string) = {
             bad += 1
         }
     }
-    return {"ok": ok, "bad": bad}
+    return %{"ok": ok, "bad": bad}
 }
 
 test_ecdsa_p384_sha384_vectors() = {

@@ -20,7 +20,7 @@ test_member_read_is_raw() = {
     g = a.who
     assert(throws(() => g()), "extracted method has no self")
     // §八 3：字典的键作为 self，不占实参位
-    d = { "f": sin }
+    d = %{ "f": sin }
     assert(abs(d.f(1.0) - 0.841471) < 1e-6, "dict key's closure gets the dict as self")
     // §八 5：挂上去的闭包拿实例当 self，取出来就没有
     h = A()
@@ -69,7 +69,7 @@ test_receiver_is_not_an_argument() = {
     assert(@[1, 2, 3].sum() == 6, "prototype methods keep working")
     assert("ab".upper() == "AB", "string prototype methods keep working")
     assert("ab".reversed() == "ba", "chained prototype calls keep working")
-    assert(len({ x: 1 }.keys()) == 1, "dict prototype methods keep working")
+    assert(len(%{ x: 1 }.keys()) == 1, "dict prototype methods keep working")
     // §八 18：0 参原生方法不再静默吞掉多余实参
     assert(throws(() => @[1, 2, 3].sum(5)), "extra args to a 0-param native are rejected")
     assert(throws(() => "ab".upper(5)), "same for string natives")
@@ -151,7 +151,7 @@ test_snapshot_intent()
 
 test_lookup_order_is_shared() = {
     // §八 23 / §2.1：自己的袋子 -> 原型 -> 全局，读与调用同一条顺序
-    d = { keys: 5 }
+    d = %{ keys: 5 }
     assert(d.keys == 5, "dict key shadows the prototype method for reads")
     assert(throws(() => d.keys()), "and for calls the key's value is used (not callable)")
     l = @[1, 2]
@@ -165,7 +165,7 @@ test_containers_are_not_instances() = {
     l2 = @[2]
     assert(l1.append == l2.append, "prototype methods are one shared function object")
     assert(throws(() => { l1.x = 1 }), "containers cannot take new fields")
-    d = { a: 1 }
+    d = %{ a: 1 }
     d.x = 1
     assert(d.x == 1, "a dict takes a new key")
     assert(l1.len() == 1, "and reading still works")
@@ -263,7 +263,7 @@ test_hash_dunder_is_found_in_the_member_table() = {
     assert(ishashable(h), "an instance with __hash__ is hashable")
     assert(hash(h) == hash(H()), "hash() is stable across equal instances")
     assert(h.__hash__() == 1, "and __hash__ itself returns the declared value")
-    d = {}
+    d = %{}
     d[h] = "v"
     assert(d[H()] == "v", "and it works as a dict key")
     // 父类提供的 __hash__ 同样算数
@@ -299,7 +299,7 @@ test_hash_of_dunder_result_is_type_consistent() = {
         __hash__() = self.k
         __eq__(o) = self.k == o.k
     }
-    d = {}
+    d = %{}
     d[HKey(1234567890123456789)] = "big"
     assert(d[HKey(1234567890123456789)] == "big", "BigInt-valued key still round-trips")
     st = set()
@@ -328,12 +328,12 @@ test_instance_introspection_globals() = {
     assert(!hasField(p, "nope"), "missing field is false")
     assert(!hasField(p, 42), "non-string key is false")
 
-    d = {"a": 1, "b": 2}
+    d = %{"a": 1, "b": 2}
     assert(getFields(d) == d.keys(), "getFields agrees with d.keys()")
     assert(hasField(d, "a") == d.hasField("a"), "hasField agrees with d.hasField()")
 
     // Dict 的键可以是任意可哈希值（非字符串键按原值查找，不是"拒绝"）
-    d2 = {42: "x", true: "y"}
+    d2 = %{42: "x", true: "y"}
     assert(hasField(d2, 42), "integer key is looked up as-is")
     assert(hasField(d2, true), "boolean key is looked up as-is")
     assert(!hasField(d2, 43), "missing integer key is false")
@@ -350,13 +350,13 @@ test_instance_introspection_globals()
 // ★ 住在槽位里的常量成员同样受 const 保护
 test_slot_const_member_is_protected() = {
     class WithConstMethod {
-        init() = { }
+        init() = %{ }
         const m() = return 1
     }
     assert(throws(() => clear(WithConstMethod())), "clear must refuse to delete a const member")
 
     class NoConst {
-        init() = { }
+        init() = %{ }
         m() = return 1
     }
     assert(!throws(() => clear(NoConst())), "clear works when no const member exists")

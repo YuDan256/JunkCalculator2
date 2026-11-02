@@ -8,7 +8,7 @@ class Base {
     static S = 10
     baseMethod() = 1
     local basePriv = 0
-    init() = { }
+    init() = %{ }
 }
 
 class C extends Base {
@@ -20,7 +20,7 @@ class C extends Base {
     m() = "m"
     local p = 9
     local pm() = 0
-    init() = { }
+    init() = %{ }
 }
 c = C()
 

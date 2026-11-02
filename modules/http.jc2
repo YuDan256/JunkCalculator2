@@ -199,7 +199,7 @@ local namespace _Http {
 
     // options 字典的浅拷贝（httpPost 之类要给调用方的字典加字段，不能改原件）
     copy(options: dict) -> dict = {
-        out = {}
+        out = %{}
         for (k in options.keys()) out[k] = options[k]
         return out
     }
@@ -243,7 +243,7 @@ local namespace _Http {
         if (url_host.len() == 0) {
             throw HttpError(f"URL has no host: \"{url_str}\"")
         }
-        return {"scheme": scheme, "host": url_host, "port": url_port, "path": url_path}
+        return %{"scheme": scheme, "host": url_host, "port": url_port, "path": url_path}
     }
 
     // 连接池的键：scheme://host:port
@@ -297,17 +297,17 @@ local namespace _Http {
         m = method.upper()
         if (m == "HEAD" || status == 204 || status == 304 ||
             (status >= 100 && status < 200)) {
-            return {"mode": "none", "length": 0}
+            return %{"mode": "none", "length": 0}
         }
         te = header(headers, "Transfer-Encoding").lower()
         if (te.find("chunked", 0) != -1) {
-            return {"mode": "chunked", "length": 0}
+            return %{"mode": "chunked", "length": 0}
         }
         cl_text = header(headers, "Content-Length")
         if (cl_text != "") {
-            return {"mode": "length", "length": parse_uint(cl_text, "Content-Length")}
+            return %{"mode": "length", "length": parse_uint(cl_text, "Content-Length")}
         }
-        return {"mode": "eof", "length": 0}
+        return %{"mode": "eof", "length": 0}
     }
 
     // HTTP/1.1 且响应没说 Connection: close 才能把连接放回池子
@@ -377,7 +377,7 @@ local namespace _Http {
             if (parts.len() > 1) status_code = parse_uint(parts[1], "status code")
         }
 
-        headers_dict = {}
+        headers_dict = %{}
         for (i in range(1, lines.len())) {
             line = lines[i]
             colon = line.find(":", 0)
@@ -387,11 +387,11 @@ local namespace _Http {
                 headers_dict[k] = v
             }
         }
-        return {"status": status_code, "headers": headers_dict, "header_bytes": header_bytes}
+        return %{"status": status_code, "headers": headers_dict, "header_bytes": header_bytes}
     }
 
     // raw 是**恰好一条**响应的字节（离线喂夹具，网络侧喂定界切出来的那一段）
-    parse_response(raw: string, url: string = "", options: dict = {}) -> HttpResponse = {
+    parse_response(raw: string, url: string = "", options: dict = %{}) -> HttpResponse = {
         head = split_head(raw)
 
         method = "GET"
@@ -427,8 +427,8 @@ local namespace _Http {
 
 // 解析一段完整的 HTTP 响应字节（离线可用；也方便自己拿 socket 收发的人复用）。
 // 契约：**任何**畸形输入都只以 HttpError 出现，绝不漏出其它异常类型。
-// options: {"method": "GET"|"HEAD"|..., "decompress": bool}
-httpParseResponse(raw: string, url: string = "", options: dict = {}) -> HttpResponse = {
+// options: %{"method": "GET"|"HEAD"|..., "decompress": bool}
+httpParseResponse(raw: string, url: string = "", options: dict = %{}) -> HttpResponse = {
     try {
         return _Http.parse_response(raw, url, options)
     } catch (e) {
@@ -439,7 +439,7 @@ httpParseResponse(raw: string, url: string = "", options: dict = {}) -> HttpResp
 
 // 这条响应该怎么收尾？（纯函数，平台无关）
 //   status  状态码    headers 响应头    method 请求方法（HEAD 无正文）
-// 返回 {"mode": "none"|"length"|"chunked"|"eof", "length": n}
+// 返回 %{"mode": "none"|"length"|"chunked"|"eof", "length": n}
 //   none    无正文（HEAD / 204 / 304 / 1xx），length 恒为 0
 //   length  Content-Length: n，恰好读 n 字节，length == n
 //   chunked 分块传输，read until the 0 chunk + trailer，length 恒为 0
@@ -469,15 +469,15 @@ httpPlanRedirect(res: HttpResponse, current_url: string) -> any = {
 // 重定向的**下一步请求**怎么发（纯函数）：
 //   301/302/303 → 改成 GET 且丢弃请求体（keepBody=false）
 //   307/308     → 保留方法与请求体（keepBody=true）
-// 返回 {"url": 下一个地址, "method": 方法, "keepBody": bool}；不是重定向时 none
+// 返回 %{"url": 下一个地址, "method": 方法, "keepBody": bool}；不是重定向时 none
 httpPlanRedirectRequest(res: HttpResponse, current_url: string, method: string = "GET") -> any = {
     next_url = httpPlanRedirect(res, current_url)
     if (next_url is none) return none
     m = method.upper()
     if (res.status == 307 || res.status == 308) {
-        return {"url": next_url, "method": m, "keepBody": true}
+        return %{"url": next_url, "method": m, "keepBody": true}
     }
-    return {"url": next_url, "method": "GET", "keepBody": false}
+    return %{"url": next_url, "method": "GET", "keepBody": false}
 }
 
 // ─── 可增长的字节缓冲（顺序读大正文时避免 O(n^2) 的字符串拼接）──
@@ -521,7 +521,7 @@ local class _Conn {
         self.got_bytes = false      // 本次请求是否已经收到过响应字节（决定能否重试）
         self.reused = false
         if (scheme == "https") {
-            tls_opts = {"serverName": host, "verifyChain": true}
+            tls_opts = %{"serverName": host, "verifyChain": true}
             // timeoutMs 只在 https 生效：它落到 TcpStream 的 connect/read/write 超时上
             if ("timeoutMs" in options) tls_opts["timeoutMs"] = options["timeoutMs"]
             self.client = net.TlsSocket(host, _round(port), tls_opts)
@@ -559,7 +559,7 @@ local class _Conn {
 // ─── 空闲连接池：每个源最多 2 条 ───────────────────────────────
 
 const local _POOL_MAX = 2
-local _pool = {}                    // "scheme://host:port" -> @[连接, ...]
+local _pool = %{}                    // "scheme://host:port" -> @[连接, ...]
 
 local namespace _Pool {
     take(origin: string) -> any = {
@@ -751,7 +751,7 @@ local _build_request(method: string, target: dict, user_headers: dict, body: str
     }
 
     req = f"{method} {target['path']} HTTP/1.1\r\n"
-    emitted = {}
+    emitted = %{}
     for (i in range(names.len())) {
         name = names[i]
         value = _Http.header(user_headers, name)
@@ -815,7 +815,7 @@ local _exchange(method: string, url: string, target: dict, user_headers: dict, b
             throw e
         }
     }
-    return HttpResponse(0, {}, "", "", url)
+    return HttpResponse(0, %{}, "", "", url)
 }
 
 // ─── Public API: 请求 ─────────────────────────────────────────
@@ -828,11 +828,11 @@ local _exchange(method: string, url: string, target: dict, user_headers: dict, b
 //   decompress       bool  Accept-Encoding: gzip, deflate + 按 Content-Encoding 解码（默认 true）
 //   timeoutMs        int   **仅 https 生效**：连接/读超时；明文 http 走 socket 模块，没有超时
 //   keepAlive        bool  默认 true（Connection: keep-alive + 空闲连接池）
-httpRequest(method: string, url: string, options: dict = {}) -> HttpResponse = {
+httpRequest(method: string, url: string, options: dict = %{}) -> HttpResponse = {
     m = method.upper()
     max_redirects = 5
     if ("followRedirects" in options) max_redirects = int(options["followRedirects"])
-    user_headers = {}
+    user_headers = %{}
     if ("headers" in options) user_headers = options["headers"]
     body = ""
     if ("body" in options) body = str(options["body"])
@@ -865,23 +865,23 @@ httpRequest(method: string, url: string, options: dict = {}) -> HttpResponse = {
         m = plan["method"]
         if (!plan["keepBody"]) body = ""     // 303 之类：请求体丢掉
     }
-    return HttpResponse(0, {}, "", "", url)
+    return HttpResponse(0, %{}, "", "", url)
 }
 
 // GET 一个 URL；默认跟随最多 5 次重定向。
-// options: {"followRedirects": int, "headers": dict, "decompress": bool,
+// options: %{"followRedirects": int, "headers": dict, "decompress": bool,
 //           "timeoutMs": int (仅 https), "keepAlive": bool}
-httpGet(url: string, options: dict = {}) -> HttpResponse = {
+httpGet(url: string, options: dict = %{}) -> HttpResponse = {
     return httpRequest("GET", url, options)
 }
 
 // HEAD：响应无正文（定界规则第一条），Content-Length 只当元信息
-httpHead(url: string, options: dict = {}) -> HttpResponse = {
+httpHead(url: string, options: dict = %{}) -> HttpResponse = {
     return httpRequest("HEAD", url, options)
 }
 
 // POST 一个请求体；options 与 httpGet 相同（会被浅拷贝，不改调用方的字典）
-httpPost(url: string, body: string, options: dict = {}) -> HttpResponse = {
+httpPost(url: string, body: string, options: dict = %{}) -> HttpResponse = {
     opts = _Http.copy(options)
     opts["body"] = body
     return httpRequest("POST", url, opts)
@@ -913,11 +913,11 @@ try {
     res = httpHead(url, options)              // no body; Content-Length is metadata only
     res = httpPost(url, body, options)        // request body + Content-Length
     res = parseResponse(raw_bytes)            // parse one complete response offline
-    res = parseResponse(raw_bytes, url, {"method": "HEAD", "decompress": false})
+    res = parseResponse(raw_bytes, url, %{"method": "HEAD", "decompress": false})
     plan = planRead(status, headers, method)  // pure: how this response must be read out
     next_url = planRedirect(res, current_url) // next URL for 3xx, none if absent
     step = planRedirectRequest(res, current_url, method)
-                                              // {"url", "method", "keepBody"}, none if absent
+                                              // %{"url", "method", "keepBody"}, none if absent
 
   options (dict)
   ──────────────────────
@@ -933,7 +933,7 @@ try {
 
   Response framing (RFC 9112 §6)
   ──────────────────────
-    planRead(status, headers, method) returns {"mode", "length"}:
+    planRead(status, headers, method) returns %{"mode", "length"}:
       "none"     HEAD / 204 / 304 / 1xx - no body, not a single byte is read
       "length"   Content-Length: n - read exactly n bytes (one byte too many would
                  corrupt the next response on the same connection), length == n
@@ -1000,31 +1000,31 @@ try {
                       being read (defined by the net module, as its name implies).
 )DOC")
 
-    sys.registerDirectory("http", {
+    sys.registerDirectory("http", %{
         title: "http",
         summary: "HTTP/1.1 client with TLS, redirects, decompression and connection reuse."
     })
-    sys.registerEntry("http.httpGet", {
+    sys.registerEntry("http.httpGet", %{
         kind: "method", signature: "httpGet(url, [options])",
         desc: "GET request; follows up to five redirects by default."
     })
-    sys.registerEntry("http.httpPost", {
+    sys.registerEntry("http.httpPost", %{
         kind: "method", signature: "httpPost(url, body, [options])",
         desc: "POST request with a request body and Content-Length."
     })
-    sys.registerEntry("http.httpRequest", {
+    sys.registerEntry("http.httpRequest", %{
         kind: "method", signature: "httpRequest(method, url, [options])",
         desc: "Sends an arbitrary method with the same framing and reuse logic."
     })
-    sys.registerEntry("http.parseResponse", {
+    sys.registerEntry("http.parseResponse", %{
         kind: "method", signature: "parseResponse(raw_bytes, [url, options])",
         desc: "Parses one complete response offline."
     })
-    sys.registerEntry("http.planRead", {
+    sys.registerEntry("http.planRead", %{
         kind: "method", signature: "planRead(status, headers, method)",
         desc: "Pure framing plan: returns {mode, length} where mode is none, length, chunked or eof."
     })
-    sys.registerEntry("http.HttpResponse", {
+    sys.registerEntry("http.HttpResponse", %{
         kind: "class", signature: "HttpResponse",
         desc: "Response value with status, headers, body and URL metadata."
     })

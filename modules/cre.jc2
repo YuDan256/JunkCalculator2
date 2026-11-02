@@ -63,7 +63,7 @@ arrfit(T, k) = {
     r2 = 1.0
     if (ssTot > 0) r2 = 1.0 - ssRes / ssTot
     kf = (Tq) => A * exp(-Ea / (R_GAS * Tq))
-    return {Ea: Ea, A: A, kf: kf, R2: r2}
+    return %{Ea: Ea, A: A, kf: kf, R2: r2}
 }
 
 // Moles change per mole A reacted: (c + d - a - b) / a
@@ -74,7 +74,7 @@ eps(delta, yA0) = delta * yA0
 
 // Power-law rate closure -rA(X). Options: eps (expansion factor), Keq
 // (reversible first-order A ⇌ B; Keq must be positive).
-rate(n, k, CA0, opts = {}) = {
+rate(n, k, CA0, opts = %{}) = {
     e = 0.0
     if (opts.has("eps")) e = opts["eps"]
     rev = false
@@ -134,7 +134,7 @@ series(negR, FA0, X, n) = {
     }
     fV = (V) => solveStages(V)[-1] - X
     V = _bisect(fV, 0.0, Vref * 4.0)
-    return {Vtotal: V * n, Xs: solveStages(V)}
+    return %{Vtotal: V * n, Xs: solveStages(V)}
 }
 
 // Recycle PFR: overall conversion X2, recycle ratio R.
@@ -157,7 +157,7 @@ equil(negR) = _bisect(negR, 0.0, 0.9999)
 
 // Levenspiel comparison: {Vp, Vc}
 lev(negR, FA0, X) = {
-    return {Vp: pfr(negR, FA0, X), Vc: cstr(negR, FA0, X)}
+    return %{Vp: pfr(negR, FA0, X), Vc: cstr(negR, FA0, X)}
 }
 
 // ── packed bed with pressure drop ───────────────────────────────
@@ -167,17 +167,17 @@ local _XatW(negRW, FA0, Wmax, W) = {
     h = Wmax / 200.0
     if (h <= 0) h = Wmax
     f = (w, x) => negRW(x, w) / FA0
-    res = math.ode(f, 0.0, 0.0, W, {method: "rk4", h: h})
+    res = math.ode(f, 0.0, 0.0, W, %{method: "rk4", h: h})
     return res[-1, 1]
 }
 
 // Find W for target conversion. Returns {W, X, reached}.
 pbrDp(negRW, FA0, Xtgt, Wmax) = {
     Xmax = _XatW(negRW, FA0, Wmax, Wmax)
-    if (Xmax < Xtgt) return {W: Wmax, X: Xmax, reached: false}
+    if (Xmax < Xtgt) return %{W: Wmax, X: Xmax, reached: false}
     f = (W) => _XatW(negRW, FA0, Wmax, W) - Xtgt
     W = _bisect(f, 0.0, Wmax)
-    return {W: W, X: Xtgt, reached: true}
+    return %{W: W, X: Xtgt, reached: true}
 }
 
 findXPbr(negRW, FA0, W, Wmax = 100.0) = _XatW(negRW, FA0, Wmax, W)
@@ -186,7 +186,7 @@ findXPbr(negRW, FA0, W, Wmax = 100.0) = _XatW(negRW, FA0, Wmax, W)
 
 // Integrates dX/dV and dT/dV. options: Ua (default 0), Ta (default T0).
 // Returns a matrix [V, X, T].
-noniso(negRT, FA0, Vmax, dHr, sumFCp, T0, opts = {}) = {
+noniso(negRT, FA0, Vmax, dHr, sumFCp, T0, opts = %{}) = {
     Ua = 0.0
     if (opts.has("Ua")) Ua = opts["Ua"]
     Ta = T0
@@ -201,13 +201,13 @@ noniso(negRT, FA0, Vmax, dHr, sumFCp, T0, opts = {}) = {
     }
     h = Vmax / 200.0
     if (h <= 0) h = Vmax
-    return math.ode(f, 0.0, [0.0; T0], Vmax, {method: "rk4", h: h})
+    return math.ode(f, 0.0, [0.0; T0], Vmax, %{method: "rk4", h: h})
 }
 
 
 // ── help registration ──────────────────────────────────────────
 
-sys.registerDirectory("cre", {
+sys.registerDirectory("cre", %{
     title: "cre — Chemical Reaction Engineering",
     summary: "Kinetics, reactor design, pressure drop and non-isothermal PFR helpers."
 })
@@ -254,93 +254,93 @@ sys.registerHelp("cre", r"DOC(
     cre.series(negR, 5, 0.99, 2)
 )DOC")
 
-sys.registerEntry("cre.kT", {
+sys.registerEntry("cre.kT", %{
     kind: "function", signature: "cre.kT(k1, T1, Ea, T)",
     desc: "Arrhenius rate constant from k1 at T1 and activation energy Ea [J/mol].",
     examples: @["cre.kT(1.0, 300, 50000, 320)"]
 })
-sys.registerEntry("cre.arrfit", {
+sys.registerEntry("cre.arrfit", %{
     kind: "function", signature: "cre.arrfit(T, k)",
     desc: "Fits ln k against 1/T by least squares; returns {Ea, A, kf, R2}.",
     examples: @["cre.arrfit(@[300, 320, 340], @[0.001, 0.01, 0.08])"]
 })
-sys.registerEntry("cre.delta", {
+sys.registerEntry("cre.delta", %{
     kind: "function", signature: "cre.delta(a, b, c, d)",
     desc: "Moles change per mole A reacted: (c + d - a - b) / a.",
     examples: @["cre.delta(2, 1, 4, 0)"]
 })
-sys.registerEntry("cre.eps", {
+sys.registerEntry("cre.eps", %{
     kind: "function", signature: "cre.eps(delta, yA0)",
     desc: "Expansion factor ε = δ · yA0.",
     examples: @["cre.eps(0.5, 0.5)"]
 })
-sys.registerEntry("cre.rate", {
+sys.registerEntry("cre.rate", %{
     kind: "function", signature: "cre.rate(n, k, CA0, [opts])",
     desc: "Returns negR(X) for a power law. opts: eps (volume change) and Keq (reversible first order).",
-    examples: @["negR = cre.rate(2, 3, 0.5)", "negR = cre.rate(1, 1, 1, {Keq: 4})"]
+    examples: @["negR = cre.rate(2, 3, 0.5)", "negR = cre.rate(1, 1, 1, %{Keq: 4})"]
 })
-sys.registerEntry("cre.rateDp", {
+sys.registerEntry("cre.rateDp", %{
     kind: "function", signature: "cre.rateDp(n, k, CA0, alpha)",
     desc: "Returns negRW(X, W) for a packed bed with p^2 = 1 - alpha W.",
     examples: @["negRW = cre.rateDp(1, 0.1, 1, 0.05)"]
 })
-sys.registerEntry("cre.batch", {
+sys.registerEntry("cre.batch", %{
     kind: "function", signature: "cre.batch(negR, CA0, X)",
     desc: "Batch time t = CA0 ∫0^X dX/(-rA).",
     examples: @["cre.batch(negR, 1, 0.9)"]
 })
-sys.registerEntry("cre.cstr", {
+sys.registerEntry("cre.cstr", %{
     kind: "function", signature: "cre.cstr(negR, FA0, X)",
     desc: "CSTR volume V = FA0 X / (-rA) at X.",
     examples: @["cre.cstr(negR, 5, 0.99)"]
 })
-sys.registerEntry("cre.pfr", {
+sys.registerEntry("cre.pfr", %{
     kind: "function", signature: "cre.pfr(negR, FA0, X)",
     desc: "PFR volume V = FA0 ∫0^X dX/(-rA).",
     examples: @["cre.pfr(negR, 5, 0.99)"]
 })
-sys.registerEntry("cre.pbr", {
+sys.registerEntry("cre.pbr", %{
     kind: "function", signature: "cre.pbr(negR, FA0, X)",
     desc: "Packed-bed weight W = FA0 ∫0^X dX/(-rA'); same integral as PFR.",
     examples: @["cre.pbr(negR, 5, 0.99)"]
 })
-sys.registerEntry("cre.series", {
+sys.registerEntry("cre.series", %{
     kind: "function", signature: "cre.series(negR, FA0, X, n)",
     desc: "n equal-volume CSTRs in series; returns {Vtotal, Xs}.",
     examples: @["cre.series(negR, 5, 0.99, 2)"]
 })
-sys.registerEntry("cre.recycle", {
+sys.registerEntry("cre.recycle", %{
     kind: "function", signature: "cre.recycle(negR, FA0, R, X2)",
     desc: "Recycle PFR volume for overall conversion X2 and recycle ratio R.",
     examples: @["cre.recycle(negR, 5, 3, 0.99)"]
 })
-sys.registerEntry("cre.findX", {
+sys.registerEntry("cre.findX", %{
     kind: "function", signature: "cre.findX(kind, negR, FA0, V)",
     desc: "Solves the design equation for X; kind is pfr, pbr or cstr.",
     examples: @['cre.findX("pfr", negR, 5, 100)']
 })
-sys.registerEntry("cre.equil", {
+sys.registerEntry("cre.equil", %{
     kind: "function", signature: "cre.equil(negR)",
     desc: "Equilibrium conversion: root of negR(X) = 0.",
     examples: @["cre.equil((X) => (1 - X) - X / 4)"]
 })
-sys.registerEntry("cre.lev", {
+sys.registerEntry("cre.lev", %{
     kind: "function", signature: "cre.lev(negR, FA0, X)",
     desc: "Levenspiel comparison: returns {Vp, Vc}.",
     examples: @["cre.lev(negR, 5, 0.99)"]
 })
-sys.registerEntry("cre.pbrDp", {
+sys.registerEntry("cre.pbrDp", %{
     kind: "function", signature: "cre.pbrDp(negRW, FA0, Xtgt, Wmax)",
     desc: "Finds catalyst weight W reaching Xtgt; returns {W, X, reached}.",
     examples: @["cre.pbrDp(negRW, 1, 0.7, 100)"]
 })
-sys.registerEntry("cre.findXPbr", {
+sys.registerEntry("cre.findXPbr", %{
     kind: "function", signature: "cre.findXPbr(negRW, FA0, W, [Wmax])",
     desc: "Conversion at catalyst weight W for a packed bed with pressure drop.",
     examples: @["cre.findXPbr(negRW, 1, 20)"]
 })
-sys.registerEntry("cre.noniso", {
+sys.registerEntry("cre.noniso", %{
     kind: "function", signature: "cre.noniso(negRT, FA0, Vmax, dHr, sumFCp, T0, [opts])",
     desc: "Non-isothermal PFR: returns matrix [V, X, T]. dHr is -ΔHR (positive for exothermic); opts: Ua, Ta.",
-    examples: @["cre.noniso((X, T) => 0.08 * exp(-6000 * (1/T - 1/350)) * (1 - X), 1, 6, 1.5e5, 1000, 350, {Ua: 250, Ta: 340})"]
+    examples: @["cre.noniso((X, T) => 0.08 * exp(-6000 * (1/T - 1/350)) * (1 - X), 1, 6, 1.5e5, 1000, 350, %{Ua: 250, Ta: 340})"]
 })

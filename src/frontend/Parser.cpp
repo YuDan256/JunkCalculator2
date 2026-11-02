@@ -787,7 +787,8 @@ namespace jc {
         // ★ 新增：直接拦截解构赋值！彻底分离 Pattern 和 Expr 的解析！
         if (atDestructPattern()) {
             int destructPeekPos = current;
-            if (check(TokenType::AT)) destructPeekPos++;
+            if (check(TokenType::PERCENT)) destructPeekPos++;
+            else if (check(TokenType::AT)) destructPeekPos++;
             int depth = 0;
             while (destructPeekPos < static_cast<int>(tokens.size())) {
                 TokenType t = tokens[destructPeekPos].type;
@@ -1413,115 +1414,11 @@ namespace jc {
     // 当前位置是否为解构模式开头：dict { ... }、矩阵 [ ... ]、list @[ ... ]。
     // 统一供参数解构、赋值解构等场景复用，避免各处重复且遗漏 @[ 前缀。
     bool Parser::atDestructPattern() const {
-        if (check(TokenType::LBRACE) || check(TokenType::LBRACKET)) return true;
+        if (check(TokenType::PERCENT) && current + 1 < static_cast<int>(tokens.size()) &&
+            tokens[current + 1].type == TokenType::LBRACE) return true;
+        if (check(TokenType::LBRACKET)) return true;
         return check(TokenType::AT) && current + 1 < static_cast<int>(tokens.size()) &&
             tokens[current + 1].type == TokenType::LBRACKET;
-    }
-
-    bool Parser::isDictLiteralLookahead(int startPos) {
-        int peekPos = startPos;
-        while (peekPos < static_cast<int>(tokens.size()) &&
-            tokens[peekPos].type == TokenType::NEWLINE) {
-            peekPos++;
-        }
-
-        bool isDict = false;
-        int depth = 0;
-        int ternaryDepth = 0;
-        int scanPos = peekPos;
-        bool foundColon = false;
-        bool foundSemicolon = false;
-        bool foundComma = false;
-        bool foundNewline = false;
-        bool foundAssign = false;
-        bool foundTernary = false;
-        bool isPureShorthand = true;
-
-        TokenType lastMeaningfulToken = TokenType::END_OF_FILE;
-        bool newlineSinceLastMeaningful = false;
-        bool missingComma = false;
-
-        while (scanPos < static_cast<int>(tokens.size())) {
-            TokenType t = tokens[scanPos].type;
-            if (t == TokenType::NEWLINE) {
-                foundNewline = true;
-                newlineSinceLastMeaningful = true;
-            } else {
-                if (depth == 0) {
-                    if (newlineSinceLastMeaningful && lastMeaningfulToken == TokenType::IDENTIFIER) {
-                        if (t == TokenType::IDENTIFIER || t == TokenType::LOCAL || 
-                            t == TokenType::REF || t == TokenType::STATE || 
-                            t == TokenType::CONST || t == TokenType::ELLIPSIS) {
-                            missingComma = true;
-                        }
-                    }
-                }
-
-                if (t == TokenType::LBRACE || t == TokenType::LBRACKET || t == TokenType::LPAREN) {
-                    depth++;
-                    isPureShorthand = false;
-                } else if (t == TokenType::RBRACE || t == TokenType::RBRACKET || t == TokenType::RPAREN) {
-                    if (depth == 0) break;
-                    depth--;
-                    isPureShorthand = false;
-                } else if (depth == 0) {
-                    if (t == TokenType::QUESTION) {
-                        ternaryDepth++;
-                        foundTernary = true;
-                        isPureShorthand = false;
-                    } else if (t == TokenType::COLON) {
-                        if (ternaryDepth > 0) {
-                            ternaryDepth--;
-                        } else {
-                            foundColon = true;
-                        }
-                        isPureShorthand = false;
-                    } else if (t == TokenType::SEMICOLON) {
-                        foundSemicolon = true;
-                        isPureShorthand = false;
-                    } else if (t == TokenType::COMMA) {
-                        foundComma = true;
-                    } else if (t == TokenType::ASSIGN || t == TokenType::PLUS_ASSIGN || t == TokenType::MINUS_ASSIGN ||
-                               t == TokenType::STAR_ASSIGN || t == TokenType::SLASH_ASSIGN || t == TokenType::PERCENT_ASSIGN ||
-                               t == TokenType::CARET_ASSIGN || t == TokenType::BACKSLASH_ASSIGN ||
-                               t == TokenType::BIT_AND_ASSIGN || t == TokenType::BIT_OR_ASSIGN || t == TokenType::BIT_XOR_ASSIGN ||
-                               t == TokenType::SHIFT_LEFT_ASSIGN || t == TokenType::SHIFT_RIGHT_ASSIGN) {
-                        foundAssign = true;
-                        isPureShorthand = false;
-                    } else if (t != TokenType::IDENTIFIER && t != TokenType::ELLIPSIS && 
-                               t != TokenType::LOCAL && t != TokenType::REF && 
-                               t != TokenType::STATE && t != TokenType::CONST) {
-                        // 如果出现了除了标识符、展开符、修饰符、逗号、换行之外的任何 Token，它就不是纯简写字典
-                        isPureShorthand = false;
-                    }
-                }
-                
-                if (depth == 0) {
-                    lastMeaningfulToken = t;
-                }
-                newlineSinceLastMeaningful = false;
-            }
-            scanPos++;
-        }
-
-        if (foundColon) {
-            isDict = true;
-        } else if (foundSemicolon) {
-            isDict = false;
-        } else if (foundAssign) {
-            isDict = false;
-        } else if (foundTernary) {
-            isDict = false;
-        } else if (isPureShorthand) {
-            if (missingComma) {
-                isDict = false;
-            } else {
-                isDict = true; // 空字典 {} 或 纯简写字典 {a, b} 或 {local a}
-            }
-        } else {
-            isDict = false;
-        }
-        return isDict;
     }
 
     // =================================================================
@@ -1589,11 +1486,11 @@ namespace jc {
     }
 
     std::string Parser::parseLoopLabel() {
-        if (!match({ TokenType::BIT_AND })) return {};
-        Token label = consume(TokenType::IDENTIFIER, "Parser Error: Expect label after '&'.");
+        if (!match({ TokenType::COLON })) return {};
+        Token label = consume(TokenType::IDENTIFIER, "Parser Error: Expect label after ':'.");
         for (const auto& active : activeLabels) {
             if (active == label.lexeme) {
-                JC2_THROW(SyntaxError, "Loop label '&" + label.lexeme + "' is already active.");
+                JC2_THROW(SyntaxError, "Loop label ':" + label.lexeme + "' is already active.");
             }
         }
         return label.lexeme;
@@ -1603,7 +1500,7 @@ namespace jc {
         for (const auto& active : activeLabels) {
             if (active == label.lexeme) return;
         }
-        JC2_THROW(SyntaxError, "Unknown loop label '&" + label.lexeme + "' in '" + keyword + "'.");
+        JC2_THROW(SyntaxError, "Unknown loop label ':" + label.lexeme + "' in '" + keyword + "'.");
     }
 
     std::unique_ptr<Expr> Parser::whileExpr() {
@@ -1810,8 +1707,8 @@ namespace jc {
             std::string label;
             Token labelTok(TokenType::ERROR, "");
             bool hasLabel = false;
-            if (match({ TokenType::BIT_AND })) {
-                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after '&'.");
+            if (match({ TokenType::COLON })) {
+                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after ':'.");
                 requireActiveLabel(labelTok, "break");
                 label = labelTok.lexeme;
                 hasLabel = true;
@@ -1833,8 +1730,8 @@ namespace jc {
             std::string label;
             Token labelTok(TokenType::ERROR, "");
             bool hasLabel = false;
-            if (match({ TokenType::BIT_AND })) {
-                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after '&'.");
+            if (match({ TokenType::COLON })) {
+                labelTok = consume(TokenType::IDENTIFIER, "Parser Error: Expect loop label after ':'.");
                 requireActiveLabel(labelTok, "continue");
                 label = labelTok.lexeme;
                 hasLabel = true;
@@ -1983,11 +1880,14 @@ namespace jc {
             return withPos(std::make_unique<DeleteExpr>(std::move(names)), startPos, endPos);
         }
 
-        // ★ 裸块 { ... } 或字典字面量 { key: value, ... }
-        if (check(TokenType::LBRACE)) {
-            if (isDictLiteralLookahead(current + 1)) {
-                return parseDictLiteral();
+        // ★ 裸块 { ... }；字典字面量使用 %{ key: value, ... }
+        if (match({ TokenType::PERCENT })) {
+            if (!check(TokenType::LBRACE)) {
+                JC2_THROW(ParserError, "Parser Error: Expect '{' after '%' for dict literal.");
             }
+            return parseDictLiteral();
+        }
+        if (check(TokenType::LBRACE)) {
             return parseBlock();
         }
 
@@ -3531,7 +3431,16 @@ namespace jc {
             int endPos = previous().position + static_cast<int>(previous().lexeme.length());
             return withPosPat(std::make_unique<MatrixPattern>(std::move(rows), std::move(restRow)), startPos, endPos);
         }
-        if (match({TokenType::LBRACE})) {
+        bool isDictPattern = false;
+        if (check(TokenType::PERCENT) && current + 1 < static_cast<int>(tokens.size()) &&
+            tokens[current + 1].type == TokenType::LBRACE) {
+            advance();
+            advance();
+            isDictPattern = true;
+        } else if (match({TokenType::LBRACE})) {
+            isDictPattern = true;
+        }
+        if (isDictPattern) {
             std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;
             std::unique_ptr<RestPattern> rest = nullptr;
             
@@ -3640,9 +3549,7 @@ namespace jc {
     std::unique_ptr<Expr> Parser::parseMatchBody() {
         while (match({TokenType::NEWLINE})) {}
         if (check(TokenType::LBRACE)) {
-            if (!isDictLiteralLookahead(current + 1)) {
-                return parseBlock();
-            }
+            return parseBlock();
         }
         int startPos = peek().position;
         auto expr = assignment();

@@ -104,7 +104,7 @@ test_error_model() = {
     }
 
     r = try {
-        throw Exception("HttpError", {code: 500, detail: "down"})
+        throw Exception("HttpError", %{code: 500, detail: "down"})
     } catch (e) {
         assert(e.type == "HttpError", "structured error type")
         assert(e.message.code == 500 && e.message.detail == "down", "structured message")
@@ -113,7 +113,7 @@ test_error_model() = {
     assert(r.type == "HttpError", "catch returns value")
 
     r2 = try {
-        throw {code: 404, msg: "Not Found"}
+        throw %{code: 404, msg: "Not Found"}
     } catch (e) {
         assert(e.type == "Exception", "raw value wrapped as Exception")
         assert(e.message.code == 404, "raw dict becomes message")

@@ -1,4 +1,4 @@
-d = {}
+d = %{}
 assert((try d.x) is none, "bare try on missing property")
 assert((try { 1 / 0 }) is none, "bare try on runtime error")
 assert((try { throw "boom" }) is none, "bare try on explicit throw")

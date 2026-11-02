@@ -26,21 +26,21 @@ test_internals_are_not_exported() = {
 test_internals_are_not_exported()
 
 test_http_response_construction() = {
-    res = http.HttpResponse(200, {"Content-Type": "text/plain"}, "body", "raw")
+    res = http.HttpResponse(200, %{"Content-Type": "text/plain"}, "body", "raw")
     assert(res.status == 200, "status kept")
     assert(res.headers["Content-Type"] == "text/plain", "headers kept")
     assert(res.body == "body" && res.raw == "raw", "body/raw kept")
     assert(str(res) == "<HttpResponse [200] body_len=4>", "HttpResponse __str__")
     assert(res.redirects.len() == 0, "redirects default to an empty list")
 
-    tagged = http.HttpResponse(200, {}, "b", "r", "https://x.example/", @["https://y.example/"])
+    tagged = http.HttpResponse(200, %{}, "b", "r", "https://x.example/", @["https://y.example/"])
     assert(tagged.url == "https://x.example/", "url is kept")
     assert(tagged.redirects.len() == 1, "redirect chain is kept")
 }
 test_http_response_construction()
 
 test_http_response_json() = {
-    res = http.HttpResponse(200, {"Content-Type": "application/json"}, "{\"k\": 1}", "raw")
+    res = http.HttpResponse(200, %{"Content-Type": "application/json"}, "{\"k\": 1}", "raw")
     assert(res.json()["k"] == 1, "json() delegates to the json module")
 }
 test_http_response_json()
@@ -149,7 +149,7 @@ test_plan_redirect_absolute_and_relative() = {
 test_plan_redirect_absolute_and_relative()
 
 test_plan_redirect_refuses_https_downgrade() = {
-    downgrade = http.HttpResponse(301, {"Location": "http://plain.example/x"}, "", "",
+    downgrade = http.HttpResponse(301, %{"Location": "http://plain.example/x"}, "", "",
                                   "https://secure.example/")
     caught = false
     try {
@@ -230,37 +230,37 @@ _unzlibHex(hex: string) -> string = {
 test_plan_read_covers_every_branch() = {
     // 1) none：1xx / 204 / 304，以及 HEAD（哪怕头里有 Content-Length）
     for (status in @[100, 101, 102, 204, 304]) {
-        p = http.httpPlanRead(status, {"Content-Length": "12"}, "GET")
+        p = http.httpPlanRead(status, %{"Content-Length": "12"}, "GET")
         assert(p["mode"] == "none" && p["length"] == 0,
                "status " + str(status) + " must have no body: " + str(p))
     }
-    ph = http.httpPlanRead(200, {"Content-Length": "1256"}, "HEAD")
+    ph = http.httpPlanRead(200, %{"Content-Length": "1256"}, "HEAD")
     assert(ph["mode"] == "none", "HEAD has no body even with Content-Length: " + str(ph))
-    ph2 = http.httpPlanRead(200, {"Content-Length": "1256"}, "head")
+    ph2 = http.httpPlanRead(200, %{"Content-Length": "1256"}, "head")
     assert(ph2["mode"] == "none", "the HEAD check is case-insensitive: " + str(ph2))
 
     // 2) length：恰好 n 字节，length 就是那个 n
-    pl = http.httpPlanRead(200, {"Content-Length": "2000"}, "GET")
+    pl = http.httpPlanRead(200, %{"Content-Length": "2000"}, "GET")
     assert(pl["mode"] == "length" && pl["length"] == 2000,
            "Content-Length delimits the body: " + str(pl))
-    assert(http.httpPlanRead(200, {"content-length": "7"}, "GET")["length"] == 7,
+    assert(http.httpPlanRead(200, %{"content-length": "7"}, "GET")["length"] == 7,
            "header field names are case-insensitive")
 
     // 3) chunked，且优先于 Content-Length（TE 先判）
-    pc = http.httpPlanRead(200, {"Transfer-Encoding": "chunked"}, "GET")
+    pc = http.httpPlanRead(200, %{"Transfer-Encoding": "chunked"}, "GET")
     assert(pc["mode"] == "chunked", "chunked framing: " + str(pc))
-    pboth = http.httpPlanRead(200, {"Transfer-Encoding": "chunked", "Content-Length": "5"}, "GET")
+    pboth = http.httpPlanRead(200, %{"Transfer-Encoding": "chunked", "Content-Length": "5"}, "GET")
     assert(pboth["mode"] == "chunked",
            "Transfer-Encoding is decided before Content-Length (RFC 9112): " + str(pboth))
 
     // 4) eof：什么都没有才允许读到对端关闭
-    pe = http.httpPlanRead(200, {}, "GET")
+    pe = http.httpPlanRead(200, %{}, "GET")
     assert(pe["mode"] == "eof" && pe["length"] == 0, "no framing at all means read-to-close: " + str(pe))
 
     // 坏 CL 依然只以 HttpError 出现
     caught = false
     try {
-        bad = http.httpPlanRead(200, {"Content-Length": "12a"}, "GET")
+        bad = http.httpPlanRead(200, %{"Content-Length": "12a"}, "GET")
     } catch (e) {
         caught = e.type == "HttpError"
     }
@@ -324,7 +324,7 @@ test_no_body_framing_does_not_eat_the_next_response() = {
 
     // HEAD：头里有 Content-Length: 1256，但一个正文字节都没有
     rawHead = _fixture("head_with_content_length.http")
-    head = http.httpParseResponse(rawHead, "https://example.org/", {"method": "HEAD"})
+    head = http.httpParseResponse(rawHead, "https://example.org/", %{"method": "HEAD"})
     assert(head.status == 200 && head.body == "", "a HEAD response has no body")
     assert(head.headers["Content-Length"] == "1256", "Content-Length stays readable as metadata")
 
@@ -346,7 +346,7 @@ test_no_body_framing_does_not_eat_the_next_response()
 test_eof_framing_reads_to_the_end() = {
     // 既无 CL 也无 chunked：只能读到给到的字节末尾（网络侧就是对端关闭）
     raw = "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\nread until close"
-    assert(http.httpPlanRead(200, {"Connection": "close"}, "GET")["mode"] == "eof",
+    assert(http.httpPlanRead(200, %{"Connection": "close"}, "GET")["mode"] == "eof",
            "no framing information at all")
     res = http.httpParseResponse(raw)
     assert(res.body == "read until close", "eof framing keeps every byte: [" + res.body + "]")
@@ -366,7 +366,7 @@ test_chunked_gzip_body_is_decoded() = {
     assert(res.body.len() == 152, "152 code points / 166 UTF-8 bytes: " + str(res.body.len()))
 
     // decompress=false：既不发 Accept-Encoding 也不解码，body 必须还是那个 gzip 流
-    rawBody = http.httpParseResponse(raw, "https://example.org/", {"decompress": false}).body
+    rawBody = http.httpParseResponse(raw, "https://example.org/", %{"decompress": false}).body
     assert(rawBody != res.body, "decompress=false leaves the body compressed")
     assert(_hexOf(rawBody).startsWith("1f8b08"), "it is still the gzip stream: " + _hexOf(rawBody).substr(0, 6))
     assert(_gunzipHex(_hexOf(rawBody)) == _hexOf(_httpPayload()),
@@ -384,7 +384,7 @@ test_deflate_is_decoded_in_both_containers() = {
 
     // 裸 DEFLATE 不是合法 zlib 容器 → 说明它确实是靠 fallback 解出来的
     rawDeflateBody = http.httpParseResponse(_fixture("deflate_raw.http"), "",
-                                            {"decompress": false}).body
+                                            %{"decompress": false}).body
     caught = false
     try {
         wrong = _unzlibHex(_hexOf(rawDeflateBody))
@@ -394,7 +394,7 @@ test_deflate_is_decoded_in_both_containers() = {
     assert(caught, "raw DEFLATE is not a zlib container, so the fallback path did the work")
 
     // zlib 容器反过来是能被 unzlib 直接解出来的
-    zlibBody = http.httpParseResponse(_fixture("deflate_zlib.http"), "", {"decompress": false}).body
+    zlibBody = http.httpParseResponse(_fixture("deflate_zlib.http"), "", %{"decompress": false}).body
     assert(_unzlibHex(_hexOf(zlibBody)) == _hexOf(_httpPayload()),
            "the zlib fixture is a real zlib container")
 }
@@ -438,7 +438,7 @@ test_plan_redirect_request_rewrites_or_keeps_the_method() = {
     base = "https://example.org/"
 
     // 303：改成 GET 并丢请求体
-    r303 = http.HttpResponse(303, {"Location": "/final"}, "", "", base)
+    r303 = http.HttpResponse(303, %{"Location": "/final"}, "", "", base)
     p303 = http.httpPlanRedirectRequest(r303, base, "POST")
     assert(!(p303 is none), "303 plans a next request")
     assert(p303["method"] == "GET" && p303["keepBody"] == false, "303 turns POST into GET: " + str(p303))
@@ -448,7 +448,7 @@ test_plan_redirect_request_rewrites_or_keeps_the_method() = {
 
     // 301 / 302 也是 GET + 丢体
     for (status in @[301, 302]) {
-        r = http.HttpResponse(status, {"Location": "/moved"}, "", "", base)
+        r = http.HttpResponse(status, %{"Location": "/moved"}, "", "", base)
         p = http.httpPlanRedirectRequest(r, base, "POST")
         assert(p["method"] == "GET" && p["keepBody"] == false,
                str(status) + " rewrites to GET and drops the body: " + str(p))
@@ -456,7 +456,7 @@ test_plan_redirect_request_rewrites_or_keeps_the_method() = {
 
     // 307 / 308：方法与方法体都保留
     for (status in @[307, 308]) {
-        r = http.HttpResponse(status, {"Location": "/keep"}, "", "", base)
+        r = http.HttpResponse(status, %{"Location": "/keep"}, "", "", base)
         p = http.httpPlanRedirectRequest(r, base, "POST")
         assert(p["method"] == "POST" && p["keepBody"] == true,
                str(status) + " keeps both method and body: " + str(p))
@@ -473,7 +473,7 @@ test_plan_redirect_request_rewrites_or_keeps_the_method() = {
     assert(p["url"] == "https://example.org/final", "303 Location kept: " + p["url"])
 
     // 307 也不能把 https 降级成 http 放过去
-    downgrade = http.HttpResponse(307, {"Location": "http://plain.example/x"}, "", "",
+    downgrade = http.HttpResponse(307, %{"Location": "http://plain.example/x"}, "", "",
                                   "https://secure.example/")
     caught = false
     try {
@@ -512,14 +512,14 @@ test_method_wrappers_are_public_and_typed() = {
 
     caught = false
     try {
-        http.httpRequest("DELETE", "http://127.0.0.1:1/", {"keepAlive": false, "decompress": false})
+        http.httpRequest("DELETE", "http://127.0.0.1:1/", %{"keepAlive": false, "decompress": false})
     } catch (e) {
         caught = e.type == "NetworkError"
     }
     assert(caught, "httpRequest surfaces the typed connection error")
 
     // 选项字典不能被 httpPost 改坏（它只是浅拷贝）
-    opts = {"headers": {"X-Probe": "1"}}
+    opts = %{"headers": %{"X-Probe": "1"}}
     try {
         res = http.httpPost("http://127.0.0.1:1/", "body", opts)
     } catch (e) {

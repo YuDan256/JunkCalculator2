@@ -70,7 +70,7 @@ Native C++ extensions exposed to the execution context:
 JC2 standard libraries loaded via `import`:
 - `collections`: `Stack`, `Queue`, `Deque`, `PriorityQueue` (Heap), search trees, LRU cache, and UnionFind.
 - `macros`: compile-time macros with platform gates.
-- `cre`: Chemical reaction engineering helpers.
+- `che`: Chemical engineering package; `che.cre` provides reaction-engineering helpers.
 - `discrete`: combinatorics, `Prop` / `Relation`, CNF/DNF, satisfiability, graph algorithms, and Hasse diagrams.
 - `engine`: Game framework abstraction over the `window` module for render loops and event state management.
 - `net`: OOP wrapper for TCP streams (`TcpSocket` and `TcpServer`).

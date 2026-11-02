@@ -1,0 +1,11 @@
+// che — chemical engineering package.
+// The reaction-engineering functions live in che.cre.
+
+const local import sys
+
+version = "1.0"
+
+sys.registerDirectory("che", %{
+    title: "che",
+    summary: "Chemical engineering: reaction engineering (che.cre)."
+})

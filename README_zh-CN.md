@@ -70,7 +70,7 @@
 通过 `import` 加载的 JC2 标准库：
 - `collections`：栈、队列、双端队列、优先队列（堆）、搜索树、LRU 缓存与 UnionFind。
 - `macros`：带平台门控的编译期宏。
-- `cre`：化学反应工程辅助库。
+- `che`：化学工程包；`che.cre` 提供化学反应工程辅助库。
 - `discrete`：组合数学、`Prop` / `Relation`、CNF/DNF、可满足性、图算法与 Hasse 图。
 - `engine`：面向对象的可视化/游戏框架，在 `window` 模块基础上抽象了渲染主循环与事件状态机。
 - `net`：TCP 数据流的高级 OOP 封装（`TcpSocket` 和 `TcpServer`）。

@@ -673,103 +673,6 @@ namespace jc {
         return nullptr;
     }
 
-    // A binding is any form that produces `Assign(name, value, modifiers)`:
-    // import, class/trait, namespace and enum. Function definitions are
-    // handled by the assignment() prologue because their target is a parameter
-    // list rather than a plain identifier.
-    std::unique_ptr<Expr> Parser::binding(bool isLocal, bool isRef, bool isState, bool isConst) {
-        if (auto fn = functionBinding(isLocal, isRef, isState, isConst)) return fn;
-
-        int saved = current;
-
-        auto applyModifiers = [&](std::unique_ptr<Expr> expr) -> std::unique_ptr<Expr> {
-            if (auto* a = dynamic_cast<Assign*>(expr.get())) {
-                a->isLocal = isLocal;
-                a->isRef = isRef;
-                a->isState = isState;
-                a->isConst = isConst;
-                return expr;
-            }
-            if (isLocal || isRef || isState || isConst) {
-                JC2_THROW(ParserError,
-                    "'local', 'ref', 'state' or 'const' requires a named binding.");
-            }
-            return expr;
-        };
-
-        if (match({ TokenType::IMPORT })) {
-            int startPos = previous().position;
-            bool isComptime = match({ TokenType::AT });
-            if (!check(TokenType::IDENTIFIER)) {
-                current = saved;
-                return nullptr;
-            }
-            Token nameTok = advance();
-            std::string moduleName = nameTok.lexeme;
-            bool packagePath = false;
-            int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
-            while (match({ TokenType::DOT })) {
-                if (!check(TokenType::IDENTIFIER)) {
-                    JC2_THROW(ParserError, "Expect module name after '.' in import.");
-                }
-                Token seg = advance();
-                moduleName += "." + seg.lexeme;
-                packagePath = true;
-                endPos = seg.position + static_cast<int>(seg.lexeme.length());
-            }
-            if (isComptime && !disableMacroExpansion) {
-                VM::activeVM->execCompileTimeImport(moduleName);
-            }
-            if (isComptime) {
-                return withPos(std::make_unique<Literal>("none", false, false, true),
-                    startPos, endPos);
-            }
-            auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true),
-                nameTok.position, endPos);
-            auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)),
-                startPos, endPos);
-            importExpr->packagePath = packagePath;
-            return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr),
-                isRef, isState, isLocal, isConst), startPos, endPos);
-        }
-
-        auto definitionStarts = [&]() {
-            if (current + 1 >= static_cast<int>(tokens.size())) return false;
-            TokenType t = tokens[current + 1].type;
-            return t == TokenType::LBRACE || t == TokenType::IDENTIFIER ||
-                   t == TokenType::DOLLAR || t == TokenType::STRING ||
-                   t == TokenType::RSTRING || t == TokenType::WITH;
-        };
-
-        if (check(TokenType::CLASS) && definitionStarts()) {
-            advance();
-            auto expr = applyModifiers(classDefExpr(false));
-            // A named class is a binding statement. An anonymous class is an
-            // expression, so reparse it through assignment()/call() and allow
-            // postfix calls such as `class "C" { ... }()`.
-            if (dynamic_cast<Assign*>(expr.get())) return expr;
-            current = saved;
-            return nullptr;
-        }
-        if (check(TokenType::TRAIT) && definitionStarts()) {
-            advance();
-            auto expr = applyModifiers(classDefExpr(true));
-            if (dynamic_cast<Assign*>(expr.get())) return expr;
-            current = saved;
-            return nullptr;
-        }
-        if (check(TokenType::NAMESPACE) && definitionStarts()) {
-            advance();
-            return applyModifiers(namespaceExpr());
-        }
-        if (check(TokenType::ENUM) && definitionStarts()) {
-            advance();
-            return applyModifiers(enumExpr());
-        }
-
-        return nullptr;
-    }
-
     std::unique_ptr<Expr> Parser::assignment() {
         [[maybe_unused]] int startPos = peek().position;
         bool isLocal = false, isRef = false, isState = false, isConst = false;
@@ -822,10 +725,6 @@ namespace jc {
                 int valEnd = value->endPos;
                 return withPos(std::make_unique<DestructAssign>(std::move(pat), std::move(value), isRef, isState, isLocal, isConst), patStart, valEnd);
             }
-        }
-
-        if (auto bound = binding(isLocal, isRef, isState, isConst)) {
-            return bound;
         }
 
         auto expr = ternary();
@@ -1601,6 +1500,10 @@ namespace jc {
             JC2_THROW(LexerError, "" + previous().lexeme);
         }
 
+        // Function definitions are primary expressions too. The lookahead in
+        // functionBinding() distinguishes f(x) from f(x) = body.
+        if (auto fn = functionBinding(false, false, false, false)) return fn;
+
         // ★ 统一拦截：任何关键字后面紧跟 = 都是误用
         auto isKeyword = [](TokenType t) {
             return t == TokenType::IF || t == TokenType::ELSE ||
@@ -1832,8 +1735,39 @@ namespace jc {
             int startPos = previous().position;
             bool isComptime = match({ TokenType::AT });
 
-            // Identifier imports are assignment forms and are parsed in
-            // assignment(); a bare import here is the path expression form.
+            // import name / import pkg.sub: bind the root name to the module
+            // value, just like any other expression that produces an Assign.
+            if (check(TokenType::IDENTIFIER)) {
+                Token nameTok = advance();
+                std::string moduleName = nameTok.lexeme;
+                bool packagePath = false;
+                int endPos = nameTok.position + static_cast<int>(nameTok.lexeme.length());
+                while (match({ TokenType::DOT })) {
+                    if (!check(TokenType::IDENTIFIER)) {
+                        JC2_THROW(ParserError, "Expect module name after '.' in import.");
+                    }
+                    Token seg = advance();
+                    moduleName += "." + seg.lexeme;
+                    packagePath = true;
+                    endPos = seg.position + static_cast<int>(seg.lexeme.length());
+                }
+                if (isComptime && !disableMacroExpansion) {
+                    VM::activeVM->execCompileTimeImport(moduleName);
+                }
+                if (isComptime) {
+                    return withPos(std::make_unique<Literal>("none", false, false, true),
+                        startPos, endPos);
+                }
+                auto pathExpr = withPos(std::make_unique<Literal>(moduleName, true),
+                    nameTok.position, endPos);
+                auto importExpr = withPos(std::make_unique<ImportExpr>(std::move(pathExpr)),
+                    startPos, endPos);
+                importExpr->packagePath = packagePath;
+                return withPos(std::make_unique<Assign>(nameTok, std::move(importExpr)),
+                    startPos, endPos);
+            }
+
+            // import "path" is an unbound path expression.
             auto path = assignment();
             if (isComptime && !disableMacroExpansion) {
                 if (auto* lit = dynamic_cast<Literal*>(path.get())) {

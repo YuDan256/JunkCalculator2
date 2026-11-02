@@ -273,3 +273,9 @@ test_anonymous_class_call() = {
     assert(C(7).get() == 7, "anonymous class assignment call")
 }
 test_anonymous_class_call()
+
+test_named_class_call() = {
+    class NamedClass { init() = { self.x = 8 } }()
+    assert(NamedClass().x == 8, "named class definition keeps its call value")
+}
+test_named_class_call()

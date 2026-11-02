@@ -44,7 +44,6 @@ namespace jc {
         std::unique_ptr<Expr> parseStatementOrBlock();
     private:
         std::unique_ptr<Expr> assignment();
-        std::unique_ptr<Expr> binding(bool isLocal, bool isRef, bool isState, bool isConst);
         std::unique_ptr<Expr> functionBinding(bool isLocal, bool isRef, bool isState, bool isConst);
         std::unique_ptr<Expr> logicalOr();
         std::unique_ptr<Expr> logicalAnd();

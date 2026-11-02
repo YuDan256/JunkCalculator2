@@ -83,3 +83,14 @@ test_namespace_builtin_fallback_keeps_arity_check() = {
     assert(caught, "the fallback still enforces arity")
 }
 test_namespace_builtin_fallback_keeps_arity_check()
+
+test_anonymous_namespace_postfix() = {
+    assert(namespace "AnonNs" { n = 3 }.n == 3, "anonymous namespace postfix")
+}
+test_anonymous_namespace_postfix()
+
+test_anonymous_enum_postfix() = {
+    assert(enum "AnonEnum" { A, B }.A == 0, "anonymous enum postfix A")
+    assert(enum "AnonEnum2" { A, B }.B == 1, "anonymous enum postfix B")
+}
+test_anonymous_enum_postfix()

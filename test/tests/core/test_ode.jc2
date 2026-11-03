@@ -25,6 +25,24 @@ assert(abs(b[-1, 1] - 1) < 1e-5, "backward integration")
 sol = math.ode((t, y) => y, 0, 1, 1, %{dense: true})
 assert(iscallable(sol), "dense returns a callable")
 assert(abs(sol(0.5) - exp(0.5)) < 1e-5, "dense interpolation")
+assert(abs(sol(1 / 11) - exp(1 / 11)) < 1e-5, "fraction t")
+
+big = 10000000000
+big_caught = false
+try {
+    sol(big)
+} catch (e) {
+    big_caught = "outside" in e.message
+}
+assert(big_caught, "BigInt t passes the real-scalar check")
+
+complex_caught = false
+try {
+    sol(0.5 + 0i)
+} catch (e) {
+    complex_caught = "real numeric" in e.message
+}
+assert(complex_caught, "complex t is rejected")
 
 // 事后插值
 lin = math.odeInterp(r, "linear")

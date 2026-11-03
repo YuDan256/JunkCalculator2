@@ -651,8 +651,10 @@ static Value makeOdeSolutionFunction(std::shared_ptr<OdeSolution> sol) {
     ObjClosure* cls = GcHeap::get().allocate<ObjClosure>(
         std::vector<std::string>{"t"}, std::vector<bool>{false}, "<ode_solution>", nullptr);
     cls->nativeFn = std::make_any<NativeCallable>([sol](const std::vector<Value>& args) -> Value {
-        if (args.size() != 1 || !args[0].isNumber())
-            JC2_THROW(TypeError, "ode solution expects one numeric argument t.");
+        if (args.size() != 1 ||
+            !(args[0].isNumber() || args[0].isBigInt() ||
+              args[0].isObjType(ObjType::FRACTION)))
+            JC2_THROW(TypeError, "ode solution expects one real numeric argument t.");
         return sol->eval(args[0].asFloat());
     });
     return Value(cls);

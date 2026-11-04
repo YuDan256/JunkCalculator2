@@ -132,6 +132,13 @@ test_operator_semantics() = {
 
     assert(int("42") == 42, "int string")
     assert(int("0xFF") == 255, "int hex string")
+    assert(float("1.5") == 1.5, "float string")
+    assert(float(" -2.5e2 ") == -250.0, "float string with whitespace/scientific")
+    assert(float("0x10") == 16.0, "float hex string")
+    assert(float("0b1010") == 10.0, "float binary string")
+    assert(float("-0o10") == -8.0, "float octal string with sign")
+    assert(throws(() => float("1.5x")), "invalid float string should throw")
+    assert(throws(() => float("")), "empty float string should throw")
     assert(type(7 / 2) == fraction, "division is exact fraction")
     assert(7 / 2 == frac(7, 2), "fraction value")
 }

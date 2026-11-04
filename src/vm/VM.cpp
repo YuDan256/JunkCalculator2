@@ -4205,6 +4205,40 @@ VM::VM() {
                 if (m.getRows() != 1 || m.getCols() != 1) JC2_THROW(TypeError, "double() only accepts a 1x1 matrix.");
                 val = Value(m(0, 0));
             }
+            if (val.isString()) {
+                std::string s = val.asString();
+                size_t start = s.find_first_not_of(" \t\r\n");
+                if (start != std::string::npos) {
+                    size_t end = s.find_last_not_of(" \t\r\n");
+                    std::string trimmed = s.substr(start, end - start + 1);
+                    int radix = 10;
+                    bool neg = false;
+                    size_t p = 0;
+                    if (!trimmed.empty() && (trimmed[0] == '-' || trimmed[0] == '+')) {
+                        neg = (trimmed[0] == '-');
+                        p = 1;
+                    }
+                    if (trimmed.size() > p + 1 && trimmed[p] == '0') {
+                        char c = static_cast<char>(std::tolower(static_cast<unsigned char>(trimmed[p + 1])));
+                        if (c == 'x') { radix = 16; p += 2; }
+                        else if (c == 'b') { radix = 2; p += 2; }
+                        else if (c == 'o') { radix = 8; p += 2; }
+                    }
+                    try {
+                        if (radix != 10) {
+                            std::string numPart = trimmed.substr(p);
+                            if (numPart.empty()) JC2_THROW(ValueError, "empty");
+                            BigInt res = BaseNum::fromString(numPart, radix).getValue();
+                            double result = res.toFloat();
+                            return Value(neg ? -result : result);
+                        }
+                        size_t parsed = 0;
+                        double result = std::stod(trimmed, &parsed);
+                        if (parsed == trimmed.size()) return Value(result);
+                    } catch (...) {}
+                }
+                JC2_THROW(TypeError, "Cannot parse '" + val.asString() + "' as float.");
+            }
             if (val.isComplex()) {
                 const auto& c = val.asComplex();
                 if (!Tol::isEq(c.imag, 0.0))

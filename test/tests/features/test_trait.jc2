@@ -29,6 +29,16 @@ test_trait_instantiation() = {
 }
 test_trait_instantiation()
 
+test_trait_cannot_be_superclass() = {
+    trait I { run(x) }
+    assert(throws(() => eval("class Bad extends I { run(x) = x }")),
+        "class cannot extend a trait")
+
+    class Good with I { run(x) = x }
+    assert(Good().run(2) == 2, "class still composes trait with with")
+}
+test_trait_cannot_be_superclass()
+
 // 3. 抽象方法未实现 → 类定义时抛 TypeError
 test_trait_abstract_unimplemented() = {
     trait I { run(x) }

@@ -7174,6 +7174,8 @@ Value VM::run(int targetFrameDepth) {
                 if (!subClass.isClass() || !superClass.isClass()) JC2_THROW(RuntimeError, "Inheritance requires two classes.");
                 auto sub = static_cast<ObjClass*>(subClass.asObj());
                 auto sup = static_cast<ObjClass*>(superClass.asObj());
+                if (sup->isTrait)
+                    JC2_THROW(TypeError, "'" + sup->name + "' is a trait; compose it with 'with', not 'extends'.");
                 
                 if (sub) {
                     sub->parent = sup;
@@ -11224,6 +11226,8 @@ void jc2_jit_inherit(uint64_t sub_bits, uint64_t super_bits) {
     if (!subClass.isClass() || !superClass.isClass()) JC2_THROW(RuntimeError, "Inheritance requires two classes.");
     auto sub = static_cast<ObjClass*>(subClass.asObj());
     auto sup = static_cast<ObjClass*>(superClass.asObj());
+    if (sup->isTrait)
+        JC2_THROW(TypeError, "'" + sup->name + "' is a trait; compose it with 'with', not 'extends'.");
     if (sub) sub->parent = sup;
     JIT_CALLOUT_CATCH_VOID
 }

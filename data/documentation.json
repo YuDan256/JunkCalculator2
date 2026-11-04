@@ -3642,7 +3642,7 @@
       "    A type annotation in a catch pattern does a SOFT match — if the thrown",
       "    error's type doesn't match, that branch is skipped and the error propagates",
       "    to the next branch (or is re-thrown if none match).",
-      "      try { throw \"oops\" } catch { e: int => print(\"int\") }   // \"oops\" is str → re-thrown",
+      "      try { throw \"oops\" } catch { e: int => print(\"int\") }   // Exception, not int → re-thrown",
       "      try { 1 + \"x\" } catch { e: TypeError => print(e.message) }  // built-in error class",
       "",
       "    ★ Or-patterns (comma) & guards (if):",

@@ -1274,6 +1274,7 @@ namespace jc {
     inline SymExpr Value::asSymbolic() const {
         if (isSymbolic()) return static_cast<ObjSym*>(asObj())->sym;
         if (isInt32()) return SymExpr(BigInt(asInt32()));
+        if (isBool()) return SymExpr(BigInt(asBool() ? 1 : 0));
         if (isFloat()) return SymExpr(asFloatRaw());
         if (isObjType(ObjType::BIGINT)) return SymExpr(static_cast<ObjBigInt*>(asObj())->num);
         if (isObjType(ObjType::FRACTION)) return SymExpr(static_cast<ObjFraction*>(asObj())->frac);
@@ -3290,8 +3291,14 @@ inline size_t ValueHasher::operator()(const Value& v) const {
         return sipHash24Double(d);
     }
     if (v.isBool()) return sipHash24Double(v.asBool() ? 1.0 : 0.0);
-    if (v.isNone()) return 0xA174E2C8B5D3F609ULL;
-    if (v.isUninit()) return 0x7E5109F8C4A2D637ULL;
+    if (v.isNone()) {
+        const uint64_t tag = 0x4E4F4E4500000001ULL;
+        return sipHash24(&tag, sizeof(tag));
+    }
+    if (v.isUninit()) {
+        const uint64_t tag = 0x554E494E49540002ULL;
+        return sipHash24(&tag, sizeof(tag));
+    }
     
     Obj* obj = v.asObj();
     switch (obj->type) {

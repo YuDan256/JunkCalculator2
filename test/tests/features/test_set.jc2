@@ -6,6 +6,14 @@ test_set_basic() = {
 }
 test_set_basic()
 
+test_set_symbolic_bool_dedup() = {
+    assert(true == sym(1), "true equals symbolic 1")
+    assert(sym(1) == true, "symbolic 1 equals true")
+    s = @{true, sym(1)}
+    assert(len(s) == 1, "true and symbolic 1 deduplicate")
+}
+test_set_symbolic_bool_dedup()
+
 test_set_ops() = {
     a = @{1, 2}
     b = @{2, 3}

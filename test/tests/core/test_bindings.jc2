@@ -345,8 +345,9 @@ test_delete_const_rejected() = {
     try {
         eval("const G = 1; delete G")
     } catch (e) {
-        global_caught = "Cannot delete const variable" in e.message
+        global_caught = e.type == "RuntimeError" &&
+                        "Cannot delete const variable" in e.message
     }
-    assert(global_caught, "delete global const must be a syntax error")
+    assert(global_caught, "delete global const must be a runtime error")
 }
 test_delete_const_rejected()

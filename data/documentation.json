@@ -5763,7 +5763,8 @@
       "signature": "const name = expr",
       "desc": [
         "Declares a strictly immutable constant. Any attempt to reassign it",
-        "throws a runtime error; deleting it with `delete` is a syntax error.",
+        "throws a runtime error. Deleting a local const is a syntax error;",
+        "deleting a global const is a runtime error.",
         "Constants declared inside functions or namespaces are locally scoped.",
         "Note: In the REPL, you can forcefully wipe a const using the `/delete` command.",
         "See also: /help scope"
@@ -5795,7 +5796,8 @@
         "Accepts a comma-separated list of names.",
         "`delete @macro` removes a compile-time macro definition.",
         "Works on ordinary variables and namespace constants (like math.PI).",
-        "Cannot be used to delete variables declared with `const` or `state`.",
+        "Local const/state bindings cannot be deleted (syntax error).",
+        "Deleting a global const throws a runtime error.",
         "Built-in functions cannot be deleted. If a built-in is shadowed,",
         "`delete` removes the shadowing variable, restoring the built-in.",
         "See also: /help scope"

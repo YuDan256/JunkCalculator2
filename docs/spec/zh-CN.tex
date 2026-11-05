@@ -842,8 +842,9 @@ match 分支变量与 comprehension 变量保持局部。
 
 \subsubsection{const 与删除}
 
-\jc{const} 绑定在初始化后保持只读；赋值产生
-\jc{RuntimeError}，\jc{delete} 产生 \jc{SyntaxError}。
+\jc{const} 绑定在初始化后保持只读；赋值产生 \jc{RuntimeError}。
+局部 \jc{const} 的 \jc{delete} 产生 \jc{SyntaxError}，全局 \jc{const}
+的 \jc{delete} 产生 \jc{RuntimeError}。
 系统常量可以恢复：先 \jc{import sys}，再调用 \jc{sys.resetConst()}。
 用户 \jc{const} 绑定保持只读。
 

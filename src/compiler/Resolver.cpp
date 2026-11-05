@@ -335,7 +335,7 @@ void Resolver::visitDeleteExpr(DeleteExpr* expr) {
         if (sym.scope == VarScope::State) {
             JC2_THROW(SyntaxError, "Cannot delete state variable '" + tok.lexeme + "'.");
         }
-        if (sym.isConst) {
+        if (sym.isConst && sym.scope != VarScope::Global) {
             JC2_THROW(SyntaxError, "Cannot delete const variable '" + tok.lexeme + "'.");
         }
         // 局部遮蔽：从 scopes 移除，让后续 resolveName 回落到外层作用域（内置/全局/外层局部）

@@ -1,0 +1,27 @@
+import sys
+
+// Path-sensitive package/module tests live outside the unit suite.
+// Run this file from the repository root with JC2_TEST_EXE pointing at
+// the built jc2 executable:
+//
+//   $env:JC2_TEST_EXE = (Resolve-Path out\build\x64-release\jc2.exe)
+//   out\build\x64-release\jc2.exe run test/integration/run_packages.jc2
+
+root = sys.cwd()
+exe = sys.getenv("JC2_TEST_EXE")
+if (exe == none || exe == "") throw "JC2_TEST_EXE is not set"
+
+files = @[
+    "test/integration/features/test_module_class.jc2",
+    "test/integration/features/test_package.jc2",
+    "test/integration/features/test_package_edge.jc2",
+    "test/integration/features/test_package_export.jc2",
+    "test/integration/features/test_package_macro.jc2"
+]
+
+for (f in files) {
+    res = sys.exec(exe, @["run", f], %{"cwd": root, "timeoutMs": 30000})
+    if (res["code"] != 0) {
+        throw f + " failed:\n" + res["stderr"]
+    }
+}

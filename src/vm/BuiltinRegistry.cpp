@@ -1,5 +1,6 @@
 #include "BuiltinRegistry.h"
 #include "../cas/SymEval.h"
+#include "../cas/SymIRCodegen.h"
 #include "../cas/Integration.h"
 #include "../cas/Factorization.h"
 #include "../frontend/Highlight.h"          // ★ highlightCode(), colorsEnabled
@@ -7103,55 +7104,8 @@ void BuiltinRegistry::registerCAS() {
         else {
             JC2_THROW(TypeError, "toFunc(): 2nd argument must be a string, symbol, or List of variable names.");
         }
-        int argCount = static_cast<int>(varNames.size());
-        std::vector<bool> pRefs(argCount, false);
-
-        ObjClosure* cls = GcHeap::get().allocate<ObjClosure>(
-            varNames, pRefs, "<sym_to_func>", nullptr
-        );
-        cls->defaultValues.resize(argCount, jc::Value::none());
-        auto arities = this->builtinArity;
-        jc::SymbolicFuncResolver resolver = [arities](const std::string& name, const std::vector<jc::Value>& fnArgs) -> jc::Value {
-            if (!jc::VM::activeVM) JC2_THROW(RuntimeError, "VM context lost.");
-
-            const auto& builtins = jc::VM::activeVM->getNativeBuiltins();
-            auto it = builtins.find(name);
-            if (it != builtins.end()) {
-                auto ait = arities.find(name);
-                if (ait != arities.end() && !ait->second.empty()) {
-                    if (ait->second.find(static_cast<int>(fnArgs.size())) == ait->second.end()) {
-                        JC2_THROW(RuntimeError, "Function '" + name + "' expects wrong number of arguments.");
-                    }
-                }
-                return it->second(fnArgs);
-            }
-            JC2_THROW(RuntimeError, "Math function '" + name + "' not found in BuiltinRegistry.");
-            };
-        auto jc_caller = [ast, varNames, resolver](const std::vector<jc::Value>& call_args) -> jc::Value {
-            if (call_args.size() != varNames.size()) {
-                JC2_THROW(RuntimeError, "Compiled function expects " + std::to_string(varNames.size()) + " arguments.");
-            }
-            bool isPureReal = true;
-            for (const auto& arg : call_args) {
-                if (arg.isComplex() || arg.isObjType(ObjType::REAL_MATRIX) ||
-                    arg.isObjType(ObjType::COMPLEX_MATRIX)) {
-                    isPureReal = false;
-                    break;
-                }
-            }
-            if (isPureReal) {
-                std::map<std::string, double> env;
-                for (size_t i = 0; i < varNames.size(); ++i) env[varNames[i]] = call_args[i].asFloat();
-                return jc::Value(jc::fastEval(ast.ptr, env, resolver));
-            }
-
-            std::map<std::string, jc::Value> valEnv;
-            for (size_t i = 0; i < varNames.size(); ++i) valEnv[varNames[i]] = call_args[i];
-
-            return jc::evalUniversal(ast.ptr, valEnv, resolver);
-            };
-        cls->nativeFn = std::make_any<NativeCallable>(std::move(jc_caller));
-        return jc::Value(cls);
+        if (!jc::VM::activeVM) JC2_THROW(RuntimeError, "toFunc(): VM context lost.");
+        return jc::compileSymbolicFunction(*jc::VM::activeVM, ast, varNames);
         }, {"expr", "vars"});
 
     regModule(cas_ns, "evalf", { 1 }, [doEvalf](const std::vector<Value>& args) -> Value {

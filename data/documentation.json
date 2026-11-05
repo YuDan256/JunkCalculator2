@@ -1055,7 +1055,7 @@
       "  ──────────────────────",
       "    cas.evalf(expr)              Force evaluate to floating point",
       "    cas.evalv(expr)              Evaluate preserving exact types (fraction/complex)",
-      "    f = cas.toFunc(x^2 + y, @[\"x\", \"y\"]) Compile AST to blazing-fast VM closure",
+      "    f = cas.toFunc(x^2 + y, @[\"x\", \"y\"]) Lower symbolic expr to VM bytecode closure",
       "    f(3, 4)                      → 13"
     ],
     "function": [
@@ -8255,7 +8255,7 @@
     },
     "toFunc": {
       "signature": "cas.toFunc(expr, vars)",
-      "desc": "Compiles a symbolic AST to a blazing-fast VM closure.",
+      "desc": "Lowers a symbolic expression directly to a VM bytecode closure (no AST/token round-trip).",
       "examples": [
         "x = sym(\"x\"); y = sym(\"y\"); import cas; f = cas.toFunc(x^2 + y, @[\"x\", \"y\"])"
       ]

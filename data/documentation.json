@@ -5795,7 +5795,7 @@
         "Accepts a comma-separated list of names.",
         "`delete @macro` removes a compile-time macro definition.",
         "Works on ordinary variables and namespace constants (like math.PI).",
-        "Cannot be used to delete variables declared with `const`.",
+        "Cannot be used to delete variables declared with `const` or `state`.",
         "Built-in functions cannot be deleted. If a built-in is shadowed,",
         "`delete` removes the shadowing variable, restoring the built-in.",
         "See also: /help scope"

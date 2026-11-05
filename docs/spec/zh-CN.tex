@@ -846,7 +846,8 @@ match 分支变量与 comprehension 变量保持局部。
 系统常量可以通过导入的 \jc{sys} 命名空间恢复：\jc{import sys; sys.resetConst()}；用户 \jc{const} 绑定保持只读。
 
 \jc{delete a, b} 删除变量绑定；\jc{delete @macro} 删除编译期宏定义。
-删除表达式返回 \jc{none}；\jc{const} 绑定删除产生 \jc{RuntimeError}。
+删除表达式返回 \jc{none}；\jc{const} 绑定删除产生 \jc{RuntimeError}，
+\jc{state} 绑定删除产生 \jc{SyntaxError}。
 删除操作接受变量名列表，索引目标通过容器方法删除。
 内建函数可以被用户绑定遮蔽；\jc{delete} 删除遮蔽绑定，内建函数本身继续存在。
 

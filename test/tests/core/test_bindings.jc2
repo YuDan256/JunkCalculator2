@@ -320,3 +320,14 @@ test_forin_modifiers() = {
     assert(sum == 6, "const local for-in failed")
 }
 test_forin_modifiers()
+
+test_delete_state_rejected() = {
+    caught = false
+    try {
+        eval("f() = { state n = 0; delete n; n }")
+    } catch (e) {
+        caught = "Cannot delete state variable" in e.message
+    }
+    assert(caught, "delete state must be a syntax error")
+}
+test_delete_state_rejected()

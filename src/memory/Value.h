@@ -3029,11 +3029,12 @@ inline ObjClosure* Value::asFunction() const {
 inline constexpr size_t kMaxPrintElements = 50;
 
 // 核心打印：full=false 可读（截断、矩阵 2D、字符串裸、instance __str__），full=true 精确（完整、矩阵 1D、字符串带引号、instance __repr__）
-inline void printValue(std::ostream& os, const Value& val, bool full, std::vector<const void*>& visited) {
-    auto printNested = [&os, &visited](const Value& v) {
+inline void printValue(std::ostream& os, const Value& val, bool full, std::vector<const void*>& visited,
+                       bool nested = false) {
+    auto printNested = [&os, &visited, full](const Value& v) {
         if (v.isNone()) os << "none";
         else if (v.isUninit()) os << "<uninit>";
-        else printValue(os, v, true, visited);  // ★ 共享 visited，full=true（容器内元素用 repr），避免循环引用检测失效
+        else printValue(os, v, full, visited, true);  // ★ 共享 visited，容器内元素沿用当前 full；nested 保留引号/循环检测
     };
 
     if (val.isNone()) { os << "none"; return; }
@@ -3055,7 +3056,7 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
     Obj* obj = val.asObj();
     switch (obj->type) {
         case ObjType::STRING:
-            if (full) os << "\"" << static_cast<ObjString*>(obj)->str << "\"";
+            if (full || nested) os << "\"" << static_cast<ObjString*>(obj)->str << "\"";
             else os << static_cast<ObjString*>(obj)->str;
             break;
         case ObjType::BIGINT: os << static_cast<ObjBigInt*>(obj)->num; break;
@@ -3160,7 +3161,7 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
             if (guard.isCycle) { os << "<" << prefix << " {...}>"; break; }
                 
             try {
-                if (full) {
+                if (full || nested) {
                     auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
                     if (foundRepl) {
                         if (replRes.isString()) os << replRes.asString();

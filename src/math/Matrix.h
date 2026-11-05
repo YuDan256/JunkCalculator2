@@ -518,21 +518,24 @@ inline constexpr int kMaxPrintMatrixDim = 10;
 
         // ==== 格式化输出 ====
         // 计算每个元素的字符串表示与列宽（2D/1D 共用）
-        void buildDisplayStrings(std::vector<std::vector<std::string>>& strs, std::vector<size_t>& colWidths) const {
-            strs.assign(rows, std::vector<std::string>(cols));
-            colWidths.assign(cols, 0);
+        void buildDisplayStrings(std::vector<std::vector<std::string>>& strs, std::vector<size_t>& colWidths,
+                                 int maxRows = -1, int maxCols = -1) const {
+            const int displayRows = maxRows < 0 ? rows : std::min(rows, maxRows);
+            const int displayCols = maxCols < 0 ? cols : std::min(cols, maxCols);
+            strs.assign(displayRows, std::vector<std::string>(displayCols));
+            colWidths.assign(displayCols, 0);
 
             // ★ 修复：按行独立提取参考容差 (Row-based scaling) 解决显示遮蔽
-            std::vector<double> rowScale(rows, 0.0);
-            for (int i = 0; i < rows; ++i) {
-                for (int j = 0; j < cols; ++j) {
+            std::vector<double> rowScale(displayRows, 0.0);
+            for (int i = 0; i < displayRows; ++i) {
+                for (int j = 0; j < displayCols; ++j) {
                     rowScale[i] = std::max(rowScale[i], magnitudeOf((*this)(i, j)));
                 }
                 rowScale[i] = std::max(rowScale[i], 1e-30); // 兜底
             }
 
-            for (int i = 0; i < rows; ++i) {
-                for (int j = 0; j < cols; ++j) {
+            for (int i = 0; i < displayRows; ++i) {
+                for (int j = 0; j < displayCols; ++j) {
                     std::ostringstream oss;
                     T val = (*this)(i, j);
 
@@ -571,9 +574,9 @@ inline constexpr int kMaxPrintMatrixDim = 10;
         friend void printMatrix(std::ostream& out, const Matrix& m, bool full) {
             std::vector<std::vector<std::string>> strs;
             std::vector<size_t> colWidths;
-            m.buildDisplayStrings(strs, colWidths);
 
             if (full) {
+                m.buildDisplayStrings(strs, colWidths);
                 out << "[";
                 for (int i = 0; i < m.rows; ++i) {
                     for (int j = 0; j < m.cols; ++j) {
@@ -586,6 +589,9 @@ inline constexpr int kMaxPrintMatrixDim = 10;
             } else {
                 int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
                 int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
+                // Only format the cells that are actually displayed. Large
+                // matrices used to stringify every cell before truncating.
+                m.buildDisplayStrings(strs, colWidths, maxRows, maxCols);
                 for (int i = 0; i < maxRows; ++i) {
                     out << "[";
                     for (int j = 0; j < maxCols; ++j) {

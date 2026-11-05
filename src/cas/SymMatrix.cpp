@@ -995,11 +995,14 @@ namespace jc {
             return;
         }
 
-        std::vector<std::vector<std::string>> strs(m.rows, std::vector<std::string>(m.cols));
-        std::vector<size_t> colWidths(m.cols, 0);
+        const int displayRows = full ? m.rows : std::min(m.rows, kMaxPrintMatrixDim);
+        const int displayCols = full ? m.cols : std::min(m.cols, kMaxPrintMatrixDim);
 
-        for (int i = 0; i < m.rows; ++i) {
-            for (int j = 0; j < m.cols; ++j) {
+        std::vector<std::vector<std::string>> strs(displayRows, std::vector<std::string>(displayCols));
+        std::vector<size_t> colWidths(displayCols, 0);
+
+        for (int i = 0; i < displayRows; ++i) {
+            for (int j = 0; j < displayCols; ++j) {
                 strs[i][j] = m(i, j).toString();
                 if (strs[i][j].length() > colWidths[j]) {
                     colWidths[j] = strs[i][j].length();
@@ -1018,8 +1021,8 @@ namespace jc {
             }
             out << "]";
         } else {
-            int maxRows = std::min(m.rows, kMaxPrintMatrixDim);
-            int maxCols = std::min(m.cols, kMaxPrintMatrixDim);
+            int maxRows = displayRows;
+            int maxCols = displayCols;
             for (int i = 0; i < maxRows; ++i) {
                 out << "[";
                 for (int j = 0; j < maxCols; ++j) {

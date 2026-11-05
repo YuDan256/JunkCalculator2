@@ -1,0 +1,17 @@
+// Display must stringify only the items that will actually be shown.
+m = zeros(100, 100)
+sm = str(m)
+assert(sm.len() < 2000, "large matrix is truncated before formatting")
+assert(sm.find("...") >= 0, "large matrix marks truncation")
+
+l = @[i for (i in range(1000))]
+sl = str(l)
+assert(sl.len() < 500, "large list is truncated")
+assert(sl.find("...") >= 0, "large list marks truncation")
+
+nested = @[@[i for (i in range(100))]]
+sn = str(nested)
+assert(sn.len() < 500, "nested list is truncated")
+assert(sn.find("...") >= 0, "nested list marks truncation")
+
+print("print truncation battery OK")

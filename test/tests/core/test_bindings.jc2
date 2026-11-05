@@ -331,3 +331,22 @@ test_delete_state_rejected() = {
     assert(caught, "delete state must be a syntax error")
 }
 test_delete_state_rejected()
+
+test_delete_const_rejected() = {
+    local_caught = false
+    try {
+        eval("f() = { const x = 1; delete x }")
+    } catch (e) {
+        local_caught = "Cannot delete const variable" in e.message
+    }
+    assert(local_caught, "delete local const must be a syntax error")
+
+    global_caught = false
+    try {
+        eval("const G = 1; delete G")
+    } catch (e) {
+        global_caught = "Cannot delete const variable" in e.message
+    }
+    assert(global_caught, "delete global const must be a syntax error")
+}
+test_delete_const_rejected()

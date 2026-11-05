@@ -5762,8 +5762,8 @@
     "const": {
       "signature": "const name = expr",
       "desc": [
-        "Declares a strictly immutable constant. Any attempt to reassign or",
-        "delete the variable using the `delete` keyword will throw a runtime error.",
+        "Declares a strictly immutable constant. Any attempt to reassign it",
+        "throws a runtime error; deleting it with `delete` is a syntax error.",
         "Constants declared inside functions or namespaces are locally scoped.",
         "Note: In the REPL, you can forcefully wipe a const using the `/delete` command.",
         "See also: /help scope"

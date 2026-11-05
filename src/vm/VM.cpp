@@ -2243,7 +2243,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             Value* pdv = nullptr; PropFlags pdf;
             ObjClass* foundIn = nullptr;
             if (!findPrivateMember(owner, inst, methodName, pdv, pdf, lexical, &foundIn)) {
-                JC2_THROW(RuntimeError, "Private method '" + methodName + "' not found.");
+                JC2_THROW(RuntimeError, "Private method '" + methodName + "' is not accessible on this receiver.");
             }
             Value fv = *pdv;
             if (fv.isFunctionClosure()) {
@@ -2262,7 +2262,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
             Value* pdv = nullptr; PropFlags pdf;
             ObjClass* foundIn = nullptr;
             if (!findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), methodName, pdv, pdf, lexical, &foundIn)) {
-                JC2_THROW(RuntimeError, "Private static method '" + methodName + "' not found.");
+                JC2_THROW(RuntimeError, "Private static method '" + methodName + "' is not accessible on this receiver.");
             }
             Value fv = *pdv;
             if (fv.isFunctionClosure()) {
@@ -7275,7 +7275,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                     
-                    JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+                    JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' is not accessible on this receiver.");
                 } else if (obj.isClass()) {
                     ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
                     if (!owner) errAccessPrivateOutsideClass();
@@ -7292,7 +7292,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                         break;
                     }
-                    JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+                    JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' is not accessible on this receiver.");
                 }
                 JC2_THROW(RuntimeError, "Cannot get private property on this type.");
             }
@@ -7677,7 +7677,7 @@ Value VM::run(int targetFrameDepth) {
                         Value* pdv = nullptr; PropFlags pdf;
                         ObjClass* foundIn = nullptr;
                         if (!VM::findPrivateMember(owner, inst, pname, pdv, pdf, lexical, &foundIn)) {
-                            JC2_THROW(RuntimeError, "Private property '" + pname + "' not found.");
+                            JC2_THROW(RuntimeError, "Private property '" + pname + "' is not accessible on this receiver.");
                         }
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + pname + "'.");
                         // ★ 省略初值的私有字段：类表里那份只是「声明登记」（is_field_decl），
@@ -7709,7 +7709,7 @@ Value VM::run(int targetFrameDepth) {
                         Value* pdv = nullptr; PropFlags pdf;
                         ObjClass* foundIn = nullptr;
                         if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyStr, pdv, pdf, lexical, &foundIn)) {
-                            JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' not found.");
+                            JC2_THROW(RuntimeError, "Private static property '" + keyStr + "' is not accessible on this receiver.");
                         }
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
                         *pdv = val;
@@ -11365,7 +11365,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
-            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' is not accessible on this receiver.");
         }
         if (pdv->isFunctionClosure()) {
             result = bindPrivate(pdv->asFunction(), foundIn ? foundIn : owner, Value(inst));
@@ -11379,7 +11379,7 @@ uint64_t jc2_jit_get_private(uint64_t obj_bits, uint32_t icIdx, const Chunk* chu
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
-            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' is not accessible on this receiver.");
         }
         if (pdv->isFunctionClosure()) {
             result = bindPrivate(pdv->asFunction(), foundIn ? foundIn : owner, Value::none());
@@ -11414,7 +11414,7 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
-            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' not found.");
+            JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' is not accessible on this receiver.");
         }
         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
         *pdv = val;
@@ -11425,7 +11425,7 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
         if (!VM::findPrivateMember(owner, static_cast<ObjInstance*>(nullptr), keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
-            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' not found.");
+            JC2_THROW(RuntimeError, "Private static property '" + keyVal.asString() + "' is not accessible on this receiver.");
         }
         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyVal.asString() + "'.");
         *pdv = val;

@@ -26,11 +26,25 @@ test_lambda_private_lexical() = {
     }
     f = A().make()
     assert(A().f() == 7, "lambda reads its lexical private field")
-    assert(throws(() => B().f()), "lambda must not read B's private field")
+    field_msg = false
+    try {
+        B().f()
+    } catch (e) {
+        field_msg = e.type == "RuntimeError" &&
+                    "not accessible on this receiver" in e.message
+    }
+    assert(field_msg, "wrong receiver reports private accessibility")
 
     g = A().makeRead()
     assert(A().g() == 7, "lambda invokes its lexical private method")
-    assert(throws(() => B().g()), "lambda must not invoke B's private scope")
+    method_msg = false
+    try {
+        B().g()
+    } catch (e) {
+        method_msg = e.type == "RuntimeError" &&
+                     "not accessible on this receiver" in e.message
+    }
+    assert(method_msg, "wrong receiver reports private method accessibility")
 }
 
 test_lambda_private_assignment() = {

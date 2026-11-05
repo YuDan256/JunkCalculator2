@@ -190,7 +190,7 @@ public:
 private:
     std::string formatException(const Value& errVal);
 
-    // explicitSelf：调用点提供的接收者（隐藏通道 self）。为空时退回闭包自己的 boundSelf。
+    // explicitSelf：调用点提供的接收者（隐藏通道 self）。普通调用没有 receiver。
     void execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall = false,
                   Value explicitSelf = Value::none());
     void populateRefParams(CallFrame& newFrame, const CompiledFunction* fn);
@@ -209,7 +209,7 @@ public:
     void execAssertReturnType(const Value& val);
     void execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx);
 
-    std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf = Value::none(), const std::vector<bool>& kwargHasDefault = {}, int* outPosArgc = nullptr);
+    std::vector<Value> alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value explicitSelf = Value::none(), const std::vector<bool>& kwargHasDefault = {}, int* outPosArgc = nullptr);
 
     // 直接调用可调用类型（TypeDef）的 converter：arity 检查 + kwarg 对齐 + 调 converter
     Value callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* argsBase);
@@ -457,7 +457,7 @@ public:
     ObjClass* exceptionClass = nullptr;
 
     static inline VM* activeVM = nullptr;
-    Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value boundSelf = Value::none(), Value boundClass = Value::none());
+    Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value explicitSelf = Value::none(), Value explicitClass = Value::none());
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;

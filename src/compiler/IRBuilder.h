@@ -42,6 +42,9 @@ private:
         std::unordered_set<std::string> privateMembers;
     };
     std::vector<ClassContext> classStack;
+    // True while compiling code lexically inside a class/trait body.
+    // Nested lambdas inherit it, so their private access stays lexical.
+    bool allowPrivateAccess = false;
     bool isInitMethod = false;
     std::vector<ClassDefExpr::PropertyDef*>* instancePropertiesToInit = nullptr;
     bool hasCalledSuperInit = false;

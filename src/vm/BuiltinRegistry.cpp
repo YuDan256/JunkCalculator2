@@ -389,8 +389,6 @@ static Value staticsOfValue(const Value& self, const char* what) {
             auto cl = v.asFunction();
             if (cl->compiledFnIndex >= 0) oss << "fn:" << cl->compiledFnIndex;
             else oss << "native:" << cl->rawBody;
-            oss << "|self:" << setValueKey(cl->boundSelf);
-            oss << "|cls:" << setValueKey(cl->boundClass);
         }
         else {
             oss << v;

@@ -2154,8 +2154,6 @@ namespace jc {
         bool is_local = false; // ★ 新增：标记是否为私有方法
         bool padOptionals = false; // ★ regMethod 注册的原型方法：调用前把未传的尾部可选形参补成 uninit
 
-        Value boundSelf;
-        Value boundClass;
         ObjClass* owner_class = nullptr; // ★ 新增：闭包定义时所在的类（用于私有属性访问控制）
 
         int minArgs() const {
@@ -2202,8 +2200,6 @@ namespace jc {
         }
 
         void clear() override {
-            boundSelf = Value();
-            boundClass = Value();
             defaultValues.clear();
             nativeFn.reset();
             returnType = Value::none();
@@ -3569,8 +3565,6 @@ inline void GcHeap::markObj(Obj* obj) {
         }
         case ObjType::CLOSURE: {
             auto closure = static_cast<ObjClosure*>(obj);
-            markValue(closure->boundSelf);
-            markValue(closure->boundClass);
             markObj(closure->owner_class);
             for (auto& v : closure->defaultValues) markValue(v);
             for (int i = 0; i < closure->upvalueCount; ++i) {

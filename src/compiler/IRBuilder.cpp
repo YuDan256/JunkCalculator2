@@ -3219,7 +3219,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                     isClassVar = true;
                 }
             }
-            if ((isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
+            if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
                 getOp = IROp::GetPrivate;
             }
         }
@@ -3257,7 +3257,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                         isClassVar = true;
                     }
                 }
-                if ((isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
+                if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(dotPropName)) {
                     getOp = IROp::GetPrivate;
                 }
             }
@@ -3356,7 +3356,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
                     isClassVar = true;
                 }
             }
-            if ((isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
+            if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(propName)) {
                 setOp = IROp::SetPrivate;
             }
         }
@@ -3695,6 +3695,7 @@ void IRBuilder::visitLambdaExpr(LambdaExpr* expr) {
         IRGraph fnGraph;
         IRBuilder fnBuilder(&fnGraph, compiledFunctions, this, fnDef.get(), exprSymbols, patternSymbols, deleteSyms);
         fnBuilder.allowInternalNames = this->allowInternalNames;
+        fnBuilder.allowPrivateAccess = this->allowPrivateAccess;
         
         fnBuilder.currentReturnTypeHint = expr->returnType;
         fnBuilder.buildFunctionParams(expr->params, expr->defaultExprs, expr->restName, expr->paramIsRef, expr->paramIsConst, expr->paramTypes,
@@ -4325,7 +4326,10 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
                 this->instancePropertiesToInit = &fieldsToInit;
             }
             
+            bool savedPrivateAccess = allowPrivateAccess;
+            allowPrivateAccess = true;
             lambda->accept(*this);
+            allowPrivateAccess = savedPrivateAccess;
             IRNode* closureNode = lastValue;
             
             if (isInit) {
@@ -4373,7 +4377,10 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     }
 
     for (auto& p : expr->staticProperties) {
+        bool savedPrivateAccess = allowPrivateAccess;
+        if (dynamic_cast<LambdaExpr*>(p.value.get())) allowPrivateAccess = true;
         p.value->accept(*this);
+        allowPrivateAccess = savedPrivateAccess;
         IRNode* valNode = lastValue;
 
         IROp propOp = IROp::SetProperty;
@@ -4728,7 +4735,7 @@ void IRBuilder::visitDotAccess(DotAccess* expr) {
                 isClassVar = true;
             }
         }
-        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
+        if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
             op = IROp::GetPrivate;
         }
     }
@@ -4767,7 +4774,7 @@ void IRBuilder::visitDotAssign(DotAssign* expr) {
                 isClassVar = true;
             }
         }
-        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
+        if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(expr->field.lexeme)) {
             op = IROp::SetPrivate;
         }
     }
@@ -4964,7 +4971,7 @@ void IRBuilder::visitMethodCallExpr(MethodCallExpr* expr) {
                 isClassVar = true;
             }
         }
-        if ((isSelf || isClassVar) && classStack.back().privateMembers.count(methodName)) {
+        if (allowPrivateAccess && (isSelf || isClassVar) && classStack.back().privateMembers.count(methodName)) {
             isPrivate = true;
         }
     }

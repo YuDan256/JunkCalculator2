@@ -399,13 +399,23 @@ static void collectPrivateCandidates(const ObjClass* lexical, ObjClass* ctx, Obj
     auto add = [&out](ObjClass* c) {
         if (c && std::find(out.begin(), out.end(), c) == out.end()) out.push_back(c);
     };
-    // ★ 词法优先：lexical 是 closure->owner_class，即「定义正在执行的这段代码的类」；
-    //   classContext 是运行期的类上下文（方法调用时通常是被调用者的实际类），放在其后。
-    add(const_cast<ObjClass*>(lexical));
+    // ★ 有词法定义类时，私有成员只能按词法类解析：
+    //   定义类本身 + 它组合的 trait。绝不回退到 receiver 的实例类链，
+    //   否则 A 的私有方法值在 B 上调用时会读到 B 的同名 private。
+    if (lexical) {
+        add(const_cast<ObjClass*>(lexical));
+        for (auto* t : lexical->traits) {
+            add(t);
+            for (auto* tt : t->traits) add(tt);
+        }
+        return;
+    }
+    // 无词法类的闭包才使用运行时回退：
+    // classContext -> 实例实际类链（最派生 -> 祖先，含各级 trait）
     add(ctx);
     for (ObjClass* p = instCls; p; p = p->parent) {
-        add(p);                             // 回退：实例类链，最派生优先
-        for (auto* t : p->traits) add(t);   // trait 表：trait 自身的 local 成员存于此
+        add(p);
+        for (auto* t : p->traits) add(t);
     }
 }
 
@@ -432,6 +442,9 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
     for (ObjClass* c : candidates) {
         const PropertyDescriptor* pd = c->ownPrivate(name);
         if (pd) {
+            // 实例私有字段的类表项只是字段声明登记（没有实例值）。
+            // receiver 不是该类实例时，绝不能把模板里的 none/默认值当成读取结果。
+            if (inst && pd->is_field_decl) continue;
             foundVal = const_cast<Value*>(&pd->val);
             foundFlags = ObjInstance::toFlags(*pd);
             if (foundIn) *foundIn = c;
@@ -470,7 +483,7 @@ ObjClosure* VM::copyClosureTemplate(const ObjClosure* src) {
     if (!src) return nullptr;
     ObjClosure* c = GcHeap::get().allocate<ObjClosure>(src->paramNames, src->isRef, src->rawBody, src->body, src->restName);
     // ★ 必须从**这里**就把副本钉住：下面这一长串赋值里会再分配 GC 堆对象
-    //   （paramTypes 上的 Value、defaultValues、boundSelf/boundClass …），任何一次
+    //   （paramTypes 上的 Value、defaultValues …），任何一次
     //   分配都可能触发 collectGarbage()。此刻 c 还没有任何根（refCount 还是 0，
     //   `objects_` 里的裸链不算根），mark 扫不到它，sweep 就会把它当垃圾回收，
     //   于是调用方后面拿到的是一块已释放内存 —— 实测表现为 ASan 在
@@ -500,8 +513,6 @@ ObjClosure* VM::copyClosureTemplate(const ObjClosure* src) {
     c->kwargDefaultValueTexts = src->kwargDefaultValueTexts;
     c->isTokenMacro = src->isTokenMacro;
     c->is_local = src->is_local;
-    c->boundSelf = src->boundSelf;
-    c->boundClass = src->boundClass;
     c->owner_class = src->owner_class;
     return c;
 }
@@ -742,7 +753,7 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
             ObjClosure* cl = callee.asFunction();
             if (cl->isBytecode()) {
                 int fnIdx = cl->compiledFnIndex;
-                Value res = VM::activeVM->callVMFunction(fnIdx, args, cl, cl->boundSelf, cl->boundClass);
+                Value res = VM::activeVM->callVMFunction(fnIdx, args, cl, Value::none(), Value::none());
                 VM::activeVM->getCurrentFrame()->jitReturnSlot = res;
                 return res.as_bits;
             } else if (cl->isNative()) {
@@ -757,8 +768,8 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         Value::none(), cl->kwargHasDefault);
                     argPtr = &aligned;
                 }
-                helpers::nativeSelfStack.push_back(cl->boundSelf);
-                helpers::nativeClassStack.push_back(cl->boundClass);
+                helpers::nativeSelfStack.push_back(Value::none());
+                helpers::nativeClassStack.push_back(cl->owner_class ? Value(cl->owner_class) : Value::none());
                 Value res;
                 try {
                     auto& fn = std::any_cast<NativeCallable&>(cl->nativeFn);
@@ -976,7 +987,7 @@ void VM::runDefersDownTo(int targetBase, Value* currentException) {
         ObjClosure* closure = deferStack.back();
         deferStack.pop_back();
         try {
-            callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
+            callVMFunction(closure->compiledFnIndex, {}, closure, Value::none(), Value::none());
         } catch (const ValueException& ex) {
             if (currentException) {
                 Value deferEx = wrapException(nullptr, "Exception", ex.val);
@@ -1077,7 +1088,7 @@ void VM::populateRefParams(CallFrame& newFrame, const CompiledFunction* fn) {
     pendingCallRefs.clear();
 }
 
-std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value boundSelf, const std::vector<bool>& kwargHasDefault, int* outPosArgc) {
+std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, const std::vector<std::string>& paramNames, const std::string& restName, const std::vector<std::string>& kwargNames, const std::string& kwargsName, Value explicitSelf, const std::vector<bool>& kwargHasDefault, int* outPosArgc) {
     // ★ 展开解包（...list 位置解包、...dict 关键字解包）
     std::vector<Value> expandedStorage;
     {
@@ -1147,9 +1158,9 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     alignedArgs.resize(kwargSlot + (kwargsName.empty() ? 0 : 1), Value::uninit());
     
     int dstIdx = 0;
-    if (!boundSelf.isNone()) {
+    if (!explicitSelf.isNone()) {
         if (totalExpected > 0) {
-            alignedArgs[0] = boundSelf;
+            alignedArgs[0] = explicitSelf;
             dstIdx = 1;
         }
     }
@@ -1161,7 +1172,7 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     
     // 多余位置参数（无 rest 时）
     if (restName.empty() && posArgc > fillCount) {
-        if (boundSelf.isNone() && totalExpected == 0) {
+        if (explicitSelf.isNone() && totalExpected == 0) {
             for (int i = fillCount; i < posArgc; ++i) alignedArgs.push_back(argsBase[i]);
         }
     }
@@ -1213,8 +1224,8 @@ std::vector<Value> VM::alignArguments(int posArgc, int kwArgc, Value* argsBase, 
     
     if (!restName.empty()) {
         ObjList* restList = GcHeap::get().allocate<ObjList>();
-        if (!boundSelf.isNone() && totalExpected == 0) {
-            restList->vec.push_back(boundSelf);
+        if (!explicitSelf.isNone() && totalExpected == 0) {
+            restList->vec.push_back(explicitSelf);
         }
         for (int i = fillCount; i < posArgc; ++i) {
             restList->vec.push_back(argsBase[i]);
@@ -1410,8 +1421,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 newFrame.returnRegister = dstReg;
                 newFrame.deferBase = static_cast<int>(deferStack.size());
                 newFrame.closure = closure;
-                newFrame.selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
-                newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
+                newFrame.selfContext = explicitSelf;
+                newFrame.classContext = (closure->owner_class ? Value(closure->owner_class) : Value::none());
                 populateRefParams(newFrame, fnDef.get());
                 
                 if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
@@ -1496,8 +1507,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                 currentFrame->chunk = &fnDef->chunk;
                 currentFrame->ip = 0;
                 currentFrame->closure = closure;
-                currentFrame->selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
-                currentFrame->classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
+                currentFrame->selfContext = explicitSelf;
+                currentFrame->classContext = (closure->owner_class ? Value(closure->owner_class) : Value::none());
                 
                 populateRefParams(*currentFrame, fnDef.get());
                 profileFrameStart(currentFrame);
@@ -1516,8 +1527,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             newFrame.returnRegister = dstReg;
             newFrame.deferBase = static_cast<int>(deferStack.size());
             newFrame.closure = closure;
-            newFrame.selfContext = explicitSelf.isNone() ? closure->boundSelf : explicitSelf;
-            newFrame.classContext = (closure->boundClass.isNone() && closure->owner_class) ? Value(closure->owner_class) : closure->boundClass;
+            newFrame.selfContext = explicitSelf;
+            newFrame.classContext = (closure->owner_class ? Value(closure->owner_class) : Value::none());
             
             populateRefParams(newFrame, fnDef.get());
             
@@ -1584,8 +1595,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
             // 注意：普通全局 native 的 args 不补位 —— reg() 的多 arity native（ones/zeros/
             // randmat/seq…）用 args.size() 区分重载，补位会改变判定。只有原型方法
             // （regMethod）声明了固定可选形参，在方法调用路径里补（见 padOptionalArgs）。
-            helpers::nativeSelfStack.push_back(closure->boundSelf);
-            helpers::nativeClassStack.push_back(closure->boundClass);
+            helpers::nativeSelfStack.push_back(explicitSelf);
+            helpers::nativeClassStack.push_back(closure->owner_class ? Value(closure->owner_class) : Value::none());
             pendingCallRefs.clear();
             try {
                 auto& fn = std::any_cast<NativeCallable&>(closure->nativeFn);
@@ -4474,7 +4485,7 @@ void VM::triggerDebugger() {
     std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Breakpoint Hit ===" << jc::col(jc::Ansi::RESET) << "\n";
 }
 
-Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value boundSelf, Value boundClass) {
+Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value explicitSelf, Value explicitClass) {
     auto& fnDef = compiledFunctions[fnIdx];
     CallFrame newFrame;
     newFrame.function = fnDef.get();
@@ -4494,11 +4505,10 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     newFrame.returnRegister = 0;
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
-    newFrame.selfContext = boundSelf;
-    // ★ classContext 走词法来源：优先闭包的定义类，其次调用方给的类上下文
-    //   （闭包在方法体内创建时，boundClass 已经是创建点的词法类）。
-    newFrame.classContext = (boundClass.isNone() && closure && closure->owner_class)
-        ? Value(closure->owner_class) : boundClass;
+    newFrame.selfContext = explicitSelf;
+    // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
+    newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
+        ? Value(closure->owner_class) : explicitClass;
     
     std::vector<Value> actualArgs = args;
     
@@ -5276,8 +5286,7 @@ Value VM::run(int targetFrameDepth) {
                 closure->kwargIsConst = fn->kwargIsConst;
                 closure->kwargHasDefault = fn->kwargHasDefault;
                 closure->kwargsName = fn->kwargsName;
-                closure->boundSelf = frame->selfContext;
-                closure->boundClass = frame->classContext;
+                closure->owner_class = frame->closure ? frame->closure->owner_class : nullptr;
                 
                 if (!fn->paramTypeRegs.empty()) {
                     closure->paramTypesCount = static_cast<int>(fn->paramTypeRegs.size());
@@ -8107,7 +8116,7 @@ Value VM::run(int targetFrameDepth) {
                 while (count-- > 0) {
                     ObjClosure* closure = deferStack.back();
                     deferStack.pop_back();
-                    callVMFunction(closure->compiledFnIndex, {}, closure, closure->boundSelf, closure->boundClass);
+                    callVMFunction(closure->compiledFnIndex, {}, closure, Value::none(), Value::none());
                 }
                 break;
             }
@@ -11138,8 +11147,7 @@ uint64_t jc2_jit_closure(uint64_t* values, uint32_t fnIdx, uint32_t registerOffs
     closure->kwargIsConst = fn->kwargIsConst;
     closure->kwargHasDefault = fn->kwargHasDefault;
     closure->kwargsName = fn->kwargsName;
-    closure->boundSelf = frame->selfContext;
-    closure->boundClass = frame->classContext;
+    closure->owner_class = frame->closure ? frame->closure->owner_class : nullptr;
     
     // ★ 参数类型 / 返回类型从 values[] 取，不回读帧槽。
     //   values[] 布局见 BytecodeToHIR 的 CLOSURE：先每个参数的类型、再返回类型，

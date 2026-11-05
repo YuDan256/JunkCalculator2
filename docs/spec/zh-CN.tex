@@ -1448,6 +1448,8 @@ catch 分支退出时执行该分支的 defer。catch 体内 \jc{throw e} 重新
 
 函数与 lambda 在定义位置捕获词法环境。
 函数值是闭包；闭包包含参数列表、函数体与捕获环境。
+闭包不捕获 \jc{self}；\jc{self} 始终由调用点提供的接收者绑定。
+在 class 或 trait 内定义的 lambda 保留定义位置的词法类，用于 \jc{class} 与 private 访问。
 自由名字在捕获环境中解析。
 局部函数捕获自身名字的引用，因此可以递归调用自身。
 
@@ -1715,8 +1717,9 @@ local class Temp { ... }    // 局部绑定
 \end{enumerate}
 
 查找在首个命中处停止。实例属性覆盖 class 属性；子类属性覆盖父类同名属性。
-\jc{local} 属性只允许在声明它的 class 或 trait 方法内通过 \jc{self.name} 访问；
-外部代码与子类访问产生 \jc{RuntimeError}。
+\jc{local} 属性只允许在声明它的 class 或 trait 的词法作用域内通过 \jc{self.name}
+访问，包括方法体及其内部 lambda；外部代码与子类访问产生 \jc{RuntimeError}。
+private 查找限定在词法定义类及其 trait，不回退到接收者的类链。
 \jc{static} 属性只存在于 class 对象；\jc{C.name} 查找 class 静态属性表，\jc{obj.name} 读取实例属性表。
 \jc{super.name} 从父类属性表开始查找，用于显式调用父类实现。
 
@@ -1754,7 +1757,8 @@ finalize 产生的错误被隔离，后续 finalize 继续执行。
 
 \subsection{宿主类引用}
 
-在 class 或 trait 的方法体内，\jc{class} 求值为当前宿主类对象。
+在 class 或 trait 的定义体内，方法体、字段初始化器及其词法嵌套 lambda 中
+\jc{class} 求值为该定义类（trait 方法内为 trait 本身）。
 \jc{class(...)} 以该宿主类构造实例，例如 \jc{make() = class()}。
 宿主类对象可以参与类型检查、参数传递与返回值。
 

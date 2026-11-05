@@ -1,0 +1,126 @@
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+// self is receiver-only: a lambda does not capture the creation-site self.
+test_lambda_self_is_call_site() = {
+    class A {
+        x = 1
+        make() = () => self.x
+    }
+    f = A().make()
+    assert(throws(() => f()), "torn-off lambda has no self")
+    assert(A().f() == 1, "dot call supplies the receiver")
+}
+
+// A lambda with a lexical class can read that class's private members.
+test_lambda_private_lexical() = {
+    class A {
+        local secret = 7
+        local read() = self.secret
+        make() = () => self.secret
+        makeRead() = () => self.read()
+    }
+    class B {
+        local secret = 9
+    }
+    f = A().make()
+    assert(A().f() == 7, "lambda reads its lexical private field")
+    assert(throws(() => B().f()), "lambda must not read B's private field")
+
+    g = A().makeRead()
+    assert(A().g() == 7, "lambda invokes its lexical private method")
+    assert(throws(() => B().g()), "lambda must not invoke B's private scope")
+}
+
+test_lambda_private_assignment() = {
+    class A {
+        local x = 1
+        makeWrite() = () => { self.x = 5; return self.x }
+        read() = self.x
+    }
+    class B {}
+    w = A().makeWrite()
+    assert(A().w() == 5, "lambda writes its lexical private field")
+    assert(A().read() == 5, "write is visible on the same receiver")
+    assert(throws(() => B().w()), "lambda must not write another class's private field")
+}
+
+test_nested_lambda_lexical_owner() = {
+    class A {
+        local x = 3
+        make() = () => () => self.x
+    }
+    outer = A().make()
+    inner = A().outer()
+    assert(A().inner() == 3, "nested lambda inherits the lexical owner")
+}
+
+// public fields still follow the dynamic receiver.
+test_lambda_public_field_dynamic_receiver() = {
+    class A {
+        x = 1
+        make() = () => self.x
+    }
+    class B {
+        x = 2
+    }
+    f = A().make()
+    assert(B().f() == 2, "public field uses the call-site receiver")
+}
+
+test_method_private_does_not_retarget() = {
+    class A {
+        local x = 1
+        get() = self.x
+    }
+    class B {
+        local x = 2
+    }
+    f = A().get
+    assert(A().f() == 1, "method reads its defining class's private")
+    assert(throws(() => B().f()), "method must not read B's private")
+}
+
+// class keyword is lexical, not the call-site receiver.
+test_lambda_class_keyword_lexical() = {
+    class A {
+        make() = () => class
+    }
+    f = A().make()
+    assert(f() == A, "lambda class is the lexical class")
+    class B {}
+    assert(B().f() == A, "call-site B does not retarget class")
+}
+
+test_top_level_lambda_class() = {
+    assert(throws(() => eval("f = () => class; f()")),
+        "top-level lambda has no class context")
+}
+
+// trait methods keep their own lexical class and private storage.
+test_trait_lambda_lexical() = {
+    trait T {
+        local secret = 10
+        make() = () => self.secret
+        makeClass() = () => class
+    }
+    class C with T {
+        local secret = 20
+    }
+    m = C().make()
+    assert(C().m() == 10, "trait lambda reads trait private")
+    assert(C().makeClass()() == T, "trait lambda class is the trait")
+}
+
+// Property lambdas are methods, including static ones.
+test_property_lambda_class_context() = {
+    class A {
+        f = () => class
+        static g = () => class
+    }
+    assert(A().f() == A, "instance property lambda class")
+    assert(A.g() == A, "static property lambda class")
+}
+
+print("lambda lexical battery OK")

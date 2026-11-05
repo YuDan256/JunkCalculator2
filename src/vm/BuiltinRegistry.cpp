@@ -2111,7 +2111,22 @@ void BuiltinRegistry::registerVectors() {
     regMethod(VM::activeVM->listProto, "dim", {}, dimFn);
     regMethod(VM::activeVM->matrixProto, "dim", {}, dimFn);
 
-    auto dotFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "dot"); assertVec(args[0], "dot"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != b.getRows()) JC2_THROW(MathError, "Dimension mismatch (" + std::to_string(a.getRows()) + " vs " + std::to_string(b.getRows()) + ")."); return Value((a.conjugateTranspose() * b)(0, 0)); };
+    auto dotFn = [assertVec](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        assertVec(self, "dot");
+        assertVec(args[0], "dot");
+        bool allReal = self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX);
+        if (allReal) {
+            RealMatrix a = self.asRealMatrix(), b = args[0].asRealMatrix();
+            if (a.getRows() != b.getRows()) JC2_THROW(MathError, "Dimension mismatch (" + std::to_string(a.getRows()) + " vs " + std::to_string(b.getRows()) + ").");
+            double sum = 0.0;
+            for (int i = 0; i < a.getRows(); ++i) sum += a(i, 0) * b(i, 0);
+            return Value(sum);
+        }
+        ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix();
+        if (a.getRows() != b.getRows()) JC2_THROW(MathError, "Dimension mismatch (" + std::to_string(a.getRows()) + " vs " + std::to_string(b.getRows()) + ").");
+        return Value((a.conjugateTranspose() * b)(0, 0));
+    };
     regMethod(VM::activeVM->matrixProto, "dot", {"b"}, dotFn);
 
     auto vnormFn = [assertVec](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "vnorm"); ComplexMatrix v = self.asComplexMatrix(); return Value(std::sqrt((v.conjugateTranspose() * v)(0, 0).real)); };
@@ -2120,7 +2135,30 @@ void BuiltinRegistry::registerVectors() {
     auto normalizeFn = [assertVec](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "normalize"); ComplexMatrix v = self.asComplexMatrix(); double len = std::sqrt((v.conjugateTranspose() * v)(0, 0).real); if (len == 0.0) JC2_THROW(MathError, "Cannot normalize a zero vector."); return Value(v / Complex(len)); };
     regMethod(VM::activeVM->matrixProto, "normalize", {}, normalizeFn);
 
-    auto crossFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "cross"); assertVec(args[0], "cross"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); if (a.getRows() != 3 || b.getRows() != 3) JC2_THROW(MathError, "Cross product is 3D only."); std::vector<Complex> r = { a(1,0)*b(2,0)-a(2,0)*b(1,0), a(2,0)*b(0,0)-a(0,0)*b(2,0), a(0,0)*b(1,0)-a(1,0)*b(0,0) }; return Value(ComplexMatrix(3, 1, r)); };
+    auto crossFn = [assertVec](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        assertVec(self, "cross");
+        assertVec(args[0], "cross");
+        bool allReal = self.isObjType(ObjType::REAL_MATRIX) && args[0].isObjType(ObjType::REAL_MATRIX);
+        if (allReal) {
+            RealMatrix a = self.asRealMatrix(), b = args[0].asRealMatrix();
+            if (a.getRows() != 3 || b.getRows() != 3) JC2_THROW(MathError, "Cross product is 3D only.");
+            std::vector<double> r = {
+                a(1, 0) * b(2, 0) - a(2, 0) * b(1, 0),
+                a(2, 0) * b(0, 0) - a(0, 0) * b(2, 0),
+                a(0, 0) * b(1, 0) - a(1, 0) * b(0, 0)
+            };
+            return Value(RealMatrix(3, 1, r));
+        }
+        ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix();
+        if (a.getRows() != 3 || b.getRows() != 3) JC2_THROW(MathError, "Cross product is 3D only.");
+        std::vector<Complex> r = {
+            a(1, 0) * b(2, 0) - a(2, 0) * b(1, 0),
+            a(2, 0) * b(0, 0) - a(0, 0) * b(2, 0),
+            a(0, 0) * b(1, 0) - a(1, 0) * b(0, 0)
+        };
+        return Value(ComplexMatrix(3, 1, r));
+    };
     regMethod(VM::activeVM->matrixProto, "cross", {"b"}, crossFn);
 
     auto angleFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "angle"); assertVec(args[0], "angle"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); double nA = std::sqrt((a.conjugateTranspose()*a)(0,0).real), nB = std::sqrt((b.conjugateTranspose()*b)(0,0).real); if (nA == 0.0 || nB == 0.0) JC2_THROW(MathError, "Zero vector."); double ct = (a.conjugateTranspose()*b)(0,0).real/(nA*nB); ct = std::max(-1.0, std::min(1.0, ct)); return Value(std::acos(ct)); };
@@ -2132,7 +2170,31 @@ void BuiltinRegistry::registerVectors() {
     auto vprojFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "vproj"); assertVec(args[0], "vproj"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); Complex dBB = (b.conjugateTranspose()*b)(0,0); if (dBB.real == 0.0 && dBB.imag == 0.0) JC2_THROW(MathError, "Zero vector."); return Value(b * ((a.conjugateTranspose()*b)(0,0)/dBB)); };
     regMethod(VM::activeVM->matrixProto, "vproj", {"b"}, vprojFn);
 
-    auto tripleFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "triple"); assertVec(args[0], "triple"); assertVec(args[1], "triple"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(), c = args[1].asComplexMatrix(); if (a.getRows()!=3||b.getRows()!=3||c.getRows()!=3) JC2_THROW(MathError, "3D only."); std::vector<Complex> bc = { b(1,0)*c(2,0)-b(2,0)*c(1,0), b(2,0)*c(0,0)-b(0,0)*c(2,0), b(0,0)*c(1,0)-b(1,0)*c(0,0) }; return Value(a(0,0)*bc[0]+a(1,0)*bc[1]+a(2,0)*bc[2]); };
+    auto tripleFn = [assertVec](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        assertVec(self, "triple");
+        assertVec(args[0], "triple");
+        assertVec(args[1], "triple");
+        bool allReal = self.isObjType(ObjType::REAL_MATRIX) &&
+                       args[0].isObjType(ObjType::REAL_MATRIX) &&
+                       args[1].isObjType(ObjType::REAL_MATRIX);
+        if (allReal) {
+            RealMatrix a = self.asRealMatrix(), b = args[0].asRealMatrix(), c = args[1].asRealMatrix();
+            if (a.getRows() != 3 || b.getRows() != 3 || c.getRows() != 3) JC2_THROW(MathError, "3D only.");
+            double bc0 = b(1, 0) * c(2, 0) - b(2, 0) * c(1, 0);
+            double bc1 = b(2, 0) * c(0, 0) - b(0, 0) * c(2, 0);
+            double bc2 = b(0, 0) * c(1, 0) - b(1, 0) * c(0, 0);
+            return Value(a(0, 0) * bc0 + a(1, 0) * bc1 + a(2, 0) * bc2);
+        }
+        ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(), c = args[1].asComplexMatrix();
+        if (a.getRows() != 3 || b.getRows() != 3 || c.getRows() != 3) JC2_THROW(MathError, "3D only.");
+        std::vector<Complex> bc = {
+            b(1, 0) * c(2, 0) - b(2, 0) * c(1, 0),
+            b(2, 0) * c(0, 0) - b(0, 0) * c(2, 0),
+            b(0, 0) * c(1, 0) - b(1, 0) * c(0, 0)
+        };
+        return Value(a(0, 0) * bc[0] + a(1, 0) * bc[1] + a(2, 0) * bc[2]);
+    };
     regMethod(VM::activeVM->matrixProto, "triple", {"b", "c"}, tripleFn);
 
     auto isperpFn = [assertVec](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); assertVec(self, "isperp"); assertVec(args[0], "isperp"); ComplexMatrix a = self.asComplexMatrix(), b = args[0].asComplexMatrix(); double innerScale = a.norm()*b.norm(); return Value(Tol::clean((a.conjugateTranspose()*b)(0,0).modulus(), innerScale)==0.0); };

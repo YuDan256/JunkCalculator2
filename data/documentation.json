@@ -4650,7 +4650,7 @@
     },
     "hash": {
       "signature": "hash(x)",
-      "desc": "Returns the native hash value of x as an int. Immutable values have a stable hash — strings cache it at construction (O(1)); frozen containers and big numbers cache it lazily.",
+      "desc": "Returns the native hash value of x as an int. Hash values are randomized per process and stable within it; strings cache it at construction (O(1)), and frozen containers and big numbers cache it lazily.",
       "examples": [
         "hash(\"hello\")"
       ]
@@ -6369,7 +6369,7 @@
     },
     "dot": {
       "signature": "a.dot(b)",
-      "desc": "Returns the Hermitian inner product (dot product) of two vectors.",
+      "desc": "Returns the Hermitian inner product (dot product) of two vectors. Real inputs return a float; any complex input returns a complex.",
       "examples": [
         "[1; 2].dot([3; 4])"
       ]
@@ -6390,7 +6390,7 @@
     },
     "cross": {
       "signature": "a.cross(b)",
-      "desc": "Returns the cross product of two 3D vectors.",
+      "desc": "Returns the cross product of two 3D vectors. Real inputs return a realmatrix; any complex input returns a complexmatrix.",
       "examples": [
         "[1; 0; 0].cross([0; 1; 0])"
       ]
@@ -6418,7 +6418,7 @@
     },
     "triple": {
       "signature": "a.triple(b, c)",
-      "desc": "Returns the scalar triple product of three 3D vectors: a.dot(b.cross(c)).",
+      "desc": "Returns the scalar triple product of three 3D vectors: a.dot(b.cross(c)). Real inputs return a float; any complex input returns a complex.",
       "examples": [
         "[1; 0; 0].triple([0; 1; 0], [0; 0; 1])"
       ]

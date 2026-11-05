@@ -44,4 +44,3 @@ assert(eval("for :a (i in @[1]) { break :a\n42 }") == none, "labeled break does 
 // continue keeps the loop's normal none result.
 assert(eval("for :a (i in @[1]) { continue :a }") == none, "continue has no loop value")
 
-print("labeled loop errors OK")

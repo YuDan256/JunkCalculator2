@@ -25,4 +25,3 @@ assert(sys.getenv("JC2_TEST_MISSING_12345", "dflt") == "dflt", "getenv default")
 mods = sys.loadedModules()
 assert("sys" in mods, "sys should be listed as imported")
 
-print("sys battery OK")

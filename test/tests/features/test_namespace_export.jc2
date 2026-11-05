@@ -18,7 +18,6 @@ namespace C {
 assert(C.e == 1, "include named namespace contents")
 assert(C.D.e == 1, "include named namespace binding")
 
-print("namespace include battery OK")
 
 f(flag) = {
     if (flag) include namespace { x = 1 }

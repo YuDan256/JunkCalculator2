@@ -9,7 +9,7 @@ assert(f() == 1, "grouping assignment hoist")
 
 g() = {
     if (true) {
-        print((y = 2))
+        (y = 2)
     }
     return y
 }
@@ -29,4 +29,3 @@ k() = {
 }
 assert(k() == 4, "binary operand assignment hoist")
 
-print("hoist battery OK")

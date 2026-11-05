@@ -30,4 +30,3 @@ assert("atan" in cubic_factored && "log" in cubic_factored,
 mixed = cas.integ(1 / ((x^2 + 1) * (x^3 + x + 1)), x)
 assert("RootSum" in str(mixed), "mixed denominator should still integrate, got: " + str(mixed))
 
-print("rational integration battery OK")

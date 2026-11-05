@@ -15,4 +15,3 @@ result = ""
 }
 
 assert(result != "", "selected platform branch")
-print("platform macros battery OK")

@@ -68,4 +68,3 @@ Twrap = (V) => hotsol(V)[1, 0]
 Vhot = math.solve((V) => math.diff(Twrap, V), 1.2)
 assert(abs(Vhot - 3.9312) < 1e-2, "bracketed solve finds the hot spot")
 
-print("ode battery OK")

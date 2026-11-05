@@ -3,5 +3,4 @@
 #version == 2.6.5.0
 
 assert(true, "version directives accepted")
-print("version directive battery OK")
 #warning "expected test warning"

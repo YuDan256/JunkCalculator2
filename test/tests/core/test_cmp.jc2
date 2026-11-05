@@ -78,4 +78,3 @@ threw = false
 try { @[3, 1, 2].sort((x, y) => x > y) } catch (e) { threw = e.type == "TypeError" }
 assert(threw, "boolean comparator must be rejected")
 
-print("cmp battery OK")

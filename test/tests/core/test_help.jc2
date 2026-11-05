@@ -36,4 +36,3 @@ assert(p[2] == "zz_help_test.b", "b path")
 assert(sys.unregisterHelp("zz_help_test") == true, "unregister")
 assert(len(help("zz_help_test.a")) > 0, "entry gone but text returned")
 
-print("help API battery OK")

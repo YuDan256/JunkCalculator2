@@ -21,4 +21,3 @@ assert("N" in getFields(A), "namespace binding")
 assert("E" in getFields(A), "enum binding")
 assert(!("Hidden" in getFields(A)), "local class is not a field")
 
-print("binding battery OK")

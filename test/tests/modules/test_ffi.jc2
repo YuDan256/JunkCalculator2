@@ -17,7 +17,6 @@ test_ffi_real_call() = {
     try {
         lib = ffi.FFILibrary("msvcrt.dll") // Windows x64
     } catch (e) {
-        print("Warning: msvcrt.dll not found, skipping real FFI tests.")
         return
     }
     
@@ -100,7 +99,6 @@ test_ffi_real_call() = {
         assert(PtInRect(r, p1) != 0, "PtInRect should return true for p1")
         assert(PtInRect(r, p2) == 0, "PtInRect should return false for p2")
     } catch (e) {
-        print("Warning: user32.dll not found or failed, skipping PtInRect test.")
     }
 
     // Test 8: Callbacks (qsort)

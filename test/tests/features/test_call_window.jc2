@@ -98,4 +98,3 @@ for (i in range(20000)) {
     s = s + hot(i)
 }
 assert(s == 400000000, "hot path sum")
-print("call window battery OK")

@@ -137,4 +137,3 @@ test_property_lambda_class_context() = {
     assert(A.g() == A, "static property lambda class")
 }
 
-print("lambda lexical battery OK")

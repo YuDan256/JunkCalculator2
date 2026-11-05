@@ -33,4 +33,3 @@ for (attempt in @[0, 1]) {
     assert(threw, "missing package retry must fail")
 }
 
-print("package edge battery OK")

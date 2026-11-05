@@ -23,4 +23,3 @@ assert(cx.dot(cy) == 1 - 1i, "mixed dot uses conjugate")
 assert(type(cx.cross(cy)) == complexmatrix, "mixed cross returns complexmatrix")
 assert(type(cx.triple(cy, ez)) == complex, "mixed triple returns complex")
 
-print("vector product battery OK")

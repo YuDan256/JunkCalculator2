@@ -112,4 +112,3 @@ f() = {
 }
 assert(f() == 20, "loop value can be returned")
 
-print("labeled loops OK")

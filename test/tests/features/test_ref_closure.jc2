@@ -25,4 +25,3 @@ g2(ref x) = { x += 1 }
 g2(b)
 assert(b == 3, "failed ref call must not pollute the next call")
 
-print("ref closure battery OK")

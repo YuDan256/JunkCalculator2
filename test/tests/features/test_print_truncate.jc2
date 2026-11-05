@@ -14,4 +14,3 @@ sn = str(nested)
 assert(sn.len() < 500, "nested list is truncated")
 assert(sn.find("...") >= 0, "nested list marks truncation")
 
-print("print truncation battery OK")

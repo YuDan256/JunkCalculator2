@@ -17,4 +17,3 @@ p2 = import "../../fixtures/pkgdemo2"
 assert(p2.version == "2.0", "package init import")
 assert(p2.table.run() == 84, "init-imported submodule")
 
-print("package battery OK")

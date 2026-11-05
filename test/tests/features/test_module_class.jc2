@@ -5,4 +5,3 @@ assert(p.g() == 1, "module function through local namespace")
 local hasP = false
 for (k in p) { if (k == "P") hasP = true }
 assert(!hasP, "local namespace must not be exported")
-print("module class battery OK")

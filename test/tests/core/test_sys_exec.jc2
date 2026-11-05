@@ -48,4 +48,3 @@ if (sys.platform() == "windows") {
     assert(sys.system("exit 0") == 0, "sys.system")
 }
 
-print("sys.exec battery OK")

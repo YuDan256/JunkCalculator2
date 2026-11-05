@@ -21,4 +21,3 @@ g() = {
 assert(g() == 7, "function result")
 assert(defer_order == @["d"], "defer runs on silent unwinding")
 
-print("silent try battery OK")

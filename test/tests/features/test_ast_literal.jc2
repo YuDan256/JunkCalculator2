@@ -28,4 +28,3 @@ try {
     assert("unsupported value type" in e.message, "complex error")
 }
 
-print("ast literal battery OK")

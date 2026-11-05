@@ -29,4 +29,3 @@ assert(abs(h(0.0)) < 1e-12, "toFunc math builtin")
 // A free symbolic variable must be rejected at compile time.
 assert(throws(() => cas.toFunc(x + y, @["x"])), "toFunc unknown variable")
 
-print("toFunc IR battery OK")

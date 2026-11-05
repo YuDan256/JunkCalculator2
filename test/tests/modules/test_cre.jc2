@@ -43,4 +43,3 @@ m = che.cre.noniso((X, T) => 0.08 * exp(-6000 * (1 / T - 1 / 350)) * (1 - X),
 assert(m.cols() == 3, "noniso columns")
 assert(abs(m.max() - 446.3) < 2, "hot spot")
 
-print("che.cre battery OK")

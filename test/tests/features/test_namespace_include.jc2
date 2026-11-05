@@ -98,4 +98,3 @@ assert(Lex.f() == 2, "namespace function sees captured value")
 Lex.x = 5
 assert(Lex.f() == 2, "namespace function keeps lexical capture")
 
-print("namespace include battery OK")

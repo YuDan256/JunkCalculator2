@@ -3799,7 +3799,7 @@ void VM::profileFrameStart(CallFrame* frame) {
         if (fn->callCount == 50) {
             // 延迟收集 (Warm-up Profiling): 清除前 50 次的早期类型污染
             std::memset(fn->chunk.typeFeedback.data(), 0, fn->chunk.typeFeedback.size());
-        } else if (fn->callCount == 1000 && frame->closure) {
+        } else if (fn->callCount >= 1000 && frame->closure) {
             int fnIdx = frame->closure->compiledFnIndex;
             // 触发 JIT 编译 (Tier 2)
             if (g_enableJit && jitEntryPoints.find(fnIdx) == jitEntryPoints.end()) {

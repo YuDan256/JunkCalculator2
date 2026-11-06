@@ -1,0 +1,15 @@
+import deflate
+import inflate
+
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+for (h in @["", "61", "616263", "00010203ff", "e4b8ade69687"]) {
+    assert(inflate.inflate(deflate.deflate(h)) == h, "raw roundtrip")
+    assert(inflate.unzlib(deflate.zlib(h)) == h, "zlib roundtrip")
+    assert(inflate.gunzip(deflate.gzip(h)) == h, "gzip roundtrip")
+}
+
+assert(throws(() => deflate.deflate("zz")), "invalid hex rejected")
+assert(throws(() => deflate.deflate("0")), "odd hex rejected")

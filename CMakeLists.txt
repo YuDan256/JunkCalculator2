@@ -213,6 +213,12 @@ target_include_directories(inflate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(inflate PRIVATE jc2_codec)
 set_target_properties(inflate PROPERTIES PREFIX "") # Output inflate.dll instead of libinflate.dll
 
+# ★ Build Deflate Module as a standalone DLL（gzip/zlib/raw DEFLATE 压缩）
+add_library(deflate SHARED "src/lib/deflate/deflate_module.cpp")
+target_include_directories(deflate PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(deflate PRIVATE jc2_codec)
+set_target_properties(deflate PROPERTIES PREFIX "") # Output deflate.dll instead of libdeflate.dll
+
 # ★ Symbol collector: 离线收集每个 dll 模块符号 → sidecar json（不 LoadLibrary）
 function(add_symbol_collector mod)
     add_executable(collect_${mod} "src/lib/collect_main.cpp" "src/lib/collect_api.cpp")
@@ -236,7 +242,7 @@ function(add_symbol_collector mod)
         COMMENT "Collecting symbols: ${mod}.json")
 endfunction()
 
-foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto tls inflate)
+foreach(mod IN ITEMS image tensor prob bytes io ffi socket json latex window decimal regex crypto tls inflate deflate)
     add_symbol_collector(${mod})
 endforeach()
 
@@ -244,6 +250,7 @@ endforeach()
 target_link_libraries(collect_crypto PRIVATE jc2_crypto)
 target_link_libraries(collect_tls PRIVATE jc2_tls)
 target_link_libraries(collect_inflate PRIVATE jc2_codec)
+target_link_libraries(collect_deflate PRIVATE jc2_codec)
 
 # ★ Critical Linkage for Win32 OS:
 # ws2_32 (Networking), User32 & Gdi32 (Native GUI), imm32 (IME Focus Control)
@@ -254,7 +261,7 @@ if(WIN32)
 endif()
 
 # ★ Output libraries directly to the lib/ directory
-set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto tls inflate)
+set(JC2_LIBS image tensor prob bytes ffi socket json latex window decimal regex io crypto tls inflate deflate)
 foreach(mod ${JC2_LIBS})
     set_target_properties(${mod} PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/lib"

@@ -7,6 +7,7 @@
 #include <chrono>
 #include <iomanip>
 #include <algorithm>
+#include <exception>
 #include "frontend/Lexer.h"
 #include "frontend/Parser.h"
 #include "memory/Value.h"
@@ -32,6 +33,8 @@
 #include <vector>
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>
 #endif
 
 namespace jc {
@@ -57,6 +60,35 @@ extern jc::VM vm;
 
 void saveWorkspace(const std::string& filename, bool silent = false);
 
+// ANSI colors are terminal state, not process state. Any exit path that
+// bypasses normal output cleanup can leave the terminal colored.
+static void resetAnsiColorsUnsafe() {
+    static const char reset[] = "\033[0m";
+#ifdef _WIN32
+    DWORD written = 0;
+    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
+    if (out != INVALID_HANDLE_VALUE && out != nullptr) {
+        WriteFile(out, reset, 4, &written, nullptr);
+    }
+    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
+    if (err != INVALID_HANDLE_VALUE && err != nullptr) {
+        WriteFile(err, reset, 4, &written, nullptr);
+    }
+#else
+    ssize_t ignored = ::write(STDOUT_FILENO, reset, 4);
+    (void)ignored;
+    ignored = ::write(STDERR_FILENO, reset, 4);
+    (void)ignored;
+#endif
+}
+
+static void resetAnsiColors() {
+    if (!jc::colorsEnabled) return;
+    std::cout.flush();
+    std::cerr.flush();
+    resetAnsiColorsUnsafe();
+}
+
 void sigintHandler(int signum) {
     (void)signum;
     std::signal(SIGINT, sigintHandler); // 重新注册，防止某些平台恢复默认处理
@@ -64,6 +96,7 @@ void sigintHandler(int signum) {
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
         extern bool g_quiet;
         if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+        resetAnsiColors();
         vm.shutdown();
         std::exit(0);
     }
@@ -79,6 +112,7 @@ void sigintHandler(int signum) {
 
     if (g_sigintCount >= 3) {
         std::cerr << "\n[Hard Kill] Multiple Ctrl+C detected. Exiting immediately.\n";
+        resetAnsiColors();
         vm.shutdown();
         std::exit(1);
     }
@@ -658,6 +692,15 @@ int main(int argc, char* argv[]) {
 #endif
     jc::initSipHashSeed();
     jc::enableAnsiColors();
+    resetAnsiColorsUnsafe(); // clear color left by a previous abnormal exit
+    std::atexit([]() { resetAnsiColors(); });
+    std::set_terminate([]() { resetAnsiColorsUnsafe(); std::abort(); });
+#ifdef _WIN32
+    SetUnhandledExceptionFilter([](EXCEPTION_POINTERS*) -> LONG {
+        resetAnsiColorsUnsafe();
+        return EXCEPTION_CONTINUE_SEARCH;
+    });
+#endif
     std::signal(SIGINT, sigintHandler);
     std::string exeDir = getExecutableDir();
     // ===== 初始化超级虚拟机 =====

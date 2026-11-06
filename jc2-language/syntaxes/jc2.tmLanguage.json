@@ -19,6 +19,9 @@
             "include": "#numbers"
         },
         {
+            "include": "#dict-literal"
+        },
+        {
             "include": "#property-access"
         },
         {
@@ -82,6 +85,80 @@
                 {
                     "name": "comment.line.directive.jc2",
                     "match": "^#[A-Za-z_][A-Za-z0-9_]*.*$"
+                }
+            ]
+        },
+        "dict-literal": {
+            "name": "meta.structure.dict.jc2",
+            "begin": "%\\{",
+            "beginCaptures": {
+                "0": {
+                    "name": "punctuation.section.dict.begin.jc2"
+                }
+            },
+            "end": "\\}",
+            "endCaptures": {
+                "0": {
+                    "name": "punctuation.section.dict.end.jc2"
+                }
+            },
+            "patterns": [
+                {
+                    "include": "#comments"
+                },
+                {
+                    "include": "#dict-key"
+                },
+                {
+                    "include": "#fstrings"
+                },
+                {
+                    "include": "#rstrings"
+                },
+                {
+                    "include": "#strings"
+                },
+                {
+                    "include": "#numbers"
+                },
+                {
+                    "include": "#dict-literal"
+                },
+                {
+                    "include": "#function-call"
+                },
+                {
+                    "include": "#constants"
+                },
+                {
+                    "include": "#builtin-types"
+                },
+                {
+                    "include": "#builtin-functions"
+                },
+                {
+                    "include": "#operators"
+                },
+                {
+                    "include": "#punctuation"
+                },
+                {
+                    "include": "#macros"
+                },
+                {
+                    "include": "#identifiers"
+                }
+            ]
+        },
+        "dict-key": {
+            "patterns": [
+                {
+                    "match": "\\b([A-Za-z_][A-Za-z0-9_]*)\\s*(?=:)",
+                    "captures": {
+                        "1": {
+                            "name": "variable.other.key.dict.jc2"
+                        }
+                    }
                 }
             ]
         },

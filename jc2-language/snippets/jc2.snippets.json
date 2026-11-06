@@ -46,6 +46,20 @@
         ],
         "description": "If-Else statement"
     },
+    "Dict Literal": {
+        "prefix": "dict",
+        "body": [
+            "%{${1:key}: ${2:value}}"
+        ],
+        "description": "Dictionary literal"
+    },
+    "Dict Comprehension": {
+        "prefix": "dictfor",
+        "body": [
+            "%{${1:key}: ${2:value} for (${3:item} in ${4:iterable})}"
+        ],
+        "description": "Dictionary comprehension"
+    },
     "Class Definition": {
         "prefix": "class",
         "body": [

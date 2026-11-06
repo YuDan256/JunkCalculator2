@@ -579,10 +579,10 @@
       "signature": "if (cond) { ... } else { ... }  |  else if (cond) { ... }"
     },
     "while": {
-      "signature": "while (condition) { body }"
+      "signature": "while [:label] (condition) { body }"
     },
     "for": {
-      "signature": "for (init; cond; update) { body }  |  for (var in iterable) { body }"
+      "signature": "for [:label] (init; cond; update) { body }  |  for [:label] (var in iterable) { body }"
     },
     "is": {
       "signature": "a is b"
@@ -594,10 +594,10 @@
       "signature": "expr as Type  |  expr as (Type1 | Type2)"
     },
     "break": {
-      "signature": "break"
+      "signature": "break [:label] [expr]"
     },
     "continue": {
-      "signature": "continue"
+      "signature": "continue [:label]"
     },
     "return": {
       "signature": "return [expr]"

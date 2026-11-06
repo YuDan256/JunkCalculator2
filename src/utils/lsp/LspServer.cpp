@@ -1185,6 +1185,9 @@ namespace lsp {
                     int braceDepth = 0;
                     int enumBraceDepth = -1;
                     bool expectEnumBrace = false;
+                    int dictDepth = 0;
+                    bool pendingDictOpen = false;
+                    std::vector<bool> braceIsDict;
 
                     for (size_t i = 0; i < tokens.size(); ++i) {
                         const auto& t = tokens[i];
@@ -1192,12 +1195,19 @@ namespace lsp {
                         int tokenModifiers = 0;
 
                         if (t.type == TokenType::LBRACE) {
+                            bool isDict = pendingDictOpen;
+                            pendingDictOpen = false;
+                            braceIsDict.push_back(isDict);
+                            if (isDict) dictDepth++;
                             braceDepth++;
                             if (expectEnumBrace) {
                                 enumBraceDepth = braceDepth;
                                 expectEnumBrace = false;
                             }
                         } else if (t.type == TokenType::RBRACE) {
+                            bool isDict = !braceIsDict.empty() && braceIsDict.back();
+                            if (!braceIsDict.empty()) braceIsDict.pop_back();
+                            if (isDict && dictDepth > 0) dictDepth--;
                             if (braceDepth == enumBraceDepth) {
                                 enumBraceDepth = -1;
                             }
@@ -1216,6 +1226,81 @@ namespace lsp {
                             }
                             if (prevIdx >= 0 && tokens[prevIdx].type == TokenType::DOT) {
                                 isAfterDot = true;
+                            }
+                        }
+
+                        // `%{...}` is a dict literal only when `%` starts an
+                        // expression, not when it is the binary remainder
+                        // operator. In dict position, leave `%` to tmLanguage;
+                        // otherwise the semantic operator token overrides the
+                        // dict-literal scope and the editor looks unchanged.
+                        bool suppressDictPercent = false;
+                        if (t.type == TokenType::PERCENT) {
+                            int nextIdx = static_cast<int>(i) + 1;
+                            while (nextIdx < static_cast<int>(tokens.size()) &&
+                                   (tokens[nextIdx].type == TokenType::COMMENT ||
+                                    tokens[nextIdx].type == TokenType::NEWLINE)) {
+                                nextIdx++;
+                            }
+                            bool nextIsBrace = nextIdx < static_cast<int>(tokens.size()) &&
+                                               tokens[nextIdx].type == TokenType::LBRACE;
+                            if (nextIsBrace) {
+                                int prevIdx = static_cast<int>(i) - 1;
+                                bool newlineBefore = false;
+                                while (prevIdx >= 0 &&
+                                       (tokens[prevIdx].type == TokenType::COMMENT ||
+                                        tokens[prevIdx].type == TokenType::NEWLINE)) {
+                                    if (tokens[prevIdx].type == TokenType::NEWLINE) newlineBefore = true;
+                                    prevIdx--;
+                                }
+                                bool expressionStart = prevIdx < 0 || newlineBefore;
+                                if (!expressionStart) {
+                                    switch (tokens[prevIdx].type) {
+                                        case TokenType::IDENTIFIER:
+                                        case TokenType::NUMBER:
+                                        case TokenType::IMAGINARY:
+                                        case TokenType::STRING:
+                                        case TokenType::RSTRING:
+                                        case TokenType::FSTRING:
+                                        case TokenType::TRUE_KW:
+                                        case TokenType::FALSE_KW:
+                                        case TokenType::NONE_KW:
+                                        case TokenType::RPAREN:
+                                        case TokenType::RBRACKET:
+                                        case TokenType::RBRACE:
+                                            expressionStart = false;
+                                            break;
+                                        default:
+                                            expressionStart = true;
+                                            break;
+                                    }
+                                }
+                                suppressDictPercent = expressionStart;
+                            }
+                        }
+                        if (suppressDictPercent) pendingDictOpen = true;
+
+                        bool suppressDictKey = false;
+                        if (dictDepth > 0 && t.type == TokenType::IDENTIFIER) {
+                            int nextIdx = static_cast<int>(i) + 1;
+                            while (nextIdx < static_cast<int>(tokens.size()) &&
+                                   (tokens[nextIdx].type == TokenType::COMMENT ||
+                                    tokens[nextIdx].type == TokenType::NEWLINE)) {
+                                nextIdx++;
+                            }
+                            if (nextIdx < static_cast<int>(tokens.size()) &&
+                                tokens[nextIdx].type == TokenType::COLON) {
+                                int prevIdx = static_cast<int>(i) - 1;
+                                while (prevIdx >= 0 &&
+                                       (tokens[prevIdx].type == TokenType::COMMENT ||
+                                        tokens[prevIdx].type == TokenType::NEWLINE)) {
+                                    prevIdx--;
+                                }
+                                if (prevIdx < 0 ||
+                                    tokens[prevIdx].type == TokenType::LBRACE ||
+                                    tokens[prevIdx].type == TokenType::COMMA) {
+                                    suppressDictKey = true;
+                                }
                             }
                         }
 
@@ -1385,6 +1470,8 @@ namespace lsp {
                                     break;
                             }
                         }
+
+                        if (suppressDictPercent || suppressDictKey) tokenType = -1;
 
                         if (tokenType != -1) {
                             Position pos = doc->offsetToPosition(t.position);

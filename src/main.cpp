@@ -29,6 +29,10 @@
 #include <random>
 #include <array>
 #include <string_view>
+#include <vector>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 namespace jc {
     std::atomic<bool> g_isWaitingForInput{ false };
@@ -615,8 +619,41 @@ int runTestSuite(const std::string& testPath, const std::string& exeDir) {
     return failed > 0 ? 1 : 0;
 }
 
+#ifdef _WIN32
+// MSVC main() receives argv in the ANSI code page. All path handling in JC2
+// expects UTF-8, so normalize once before parsing the command line.
+static void normalizeUtf8Argv(int& argc, char**& argv,
+                              std::vector<std::string>& storage,
+                              std::vector<char*>& ptrs) {
+    if (argc <= 0 || !argv) return;
+    std::vector<std::string> converted;
+    converted.reserve(static_cast<size_t>(argc));
+    for (int i = 0; i < argc; ++i) {
+        int wlen = MultiByteToWideChar(CP_ACP, 0, argv[i], -1, nullptr, 0);
+        if (wlen <= 0) return;
+        std::wstring wide(static_cast<size_t>(wlen), L'\0');
+        if (MultiByteToWideChar(CP_ACP, 0, argv[i], -1, wide.data(), wlen) <= 0) return;
+        int u8len = WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        if (u8len <= 0) return;
+        std::string utf8(static_cast<size_t>(u8len), '\0');
+        if (WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), -1, utf8.data(), u8len, nullptr, nullptr) <= 0) return;
+        utf8.resize(static_cast<size_t>(u8len - 1));
+        converted.push_back(std::move(utf8));
+    }
+    storage = std::move(converted);
+    ptrs.clear();
+    ptrs.reserve(storage.size());
+    for (auto& s : storage) ptrs.push_back(s.data());
+    argc = static_cast<int>(ptrs.size());
+    argv = ptrs.data();
+}
+#endif
+
 int main(int argc, char* argv[]) {
 #ifdef _WIN32
+    std::vector<std::string> utf8Storage;
+    std::vector<char*> utf8Ptrs;
+    normalizeUtf8Argv(argc, argv, utf8Storage, utf8Ptrs);
     std::system("chcp 65001 > nul");
 #endif
     jc::initSipHashSeed();

@@ -62,28 +62,50 @@ void saveWorkspace(const std::string& filename, bool silent = false);
 
 // ANSI colors are terminal state, not process state. Any exit path that
 // bypasses normal output cleanup can leave the terminal colored.
+// LSP uses stdout as a protocol pipe: never write color bytes there.
+static bool g_suppressAnsiOutput = false;
+
+static bool ansiOutputIsTerminal(FILE* stream
+#ifdef _WIN32
+                                 , DWORD stdHandle
+#endif
+) {
+#ifdef _WIN32
+    (void)stream;
+    HANDLE h = GetStdHandle(stdHandle);
+    if (h == INVALID_HANDLE_VALUE || h == nullptr) return false;
+    DWORD mode = 0;
+    return GetConsoleMode(h, &mode) != 0;
+#else
+    return stream && isatty(fileno(stream)) != 0;
+#endif
+}
+
 static void resetAnsiColorsUnsafe() {
+    if (g_suppressAnsiOutput) return;
     static const char reset[] = "\033[0m";
 #ifdef _WIN32
     DWORD written = 0;
-    HANDLE out = GetStdHandle(STD_OUTPUT_HANDLE);
-    if (out != INVALID_HANDLE_VALUE && out != nullptr) {
-        WriteFile(out, reset, 4, &written, nullptr);
+    if (ansiOutputIsTerminal(nullptr, STD_OUTPUT_HANDLE)) {
+        WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), reset, 4, &written, nullptr);
     }
-    HANDLE err = GetStdHandle(STD_ERROR_HANDLE);
-    if (err != INVALID_HANDLE_VALUE && err != nullptr) {
-        WriteFile(err, reset, 4, &written, nullptr);
+    if (ansiOutputIsTerminal(nullptr, STD_ERROR_HANDLE)) {
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), reset, 4, &written, nullptr);
     }
 #else
-    ssize_t ignored = ::write(STDOUT_FILENO, reset, 4);
-    (void)ignored;
-    ignored = ::write(STDERR_FILENO, reset, 4);
-    (void)ignored;
+    if (ansiOutputIsTerminal(stdout, 0)) {
+        ssize_t ignored = ::write(STDOUT_FILENO, reset, 4);
+        (void)ignored;
+    }
+    if (ansiOutputIsTerminal(stderr, 0)) {
+        ssize_t ignored = ::write(STDERR_FILENO, reset, 4);
+        (void)ignored;
+    }
 #endif
 }
 
 static void resetAnsiColors() {
-    if (!jc::colorsEnabled) return;
+    if (!jc::colorsEnabled || g_suppressAnsiOutput) return;
     std::cout.flush();
     std::cerr.flush();
     resetAnsiColorsUnsafe();
@@ -690,6 +712,13 @@ int main(int argc, char* argv[]) {
     normalizeUtf8Argv(argc, argv, utf8Storage, utf8Ptrs);
     std::system("chcp 65001 > nul");
 #endif
+    for (int i = 1; i < argc; ++i) {
+        if (argv[i] && std::string(argv[i]) == "lsp") {
+            g_suppressAnsiOutput = true;
+            jc::colorsEnabled = false;
+            break;
+        }
+    }
     jc::initSipHashSeed();
     jc::enableAnsiColors();
     resetAnsiColorsUnsafe(); // clear color left by a previous abnormal exit

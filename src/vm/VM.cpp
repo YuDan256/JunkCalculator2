@@ -2,6 +2,7 @@
 #include "VM.h"
 #include "HelpRouter.h"
 #include "../memory/GcHeap.h"
+#include "../memory/MatrixBuild.h"
 #include "../frontend/Utf8.h"
 #include "../frontend/Lexer.h"
 #include "../frontend/Parser.h"
@@ -6098,89 +6099,10 @@ Value VM::run(int targetFrameDepth) {
                 int total = 0;
                 for (uint16_t cols : rowCols) total += cols;
 
-                bool hasComplex = false;
-                bool hasSymbolic = false;
-                bool hasOther = false;
-
-                auto canBeMatrixElement = [](const Value& v) -> bool {
-                    return v.isNumber() || v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION) ||
-                        v.isObjType(ObjType::COMPLEX) ||
-                        v.isObjType(ObjType::SYMBOLIC) ||
-                        v.isObjType(ObjType::REAL_MATRIX) || v.isObjType(ObjType::COMPLEX_MATRIX) || 
-                        v.isObjType(ObjType::SYM_MATRIX);
-                };
-
-                for (int ii = 0; ii < total; ++ii) {
-                    const Value& v = getReg(b + ii);
-                    if (v.isObjType(ObjType::COMPLEX) || v.isObjType(ObjType::COMPLEX_MATRIX)) hasComplex = true;
-                    if (v.isSymbolic() || v.isObjType(ObjType::SYM_MATRIX)) hasSymbolic = true;
-                    if (!canBeMatrixElement(v)) {
-                        hasOther = true;
-                    } else if (v.isObjType(ObjType::BIGINT) || v.isObjType(ObjType::FRACTION)) {
-                        try { v.asFloat(); } catch (...) { 
-                            if (!hasSymbolic) hasOther = true; // 如果有符号，大整数/分数可以直接转为符号，不算 Other
-                        }
-                    }
-                }
-
-                Value result;
-
-                if (hasOther) {
-                    JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists.");
-                } else {
-                    // 统一拼接：标量当 1×1 矩阵，先每行 integR，再各行 integC
-                    auto extractCell = [&](Value& cell) {
-                        if (!cell.isObjType(ObjType::REAL_MATRIX) && !cell.isObjType(ObjType::COMPLEX_MATRIX) && !cell.isObjType(ObjType::SYM_MATRIX)) {
-                            if (hasSymbolic) {
-                                cell = Value(SymMatrix(1, 1, { cell.asSymbolic() }));
-                            } else if (hasComplex) {
-                                cell = Value(ComplexMatrix(1, 1, { cell.asComplex() }));
-                            } else {
-                                cell = Value(RealMatrix(1, 1, { cell.asFloat() }));
-                            }
-                        }
-                        if (hasSymbolic) {
-                            if (cell.isObjType(ObjType::REAL_MATRIX) || cell.isObjType(ObjType::COMPLEX_MATRIX)) {
-                                cell = Value(cell.asSymMatrix());
-                            }
-                        } else if (hasComplex && cell.isObjType(ObjType::REAL_MATRIX)) {
-                            cell = Value(cell.asComplexMatrix());
-                        }
-                    };
-
-                    try {
-                        int idx = 0;
-                        Value matResult = Value::none();
-                        for (int i = 0; i < rows; ++i) {
-                            Value rowResult = Value::none();
-                            int cols = rowCols[i];
-                            for (int j = 0; j < cols; ++j) {
-                                Value cell = getReg(b + idx++);
-                                extractCell(cell);
-                                if (rowResult.isNone()) {
-                                    rowResult = cell;
-                                } else {
-                                    if (hasSymbolic) rowResult = Value(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjSymMatrix*>(cell.asObj())->mat));
-                                    else if (hasComplex) rowResult = Value(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjComplexMatrix*>(cell.asObj())->mat));
-                                    else rowResult = Value(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat.integR(static_cast<ObjRealMatrix*>(cell.asObj())->mat));
-                                }
-                            }
-                            if (matResult.isNone()) {
-                                matResult = rowResult;
-                            } else {
-                                if (hasSymbolic) matResult = Value(static_cast<ObjSymMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjSymMatrix*>(rowResult.asObj())->mat));
-                                else if (hasComplex) matResult = Value(static_cast<ObjComplexMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjComplexMatrix*>(rowResult.asObj())->mat));
-                                else matResult = Value(static_cast<ObjRealMatrix*>(matResult.asObj())->mat.integC(static_cast<ObjRealMatrix*>(rowResult.asObj())->mat));
-                            }
-                        }
-                        result = matResult;
-                    } catch (const jc::Jc2Error& e) {
-                        JC2_THROW(RuntimeError, "Block matrix concatenation failed: " + e.message);
-                    } catch (...) {
-                        JC2_THROW(RuntimeError, "Block matrix concatenation failed.");
-                    }
-                }
-                getReg(a) = result;
+                std::vector<Value> cells;
+                cells.reserve(static_cast<size_t>(total));
+                for (int ii = 0; ii < total; ++ii) cells.push_back(getReg(b + ii));
+                getReg(a) = buildMatrixValue(cells, rows, rowCols);
                 break;
             }
             case OpCode::LIST_INIT: {

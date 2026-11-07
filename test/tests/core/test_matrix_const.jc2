@@ -1,0 +1,15 @@
+// Constant matrix literals are folded into the constant pool.
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+f() = [1, 2; 3, 4]
+assert(f() == [1, 2; 3, 4], "constant matrix roundtrip")
+assert(f()[0, 0] == 1 && f()[1, 1] == 4, "constant matrix values")
+
+// Identical matrix constants share one pool slot.
+g() = @[[1, 2; 3, 4], [1, 2; 3, 4]]
+assert(g()[0] == g()[1], "deduplicated matrix constants")
+
+// Constant concatenation keeps VM semantics for invalid elements.
+assert(throws(() => [1, "x"]), "invalid constant matrix stays runtime")

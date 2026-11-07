@@ -1,4 +1,5 @@
 #include "IROptimizer.h"
+#include "../memory/MatrixBuild.h"
 #include <unordered_map>
 #include <unordered_set>
 #include <sstream>
@@ -224,6 +225,9 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
     //   必须把下游的 controlInput 改指到上游，否则 CFG 断裂、寄存器分配会错误复用寄存器。
     auto foldToConstant = [&](IRNode* node, Value val) {
         IRNode* upstream = node->controlInput;
+        bool materializeValue = val.isObjType(ObjType::REAL_MATRIX) ||
+                                val.isObjType(ObjType::COMPLEX_MATRIX) ||
+                                val.isObjType(ObjType::SYM_MATRIX);
         node->constVal = val;
         node->op = IROp::Constant;
         node->dataInputs.clear();
@@ -231,7 +235,10 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
             IRNode* other = otherPtr.get();
             if (other->controlInput == node) other->controlInput = upstream;
         }
-        node->controlInput = nullptr;
+        // Large matrix constants cannot be inlined as K operands in every
+        // use. Keep them on the control chain so the register allocated for
+        // repeated uses gets an actual LOADK instruction.
+        node->controlInput = materializeValue ? upstream : nullptr;
         changed = true;
     };
 
@@ -299,6 +306,32 @@ bool IROptimizer::foldConstants(IRGraph* graph) {
                 }
                 
                 foldToConstant(node, Value(res));
+            }
+        }
+        // 常量矩阵字面量：完全由 Constant 组成时，按与 VM 相同的
+        // integR/integC 语义折叠。拼接失败时保留 BuildMatrix，
+        // 让运行时按原语义报错。
+        else if (node->op == IROp::BuildMatrix) {
+            bool allConst = true;
+            std::vector<Value> cells;
+            cells.reserve(node->dataInputs.size());
+            for (IRNode* in : node->dataInputs) {
+                if (!in || in->op != IROp::Constant || capturedNodes.count(in)) {
+                    allConst = false;
+                    break;
+                }
+                cells.push_back(in->constVal);
+            }
+            if (allConst && !cells.empty()) {
+                try {
+                    std::vector<uint16_t> rowCols;
+                    rowCols.reserve(node->rowCols.size());
+                    for (uint32_t cols : node->rowCols) rowCols.push_back(static_cast<uint16_t>(cols));
+                    Value result = buildMatrixValue(cells, static_cast<uint16_t>(node->payload1), rowCols);
+                    if (!result.isNone()) foldToConstant(node, result);
+                } catch (...) {
+                    // 保留运行时构造，错误在真正执行时报告。
+                }
             }
         }
         // 二元运算折叠与代数化简

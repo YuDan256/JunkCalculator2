@@ -3,10 +3,12 @@
 
 #include "../memory/Value.h"
 #include <cstdint>
+#include <cstring>
 #include <string>
 #include <vector>
 #include <iostream>
 #include <iomanip>
+#include <unordered_map>
 
 namespace jc {
 
@@ -404,14 +406,72 @@ struct CallSignature {
     std::vector<ArgSource> refs;
 };
 
+// Constant-pool identity is type-sensitive: int32(1) and double(1.0) must
+// remain distinct constants because arithmetic and display semantics differ.
+static inline uint32_t constantTypeTag(const Value& v) {
+    if (v.isNone()) return 1;
+    if (v.isUninit()) return 2;
+    if (v.isBool()) return 3;
+    if (v.isInt32()) return 4;
+    if (v.isFloat()) return 5;
+    return 100u + static_cast<uint32_t>(v.asObj()->type);
+}
+
+struct ConstantPoolHash {
+    size_t operator()(const Value& v) const {
+        return ValueHasher{}(v) ^ (static_cast<size_t>(constantTypeTag(v)) * 0x9E3779B97F4A7C15ULL);
+    }
+};
+
+struct ConstantPoolEqual {
+    bool operator()(const Value& a, const Value& b) const {
+        if (constantTypeTag(a) != constantTypeTag(b)) return false;
+        if (a.isNone() || a.isUninit()) return true;
+        if (a.isBool()) return a.asBool() == b.asBool();
+        if (a.isInt32()) return a.asInt32() == b.asInt32();
+        if (a.isFloat()) return a.asFloatRaw() == b.asFloatRaw();
+        Obj* ao = a.asObj();
+        Obj* bo = b.asObj();
+        switch (ao->type) {
+            case ObjType::STRING: return static_cast<ObjString*>(ao)->str == static_cast<ObjString*>(bo)->str;
+            case ObjType::BIGINT: return static_cast<ObjBigInt*>(ao)->num == static_cast<ObjBigInt*>(bo)->num;
+            case ObjType::FRACTION: return static_cast<ObjFraction*>(ao)->frac == static_cast<ObjFraction*>(bo)->frac;
+            case ObjType::COMPLEX: return static_cast<ObjComplex*>(ao)->comp == static_cast<ObjComplex*>(bo)->comp;
+            case ObjType::REAL_MATRIX: {
+                const auto& am = static_cast<ObjRealMatrix*>(ao)->mat;
+                const auto& bm = static_cast<ObjRealMatrix*>(bo)->mat;
+                if (am.getRows() != bm.getRows() || am.getCols() != bm.getCols()) return false;
+                return am.rawData() == bm.rawData();
+            }
+            case ObjType::COMPLEX_MATRIX: {
+                const auto& am = static_cast<ObjComplexMatrix*>(ao)->mat;
+                const auto& bm = static_cast<ObjComplexMatrix*>(bo)->mat;
+                if (am.getRows() != bm.getRows() || am.getCols() != bm.getCols()) return false;
+                return am.rawData() == bm.rawData();
+            }
+            case ObjType::SYM_MATRIX: {
+                const auto& am = static_cast<ObjSymMatrix*>(ao)->mat;
+                const auto& bm = static_cast<ObjSymMatrix*>(bo)->mat;
+                if (am.getRows() != bm.getRows() || am.getCols() != bm.getCols()) return false;
+                return am.rawData() == bm.rawData();
+            }
+            case ObjType::SYMBOLIC:
+                return static_cast<ObjSym*>(ao)->sym.toString() == static_cast<ObjSym*>(bo)->sym.toString();
+            default:
+                return ao == bo;
+        }
+    }
+};
+
 class Chunk {
 public:
     std::vector<Instruction> code;
     std::vector<uint8_t> typeFeedback; // ★ JIT Tier 0 Profiling
     std::vector<uint32_t> osrCounters; // ★ JIT OSR Profiling (Step 78)
     std::vector<uint8_t> osrLoopHeaderFlags; // ★ 真正的循环头标志（基于 CFG 回边，Step 78+）
-    bool osrLoopHeadersComputed = false; // ★ 循环头标志是否已计算
+    bool osrLoopHeadersComputed = false; // ★ osrLoopHeaderFlags 是否已计算
     std::vector<Value> constants;
+    std::unordered_map<Value, uint32_t, ConstantPoolHash, ConstantPoolEqual> constantIndex;
     std::vector<int> lines;
     std::vector<InlineCache> inlineCaches;
     std::vector<ShapePattern> shapePatterns;
@@ -427,8 +487,12 @@ public:
     }
 
     uint32_t addConstant(const Value& val) {
+        auto it = constantIndex.find(val);
+        if (it != constantIndex.end()) return it->second;
+        uint32_t index = static_cast<uint32_t>(constants.size());
         constants.push_back(val);
-        return static_cast<uint32_t>(constants.size() - 1);
+        constantIndex.emplace(val, index);
+        return index;
     }
 
     uint32_t addInlineCache(uint32_t nameIdx) {

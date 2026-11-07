@@ -34,7 +34,7 @@ set(JC2_HEADERS
     "src/utils/deflate/Deflate.h"
     "src/utils/lsp/LspProtocol.h" "src/utils/lsp/LspServer.h" "src/utils/lsp/Workspace.h" "src/utils/lsp/BuiltinIndex.h" "src/utils/lsp/NameResolver.h" "src/utils/lsp/TypeChecker.h" "src/utils/lsp/Type.h" "src/utils/lsp/TypeInferrer.h"
     "src/jit/backend/ExecutableMemory.h" "src/jit/backend/Registers.h" "src/jit/backend/Operand.h" "src/jit/backend/MacroAssembler.h" "src/jit/ir/HIR.h" "src/jit/ir/HIRBuilder.h" "src/jit/frontend/BytecodeCFG.h" "src/jit/frontend/BytecodeToHIR.h" "src/jit/ir/LIR.h" "src/jit/ir/LIRBuilder.h" "src/jit/pass/GCM.h" "src/jit/pass/InstructionSelector.h" "src/jit/pass/LivenessAnalysis.h" "src/jit/pass/LinearScan.h" "src/jit/pass/ConstantFolding.h" "src/jit/pass/DCE.h" "src/jit/pass/GVN.h" "src/jit/pass/CSE.h" "src/jit/pass/AlgebraicSimplification.h" "src/jit/backend/CodeEmitter.h" "src/jit/runtime/Deoptimization.h"
-    "src/memory/Value.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
+    "src/memory/Value.h" "src/memory/MatrixBuild.h" "src/memory/GcHeap.h" "src/memory/SipHash.h"
     "src/math/Complex.h" "src/math/Matrix.h" "src/math/BigInt.h" "src/math/Fraction.h" "src/math/Base.h" "src/math/Tolerance.h"
     "src/lib/image/Image.h" "src/lib/decimal/Decimal.h"
     "src/vm/HelpRouter.h" "src/vm/Bytecode.h" "src/vm/BytecodeSerializer.h" "src/vm/BuiltinRegistry.h" "src/vm/PredefinedClasses.h" "src/vm/EngineInterrupt.h" "src/vm/VM.h"

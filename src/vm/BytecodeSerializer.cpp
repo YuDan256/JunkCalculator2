@@ -13,6 +13,7 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#undef CONST
 #endif
 
 namespace jc {
@@ -123,6 +124,131 @@ ObjClass* builtinClassByName(const std::string& name) {
     return static_cast<ObjClass*>(v.asObj());
 }
 
+void BytecodeSerializer::writeSymExpr(std::ostream& os, const SymExpr& expr) {
+    SymNode* node = expr.ptr;
+    if (!node) {
+        write8(os, static_cast<uint8_t>(SymType::NUM));
+        write8(os, 3);
+        write32(os, 0);
+        return;
+    }
+    write8(os, static_cast<uint8_t>(node->getType()));
+    switch (node->getType()) {
+        case SymType::NUM: {
+            const CASVal& v = static_cast<SymNum*>(node)->value;
+            if (std::holds_alternative<double>(v)) {
+                write8(os, 0);
+                writeDouble(os, std::get<double>(v));
+            } else if (std::holds_alternative<BigInt>(v)) {
+                write8(os, 1);
+                const BigInt& b = std::get<BigInt>(v);
+                write8(os, b.getSign() ? 1 : 0);
+                const auto& raw = b.getRawData();
+                write32(os, static_cast<uint32_t>(raw.size()));
+                for (uint32_t limb : raw) write32(os, limb);
+            } else if (std::holds_alternative<Fraction>(v)) {
+                write8(os, 2);
+                const Fraction& f = std::get<Fraction>(v);
+                write8(os, f.getNum().getSign() ? 1 : 0);
+                const auto& nRaw = f.getNum().getRawData();
+                write32(os, static_cast<uint32_t>(nRaw.size()));
+                for (uint32_t limb : nRaw) write32(os, limb);
+                write8(os, f.getDen().getSign() ? 1 : 0);
+                const auto& dRaw = f.getDen().getRawData();
+                write32(os, static_cast<uint32_t>(dRaw.size()));
+                for (uint32_t limb : dRaw) write32(os, limb);
+            } else {
+                write8(os, 3);
+                write32(os, static_cast<uint32_t>(std::get<int32_t>(v)));
+            }
+            return;
+        }
+        case SymType::VAR:
+            writeString(os, static_cast<SymVar*>(node)->name);
+            return;
+        case SymType::CONST:
+            write8(os, static_cast<uint8_t>(static_cast<SymConst*>(node)->id));
+            return;
+        case SymType::ADD:
+        case SymType::MUL: {
+            const auto& args = node->getType() == SymType::ADD
+                ? static_cast<SymAdd*>(node)->args
+                : static_cast<SymMul*>(node)->args;
+            write32(os, static_cast<uint32_t>(args.size()));
+            for (SymNode* arg : args) writeSymExpr(os, SymExpr(arg));
+            return;
+        }
+        case SymType::POW: {
+            auto* pw = static_cast<SymPow*>(node);
+            writeSymExpr(os, SymExpr(pw->base));
+            writeSymExpr(os, SymExpr(pw->exp));
+            return;
+        }
+        case SymType::FUNC: {
+            auto* fn = static_cast<SymFunc*>(node);
+            writeString(os, fn->name);
+            write32(os, static_cast<uint32_t>(fn->args.size()));
+            for (SymNode* arg : fn->args) writeSymExpr(os, SymExpr(arg));
+            return;
+        }
+    }
+    JC2_THROW(InternalError, "Unsupported symbolic node in bytecode serialization.");
+}
+
+SymExpr BytecodeSerializer::readSymExpr(std::istream& is) {
+    SymType type = static_cast<SymType>(read8(is));
+    switch (type) {
+        case SymType::NUM: {
+            uint8_t tag = read8(is);
+            if (tag == 0) return SymExpr(readDouble(is));
+            if (tag == 1) {
+                bool sign = read8(is) != 0;
+                uint32_t size = read32(is);
+                std::vector<uint32_t> raw(size);
+                for (uint32_t i = 0; i < size; ++i) raw[i] = read32(is);
+                return SymExpr(BigInt::fromRawData(sign, raw));
+            }
+            if (tag == 2) {
+                bool nSign = read8(is) != 0;
+                uint32_t nSize = read32(is);
+                std::vector<uint32_t> nRaw(nSize);
+                for (uint32_t i = 0; i < nSize; ++i) nRaw[i] = read32(is);
+                bool dSign = read8(is) != 0;
+                uint32_t dSize = read32(is);
+                std::vector<uint32_t> dRaw(dSize);
+                for (uint32_t i = 0; i < dSize; ++i) dRaw[i] = read32(is);
+                return SymExpr(Fraction(BigInt::fromRawData(nSign, nRaw), BigInt::fromRawData(dSign, dRaw)));
+            }
+            if (tag == 3) return SymExpr(CASVal(static_cast<int32_t>(read32(is))));
+            JC2_THROW(InternalError, "Unsupported symbolic number tag in bytecode.");
+        }
+        case SymType::VAR:
+            return SymExpr::makeVar(readString(is));
+        case SymType::CONST:
+            return SymExpr::makeConst(static_cast<SymConstId>(read8(is)));
+        case SymType::ADD:
+        case SymType::MUL: {
+            uint32_t count = read32(is);
+            std::vector<SymNode*> args;
+            args.reserve(count);
+            for (uint32_t i = 0; i < count; ++i) args.push_back(readSymExpr(is).ptr);
+            return type == SymType::ADD ? SymExpr::makeAdd(std::move(args))
+                                        : SymExpr::makeMul(std::move(args));
+        }
+        case SymType::POW:
+            return SymExpr::makePow(readSymExpr(is).ptr, readSymExpr(is).ptr);
+        case SymType::FUNC: {
+            std::string name = readString(is);
+            uint32_t count = read32(is);
+            std::vector<SymNode*> args;
+            args.reserve(count);
+            for (uint32_t i = 0; i < count; ++i) args.push_back(readSymExpr(is).ptr);
+            return SymExpr::makeFunc(std::move(name), std::move(args));
+        }
+    }
+    JC2_THROW(InternalError, "Unsupported symbolic node in bytecode.");
+}
+
 void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const std::unordered_set<int>& fnIdxConstants, int constIdx, int startIndex) {
     if (fnIdxConstants.count(constIdx)) {
         write8(os, static_cast<uint8_t>(ConstTag::FNIDX));
@@ -184,6 +310,14 @@ void BytecodeSerializer::writeValue(std::ostream& os, const Value& val, const st
         write16(os, static_cast<uint16_t>(m.getCols()));
         const auto& raw = m.rawData();
         for (Complex c : raw) { writeDouble(os, c.real); writeDouble(os, c.imag); }
+        return;
+    }
+    if (val.isObjType(ObjType::SYM_MATRIX)) {
+        write8(os, static_cast<uint8_t>(ConstTag::SYM_MATRIX));
+        SymMatrix m = val.asSymMatrix();
+        write16(os, static_cast<uint16_t>(m.getRows()));
+        write16(os, static_cast<uint16_t>(m.getCols()));
+        for (const auto& s : m.rawData()) writeSymExpr(os, s);
         return;
     }
     if (val.isObjType(ObjType::NAMESPACE)) {
@@ -268,6 +402,13 @@ Value BytecodeSerializer::readValue(std::istream& is, int baseIdx) {
                 raw[i] = Complex(re, im);
             }
             return Value(ComplexMatrix(r, c, raw));
+        }
+        case ConstTag::SYM_MATRIX: {
+            uint16_t r = read16(is);
+            uint16_t c = read16(is);
+            std::vector<SymExpr> raw(r * c);
+            for (int i = 0; i < r * c; ++i) raw[i] = readSymExpr(is);
+            return Value(SymMatrix(r, c, raw));
         }
         case ConstTag::NAMESPACE: {
             ObjNamespace* ns = GcHeap::get().allocate<ObjNamespace>();
@@ -698,11 +839,11 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
                 SymMatrix m = static_cast<ObjSymMatrix*>(obj)->mat;
                 write16(os, static_cast<uint16_t>(m.getRows()));
                 write16(os, static_cast<uint16_t>(m.getCols()));
-                for (const auto& s : m.rawData()) writeString(os, s.toString());
+                for (const auto& s : m.rawData()) writeSymExpr(os, s);
                 break;
             }
             case ObjType::SYMBOLIC: {
-                writeString(os, static_cast<ObjSym*>(obj)->sym.toString());
+                writeSymExpr(os, static_cast<ObjSym*>(obj)->sym);
                 break;
             }
             case ObjType::LIST: {
@@ -1033,27 +1174,13 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
                 case ObjType::SYM_MATRIX: {
                     uint16_t r = read16(is); uint16_t c = read16(is);
                     std::vector<SymExpr> raw(r * c);
-                    for (int i = 0; i < r * c; ++i) {
-                        std::string s = readString(is);
-                        if (jc::helpers::evalCallback) {
-                            try { raw[i] = jc::helpers::evalCallback(s).asSymbolic(); }
-                            catch (...) { raw[i] = SymExpr(BigInt(0)); }
-                        } else {
-                            raw[i] = SymExpr(BigInt(0));
-                        }
-                    }
+                    for (int i = 0; i < r * c; ++i) raw[i] = readSymExpr(is);
                     result = Value(SymMatrix(r, c, raw));
                     idToObj[id] = result.asObj();
                     break;
                 }
                 case ObjType::SYMBOLIC: {
-                    std::string s = readString(is);
-                    if (jc::helpers::evalCallback) {
-                        try { result = jc::helpers::evalCallback(s); }
-                        catch (...) { result = Value(SymExpr(BigInt(0))); }
-                    } else {
-                        result = Value(SymExpr(BigInt(0)));
-                    }
+                    result = Value(readSymExpr(is));
                     idToObj[id] = result.asObj();
                     break;
                 }

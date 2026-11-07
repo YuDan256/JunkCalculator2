@@ -10,6 +10,7 @@
 namespace jc {
 
 class VM;
+class SymExpr;
 
 class BytecodeSerializer {
 public:
@@ -17,7 +18,8 @@ public:
     static constexpr uint32_t JCW_MAGIC = 0x4A435702;      // JCW2（压缩）
     // 9：私有成员改为按声明类分组持久化（键是纯名字，不再把 classId 编进键名）
     // 10：生命周期钩子（init / finalize / 字段初始化器）从成员表移出，随 CLASS 记录单写
-    static constexpr uint32_t VERSION = 10;
+    // 11：常量池支持 SYM_MATRIX 常量
+    static constexpr uint32_t VERSION = 11;
 
     // 将一组编译好的函数序列化为 .jcb 文件
     static void saveJCB(const std::string& path, VM* vm, int startIndex, int count, bool stripDebug = false);
@@ -37,7 +39,8 @@ private:
         BIGINT, FRACTION, COMPLEX,
         REAL_MATRIX, COMPLEX_MATRIX,
         NAMESPACE, FNIDX, UNINIT,
-        BUILTIN_CLASS   // 内置类对象按名字序列化（match 兜底用的 MatchError 等）
+        BUILTIN_CLASS,  // 内置类对象按名字序列化（match 兜底用的 MatchError 等）
+        SYM_MATRIX      // 符号矩阵常量：行、列、每个元素的 SymExpr 字符串
     };
 
     static void write8(std::ostream& os, uint8_t v);
@@ -56,6 +59,8 @@ private:
 
     static void writeValue(std::ostream& os, const Value& val, const std::unordered_set<int>& fnIdxConstants, int constIdx, int startIndex);
     static Value readValue(std::istream& is, int baseIdx);
+    static void writeSymExpr(std::ostream& os, const SymExpr& expr);
+    static SymExpr readSymExpr(std::istream& is);
 
     static void writeChunk(std::ostream& os, const Chunk& chunk, int startIndex, bool stripDebug);
     static void readChunk(std::istream& is, Chunk& chunk, int baseIdx);

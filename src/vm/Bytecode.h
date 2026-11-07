@@ -551,7 +551,7 @@ public:
             if (idx < 0 || idx >= static_cast<int>(constants.size())) return "?";
             const Value& v = constants[idx];
             if (v.isString()) return "\"" + v.asString() + "\"";
-            std::ostringstream oss; oss << v; return oss.str();
+            return v.toRepr();
         };
 
         auto readExtra = [&]() -> int {

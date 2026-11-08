@@ -729,8 +729,13 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
     write32(os, VERSION);
 
     auto& fns = vm->getCompiledFunctions();
-    write32(os, static_cast<uint32_t>(fns.size()));
+    uint32_t persistedFnCount = 0;
     for (const auto& fn : fns) {
+        if (fn->name != "<script>") ++persistedFnCount;
+    }
+    write32(os, persistedFnCount);
+    for (const auto& fn : fns) {
+        if (fn->name == "<script>") continue;
         writeFunction(os, fn.get(), 0, false);
     }
 

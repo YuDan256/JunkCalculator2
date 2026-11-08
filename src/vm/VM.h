@@ -80,6 +80,10 @@ private:
     // ★ JIT OSR Profiling (Step 79)
     std::unordered_map<int, std::unordered_map<int, std::shared_ptr<jit::ExecutableMemory>>> osrCompiledCode;
     std::unordered_map<int, std::unordered_map<int, void*>> osrEntryPoints;
+    // Reused CompiledFunction slots for <script> execution. One slot per
+    // nesting depth, so REPL/eval does not append a new function forever.
+    std::vector<int> scriptFnSlots;
+    int scriptExecuteDepth = 0;
     void compileForOSR(int fnIdx, int loopHeaderIp);
 
     std::vector<PendingRef> pendingCallRefs;

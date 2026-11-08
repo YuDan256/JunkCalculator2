@@ -4629,16 +4629,44 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount) {
-    auto mainFn = std::make_shared<CompiledFunction>();
+    const int depth = scriptExecuteDepth++;
+    struct ScriptDepthGuard {
+        int& depth;
+        ~ScriptDepthGuard() { --depth; }
+    } depthGuard{scriptExecuteDepth};
+
+    int scriptFnIdx;
+    if (depth < static_cast<int>(scriptFnSlots.size())) {
+        scriptFnIdx = scriptFnSlots[static_cast<size_t>(depth)];
+    } else {
+        auto fn = std::make_shared<CompiledFunction>();
+        fn->name = "<script>";
+        scriptFnIdx = static_cast<int>(compiledFunctions.size());
+        compiledFunctions.push_back(fn);
+        scriptFnSlots.push_back(scriptFnIdx);
+    }
+
+    // A reused script slot must never execute machine code compiled for a
+    // previous chunk. Clear only this slot; other functions stay warm.
+    jitEntryPoints.erase(scriptFnIdx);
+    jitCompiledCode.erase(scriptFnIdx);
+    osrEntryPoints.erase(scriptFnIdx);
+    osrCompiledCode.erase(scriptFnIdx);
+
+    auto mainFn = compiledFunctions[static_cast<size_t>(scriptFnIdx)];
     mainFn->name = "<script>";
     mainFn->chunk = mainChunk;
     mainFn->localCount = localCount;
-    
+    mainFn->arity = 0;
+    mainFn->maxArity = 0;
+    mainFn->callCount = 0;
+    mainFn->sourceFile.clear();
+
     CallFrame mainFrame;
     mainFrame.function = mainFn.get();
-    mainFrame.chunk = &mainChunk;
+    mainFrame.chunk = &mainFn->chunk;
     mainFrame.ip = 0;
-    
+
     int newBase = 0;
     if (frameCount > 0) {
         CallFrame* prev = &frames[frameCount - 1];
@@ -4650,9 +4678,18 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     mainFrame.registerBase = newBase;
     mainFrame.returnRegister = 0;
     mainFrame.deferBase = static_cast<int>(deferStack.size());
-    
+
+    // Give <script> the same bytecode-closure shape as ordinary functions so
+    // OSR/Tier 2 conditions and GET_CURRENT_CLOSURE are consistent.
+    auto* scriptClosure = GcHeap::get().allocate<ObjClosure>(
+        std::vector<std::string>{}, std::vector<bool>{}, "<script>", nullptr);
+    scriptClosure->compiledFnIndex = scriptFnIdx;
+    scriptClosure->owner_class = nullptr;
+    GcObjGuard scriptGuard(scriptClosure);
+    mainFrame.closure = scriptClosure;
+
     if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
-    
+
     int targetDepth = frameCount;
     profileFrameStart(&mainFrame);
     frames[frameCount++] = mainFrame;

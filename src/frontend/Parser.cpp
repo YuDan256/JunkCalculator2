@@ -1236,18 +1236,21 @@ namespace jc {
                     while (match({ TokenType::NEWLINE })) {}
 
                     if (!check(TokenType::COLON) && !check(TokenType::COMMA) && !check(TokenType::RBRACKET)) {
-                        st = assignment();
+                        // Slice bounds are expressions; `assignment()` would
+                        // consume the slice colon as a type annotation
+                        // (`m.start : m.end`).
+                        st = ternary();
                     }
                     if (match({ TokenType::COLON })) {
                         isSl = true;
                         while (match({ TokenType::NEWLINE })) {}
                         if (!check(TokenType::COLON) && !check(TokenType::COMMA) && !check(TokenType::RBRACKET)) {
-                            en = assignment();
+                            en = ternary();
                         }
                         if (match({ TokenType::COLON })) {
                             while (match({ TokenType::NEWLINE })) {}
                             if (!check(TokenType::COMMA) && !check(TokenType::RBRACKET)) {
-                                sp = assignment();
+                                sp = ternary();
                             }
                         }
                     }

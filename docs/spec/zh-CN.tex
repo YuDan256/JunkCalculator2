@@ -1380,6 +1380,8 @@ return、break、continue、throw & 控制转移 \\
 \jc{for (p in e) body} 对 \jc{e} 的迭代值依次匹配模式 \jc{p} 并执行 \jc{body}。
 list 按存储顺序迭代；dict 按键插入顺序迭代；set 按插入顺序迭代；string 按 code point 迭代；
 matrix 按列迭代；实现 \jc{__iter__}/\jc{__next__} 的实例按迭代协议产生值。
+list 在进入 for-in 时建立浅快照；循环体内对原 list 的 push/remove 不改变
+当前迭代序列；快照中的引用元素仍与原对象共享。
 未实现 \jc{__iter__} 的实例按 public 字段迭代，键为字段名。
 循环变量默认提升到函数或 namespace 作用域；\jc{local} 修饰保持块级。
 for-in 按迭代协议求值：取得迭代器，重复调用 \jc{__next__} 并把结果与模式匹配；

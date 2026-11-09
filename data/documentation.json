@@ -1869,6 +1869,8 @@
       "    for (local x in iterable) { body }",
       "    for (const local x in iterable) { body }",
       "    Supported: arrays, column vectors, matrix columns, strings, lists, dicts.",
+      "    Lists are shallow-snapshotted at loop entry; append/remove inside the body",
+      "    does not extend or shorten the current iteration.",
       "",
       "    Destructured For-In:",
       "      for (@[var1, var2] in iterable) { body }",

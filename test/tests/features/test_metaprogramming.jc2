@@ -427,14 +427,8 @@ three = @lambda { \f. \x. f (f (f x)) }
 to_int = (n) => n((x) => x + 1)(0)
 assert(to_int(three) == 3, "Church numeral parsed from lambda syntax")
 assert(@lambda { (\x. x) 42 } == 42, "numeric literal as an atom")
-
-bad = false
-try {
-    eval("import @macros; @lambda { \\x y. x }")
-} catch (e) {
-    bad = true
-}
-assert(bad, "multi-binder sugar is rejected")
+assert(@lambda { \x y. x }(1)(2) == 1, "multi-binder sugar")
+assert(@lambda { \f x. f (f x) }(inc)(3) == 5, "multi-binder application")
 }
 
 // ── features/test_namespace.jc2 ─────────────────────────────────────────────

@@ -101,22 +101,32 @@ syntax lambda(stream) = {
             t = self.peek()
             if (t != none && t.type == "BACKSLASH") {
                 self.pos += 1
-                binder = self.peek()
-                if (binder == none || binder.type != "IDENTIFIER") {
+                binders = @[]
+                while (true) {
+                    binder = self.peek()
+                    if (binder == none || binder.type != "IDENTIFIER") { break }
+                    binders.push(binder)
+                    self.pos += 1
+                }
+                if (binders.len() == 0) {
                     throw "lambda: expected a binder after '\\'"
                 }
-                self.pos += 1
                 dot = self.peek()
                 if (dot == none || dot.type != "DOT") {
                     throw "lambda: expected '.' after binder"
                 }
                 self.pos += 1
                 body = self.parseTerm()
-                res = @[Token("LPAREN", "(", t.line, t.position),
-                        Token("IDENTIFIER", binder.lexeme, binder.line, binder.position),
-                        Token("RPAREN", ")", binder.line, binder.position),
-                        Token("ARROW", "=>", binder.line, binder.position)]
-                self.pushAll(res, body)
+                res = body
+                for (local i = binders.len() - 1; i >= 0; i -= 1) {
+                    binder = binders[i]
+                    wrapped = @[Token("LPAREN", "(", binder.line, binder.position),
+                                Token("IDENTIFIER", binder.lexeme, binder.line, binder.position),
+                                Token("RPAREN", ")", binder.line, binder.position),
+                                Token("ARROW", "=>", binder.line, binder.position)]
+                    self.pushAll(wrapped, res)
+                    res = wrapped
+                }
                 return res
             }
             return self.parseApplication()

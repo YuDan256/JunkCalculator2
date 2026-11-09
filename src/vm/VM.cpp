@@ -6723,8 +6723,22 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
-                if (iterable.isObjType(ObjType::LIST) || iterable.isString() || 
-                    iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) || 
+                if (iterable.isObjType(ObjType::LIST)) {
+                    // Snapshot at loop entry: appending inside the loop must
+                    // not extend the iteration.
+                    ObjList* snapshot = GcHeap::get().allocate<ObjList>();
+                    GcObjGuard snapshotGuard(snapshot);
+                    snapshot->vec = static_cast<ObjList*>(iterable.asObj())->vec;
+                    snapshot->is_frozen = true;
+                    ObjList* state = GcHeap::get().allocate<ObjList>();
+                    state->vec.push_back(Value(snapshot));
+                    state->vec.push_back(Value::fromInt32(0));
+                    getReg(a) = Value(state);
+                    break;
+                }
+
+                if (iterable.isString() ||
+                    iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) ||
                     iterable.isObjType(ObjType::SYM_MATRIX)) {
                     ObjList* state = GcHeap::get().allocate<ObjList>();
                     state->vec.push_back(iterable);
@@ -9454,7 +9468,20 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
         }
     }
 
-    if (iterable.isObjType(ObjType::LIST) || iterable.isString() ||
+    if (iterable.isObjType(ObjType::LIST)) {
+        // Snapshot list elements at loop entry. A live index iterator would
+        // follow appends forever (`for (i in a) a.push(i)`).
+        ObjList* snapshot = GcHeap::get().allocate<ObjList>();
+        GcObjGuard snapshotGuard(snapshot);
+        snapshot->vec = static_cast<ObjList*>(iterable.asObj())->vec;
+        snapshot->is_frozen = true;
+        ObjList* state = GcHeap::get().allocate<ObjList>();
+        state->vec.push_back(Value(snapshot));
+        state->vec.push_back(Value::fromInt32(0));
+        return Value(state);
+    }
+
+    if (iterable.isString() ||
         iterable.isObjType(ObjType::REAL_MATRIX) || iterable.isObjType(ObjType::COMPLEX_MATRIX) ||
         iterable.isObjType(ObjType::SYM_MATRIX)) {
         ObjList* state = GcHeap::get().allocate<ObjList>();

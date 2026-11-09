@@ -1,0 +1,16 @@
+a = @[1, 2]
+seen = @[]
+for (local i in a) {
+    a.push(i)
+    seen.push(i)
+}
+assert(a == @[1, 2, 1, 2], "appends still affect the original list")
+assert(seen == @[1, 2], "loop iterates the entry snapshot")
+
+nested = @[@[1], @[2]]
+n = 0
+for (local item in nested) {
+    nested.push(item)
+    n += 1
+}
+assert(n == 2, "nested snapshot limits iteration")

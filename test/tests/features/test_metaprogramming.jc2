@@ -409,6 +409,34 @@ result = ""
 assert(result != "", "selected platform branch")
 }
 
+// ── @lambda: lambda-calculus syntax macro ───────────────────────────────
+{
+import @macros
+
+id = @lambda { \x. x }
+assert(id(7) == 7, "lambda identity")
+
+konst = @lambda { \x. \y. x }
+assert(konst(1)(2) == 1, "curried constant")
+
+twice = @lambda { \f. \x. f (f x) }
+inc = (n) => n + 1
+assert(twice(inc)(3) == 5, "application is left-associative")
+
+three = @lambda { \f. \x. f (f (f x)) }
+to_int = (n) => n((x) => x + 1)(0)
+assert(to_int(three) == 3, "Church numeral parsed from lambda syntax")
+assert(@lambda { (\x. x) 42 } == 42, "numeric literal as an atom")
+
+bad = false
+try {
+    eval("import @macros; @lambda { \\x y. x }")
+} catch (e) {
+    bad = true
+}
+assert(bad, "multi-binder sugar is rejected")
+}
+
 // ── features/test_namespace.jc2 ─────────────────────────────────────────────
 {
 test_namespace_basic() = {

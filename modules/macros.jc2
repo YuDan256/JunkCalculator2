@@ -23,3 +23,125 @@ syntax macos(stream) = {
     }
     return quote { none }
 }
+
+// Lambda-calculus syntax macro: @lambda { \x. x }
+// Parses a single-binder lambda term and rewrites it to JC2 lambda tokens.
+syntax lambda(stream) = {
+    class LambdaParser {
+        init(tokens) = {
+            self.tokens = tokens
+            self.pos = 0
+        }
+
+        skipNewlines() = {
+            while (self.pos < len(self.tokens) && self.tokens[self.pos].type == "NEWLINE") {
+                self.pos += 1
+            }
+        }
+
+        peek() = {
+            self.skipNewlines()
+            if (self.pos >= len(self.tokens)) { return none }
+            return self.tokens[self.pos]
+        }
+
+        tokenAt(type, lexeme, at) = {
+            return Token(type, lexeme, at.line, at.position)
+        }
+
+        pushAll(dst, src) = {
+            for (local item in src) { dst.push(item) }
+        }
+
+        startsAtom(t) = {
+            if (t == none) { return false }
+            return t.type == "IDENTIFIER" || t.type == "NUMBER" || t.type == "LPAREN"
+        }
+
+        parseAtom() = {
+            t = self.peek()
+            if (t == none) { throw "lambda: expected an atom" }
+
+            if (t.type == "IDENTIFIER" || t.type == "NUMBER") {
+                self.pos += 1
+                return @[Token(t.type, t.lexeme, t.line, t.position)]
+            }
+
+            if (t.type == "LPAREN") {
+                self.pos += 1
+                inner = self.parseTerm()
+                close = self.peek()
+                if (close == none || close.type != "RPAREN") {
+                    throw "lambda: unclosed '('"
+                }
+                self.pos += 1
+                res = @[Token("LPAREN", "(", t.line, t.position)]
+                self.pushAll(res, inner)
+                res.push(Token("RPAREN", ")", close.line, close.position))
+                return res
+            }
+
+            throw "lambda: expected an identifier, number or '('"
+        }
+
+        parseApplication() = {
+            res = self.parseAtom()
+            while (true) {
+                t = self.peek()
+                if (!self.startsAtom(t)) { break }
+                arg = self.parseAtom()
+                res.push(Token("LPAREN", "(", t.line, t.position))
+                self.pushAll(res, arg)
+                res.push(Token("RPAREN", ")", t.line, t.position))
+            }
+            return res
+        }
+
+        parseTerm() = {
+            t = self.peek()
+            if (t != none && t.type == "BACKSLASH") {
+                self.pos += 1
+                binder = self.peek()
+                if (binder == none || binder.type != "IDENTIFIER") {
+                    throw "lambda: expected a binder after '\\'"
+                }
+                self.pos += 1
+                dot = self.peek()
+                if (dot == none || dot.type != "DOT") {
+                    throw "lambda: expected '.' after binder"
+                }
+                self.pos += 1
+                body = self.parseTerm()
+                res = @[Token("LPAREN", "(", t.line, t.position),
+                        Token("IDENTIFIER", binder.lexeme, binder.line, binder.position),
+                        Token("RPAREN", ")", binder.line, binder.position),
+                        Token("ARROW", "=>", binder.line, binder.position)]
+                self.pushAll(res, body)
+                return res
+            }
+            return self.parseApplication()
+        }
+
+        parseAll() = {
+            self.skipNewlines()
+            if (self.pos >= len(self.tokens)) { throw "lambda: expected a term" }
+            res = self.parseTerm()
+            self.skipNewlines()
+            if (self.pos < len(self.tokens)) {
+                tail = self.tokens[self.pos]
+                throw "lambda: trailing token '" + tail.lexeme + "'"
+            }
+            return res
+        }
+    }
+
+    input = stream.tokens()
+    parser = LambdaParser(input)
+    generated = parser.parseAll()
+
+    clear(input)
+    for (local t in generated) { input.push(t) }
+    stream.cursor = 0
+    return stream.parse()
+}
+

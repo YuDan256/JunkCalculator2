@@ -1,3 +1,9 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: matrix, matrix_const, slice_bounds, string_iter, vector_products, sum_identity
+// ═══════════════════════════════════════════════════════════════
+
+// ── core/test_matrix.jc2 ─────────────────────────────────────────────
+{
 // 矩阵构造与转换的顺序契约。
 // 此前 tests/ 对 matrix() / symmatrix() / toMatrix() / toList() 零覆盖。
 //
@@ -223,3 +229,184 @@ test_matrix_empty_slice_reshape_edges() = {
     assert(threw, "shape mismatch division")
 }
 test_matrix_empty_slice_reshape_edges()
+}
+
+// ── core/test_matrix_const.jc2 ─────────────────────────────────────────────
+{
+// Constant matrix literals are folded into the constant pool.
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+f() = [1, 2; 3, 4]
+assert(f() == [1, 2; 3, 4], "constant matrix roundtrip")
+assert(f()[0, 0] == 1 && f()[1, 1] == 4, "constant matrix values")
+
+// Identical matrix constants share one pool slot.
+g() = @[[1, 2; 3, 4], [1, 2; 3, 4]]
+assert(g()[0] == g()[1], "deduplicated matrix constants")
+
+// Constant concatenation keeps VM semantics for invalid elements.
+assert(throws(() => [1, "x"]), "invalid constant matrix stays runtime")
+}
+
+// ── core/test_slice_bounds.jc2 ─────────────────────────────────────────────
+{
+s = "hello"
+m = %{start: 1, end: 4}
+
+assert(s[m.start : m.end] == "ell", "slice bounds from properties")
+assert(s[m.start :] == "ello", "open end slice")
+assert(s[: m.end] == "hell", "open start slice")
+assert(s[m.start : m.end : 2] == "el", "step slice")
+assert(s[1 : 3] == "el", "literal slice still works")
+
+x: int = 1
+assert(x == 1, "type annotation still parses")
+}
+
+// ── core/test_string_iter.jc2 ─────────────────────────────────────────────
+{
+// 字符串的迭代与高阶方法。
+//
+// 背景：字符串迭代语义在语言里早已确立（for-in、s[i]、charAt、enumerate、reverse、
+// f(*s) 都按 UTF-8 code point，元素是长度 1 的字符串），但 map / filter / reduce /
+// any / all / countIf / groupBy / indexOf / count / join 在 stringProto 上注册了却没有
+// 字符串分支，调用必然抛 TypeError。helpers::iterateIterable 补上字符串分支后一次全通。
+// 返回类型：map → list；filter / sort → string（与已有的 reverse 一致）。
+
+test_string_iterates_by_code_point() = {
+    u = "中文a"
+    assert(len(u) == 3, "len counts code points")
+    assert(u[0] == "中", "indexing is code-point based")
+    assert(u.charAt(1) == "文", "charAt is code-point based")
+    assert(u.reversed() == "a文中", "reversed is code-point based")
+    seen = ""
+    for (c in u) { seen = seen + c }
+    assert(seen == u, "for-in walks code points")
+}
+test_string_iterates_by_code_point()
+
+test_string_higher_order_methods() = {
+    s = "cab"
+    assert(str(s.map((c) => c + "!")) == '@["c!", "a!", "b!"]', "map returns a list")
+    assert(s.filter((c) => c != "a") == "cb", "filter returns a string")
+    assert(s.reduce((acc, c) => acc + c, "") == "cab", "reduce folds over characters")
+    assert(s.any((c) => c == "a"), "any sees characters")
+    assert(s.all((c) => c != "z"), "all sees characters")
+    assert(s.countIf((c) => c == "a") == 1, "countIf counts characters")
+    assert(s.sorted() == "abc", "sorted returns a string")
+    assert(str(s.groupBy((c) => c)) == '%{"c": @["c"], "a": @["a"], "b": @["b"]}', "groupBy keys on characters")
+}
+test_string_higher_order_methods()
+
+test_string_search_methods() = {
+    s = "cab"
+    assert(s.indexOf("a") == 1, "indexOf finds a character")
+    assert(s.indexOf("z") == -1, "indexOf returns -1 when absent")
+    assert(s.count("a") == 1, "count counts characters")
+    assert(s.join("-") == "c-a-b", "join uses characters as elements")
+}
+test_string_search_methods()
+
+test_string_methods_handle_utf8() = {
+    u = "中文a"
+    assert(str(u.map((c) => c)) == '@["中", "文", "a"]', "map splits by code point")
+    assert(u.filter((c) => c != "文") == "中a", "filter keeps code points")
+    assert(u.sorted() == "a中文", "sorted compares code points")
+    assert(u.count("中") == 1, "count works on non-ASCII")
+    assert(u.join("|") == "中|文|a", "join works on non-ASCII")
+}
+test_string_methods_handle_utf8()
+
+test_string_methods_handle_empty() = {
+    assert(str("".map((c) => c)) == "@[]", "map of an empty string is an empty list")
+    assert("".filter((c) => true) == "", "filter of an empty string is empty")
+    assert("".sorted() == "", "sorted of an empty string is empty")
+    assert("".join("-") == "", "join of an empty string is empty")
+    assert("".reduce((acc, c) => acc + c, "S") == "S", "reduce of an empty string returns the init value")
+}
+test_string_methods_handle_empty()
+
+
+test_string_conversion_and_formatting() = {
+    assert(ord("A") == 65 && "A".ord() == 65, "ord global and method")
+    assert(ord("中") == 20013, "ord Unicode codepoint")
+    assert(chr(65) == "A" && chr(20013) == "中", "chr Unicode")
+    assert(parseNum("42") == 42 && "42".parseNum() == 42, "parseNum int")
+    assert(parseNum("3.5") == 3.5 && "3.5".parseNum() == 3.5, "parseNum float")
+    assert(parseNum(" 42 ") == 42, "parseNum trims whitespace")
+    assert(parseNum("1e3") == 1000.0, "parseNum exponent")
+    threw = false
+    try { parseNum("bad") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum invalid")
+    threw = false
+    try { parseNum("0xFF") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum rejects hex without consuming a prefix")
+    threw = false
+    try { parseNum("0b101") } catch (e) { threw = e.type == "MathError" }
+    assert(threw, "parseNum rejects binary without consuming a prefix")
+
+    assert("abc" * 3 == "abcabcabc", "string repetition")
+    assert(3 * "ha" == "hahaha", "string commutative repetition")
+    assert("hello"[::-1] == "olleh", "reverse slice")
+    assert("hello"[1:5:2] == "el", "step slice")
+    assert(r"\n" == "\\n", "raw string")
+    assert(len(r"\n") == 2, "raw string length")
+
+    name = "Alice"
+    assert(f"{255::x}" == "ff", "hex format")
+    assert(f"{7::+03d}" == "+07", "sign/width format")
+    assert(f"{10000::,}" == "10,000", "grouping format")
+    assert(f"{3.14159::.2f}" == "3.14", "fixed format")
+    assert(f"{name::>10}" == "     Alice", "right align")
+    assert(f"{name::^10}" == "  Alice   ", "center align")
+    assert(f"{0.25::%}" == "25%", "percent format")
+    assert(f"{name::.3s}" == "Ali", "string precision")
+}
+test_string_conversion_and_formatting()
+}
+
+// ── core/test_vector_products.jc2 ─────────────────────────────────────────────
+{
+a = [1; 2; 3]
+b = [4; 5; 6]
+c = [7; 8; 9]
+
+// Real inputs keep real result types.
+assert(type(a.dot(b)) == float, "real dot returns float")
+assert(a.dot(b) == 32, "real dot value")
+
+assert(type(a.cross(b)) == realmatrix, "real cross returns realmatrix")
+cr = a.cross(b)
+assert(cr[0, 0] == -3 && cr[1, 0] == 6 && cr[2, 0] == -3, "real cross value")
+
+assert(type(a.triple(b, c)) == float, "real triple returns float")
+assert(a.triple(b, c) == 0, "real triple value")
+
+// Any complex input keeps complex result types.
+cx = [1 + 1i; 0; 0]
+cy = [1; 0; 0]
+ez = [0; 0; 1]
+
+assert(type(cx.dot(cy)) == complex, "mixed dot returns complex")
+assert(cx.dot(cy) == 1 - 1i, "mixed dot uses conjugate")
+assert(type(cx.cross(cy)) == complexmatrix, "mixed cross returns complexmatrix")
+assert(type(cx.triple(cy, ez)) == complex, "mixed triple returns complex")
+}
+
+// ── core/test_sum_identity.jc2 ─────────────────────────────────────────────
+{
+assert(type(@[].sum()) == int, "empty list sum is int")
+assert(@[].sum() == 0, "empty list sum is zero")
+assert(type(@{}.sum()) == int, "empty set sum is int")
+assert(@{}.sum() == 0, "empty set sum is zero")
+
+assert(@[1, 2].sum() == 3, "integer list sum stays int")
+assert(type(@[1, 2].sum()) == int, "integer list sum type")
+assert(@[1.0, 2.0].sum() == 3.0, "float list sum stays float")
+
+f(a, ...b; c, ...d) = a + b.sum() + c + size(d)
+assert(f(c=3, a=1) == 4, "empty rest sum does not promote to float")
+assert(type(f(c=3, a=1)) == int, "empty rest result is int")
+}

@@ -1,3 +1,9 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: macro, macros_platform, namespace, namespace_export, namespace_include
+// ═══════════════════════════════════════════════════════════════
+
+// ── features/test_macro.jc2 ─────────────────────────────────────────────
+{
 test_basic_quote() = {
     macro twice(node) = {
         return quote {
@@ -380,3 +386,261 @@ test_recursive_and_gensym_macros() = {
     assert((@gensym_pair()) == 3, "gensym names are distinct")
 }
 test_recursive_and_gensym_macros()
+}
+
+// ── features/test_macros_platform.jc2 ─────────────────────────────────────────────
+{
+import @macros
+
+result = ""
+
+@windows {
+    result = "windows"
+}
+
+@linux {
+    result = "linux"
+}
+
+@macos {
+    result = "macos"
+}
+
+assert(result != "", "selected platform branch")
+}
+
+// ── features/test_namespace.jc2 ─────────────────────────────────────────────
+{
+test_namespace_basic() = {
+    namespace MathUtils {
+        const PI_APPROX = 3.14
+        add(a, b) = a + b
+        local hidden = 42
+    }
+    
+    assert(MathUtils.PI_APPROX == 3.14, "Namespace const access failed")
+    assert(MathUtils.add(2, 3) == 5, "Namespace method call failed")
+    assert(!("hidden" in MathUtils), "Namespace local hiding failed")
+}
+test_namespace_basic()
+
+test_namespace_dynamic() = {
+    namespace Dyn {}
+    
+    Dyn.val = 100
+    assert(Dyn.val == 100, "Namespace dynamic assignment failed")
+    
+    Dyn.mul = (x) => x * 2
+    assert(Dyn.mul(5) == 10, "Namespace dynamic method failed")
+}
+test_namespace_dynamic()
+
+test_namespace_freeze() = {
+    namespace Locked {
+        val = 1
+    }
+    freeze(Locked)
+    
+    caught = false
+    try {
+        Locked.val = 2
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "Namespace freeze failed to protect")
+}
+test_namespace_freeze()
+
+test_anonymous_namespace_and_self_ref() = {
+    const Factory = namespace {
+        val = 42
+        
+        // 返回命名空间自身
+        get_self() = namespace
+        
+        // 动态向自身挂载属性
+        register(k, v) = {
+            namespace[k] = v
+        }
+    }
+    
+    assert(Factory.val == 42, "Anonymous namespace property access failed")
+    assert(Factory.get_self() == Factory, "The 'namespace' keyword should evaluate to the namespace itself")
+    
+    Factory.register("dynamic_field", 100)
+    assert(Factory.dynamic_field == 100, "Self-reference mutation failed")
+}
+test_anonymous_namespace_and_self_ref()
+
+// 命名空间字段未命中 → 兜底到同名全局内建函数时，接收者不得占实参位。
+// 回归：cas.sin(10) 曾调用 sin(<namespace cas>, 10) → args[0].asFloat() 抛
+// "Expected a real number."；只有该全局名被物化后（先写过 sin(10)）才碰巧走对分支。
+import cas
+
+test_namespace_falls_back_to_global_builtin() = {
+    assert(cas.sin(10) == sin(10), "cas.sin(10) must match the global sin(10)")
+    assert(cas.cbrt(27) == 3, "cas.cbrt(27) must be 3")
+    assert(cas.asinh(0) == 0, "cas.asinh(0) must be 0")
+    assert(cas.trunc(2.7) == 2, "cas.trunc(2.7) must be 2")
+    assert(cas.abs(-3) == 3, "cas.abs(-3) must be 3")
+}
+test_namespace_falls_back_to_global_builtin()
+
+test_namespace_builtin_fallback_keeps_arity_check() = {
+    caught = false
+    try {
+        cas.sin()
+    } catch (e) {
+        caught = "expects 1 arguments" in e.message
+    }
+    assert(caught, "the fallback still enforces arity")
+}
+test_namespace_builtin_fallback_keeps_arity_check()
+
+test_anonymous_namespace_postfix() = {
+    assert(namespace "AnonNs" { n = 3 }.n == 3, "anonymous namespace postfix")
+}
+test_anonymous_namespace_postfix()
+
+test_anonymous_enum_postfix() = {
+    assert(enum "AnonEnum" { A, B }.A == 0, "anonymous enum postfix A")
+    assert(enum "AnonEnum2" { A, B }.B == 1, "anonymous enum postfix B")
+}
+test_anonymous_enum_postfix()
+}
+
+// ── features/test_namespace_export.jc2 ─────────────────────────────────────────────
+{
+namespace A {
+    a = 1
+    include namespace { b = 2 }
+}
+assert(A.a == 1, "namespace own member")
+assert(A.b == 2, "include into namespace")
+
+namespace O {
+    namespace I {
+        include namespace { x = 3 }
+    }
+}
+assert(O.I.x == 3, "nested namespace include")
+
+namespace C {
+    include namespace D { e = 1 }
+}
+assert(C.e == 1, "include named namespace contents")
+assert(C.D.e == 1, "include named namespace binding")
+
+
+f(flag) = {
+    if (flag) include namespace { x = 1 }
+    else include namespace { y = 2 }
+}
+namespace C { f(true) }
+assert(C.x == 1, "conditional include true branch")
+namespace D { f(false) }
+assert(D.y == 2, "conditional include false branch")
+}
+
+// ── features/test_namespace_include.jc2 ─────────────────────────────────────────────
+{
+// Include merge must not partially mutate on conflict.
+caught = false
+try {
+    namespace Bad {
+        include namespace { a = 1 }
+        include namespace { a = 2 }
+        c = 3
+    }
+} catch (e) {
+    caught = true
+    assert("Include conflict" in e.message, "include conflict message")
+}
+assert(caught, "include conflict must throw")
+
+namespace Good {
+    include namespace { a = 1 }
+    include namespace { b = 2 }
+    c = 3
+}
+assert(Good.a == 1 && Good.b == 2 && Good.c == 3, "include success")
+
+// A failed namespace construction must not leave a pending include context.
+try {
+    namespace Leak {
+        include namespace { x = 1 }
+        throw ValueError("boom")
+    }
+} catch (e) {}
+
+leaked = false
+try {
+    include namespace { y = 2 }
+} catch (e) {
+    leaked = true
+}
+assert(leaked, "pending namespace context must be cleaned")
+
+// 	ry include import math must still bind math in the namespace.
+namespace WithTry {
+    try include import math
+}
+assert(WithTry.math != none, "try include import binds math")
+
+// local import must stay local even inside try/include.
+namespace WithLocal {
+    try include local import math
+}
+assert(!("math" in getFields(WithLocal)), "local import must not become a field")
+assert(WithLocal.PI != none, "include still merges math fields")
+
+// Private fields stay private; const fields keep their constness.
+namespace ConstSrc {
+    const c = 1
+    local hidden = 2
+    vis = 3
+    get() = hidden
+}
+namespace ConstDst {
+    include ConstSrc
+}
+assert(ConstDst.c == 1, "include copies const field")
+assert(ConstDst.vis == 3, "include copies public field")
+assert(ConstDst.get() == 2, "include keeps closure over private field")
+assert(!("hidden" in getFields(ConstDst)), "include does not copy private field")
+threw = false
+try { ConstDst.c = 9 } catch (e) { threw = true }
+assert(threw, "included const field remains read-only")
+
+// A direct namespace field must not overwrite an included member.
+try {
+    namespace BadBefore {
+        c = 1
+        include ConstSrc
+    }
+    assert(false, "direct field before include must conflict")
+} catch (e) {
+    assert("Include conflict" in e.message, "direct-before conflict message")
+}
+try {
+    namespace BadAfter {
+        include ConstSrc
+        c = 1
+    }
+    assert(false, "direct field after include must conflict")
+} catch (e) {
+    assert("Include conflict" in e.message, "direct-after conflict message")
+}
+
+// Namespace functions are lexical closures: exported x is the final value,
+// but later N.x writes do not rewrite the captured binding.
+namespace Lex {
+    x = 1
+    f() = x
+    x = 2
+}
+assert(Lex.x == 2, "namespace exports captured final value")
+assert(Lex.f() == 2, "namespace function sees captured value")
+Lex.x = 5
+assert(Lex.f() == 2, "namespace function keeps lexical capture")
+}

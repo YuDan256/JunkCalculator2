@@ -1,0 +1,381 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: arithmetic, cmp, equality
+// ═══════════════════════════════════════════════════════════════
+
+// ── core/test_arithmetic.jc2 ─────────────────────────────────────────────
+{
+test_basic_math() = {
+    assert(1 + 1 == 2, "Addition failed")
+    assert(2 * 3 == 6, "Multiplication failed")
+    assert(10 / 2 == 5, "Division failed")
+    assert(2 ^ 3 == 8, "Power failed")
+    assert(10 % 3 == 1, "Modulo failed")
+}
+test_basic_math()
+
+test_abs_preserves_numeric_type() = {
+    // ★ 回归：abs 曾漏掉 int32 分支，径直落到 std::abs(asFloat())，于是
+    //   abs(1) → 1.0（float），而同族的 round/floor/ceil/trunc/sgn 都保持 int，
+    //   同一语言两种口径。精确整数值必须在取绝对值后仍是精确整数。
+    assert(type(abs(1)) == int, "abs(1) stays int")
+    assert(type(abs(-1)) == int, "abs(-1) stays int")
+    assert(type(abs(0)) == int, "abs(0) stays int")
+    assert(abs(-1) == 1, "and the value is right")
+    assert(abs(0) == 0, "abs(0) = 0")
+
+    // 与 round 族口径一致
+    assert(type(abs(round(1))) == int, "abs of an int from round() is still int")
+
+    // 边界：INT32_MIN 取绝对值不溢出（经 BigInt 取值）
+    assert(abs(-2147483648) == 2147483648, "abs(INT32_MIN) does not overflow")
+
+    // 其它类型的既有行为不变
+    assert(type(abs(1 / 2)) == fraction, "abs of a fraction stays fraction")
+    assert(str(abs(-1 / 2)) == "1/2", "fraction absolute value")
+    assert(type(abs(10 ^ 30)) == int, "abs of a big integer stays int")
+    assert(abs(-2.5) == 2.5, "abs of a float stays float")
+    assert(type(abs(-2.5)) == float, "and its type is float")
+    assert(abs(3 + 4i) == 5.0, "complex modulus is still 5")
+}
+test_abs_preserves_numeric_type()
+
+test_complex() = {
+    c1 = 3 + 4i
+    c2 = 1 - 2i
+    assert(c1 + c2 == 4 + 2i, "Complex addition failed")
+    assert(c1 - c2 == 2 + 6i, "Complex subtraction failed")
+    assert(c1 * c2 == 11 - 2i, "Complex multiplication failed")
+}
+test_complex()
+
+test_fraction() = {
+    f1 = frac(1, 2)
+    f2 = frac(1, 3)
+    assert(f1 + f2 == frac(5, 6), "Fraction addition failed")
+    assert(f1 * f2 == frac(1, 6), "Fraction multiplication failed")
+    assert(f1 / f2 == frac(3, 2), "Fraction division failed")
+}
+test_fraction()
+
+test_matrix_math() = {
+    m1 = [1, 2; 3, 4]
+    m2 = [2, 0; 0, 2]
+    
+    m_add = m1 + m2
+    assert(m_add == [3, 2; 3, 6], "Matrix addition failed")
+    
+    m_mul = m1 * m2
+    assert(m_mul == [2, 4; 6, 8], "Matrix multiplication failed")
+    
+    m_scale = m1 * 10
+    assert(m_scale == [10, 20; 30, 40], "Matrix scalar multiplication failed")
+}
+test_matrix_math()
+
+// ── 非有限值：nan() / inf() ──
+// JC2 禁止除零（0/0、1.0/0.0 均抛 MathError），因此 NaN 只能由 nan() 构造；
+// 没有这两个构造器时 isnan/isinf 不可达。
+throws(f) = { try { f(); return false } catch (e) { return true } }
+
+test_non_finite() = {
+    assert(isnan(nan()), "nan() should be NaN")
+    assert(!isnan(1.0), "finite value should not be NaN")
+    assert(!isnan("abc"), "non-float should not be NaN")
+
+    assert(isinf(inf()), "inf() should be infinite")
+    assert(isinf(-inf()), "-inf() should be infinite")
+    assert(!isinf(1.0), "finite value should not be infinite")
+
+    assert(!isfinite(inf()), "inf is not finite")
+    assert(!isfinite(nan()), "nan is not finite")
+    assert(isfinite(1.0), "1.0 is finite")
+
+    // 除零仍然报错（不是靠产生 inf 来"绕过"）
+    assert(throws(() => 1.0 / 0.0), "float division by zero should throw")
+    assert(throws(() => 0.0 / 0.0), "0.0/0.0 should throw")
+
+    // 与无穷的算术
+    assert(1.0 / inf() == 0.0, "1.0 / inf() should be 0.0")
+    assert(inf() > 1.0e308, "inf() should exceed max double")
+}
+test_non_finite()
+
+
+test_operator_semantics() = {
+    assert(2 ^ 3 ^ 2 == 512, "power is right-associative")
+    assert(-2 ^ 2 == -4, "unary minus binds below power")
+
+    assert(7 ~/ 2 == 3, "integer division")
+    assert(-7 ~/ 2 == -3, "integer division truncates toward zero")
+    assert(7 ~/ -2 == -3, "integer division negative divisor")
+    assert((-7) % 3 == -1 && 7 % -3 == 1, "truncated modulo")
+    assert(8 \ 2 == 1 / 4, "left division")
+
+    assert(5 ^^ 3 == 6, "bitwise xor")
+    assert((1 | 2) == 3, "bitwise or")
+    assert(1 | 2 == 3, "bitwise binds above comparison")
+
+    assert((1 && "x") == true, "logical and returns bool")
+    assert((0 || "x") == true, "logical or returns bool")
+    assert(!@[], "empty list is falsy")
+
+    calls = @[0]
+    mid() = { calls[0] += 1; return 5 }
+    assert(0 <= mid() <= 10, "chained comparison")
+    assert(calls[0] == 1, "middle evaluated once")
+
+    calls[0] = 0
+    assert((false && mid()) == false, "short-circuit and")
+    assert(calls[0] == 0, "and does not evaluate right")
+    assert((true || mid()) == true, "short-circuit or")
+    assert(calls[0] == 0, "or does not evaluate right")
+
+    calls[0] = 0
+    assert((true ? 1 : mid()) == 1, "ternary true branch")
+    assert(calls[0] == 0, "ternary skips false branch")
+    assert((false ? mid() : 2) == 2, "ternary false branch")
+    assert(calls[0] == 0, "ternary skips true branch")
+
+    assert(int("42") == 42, "int string")
+    assert(int("0xFF") == 255, "int hex string")
+    assert(float("1.5") == 1.5, "float string")
+    assert(float(" -2.5e2 ") == -250.0, "float string with whitespace/scientific")
+    assert(float("0x10") == 16.0, "float hex string")
+    assert(float("0b1010") == 10.0, "float binary string")
+    assert(float("-0o10") == -8.0, "float octal string with sign")
+    assert(throws(() => float("1.5x")), "invalid float string should throw")
+    assert(throws(() => float("")), "empty float string should throw")
+    assert(type(7 / 2) == fraction, "division is exact fraction")
+    assert(7 / 2 == frac(7, 2), "fraction value")
+}
+test_operator_semantics()
+
+
+test_numeric_promotion_and_errors() = {
+    assert(type(1 + 2) == int, "int + int")
+    assert(type(1 + 2.0) == float, "int + float")
+    assert(type(1 + frac(1, 2)) == fraction, "int + fraction")
+    assert(type(1 + 1i) == complex, "int + complex")
+    assert(type(1 + sym("x")) == symbolic, "int + symbolic")
+
+    assert(type(2 ^ 31) == int && 2 ^ 31 == 2147483648, "large int stays int")
+    assert(2147483647 + 1 == 2147483648, "int does not overflow at int32")
+    assert(type(2 ^ 100) == int, "big integer type")
+
+    assert(1 / 3 == frac(1, 3), "division exact fraction")
+    assert(type(1 / 3) == fraction, "division type")
+    assert(isinf(1.0e308 * 10.0), "float overflow becomes inf")
+
+    checks = @[
+        () => 0 / 0,
+        () => 1 % 0,
+        () => frac(1, 0),
+        () => float(2 ^ 1024),
+        () => 0 ^ -1
+    ]
+    for (f in checks) {
+        threw = false
+        try { f() } catch (e) { threw = e.type == "MathError" }
+        assert(threw, "numeric boundary raises MathError")
+    }
+
+    assert(str(sqrt(-1)) == "i", "sqrt(-1) is the symbolic imaginary unit")
+    assert(type(sqrt(-1)) == symbolic, "sqrt(-1) type")
+
+    assert(hash(1) == hash(1.0), "equal numeric hash")
+    assert(hash(1 + 0i) == hash(1), "complex zero-imag hash")
+    assert(hash(frac(1, 2)) == hash(0.5), "fraction/float hash")
+    assert(hash(-0.0) == hash(0.0), "signed zero hash")
+}
+test_numeric_promotion_and_errors()
+}
+
+// ── core/test_cmp.jc2 ─────────────────────────────────────────────
+{
+// <=> 三向比较：内建类型、__cmp__ / __rcmp__、与 < / == 的联动、排序与比较器校验
+
+// ── 内建类型 ──
+assert((1 <=> 2) == -1, "int ascending")
+assert((2 <=> 2) == 0, "int equal")
+assert((3 <=> 2) == 1, "int descending")
+assert((1 <=> 1.0) == 0, "int vs float equal")
+assert(("a" <=> "b") == -1, "string ordering")
+assert(("b" <=> "b") == 0, "string equal")
+assert((true <=> 1) == 0, "bool as 1")
+assert((true <=> 2) == -1, "bool ordering")
+assert(((1 <=> 2) < 0), "parenthesized result can be compared")
+
+// ── 不可排序：complex / NaN 一律 TypeError（相等也不返回 0）──
+threw = false
+try { x = complex(1, 2) <=> complex(1, 2) } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "complex is not orderable")
+threw = false
+try { x = nan <=> 1 } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "NaN is not orderable")
+
+// ── __cmp__ 驱动 <=> / < / == ──
+class Cmp {
+    init(x) = { self.x = x }
+    __cmp__(o) = self.x <=> (type(o) == Cmp ? o.x : o)
+}
+a = Cmp(1); b = Cmp(2)
+assert((a <=> b) == -1, "__cmp__ drives <=>")
+assert(a < b && !(b < a), "__cmp__ drives <")
+assert(a == a && !(a == b), "__cmp__ drives ==")
+assert((Cmp(3) <=> 2) == 1, "__cmp__ against a number")
+
+// ── 只有 __cmp__ 时，右侧实例自动取反 ──
+assert((2 <=> Cmp(3)) == -1, "right-hand __cmp__ is negated")
+
+// ── __rcmp__ 优先于自动取反 ──
+class RCmp {
+    init(x) = { self.x = x }
+    __cmp__(o) = self.x <=> (type(o) == RCmp ? o.x : o)
+    __rcmp__(o) = o <=> self.x
+}
+assert((2 <=> RCmp(3)) == -1, "__rcmp__ handles reflected compare")
+
+// ── __cmp__ 返回非法值 → TypeError ──
+class BadCmp {
+    init() = %{ }
+    __cmp__(o) = true
+}
+threw = false
+try { x = BadCmp() <=> BadCmp() } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "__cmp__ must return a real number")
+
+// ── 自然序 sort / min / max 接 __cmp__ ──
+L = @[Cmp(3), Cmp(1), Cmp(2)]
+L.sort()
+assert(L[0].x == 1 && L[1].x == 2 && L[2].x == 3, "natural sort uses __cmp__")
+assert(@[Cmp(3), Cmp(1), Cmp(2)].min().x == 1, "min uses __cmp__")
+assert(@[Cmp(3), Cmp(1), Cmp(2)].max().x == 3, "max uses __cmp__")
+
+// ── __lt__ + __eq__ 驱动自然序 ──
+class LtCmp {
+    x = 0
+    init(v) = { self.x = v }
+    __eq__(o) = self.x == o.x
+    __lt__(o) = self.x < o.x
+}
+LL = @[LtCmp(3), LtCmp(1), LtCmp(2)]
+LL.sort()
+assert(LL[0].x == 1 && LL[1].x == 2 && LL[2].x == 3, "natural sort uses __lt__/__eq__")
+assert((LtCmp(1) <=> LtCmp(2)) == -1, "__lt__/__eq__ drive <=>")
+assert(@[LtCmp(3), LtCmp(1), LtCmp(2)].min().x == 1, "min uses __lt__/__eq__")
+
+
+// ── 比较器返回数值取符号；返回 bool 报错 ──
+assert(@[3, 1, 2].sorted((x, y) => x <=> y) == @[1, 2, 3], "sorted with <=>")
+assert(@[3, 1, 2].sorted((x, y) => y <=> x) == @[3, 2, 1], "sorted descending with <=>")
+threw = false
+try { @[3, 1, 2].sort((x, y) => x > y) } catch (e) { threw = e.type == "TypeError" }
+assert(threw, "boolean comparator must be rejected")
+}
+
+// ── core/test_equality.jc2 ─────────────────────────────────────────────
+{
+// 数值等值的跨表示语义。
+//
+// 规则：同一个数无论用 int / float / Fraction / 复数 / 符号表示都相等，
+// 但比较是精确的，不引入有损相等（0.1 的 double 值不是 1/10）。
+// 不变量：相等 ⇒ 等哈希（dict / set 的地基）。
+
+// 原生数值：跨表示、精确
+test_native_numeric_equality_is_exact() = {
+    assert(1 == 1.0, "int 1 must equal float 1.0")
+    assert(frac(5, 2) == 2.5, "5/2 must equal its exactly representable float")
+    assert(frac(1, 2) == 0.5, "1/2 must equal 0.5")
+    assert(1 == 1 + 0i, "real 1 must equal the complex with zero imaginary part")
+    assert(!(frac(1, 10) == 0.1), "1/10 must not equal 0.1")
+    assert(!(0.1 + 0.2 == 0.3), "float arithmetic stays inexact")
+}
+test_native_numeric_equality_is_exact()
+
+// 符号数值：与原生同一套精确规则
+test_symbolic_numeric_equality_is_exact() = {
+    assert(sym(1) == 1, "symbolic 1 must equal int 1")
+    assert(sym(1) == 1.0, "symbolic 1 must equal float 1.0")
+    assert(sym(1.0) == 1, "symbolic 1.0 must equal int 1")
+    assert(sym(1) == sym(1.0), "symbolic 1 must equal symbolic 1.0")
+    assert(sym(2.0) == 2, "symbolic 2.0 must equal int 2")
+    assert(sym(2.5) == 2.5, "symbolic 2.5 must equal float 2.5")
+    assert(sym(2.5) == frac(5, 2), "symbolic 2.5 must equal 5/2")
+    assert(sym(frac(1, 2)) == 0.5, "symbolic 1/2 must equal 0.5")
+}
+test_symbolic_numeric_equality_is_exact()
+
+// 无损边界：不可精确表示的值不得被判相等
+test_symbolic_numeric_inequality_is_lossless() = {
+    assert(!(sym(0.1) == frac(1, 10)), "0.1 must not equal 1/10")
+    assert(!(sym(frac(1, 10)) == 0.1), "1/10 must not equal 0.1")
+    assert(!(sym(1) == 1i), "1 must not equal i")
+    assert(!(sym(1) == 2), "1 must not equal 2")
+}
+test_symbolic_numeric_inequality_is_lossless()
+
+// 复数与符号
+test_symbolic_complex_equality() = {
+    assert((1 + 0i) == sym(1), "complex with zero imaginary part must equal symbolic 1")
+    assert(sym(1) == (1 + 0i), "symmetric direction")
+    assert(1i == sym(1i), "symbolic i must equal complex i")
+    assert(!(sym(1) == 1i), "1 must not equal i")
+}
+test_symbolic_complex_equality()
+
+// 相等 ⇒ 等哈希
+test_equality_implies_equal_hash() = {
+    assert(hash(sym(1)) == hash(1), "sym(1) and 1")
+    assert(hash(sym(1)) == hash(1.0), "sym(1) and 1.0")
+    assert(hash(sym(2.5)) == hash(2.5), "sym(2.5) and 2.5")
+    assert(hash(sym(2.5)) == hash(frac(5, 2)), "sym(2.5) and 5/2")
+    assert(hash(sym(frac(1, 2))) == hash(0.5), "sym(1/2) and 0.5")
+    assert(hash(1) == hash(1.0), "1 and 1.0")
+
+    d = dict()
+    d[sym(1)] = "a"
+    d[1.0] = "b"
+    assert(len(d) == 1, "sym(1) and 1.0 must be the same dict key")
+
+    e = dict()
+    e[frac(1, 10)] = "a"
+    e[0.1] = "b"
+    assert(len(e) == 2, "1/10 and 0.1 must be different dict keys")
+}
+test_equality_implies_equal_hash()
+
+// 矩阵：实数 / 复数 / 符号两两可比
+test_matrix_cross_representation_equality() = {
+    A = matrix(2, 2, 1, 2, 3, 4)
+    C = matrix(2, 2, 1 + 0i, 2, 3, 4)
+    S = symmatrix(2, 2, 1, 2, 3, 4)
+
+    assert(A == C, "real must equal complex with zero imaginary parts")
+    assert(C == A, "symmetric direction")
+    assert(A == S, "real must equal symbolic")
+    assert(S == A, "symmetric direction")
+    assert(C == S, "complex must equal symbolic (transitivity through A)")
+
+    assert(hash(A) == hash(C), "equal matrices must hash equal (real/complex)")
+    assert(hash(A) == hash(S), "equal matrices must hash equal (real/symbolic)")
+    assert(hash(C) == hash(S), "equal matrices must hash equal (complex/symbolic)")
+
+    d = dict()
+    d[A] = "a"
+    d[C] = "b"
+    d[S] = "c"
+    assert(len(d) == 1, "equal matrices must be the same dict key")
+}
+test_matrix_cross_representation_equality()
+
+test_matrix_cross_representation_inequality() = {
+    A = matrix(2, 2, 1, 2, 3, 4)
+    assert(!(A == matrix(2, 2, 1i, 2, 3, 4)), "real 1 must not equal imaginary i")
+    assert(!(A == matrix(1, 2, 1, 2)), "different shape must not be equal")
+    assert(!(A == matrix(2, 2, 1, 2, 3, 5)), "different value must not be equal")
+
+    x = sym("x")
+    assert(!(symmatrix(2, 2, x, 1, 2, 3) == matrix(2, 2, 1, 1, 2, 3)), "a symbolic variable is not a number")
+}
+test_matrix_cross_representation_inequality()
+}

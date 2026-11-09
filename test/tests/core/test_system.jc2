@@ -1,0 +1,155 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: help, help_modules, sys, sys_exec, sys_globals
+// ═══════════════════════════════════════════════════════════════
+
+// ── core/test_help.jc2 ─────────────────────────────────────────────
+{
+import sys
+
+// 帮助注册 API 的行为测试（动态层，结束后清理）
+sys.registerDirectory("zz_help_test", %{
+    title: "ZZ Help Test",
+    summary: "temporary directory",
+    order: @["b", "a"]
+})
+sys.registerHelp("zz_help_test", "zz help body.")
+sys.registerEntry("zz_help_test.a", %{
+    kind: "function",
+    signature: "a()",
+    desc: "Returns A.",
+    examples: @["a()"],
+    aliases: @["aa"],
+    see_also: @["zz_help_test.b"]
+})
+sys.registerEntry("zz_help_test.b", %{
+    kind: "function",
+    signature: "b()",
+    desc: "Returns B."
+})
+
+s = help("zz_help_test")
+assert(len(s) > 0, "directory text")
+assert(help("zz_help_test.a") == help("zz_help_test.a"), "stable text")
+assert(len(help("zz_help_test.a")) > 0, "entry text")
+assert(len(help("nonsense_zz")) > 0, "not-found text is a string")
+
+p = sys.helpPaths("zz_help_test")
+assert(len(p) == 3, "three paths")
+assert(p[0] == "zz_help_test", "dir path")
+assert(p[1] == "zz_help_test.a", "a path")
+assert(p[2] == "zz_help_test.b", "b path")
+
+assert(sys.unregisterHelp("zz_help_test") == true, "unregister")
+assert(len(help("zz_help_test.a")) > 0, "entry gone but text returned")
+}
+
+// ── core/test_help_modules.jc2 ─────────────────────────────────────────────
+{
+import sys
+import collections
+import net
+
+p = sys.helpPaths("collections")
+assert(len(p) >= 20, "collections entries registered")
+assert(len(help("collections.Stack.push")) > 0, "stack push entry")
+assert(len(help("collections.LRU.put")) > 0, "lru put entry")
+
+n = sys.helpPaths("net")
+assert(len(n) >= 5, "net entries registered")
+assert(len(help("net.TcpSocket.send")) > 0, "tcp send entry")
+}
+
+// ── core/test_sys.jc2 ─────────────────────────────────────────────
+{
+// sys 模块的进程/环境/版本/内省函数
+import sys
+
+assert(len(sys.version()) > 0, "sys.version() should be non-empty")
+assert(sys.platform() in @["windows", "linux", "macos"], "unknown platform: " + sys.platform())
+assert(len(sys.cwd()) > 0, "sys.cwd() should be non-empty")
+
+// 测试运行器不传脚本参数
+assert(sys.args() == @[], "sys.args() should be empty without trailing args")
+
+t1 = sys.monotonic()
+sys.sleep(0.005)
+t2 = sys.monotonic()
+assert(t2 >= t1, "monotonic clock must not go backwards")
+
+st = sys.gcStats()
+assert(st["objects"] >= 0, "gcStats objects")
+assert(st["threshold"] > 0, "gcStats threshold")
+assert(st["allocations"] >= 0, "gcStats allocations")
+
+sys.setenv("JC2_TEST_ENV", "hello")
+assert(sys.getenv("JC2_TEST_ENV") == "hello", "getenv/setenv roundtrip")
+assert(sys.getenv("JC2_TEST_MISSING_12345", "dflt") == "dflt", "getenv default")
+
+mods = sys.loadedModules()
+assert("sys" in mods, "sys should be listed as imported")
+}
+
+// ── core/test_sys_exec.jc2 ─────────────────────────────────────────────
+{
+import sys
+
+if (sys.platform() == "windows") {
+    r = sys.exec("cmd", @["/c", "echo hello"])
+    assert(r["code"] == 0, "exit code")
+    assert(r["stdout"].contains("hello"), "stdout")
+    assert(r["stderr"] == "", "stderr empty")
+    assert(!r["timedOut"], "not timed out")
+
+    e = sys.exec("cmd", @["/c", "echo err 1>&2"])
+    assert(e["stderr"].contains("err"), "stderr captured")
+
+    c = sys.exec("cmd", @["/c", "exit 3"])
+    assert(c["code"] == 3, "non-zero exit code")
+
+    i = sys.exec("cmd", @["/c", "more"], %{stdin: "hello\n"})
+    assert(i["stdout"].contains("hello"), "stdin")
+
+    w = sys.exec("cmd", @["/c", "cd"], %{cwd: "C:\\Windows"})
+    assert(w["stdout"].contains("Windows"), "cwd")
+
+    s = sys.exec("echo hi", @[], %{shell: true})
+    assert(s["stdout"].contains("hi"), "shell mode")
+    u = sys.exec("cmd", @["/c", "echo hello"], %{encoding: "utf-8"})
+    assert(u["stdout"].contains("hello"), "encoding utf-8")
+    a = sys.exec("cmd", @["/c", "echo hello"], %{encoding: "auto"})
+    assert(a["stdout"].contains("hello"), "encoding auto")
+
+    try {
+        sys.exec("cmd", @["/c", "echo hello"], %{encoding: "no-such-encoding"})
+        assert(false, "unknown encoding must throw")
+    } catch (e) {
+        assert(e.type == "TypeError", "unknown encoding type")
+    }
+
+    t = sys.exec("cmd", @["/c", "ping -n 5 127.0.0.1 >nul"], %{timeoutMs: 200})
+    assert(t["timedOut"], "timeout")
+
+    assert(sys.system("exit 0") == 0, "sys.system")
+} else {
+    r = sys.exec("sh", @["-c", "echo hello"])
+    assert(r["code"] == 0, "exit code")
+    assert(r["stdout"].contains("hello"), "stdout")
+
+    c = sys.exec("sh", @["-c", "exit 3"])
+    assert(c["code"] == 3, "non-zero exit code")
+
+    assert(sys.system("exit 0") == 0, "sys.system")
+}
+}
+
+// ── core/test_sys_globals.jc2 ─────────────────────────────────────────────
+{
+import sys
+
+x = 123
+g = sys.globals()
+assert(g["x"] == 123, "globals contains user variable")
+for (k in g) assert(k != "PI", "globals excludes PI")
+g["x"] = 999
+assert(x == 123, "globals returns a snapshot")
+}

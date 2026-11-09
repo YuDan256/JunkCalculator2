@@ -1,0 +1,769 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: integ_const, integ_exp_trig, integ_guards, integ_rational, integ_risch_field, radical_merge
+// ═══════════════════════════════════════════════════════════════
+
+// ── cas/test_integ_const.jc2 ─────────────────────────────────────────────
+{
+import cas
+import math
+
+// ── 符号常量：cas.pi() / cas.e() / cas.i() ──
+// 数值常量走 math.e() / math.E；符号场景走 cas 命名空间的工厂。
+// 常量是独立的 SymType::CONST 节点，不是普通变量，因此不会被同名用户符号冒充。
+
+test_const_display() = {
+    assert(str(cas.pi()) == "pi", "cas.pi() should print as pi")
+    assert(str(cas.e()) == "e", "cas.e() should print as e")
+    assert(str(cas.i()) == "i", "cas.i() should print as i")
+}
+test_const_display()
+
+test_const_symbolic_arithmetic() = {
+    // 保持符号性，不被折叠成浮点
+    assert(str(2 * cas.pi()) == "2 * pi", "2*pi should stay symbolic")
+    assert(str(cas.pi() + cas.pi()) == "2 * pi", "pi+pi should be 2*pi")
+    assert(str(cas.e() * cas.e()) == "e^2", "e*e should be e^2")
+}
+test_const_symbolic_arithmetic()
+
+test_imaginary_unit_exact() = {
+    // i 的整数次幂必须精确折叠（曾落到复数浮点路径，得到 -1.0 + 1.22e-16i）
+    assert(cas.i() ^ 1 == cas.i(), "i^1 = i")
+    assert(cas.i() ^ 2 == -1, "i^2 = -1")
+    assert(cas.i() ^ 3 == -cas.i(), "i^3 = -i")
+    assert(cas.i() ^ 4 == 1, "i^4 = 1")
+    assert(cas.i() ^ 0 == 1, "i^0 = 1")
+}
+test_imaginary_unit_exact()
+
+test_const_numeric_value() = {
+    // 常量仍能数值化。注意两条通道的不同：
+    //   evalf 走 double/Complex，能把常量（含 i）解析成数值；
+    //   evalv 走精确保值通道，其载体 CASVal 不含复数，i 保持符号。
+    assert(cas.evalv(cas.pi()) > 3.14159 && cas.evalv(cas.pi()) < 3.1416, "evalv(pi) approx")
+    assert(cas.evalv(cas.e()) > 2.71828 && cas.evalv(cas.e()) < 2.71829, "evalv(e) approx")
+    // i 的整数幂在符号层就折成精确值，所以 evalv 拿到的是实数 -1
+    assert(cas.evalv(cas.i() ^ 2) == -1, "evalv(i^2) = -1")
+    // 但裸的 i 本身没有精确保值通道，evalv 只能原样返回符号
+    assert(str(cas.evalv(cas.i())) == "i", "evalv(i) stays symbolic (CASVal has no complex)")
+    // evalf 才有复数通道
+    assert(str(cas.evalf(cas.i() * 2)) == "2.0i", "evalf(i*2) = 2.0i")
+    assert(str(cas.evalf(cas.i() ^ 2)) == "-1.0", "evalf(i^2) = -1.0")
+}
+test_const_numeric_value()
+
+test_symbolic_numbers_survive_the_vm_boundary() = {
+    // ★ 回归：符号层的数值结果（SymNum）不再在 Value(SymExpr) 边界被拆成
+    //   原生 int/float/BigInt/Fraction。曾在此降级，于是每个 CAS 出口都掉类型：
+    //   cas.diff(x,x) → int 1。而数学函数的符号捕获判据是"参数是否 symbolic"，
+    //   掉成原生值后再喂回去（exp(cas.diff(x,x))）就走数值分支变成浮点，
+    //   精确形式再也拿不回来。
+    x = sym("x")
+
+    d = cas.diff(x, x)
+    assert(str(d) == "1", "the value still prints as 1")
+    assert(type(d) == symbolic, "but it stays symbolic")
+
+    // 关键收益：纯常数结果喂回数学函数时保持精确
+    assert(str(exp(cas.diff(x, x))) == "exp(1)", "exp of a symbolic constant stays exact")
+    assert(str(sin(cas.diff(x, x))) == "sin(1)", "sin of a symbolic constant stays exact")
+    assert(type(exp(cas.diff(x, x))) == symbolic, "and the result is symbolic")
+
+    // 含变量的表达式不受影响
+    assert(str(cas.diff(x ^ 2, x)) == "2 * x", "variable expressions unchanged")
+    assert(type(cas.diff(x ^ 2, x)) == symbolic, "and stay symbolic")
+
+    // 整族出口口径一致（含 subs，它曾额外单独降级）
+    assert(type(cas.simplify(x - x)) == symbolic, "simplify of a constant is symbolic")
+    assert(type(cas.limit(1 / x, x, 1)) == symbolic, "limit of a constant is symbolic")
+    assert(type(cas.subs(x, x, 5)) == symbolic, "subs of a constant is symbolic")
+}
+test_symbolic_numbers_survive_the_vm_boundary()
+
+test_symbolic_numbers_compare_and_hash_like_numbers() = {
+    // ★ 回归：符号数值必须能与原生数值互操作，否则新语义不可用。
+    //   两条不变量：
+    //     1) 跨类型相等：cas.diff(x,x) == 1 必须为 true（打印是 1，不等于 1 是坑）
+    //     2) 相等 ⇒ 等哈希：否则 dict/set 混用符号值与原生值时查不到
+    x = sym("x")
+    d = cas.diff(x, x)
+
+    // ① 跨类型相等（两个方向）
+    assert((cas.i() ^ 2) == -1, "symbolic -1 equals native -1")
+    assert(d == 1, "symbolic 1 equals native 1")
+    assert(1 == d, "and the comparison is symmetric")
+    assert(!(d == 2), "different values still differ")
+    assert(cas.simplify(x - x) == 0, "symbolic 0 equals native 0")
+
+    // ② 相等 ⇒ 等哈希
+    assert(hash(d) == hash(1), "equal values must hash equally (int)")
+    assert(hash(d) == hash(1.0), "equal values must hash equally (float)")
+
+    // ③ dict / set 双向混用
+    m = %{}
+    m[d] = "v"
+    assert(m[cas.diff(x, x)] == "v", "symbolic key, symbolic lookup")
+    assert(m[1] == "v", "symbolic key, native lookup")
+    n = %{}
+    n[1] = "w"
+    assert(n[d] == "w", "native key, symbolic lookup")
+
+    assert(1 in toSet(@[d]), "native value found in a set of a symbolic number")
+    assert(d in toSet(@[1]), "symbolic value found in a set of a native number")
+}
+test_symbolic_numbers_compare_and_hash_like_numbers()
+
+test_sym_accepts_exact_numbers() = {
+    // ★ sym 的数值通道：给精确数值一条进入符号域的入口。
+    //   数学函数的符号捕获判据是"参数是否 Symbolic"（regMath），而 exact 数值
+    //   本身不是 Symbolic，所以 exp(1) 只能走数值分支掉成浮点。用 sym(1) 包一层
+    //   就与 exp(cas.e()) 同路，精确形式得以保留。
+    assert(type(sym(1)) == symbolic, "sym(1) is symbolic")
+    assert(type(sym(1.5)) == symbolic, "sym(1.5) is symbolic")
+    assert(type(sym(1 / 2)) == symbolic, "sym(1/2) is symbolic")
+    assert(type(sym(10 ^ 30)) == symbolic, "sym of a big integer is symbolic")
+
+    // 这是这个通道存在的理由
+    assert(str(exp(sym(1))) == "exp(1)", "exp(sym(1)) stays exact")
+    assert(str(sin(sym(1))) == "sin(1)", "sin(sym(1)) stays exact")
+    assert(str(log(sym(2))) == "log(2)", "log(sym(2)) stays exact")
+    assert(type(exp(sym(1))) == symbolic, "and the result is symbolic")
+
+    // 与原生数值互操作（依赖上一组补的跨类型相等 / 等哈希）
+    assert(sym(1) == 1, "symbolic 1 equals native 1")
+    assert(hash(sym(1)) == hash(1), "and hashes equally")
+    assert(str(sym(1) + sym(2)) == "3", "symbolic number arithmetic")
+    assert(str(sym(1) + 2) == "3", "mixed with native arithmetic")
+
+    // 变量通道不受影响
+    x = sym("x")
+    assert(str(x) == "x", "sym(str) still makes a variable")
+    assert(str(x + 1) == "x + 1", "and it still builds expressions")
+}
+test_sym_accepts_exact_numbers()
+
+test_sym_accepts_complex() = {
+    // ★ 复数通道：sym(1+2i) 展开为符号的 real + imag*i（imag == 0 退化为实数，
+    //   real == 0 退化为 imag*i）。这样复数也能进符号域，与 cas.i() 同一表示。
+    assert(type(sym(1 + 2i)) == symbolic, "sym of a complex is symbolic")
+    assert(str(sym(1 + 2i)) == "2.0 * i + 1.0", "expands to real + imag*i")
+    assert(str(sym(2i)) == "2.0 * i", "pure imaginary has no real part")
+    assert(str(sym(1 - 2i)) == "-2.0 * i + 1.0", "negative imaginary part")
+    assert(str(sym(1 + 0i)) == "1.0", "zero imaginary part degenerates to a real")
+
+    // 进得去符号域，就能被数学函数保持为精确形式
+    assert(type(exp(sym(1 + 2i))) == symbolic, "exp of a symbolic complex stays symbolic")
+    assert(str(exp(sym(1 + 2i))) == "exp(2.0 * i + 1.0)", "and keeps its exact argument")
+}
+test_sym_accepts_complex()
+
+test_sym_is_idempotent_on_symbolic_input() = {
+    // ★ sym() 的定位是"确保拿到符号值"，所以对已符号的输入原样返回。
+    //   注意 sym("x") 仍是变量通道（字符串代表变量名），不受影响。
+    x = sym("x")
+    assert(sym(sym(1)) == sym(1), "sym of a symbolic number is itself")
+    assert(type(sym(sym(1))) == symbolic, "and stays symbolic")
+    assert(str(sym(x)) == "x", "sym of a variable returns it")
+    assert(str(sym(x + 1)) == "x + 1", "sym of a symbolic expression returns it")
+    assert(str(sym(cas.i())) == "i", "sym of the imaginary constant works")
+
+    // 字符串通道不受影响：它造的是变量，不是把名字当值
+    assert(str(sym("x")) == "x", "sym(str) still makes a variable")
+    assert(type(sym("x")) == symbolic, "and it is symbolic")
+}
+test_sym_is_idempotent_on_symbolic_input()
+
+test_exp_powers_are_canonicalized() = {
+    // ★ 规范形：e^u → exp(u)。e^x 是 POW(CONST e, x)，exp(x) 是 FUNC("exp", x)，
+    //   同一数学量的两种节点；不归一则全流程不通约（simplify(e^x - exp(x)) 不化简、
+    //   diff 各是各的、下游 exp 合并规则认不出 e^x，integrate 的塔里会留下
+    //   exp(log(e)*x) 这种未化简的扩张）。
+    x = sym("x")
+
+    // 通约：两种写法归一成同一棵树
+    assert(str(cas.simplify(cas.e() ^ x)) == "exp(x)", "e^x normalizes to exp(x)")
+    assert(cas.simplify(cas.e() ^ x - exp(x)) == 0, "the two spellings are now equivalent")
+    assert(str(cas.diff(cas.e() ^ x, x)) == "exp(x)", "diff agrees for both spellings")
+
+    // 符号常量指数也归一（e^pi 与 exp(pi) 是同一量，留两种写法会让问题在别处重现）
+    assert(str(cas.simplify(cas.e() ^ cas.pi())) == "exp(pi)", "e^pi normalizes too")
+    // e 本身也归一成 exp(1)，所以 e^e = exp(1)^exp(1) = exp(exp(1))
+    assert(str(cas.simplify(cas.e() ^ cas.e())) == "exp(exp(1))", "and e^e")
+
+    // 数值指数经 exp 幂合并归一（不是浮点化，仍是精确的符号值）
+    assert(str(cas.simplify(cas.e() ^ 2)) == "exp(2)", "e^2 normalizes to exp(2)")
+    assert(str(cas.simplify(cas.e() ^ 1)) == "exp(1)", "e^1 normalizes to exp(1)")
+    assert(cas.e() ^ 0 == 1, "e^0 is 1")
+
+    // ① e 本身（独立出现，不只是幂底）也归一成 exp(1)
+    assert(str(cas.simplify(cas.e())) == "exp(1)", "bare e normalizes to exp(1)")
+    assert(str(cas.simplify(cas.e() * x)) == "exp(1) * x", "e as a factor normalizes too")
+    // 常量本身仍是 e（归一发生在化简时）
+    assert(str(cas.e()) == "e", "cas.e() itself still prints as e")
+
+    // ② exp(z)^u → exp(z·u)：e → exp(1) 能成立的前提
+    assert(str(cas.simplify(exp(x) ^ 2)) == "exp(2 * x)", "exp(x)^2 merges to exp(2x)")
+    assert(str(cas.simplify(exp(x) ^ 3)) == "exp(3 * x)", "exp(x)^3 merges to exp(3x)")
+    assert(str(cas.simplify(cas.e() * cas.e())) == "exp(2)", "e*e merges to exp(2)")
+    // 这一条曾因幂合并缺失而停在 exp(1)^2
+    assert(str(cas.simplify(exp(sym(1)) ^ 2)) == "exp(2)", "exp(1)^2 merges to exp(2)")
+    assert(str(cas.simplify(exp(2 * x) / exp(x))) == "exp(x)", "exp quotient merges")
+
+    // ③ exp(0) → 1：曾停在 exp(0) 让 simplify 不幂等
+    assert(cas.simplify(exp(x) * exp(-x)) == 1, "exp(x)*exp(-x) = 1")
+    assert(cas.simplify(cas.e() ^ x / cas.e() ^ x) == 1, "e^x/e^x = 1")
+    assert(cas.simplify(cas.simplify(exp(x) * exp(-x))) == 1, "and it is idempotent")
+
+    // 特殊值规则仍然精确（符号层内判定，不受归一影响）
+    assert(cas.simplify(sin(cas.pi())) == 0, "sin(pi) = 0")
+    assert(str(cas.simplify(sin(cas.pi() / 6))) == "1/2", "sin(pi/6) = 1/2")
+    assert(cas.simplify(log(cas.e())) == 1, "log(e) = 1")
+
+    // 函数调用（普通数值参数）仍数值化——那是调用时行为，与域内归一无关
+    assert(type(exp(1)) == float, "exp(1) still evaluates numerically at the call")
+    assert(type(sym(1)) == symbolic, "but sym(1) is symbolic")
+    assert(str(exp(sym(1))) == "exp(1)", "and exp(sym(1)) stays exact")
+}
+test_exp_powers_are_canonicalized()
+
+test_math_constants_stay_float() = {
+    // math.pi() 与 math.e() 保持浮点语义
+    assert(math.pi() > 3.14159 && math.pi() < 3.1416, "math.pi() stays float")
+    assert(math.e() > 2.71828 && math.e() < 2.71829, "math.e() stays float")
+    assert(abs(math.pi() * 2 - 6.283185307179586) < 1e-12, "math.pi()*2 numeric")
+}
+test_math_constants_stay_float()
+
+test_const_in_calculus() = {
+    // 常量参与求导/展开/求解时保持符号
+    x = sym("x")
+    assert(str(cas.diff(sin(cas.pi() * x), x)) == "cos(pi * x) * pi", "diff with pi")
+    // 根按 (实部, 虚部) 升序排列（solveEq 出口的规范化），所以 -√pi 在前
+    assert(str(cas.solve(x ^ 2 - cas.pi(), x)) == "@[-sqrt(pi), sqrt(pi)]", "exact solve with pi")
+    assert(str(cas.subs(cas.pi() * x, x, 2)) == "2 * pi", "subs with pi")
+}
+test_const_in_calculus()
+
+test_user_symbols_not_hijacked() = {
+    // ★ 常量节点与用户符号互不冒充，两个方向都要挡住：
+    //   1) 用户定义的同名符号必须保持自由变量，不能被常量逻辑悄悄当成常数
+    //      （曾出现 log(sym("E")) 直接被化简成 1，evalv(sym("PI")) 得到 3.14159）；
+    //   2) 常量也不能被用户符号定义覆盖 —— 常量身份只经 cas.pi()/cas.e()/cas.i()
+    //      与 SymConst 节点存在，sym("PI") 造出来的是另一个东西。
+    x = sym("x")
+    E = sym("E")
+    PI = sym("PI")
+    I = sym("i")
+    assert(str(E) == "E", "user E prints as E")
+    assert(str(PI) == "PI", "user PI prints as PI")
+    assert(str(I) == "i", "user i prints as i")
+    assert(str(cas.simplify(log(E))) == "log(E)", "user E must not become e")
+    assert(str(cas.diff(E * x, x)) == "E", "user E is a constant w.r.t. x")
+    assert(str(cas.expand(E ^ 2)) == "E^2", "user E^2 stays symbolic")
+    assert(str(I ^ 2) == "i^2", "user i must not fold to -1")
+    // 同名但不同身份：用户符号与常量节点不得判等
+    assert(E != cas.e(), "user E is not the constant e")
+    assert(PI != cas.pi(), "user PI is not the constant pi")
+    assert(I != cas.i(), "user i is not the imaginary constant")
+}
+test_user_symbols_not_hijacked()
+
+test_const_in_rules_table() = {
+    // ★ 回归：SymRules.h 的规则表曾用 makeVar("PI") 表达 √π。
+    //   常量名会被 makeVar 转义成自由变量，于是 integ(exp(-x^2), x) 吐出
+    //   1/2 * erf(x) * sqrt(PI) —— 形式对、π 却是自由变量，导数回验不过。
+    //   规则表现在直写 makeConst(SymConstId::Pi)，必须落在常量 pi 上。
+    x = sym("x")
+    I = cas.integ(exp(-(x ^ 2)), x)
+    assert(str(I) == "1/2 * erf(x) * sqrt(pi)",
+           f"gaussian integral should use the pi constant, got {str(I)}")
+    assert(cas.evalv(cas.subs(I, x, 1.0)) > 0.74 && cas.evalv(cas.subs(I, x, 1.0)) < 0.75,
+           "erf-based gaussian integral evaluates numerically")
+}
+test_const_in_rules_table()
+
+test_factor_with_constants() = {
+    // 常量系数不应破坏因式分解：既不能崩（曾有 bad variant access），
+    // 也不能把原式缩放成首一形式（x^2 - pi 曾变成 x^2 * pi^(-1) - 1）。
+    x = sym("x")
+    assert(str(cas.factor(x ^ 2 - cas.pi())) == "x^2 - pi", "factor keeps constant polys intact")
+    assert(str(cas.factor(cas.pi() * x ^ 2 - cas.pi())) == "pi * (x + 1) * (x - 1)", "factor extracts const content")
+    assert(str(cas.factor(x ^ 2 - 1)) == "(x + 1) * (x - 1)", "integer factoring still works")
+}
+test_factor_with_constants()
+}
+
+// ── cas/test_integ_exp_trig.jc2 ─────────────────────────────────────────────
+{
+import cas
+
+// ── 复指数与三角函数的互化（expToTrig / simplifyComplex 候选） ──
+// 背景：积分器走"复指数 + 欧拉公式"路线，出口是 exp((1+i)x) 与共轭项并存的线性
+// 组合。这类结果语法上没有任何可合并的结构键，旧版 cas.simplify 只能原样退回，
+// 用户看到的是 exp(...) 而不是实三角函数。
+// 修复分两处：
+//   1) containsVarImpl / toPolynomial 把虚数单位常量 i 与名字 "i" 对齐 ——
+//      此前 containsVar(x*i, "i") 恒为 false（i 是 SymType::CONST 而非 SymVar），
+//      于是 extractCoeffs(·, "i") 永远返回空，欧拉公式实际一次都没套上；
+//   2) expToTrig / simplifyComplex 从 Integration.cpp 提到公共层，
+//      并在 full_simplify 里作为候选（含复指数时才启用）。
+
+test_euler_conjugate_pair_to_real() = {
+    x = sym("x")
+    ii = cas.i()
+    assert(str(cas.simplify(exp(ii * x) + exp(-ii * x))) == "2 * cos(x)",
+           "exp(ix)+exp(-ix) should collapse to 2cos(x)")
+    assert(str(cas.simplify(exp(ii * x) - exp(-ii * x))) == "2 * sin(x) * i",
+           "exp(ix)-exp(-ix) should collapse to 2i sin(x)")
+    assert(str(cas.simplify((exp(ii * x) + exp(-ii * x)) / 2)) == "cos(x)",
+           "Euler cosine definition")
+    assert(str(cas.simplify((exp(ii * x) - exp(-ii * x)) / (2 * ii))) == "sin(x)",
+           "Euler sine definition")
+}
+test_euler_conjugate_pair_to_real()
+
+test_euler_special_values() = {
+    // exp(i*pi) 曾原样留在符号树里，现在归到精确值
+    assert(str(cas.simplify(exp(cas.i() * cas.pi()))) == "-1", "Euler identity")
+    assert(str(cas.simplify(exp(cas.i() * cas.pi()) + 1)) == "0", "exp(i*pi)+1 = 0")
+    assert(str(cas.simplify(exp(2 * cas.i() * cas.pi()))) == "1", "exp(2i*pi) = 1")
+}
+test_euler_special_values()
+
+test_damped_conjugate_pair() = {
+    // 实部非零的共轭对：exp((1±i)x) 带复数系数，应折成 exp(x) 的实三角函数组合
+    x = sym("x")
+    ii = cas.i()
+    e = exp((1 + ii) * x) * (1 - ii) + exp((1 - ii) * x) * (1 + ii)
+    s = cas.simplify(e)
+    assert(str(s) == "2 * cos(x) * exp(x) + 2 * exp(x) * sin(x)",
+           f"damped conjugate pair should become real trig, got {s}")
+    // 数值对照：x=0.7 时 2e^x(cos x + sin x)
+    v = float(cas.evalf(cas.subs(s, x, 0.7)))
+    expected = 2 * exp(0.7) * (cos(0.7) + sin(0.7))
+    assert(abs(v - expected) < 1e-9, "damped pair numeric mismatch")
+}
+test_damped_conjugate_pair()
+
+test_integral_returns_real_trig_form() = {
+    // 回归入口：integ(exp(x)*sin(x)) 曾返回
+    //   -1/2 * exp((1+i)x) * (1+i)^(-1) * i + 1/2 * exp(-xi+x) * (-i+1)^(-1) * i
+    // 现在必须是紧凑的实形（欧拉公式应已折平，不得再出现复指数）。
+    x = sym("x")
+    I = cas.integ(exp(x) * sin(x), x)
+    assert(str(I) == "(-1/2 * cos(x) + 1/2 * sin(x)) * exp(x)",
+           f"integral should be the compact real form, got {str(I)}")
+    assert(!("exp(-x * i" in str(I) || "1 + i" in str(I)),
+           f"integral should not keep complex exponentials, got {str(I)}")
+    assert(str(cas.simplify(cas.diff(I, x))) == "exp(x) * sin(x)",
+           "derivative of the integral must return the integrand")
+}
+test_integral_returns_real_trig_form()
+
+test_integral_numeric_consistency() = {
+    // 基本定理验证：对若干复指数型积分，比较 F'(t) 与 integrand(t)
+    x = sym("x")
+    integrands = @[
+        exp(x) * sin(x),
+        exp(x) * cos(x),
+        sin(x) * sin(x),
+        cos(x) * cos(x),
+        exp(2 * x) * sin(3 * x),
+        x * exp(x) * cos(2 * x),
+    ]
+    for (f in integrands) {
+        I = cas.integ(f, x)
+        d = cas.diff(I, x)
+        t = 0.4
+        while (t <= 2.5) {
+            err = float(cas.evalf(cas.subs(d, x, t)) - cas.evalf(cas.subs(f, x, t)))
+            assert(abs(err) < 1e-8, f"FTC mismatch at t={t} for {f}")
+            t = t + 0.7
+        }
+    }
+}
+test_integral_numeric_consistency()
+
+test_real_expressions_keep_real_form() = {
+    // 闸门只对"指数含 i"的表达式生效：普通实表达式不得被拖进复指数路径改形
+    x = sym("x")
+    assert(str(cas.simplify(sin(x) ^ 2 + cos(x) ^ 2)) == "1", "pythagorean identity")
+    assert(str(cas.simplify((x ^ 2 - 1) / (x - 1))) == "x + 1", "cancel common factor")
+    assert(str(cas.simplify(x ^ 2 + 2 * x + 1)) == "(x + 1)^2", "poly still factors as before")
+    // exp 的乘积合并现在会把 exp(0) 折成 1（此前停在 exp(0)，simplify 不幂等）
+    assert(str(cas.simplify(exp(x) * exp(-x))) == "1", "real exp product collapses to 1")
+}
+test_real_expressions_keep_real_form()
+
+test_imaginary_polynomial_extraction() = {
+    // i 常量现在能当多项式变量：extractCoeffs(·, "i") 必须能拆出实部与虚部。
+    // 消费方是 simplifyCore 的复分母有理化 —— (3+4i)^(-1) 曾拿不到系数而放弃，
+    // 只能落到复数浮点路径；现在给出精确有理数。
+    ii = cas.i()
+    assert(str(cas.simplify((3 + 4 * ii) ^ (-1))) == "-4/25 * i + 3/25",
+           "complex denominator rationalization should be exact")
+    assert(str(cas.simplify((1 + ii) ^ (-1) + (1 - ii) ^ (-1))) == "1",
+           "conjugate denominators should sum to real 1")
+    assert(str(cas.simplify(ii ^ 2)) == "-1", "i^2 = -1")
+    assert(str(cas.simplify((1 + ii) ^ (-1))) == "-1/2 * i + 1/2", "1/(1+i) exact")
+}
+test_imaginary_polynomial_extraction()
+}
+
+// ── cas/test_integ_guards.jc2 ─────────────────────────────────────────────
+{
+import cas
+
+// 符号假设环境与分支守卫。
+//
+// 背景：sqrt(z) 在 simplifyCore 里先变成 z^(1/2)，于是
+//   sqrt(x^2) = (x^2)^(1/2) 会走"幂的幂法则"变成 x —— x<0 时这是错的（|x| 才对）；
+//   sqrt(-p^2) = (-p^2)^(1/2) 会走"乘积分配律"拆成 i*p —— 这是分支穿越的来源。
+// 现在这两条规则在【用户侧化简】下要求可证成立：底可证非负、或新指数为偶整数。
+// 推导过程（integrate 内部）暂时挂起守卫，理由见 Symbolic.h 的 branchGuardsActive。
+//
+// 注意：假设环境是【全局】的（与 SymConfig 一致），所以每个用例都要自己收尾清理，
+// 否则会污染后续测试文件。
+
+
+x = sym("x")
+y = sym("y")
+p = sym("p")
+
+clearAssumptions() = {
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "assumptions must start empty")
+}
+
+test_assume_default_is_empty() = {
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "no assumptions by default")
+}
+test_assume_default_is_empty()
+
+test_assume_set_query_clear() = {
+    clearAssumptions()
+    cas.assume(x, "positive")
+    cas.assume(y, "nonzero")
+    a = cas.assumptions()
+    assert(len(a) == 2, "two assumptions expected")
+    assert(a["x"] == "positive", "x must be positive")
+    assert(a["y"] == "nonzero", "y must be nonzero")
+
+    cas.assume(x)                       // 只清 x
+    a = cas.assumptions()
+    assert(len(a) == 1 && a["y"] == "nonzero", "clearing one variable must keep the other")
+
+    cas.clearAssumptions()
+    assert(len(cas.assumptions()) == 0, "clearAssumptions must empty the environment")
+}
+test_assume_set_query_clear()
+
+test_assume_accepts_string_and_all_tags() = {
+    clearAssumptions()
+    cas.assume("x", "positive")         // 字符串形式同样接受
+    assert(cas.assumptions()["x"] == "positive", "string variable form must work")
+    for (t in @["positive", "negative", "real", "nonzero"]) {
+        cas.assume(y, t)
+        assert(cas.assumptions()["y"] == t, "tag must round-trip: " + t)
+    }
+    cas.clearAssumptions()
+}
+test_assume_accepts_string_and_all_tags()
+
+test_assume_rejects_bad_input() = {
+    clearAssumptions()
+    try {
+        cas.assume(x, "bogus")
+        assert(false, "unknown tag must be rejected")
+    } catch (e) {
+        assert("unknown tag" in e.message, "wrong error for unknown tag")
+    }
+    try {
+        cas.assume(x, 1)
+        assert(false, "non-string tag must be rejected")
+    } catch (e) {
+        assert("tag string" in e.message, "wrong error for non-string tag")
+    }
+    cas.clearAssumptions()
+}
+test_assume_rejects_bad_input()
+
+// 保守侧：没有假设时不做分支不安全的开方重写
+test_sqrt_of_square_is_conservative() = {
+    clearAssumptions()
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "sqrt(x^2) must not become x without an assumption")
+    assert(str(cas.simplify(sqrt(x^2 * y^2))) != "x * y", "sqrt(x^2*y^2) must not become x*y")
+    assert(str(cas.simplify(sqrt(-p^2))) != "p * i", "sqrt(-p^2) must not become p*i")
+    // 不受影响的仍要化简
+    assert(str(cas.simplify(sqrt(x^4))) == "x^2", "sqrt(x^4) is x^2 for every real x")
+    assert(str(cas.simplify(sqrt(8))) == "2 * sqrt(2)", "numeric square factors still extract")
+    assert(str(cas.simplify(sqrt(2) * sqrt(2))) == "2", "numeric radicals still combine")
+}
+test_sqrt_of_square_is_conservative()
+
+// 有假设时按假设化简
+test_positive_assumption_enables_rewrite() = {
+    clearAssumptions()
+    cas.assume(x, "positive")
+    assert(str(cas.simplify(sqrt(x^2))) == "x", "positive x makes sqrt(x^2) collapse to x")
+    cas.clearAssumptions()
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "clearing the assumption restores the conservative form")
+}
+test_positive_assumption_enables_rewrite()
+
+// negative / real 不足以支撑这条重写，不得误判
+test_insufficient_assumptions_do_not_enable_rewrite() = {
+    clearAssumptions()
+    cas.assume(x, "negative")
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "negative x must not enable sqrt(x^2) -> x")
+    cas.assume(x, "real")
+    assert(str(cas.simplify(sqrt(x^2))) == "sqrt(x^2)", "real x alone must not enable sqrt(x^2) -> x")
+    cas.clearAssumptions()
+}
+test_insufficient_assumptions_do_not_enable_rewrite()
+
+// cas.verifyInteg 作为积分器自检，把已知正确与已知出错的积分钉住。
+//
+// 背景：换元类策略（广义 / 根式 / 三角）靠纯语法回代还原变量。内层若给出
+// 复对数形式的原函数，回代后 √(负数) 的开方分支选择会让结果整体翻号 ——
+// 实测 integ(p^2/sqrt(1-p^2)) 返回的原函数导数为 -f。
+// 现在：推导过程中的策略级自检让后续策略接手；出口再做一次自检，宁可不给答案。
+
+
+p = sym("p")
+
+assert_verifies(f) = {
+    assert(cas.verifyInteg(f, p), "cas.verifyInteg must accept: " + str(f))
+}
+
+test_verify_integ_known_good() = {
+    assert_verifies(sqrt(1 - p^2))
+    assert_verifies(1 / sqrt(1 - p^2))
+    assert_verifies(p / sqrt(1 - p^2))
+    assert_verifies(p^3 / sqrt(1 - p^2))
+    assert_verifies(sqrt(1 - p^2) / p^2)
+    assert_verifies(sqrt(p^2 - 1))
+    assert_verifies(p^2 / sqrt(p^2 - 1))
+    assert_verifies(1 / sqrt(p^2 + 1))
+    assert_verifies(sqrt(p^2 + 1))
+    assert_verifies(p^2 / sqrt(p^2 + 1))
+    assert_verifies(p * sqrt(1 - p^2))
+    assert_verifies(1 / (1 - p^2))
+    assert_verifies(1 / (1 + p^2))
+    assert_verifies(p / (1 + p^2))
+    assert_verifies(1 / (p^2 + 2 * p + 5))
+    assert_verifies(p^2 / (1 + p^2))
+    assert_verifies(exp(-p^2))
+    assert_verifies(p * exp(-p^2))
+    assert_verifies(exp(p) * sin(p))
+    assert_verifies(log(p))
+    assert_verifies(p * log(p))
+    assert_verifies(log(p)^2)
+    assert_verifies(sin(p)^2)
+    assert_verifies(cos(p)^2)
+    assert_verifies(sin(p)^3)
+    assert_verifies(tan(p))
+    assert_verifies(1 / sin(p))
+    assert_verifies(1 / (1 + cos(p)))
+    assert_verifies(sin(p) * cos(p))
+    assert_verifies(p * sin(p))
+    assert_verifies(p^2 * sin(p))
+}
+test_verify_integ_known_good()
+
+// 曾返回符号相反原函数的三例：现在必须给出能通过自检的结果
+test_verify_integ_previously_sign_flipped() = {
+    assert_verifies(p^2 / sqrt(1 - p^2))
+    assert_verifies(1 / (p^2 * sqrt(1 - p^2)))
+    assert_verifies(1 / sqrt(p * (1 - p)))
+}
+test_verify_integ_previously_sign_flipped()
+
+// 不变量：cas.integ 要么给出能通过自检的原函数，要么拒绝 —— 绝不返回未通过自检的结果。
+// 这一例曾由出口自检兜底：推导期自检用 evalUniversal（无函数求值器）算不出残差数值，
+// 判 Unknown 后被放行，占住了 p^2*sqrt(1-p^2) 的位置。B5 后最外层不再采信 Unknown。
+// 这样写的好处：将来若真正修好它，本测试仍然成立。
+test_integ_never_returns_unverified_antiderivative() = {
+    f = p^2 * sqrt(1 - p^2)
+    accepted = false
+    try {
+        cas.integ(f, p)
+        accepted = cas.verifyInteg(f, p)
+    } catch (e) {
+        accepted = "failed verification" in e.message
+    }
+    assert(accepted, "cas.integ must either verify its result or refuse to return it")
+}
+test_integ_never_returns_unverified_antiderivative()
+
+// B5 回归：最外层把自检的 Unknown 视为"不可采信"后，根式换元那条注入 i 的候选不再占位，
+// 圆分支三角换元接手给出可通过自检的实形式结果（1/8*asin(p) - 1/32*sin(4*asin(p))）。
+test_verify_integ_circular_branch_takes_over() = {
+    assert_verifies(p^2 * sqrt(1 - p^2))
+}
+test_verify_integ_circular_branch_takes_over()
+
+// log 族分支守卫（P3）。
+//
+// 背景：log(a^b) → b·log(a) 与 log(∏aᵢ) → Σlog(aᵢ) 只在所有参数 > 0 时成立。
+// 实测（本 CAS 的 log 走主分支复值）：
+//   a = -2, b = 2：log((-2)^2) = 1.38629，而 2*log(-2) = 1.38629 + 6.28319*i
+//   a = b = -1  ：log(1)       = 0     ，而 log(-1)+log(-1) = 6.28319*i
+// 现在这两条在【用户侧化简】下要求参数可证为正（isProvablyPositive）；
+// 推导期（integrate 内部）挂起守卫，理由见 Symbolic.h 的 branchGuardsActive。
+// log(exp z) → z 按实域语义保留（D-P3-2=a），不加守卫。
+//
+// 注意：假设环境是【全局】的，每个用例自己收尾清理，否则会污染后续测试文件。
+
+
+x = sym("x")
+y = sym("y")
+EE = cas.e()
+
+// 保守侧：没有前提时不做分支不安全的 log 重写
+test_log_power_is_conservative() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x^2))) == "log(x^2)", "log(x^2) must not become 2*log(x) without a premise")
+    assert(str(cas.simplify(log(x^3))) == "log(x^3)", "log(x^3) must not become 3*log(x) without a premise")
+    assert(str(cas.simplify(log(sqrt(x)))) == "log(sqrt(x))", "log(sqrt(x)) must not split without a premise")
+    assert(str(cas.simplify(log(2*x))) == "log(2 * x)", "log(2*x) must not split without a premise on x")
+    cas.clearAssumptions()
+}
+test_log_power_is_conservative()
+
+test_log_product_is_conservative() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x*y) - log(x) - log(y))) == "log(x * y) - log(x) - log(y)", "log(x*y) - log(x) - log(y) is not identically zero")
+    assert(str(cas.simplify(log(x*y) - log(x))) == "log(x * y) - log(x)", "log(x*y) - log(x) must not collapse to log(y)")
+    cas.clearAssumptions()
+}
+test_log_product_is_conservative()
+
+// 有前提时按前提化简
+test_positive_premise_enables_log_rewrite() = {
+    cas.clearAssumptions()
+    cas.assume(x, "positive")
+    assert(str(cas.simplify(log(x^2))) == "2 * log(x)", "positive x makes log(x^2) collapse")
+    cas.assume(y, "positive")
+    assert(str(cas.simplify(log(x*y) - log(x) - log(y))) == "0", "both positive makes the log difference vanish")
+    cas.clearAssumptions()
+    assert(str(cas.simplify(log(x^2))) == "log(x^2)", "clearing the assumption restores the conservative form")
+}
+test_positive_premise_enables_log_rewrite()
+
+// 与前提无关的恒等式不收紧
+test_unconditional_log_identities_kept() = {
+    cas.clearAssumptions()
+    assert(str(cas.simplify(exp(log(x)))) == "x", "exp(log(x)) is x for x != 0")
+    assert(str(cas.simplify(log(exp(x)))) == "x", "log(exp(x)) stays the real-domain identity")
+    assert(str(cas.simplify(log(1))) == "0.0", "log(1) is 0")
+    assert(str(cas.simplify(log(EE))) == "1", "log(e) is 1")
+    cas.clearAssumptions()
+}
+test_unconditional_log_identities_kept()
+}
+
+// ── cas/test_integ_rational.jc2 ─────────────────────────────────────────────
+{
+// 不可约分母的有理函数积分：Rothstein-Trager 的对数因子必须是线性因子，
+// 否则自检会拒绝（旧实现从 Groebner 基取到带伪根的二次多项式，直接抛
+// "Function integration not supported or complex power"）。
+import cas
+x = sym("x")
+
+// ── 不可约三次：结果保留为 RootSum，但必须是正确的 x - _z 线性对数 ──
+I = cas.integ(1 / (x^3 + x + 1), x)
+s = str(I)
+assert("RootSum" in s, "irreducible cubic should return a RootSum, got: " + s)
+assert("log" in s, "RootSum should contain a log term, got: " + s)
+assert("_z^3 + _z + 1" in s, "RootSum should sum over the roots of the denominator, got: " + s)
+assert("3 * _z^2 + 1" in s, "log argument should be weighted by D'(_z), got: " + s)
+
+// 求导仍然是 RootSum（结构没被破坏），且不会抛错
+d = cas.diff(I, x)
+assert("RootSum" in str(d), "derivative of the RootSum should stay a RootSum, got: " + str(d))
+
+// ── 不可约四次 ──
+I4 = cas.integ(1 / (x^4 + x + 1), x)
+assert("RootSum" in str(I4), "irreducible quartic should return a RootSum, got: " + str(I4))
+
+// ── 有理根 / 二次因子：仍走原来的实数形式，不受兜底影响 ──
+assert(str(cas.integ(1 / (x^2 + 1), x)) == "atan(x)", "quadratic denominator should stay atan(x)")
+cubic_factored = str(cas.integ(1 / (x^3 + 1), x))
+assert("atan" in cubic_factored && "log" in cubic_factored,
+       "factorable cubic should keep the real atan/log form, got: " + cubic_factored)
+
+// ── 混合分母（二次因子 + 不可约三次）：不再报错 ──
+mixed = cas.integ(1 / ((x^2 + 1) * (x^3 + x + 1)), x)
+assert("RootSum" in str(mixed), "mixed denominator should still integrate, got: " + str(mixed))
+}
+
+// ── cas/test_integ_risch_field.jc2 ─────────────────────────────────────────────
+{
+import cas
+
+// 微分域合法性回归
+//
+// 旧实现按"结构相等"给扩张去重：exp(-b) 与 exp(b)（b 本身已是某个生成元的指数）
+// 会被当成两个独立的超越元，塔里出现互为倒数的一对（t3·t4 = 1），Risch 的代数无关
+// 前提被破坏。现在依赖判定按"模常数 Q-线性"合并，exp(-b) 用 t_b^(-1) 表示。
+
+x = sym("x")
+
+check(label, f) = {
+    got = cas.integ(f, x)
+    residual = cas.simplify(cas.diff(got, x) - f)
+    assert(str(residual) == "0", label + " -> " + str(got) + " (residual " + str(residual) + ")")
+}
+
+test_simple_exponentials() = {
+    check("exp(x)", exp(x))
+    check("exp(-x)", exp(-x))
+    check("exp(2x)", exp(2 * x))
+    check("exp(x)+exp(-x)", exp(x) + exp(-x))
+    check("x*exp(x)", x * exp(x))
+}
+
+test_reciprocal_generators() = {
+    // 这些被积函数本质上等于 1：只应留下一个指数生成元，另一个用它的倒数表示
+    check("exp(x)*exp(-x)", exp(x) * exp(-x))
+    check("exp(exp(x))*exp(-exp(x))", exp(exp(x)) * exp(-exp(x)))
+    check("exp(sin(x))*exp(-sin(x))", exp(sin(x)) * exp(-sin(x)))
+}
+
+test_log_dependence() = {
+    // log(2x) 与 log(x) 只差常数，不应建第二个对数生成元
+    check("1/(x*log(x))", 1 / (x * log(x)))
+    check("1/(x*log(2x))", 1 / (x * log(2 * x)))
+    check("log(x)", log(x))
+}
+
+test_non_elementary_keeps_valid_tower() = {
+    threw = false
+    msg = ""
+    try {
+        cas.integ(cos(sin(x)), x)
+    } catch (e) {
+        threw = true
+        msg = e.message
+    }
+    assert(threw, "cos(sin(x)) has no elementary antiderivative")
+    // 合法的塔里不应再出现第四个生成元（旧实现把 exp(-b) 与 exp(b) 都建成了生成元）
+    assert(msg.find("_t4") < 0, "the reciprocal generator is gone")
+}
+
+test_simple_exponentials()
+test_reciprocal_generators()
+test_log_dependence()
+test_non_elementary_keeps_valid_tower()
+}
+
+// ── cas/test_radical_merge.jc2 ─────────────────────────────────────────────
+{
+// sqrt(a)*sqrt(b) 合并：仅正数值底
+assert(str(sqrt(2) * sqrt(3)) == "sqrt(6)", "sqrt(2)*sqrt(3)")
+assert(str(sqrt(2) * sqrt(3) * sqrt(5)) == "sqrt(30)", "three radicals")
+assert(sqrt(4) * sqrt(9) == 6, "perfect squares")
+assert(str(sqrt(-2) * sqrt(-3)) == "-sqrt(6)", "negative radicands keep sign")
+}

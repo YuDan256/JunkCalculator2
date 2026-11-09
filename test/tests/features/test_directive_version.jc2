@@ -1,6 +1,0 @@
-#version >= 2.6.5.0
-#version 2.6.5.0
-#version == 2.6.5.0
-
-assert(true, "version directives accepted")
-#warning "expected test warning"

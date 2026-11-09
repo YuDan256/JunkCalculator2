@@ -1,0 +1,380 @@
+// ═══════════════════════════════════════════════════════════════
+// Merged battery: defer, labeled_loops, labeled_loops_errors, match
+// ═══════════════════════════════════════════════════════════════
+
+// ── features/test_defer.jc2 ─────────────────────────────────────────────
+{
+test_basic_lifo() = {
+    res = list()
+    {
+        defer res.push(1)
+        defer res.push(2)
+        res.push(0)
+    }
+    assert(res == @[0, 2, 1], "Basic LIFO execution order failed")
+}
+test_basic_lifo()
+
+test_defer_on_return() = {
+    res = list()
+    f() = {
+        defer res.push("deferred")
+        res.push("running")
+        return 42
+        defer res.push("unreached")
+    }
+    
+    val = f()
+    assert(val == 42, "Function return value is wrong")
+    assert(res == @["running", "deferred"], "Defer on return failed")
+}
+test_defer_on_return()
+
+test_defer_in_loops() = {
+    res = list()
+    for (local i = 0; i < 3; i += 1) {
+        defer res.push(i)
+        
+        if (i == 1) continue
+        if (i == 2) break
+        
+        res.push(i * 10)
+    }
+    
+    // i = 0: res.push(0), defer res.push(0) -> [0, 0]
+    // i = 1: continue, defer res.push(1)    -> [0, 0, 1]
+    // i = 2: break, defer res.push(2)       -> [0, 0, 1, 2]
+    assert(res == @[0, 0, 1, 2], "Defer with break/continue failed")
+}
+test_defer_in_loops()
+
+test_defer_exception_unwinding() = {
+    res = list()
+    try {
+        defer res.push("outer_defer")
+        {
+            defer res.push("inner_defer")
+            throw "test_error"
+            defer res.push("unreached")
+        }
+    } catch (e) {
+        res.push("caught")
+    }
+    
+    assert(res == @["inner_defer", "outer_defer", "caught"], "Defer exception unwinding failed")
+}
+test_defer_exception_unwinding()
+
+test_defer_with_macros() = {
+    macro with_log(msg, body) = {
+        return @[
+            quote res.push("start_" + $msg),
+            quote defer res.push("end_" + $msg),
+            body
+        ]
+    }
+    
+    res = list()
+    {
+        @with_log("task", res.push("doing_task"))
+    }
+    
+    assert(res == @["start_task", "doing_task", "end_task"], "Defer macro splicing failed")
+}
+test_defer_with_macros()
+
+test_defer_suppressed_exceptions() = {
+    try {
+        defer throw "Secondary Error 1"
+        defer throw "Secondary Error 2"
+        throw "Primary Error"
+    } catch (e) {
+        assert("Primary Error" in e.message, "Primary exception message mismatch")
+        assert(len(e.suppressed) == 2, "Should have exactly 2 suppressed exceptions")
+        
+        // defer 是 LIFO 执行的，所以 Error 2 会先被捕获并压入 suppressed 列表
+        assert("Secondary Error 2" in e.suppressed[0].message, "First suppressed exception mismatch")
+        assert("Secondary Error 1" in e.suppressed[1].message, "Second suppressed exception mismatch")
+    }
+}
+test_defer_suppressed_exceptions()
+
+
+test_defer_control_flow() = {
+    res = list()
+    for (i in @[0, 1, 2]) {
+        try {
+            defer res.push("d" + str(i))
+            if (i == 0) continue
+            if (i == 1) break
+            res.push("body" + str(i))
+        } catch (e) {
+            res.push("catch")
+        }
+    }
+    assert(res == @["d0", "d1"], "defer runs on break/continue inside try")
+
+    res2 = list()
+    f(x) = {
+        try {
+            if (x == 0) throw "x"
+            return "ok"
+        } catch (e) {
+            defer res2.push("catch_defer")
+            return "caught"
+        }
+    }
+    assert(f(0) == "caught" && res2 == @["catch_defer"], "defer in catch on return")
+
+    res3 = list()
+    g() = {
+        defer { res3.push("d"); throw "defer_error" }
+        return 1
+    }
+    threw = false
+    try { g() } catch (e) { threw = "defer_error" in e.message }
+    assert(threw && res3 == @["d"], "defer throw on normal return")
+}
+test_defer_control_flow()
+}
+
+// ── features/test_labeled_loops.jc2 ─────────────────────────────────────────────
+{
+// Labeled loops and loop values.
+
+// Normal completion is none.
+x = for (i in @[1, 2, 3]) { i * 2 }
+assert(x == none, "normal loop completion returns none")
+
+// break expr returns the value of the innermost loop.
+x = for (i in @[1, 2, 3]) {
+    if (i == 2) { break 42 }
+    i
+}
+assert(x == 42, "break value returns from innermost loop")
+
+// break :label returns from the named outer loop.
+x = for :outer (i in @[1, 2, 3]) {
+    for :inner (j in @[10, 20]) {
+        if (i * j == 40) { break :outer i + j }
+    }
+}
+assert(x == 22, "labeled break returns from outer loop")
+
+// C-style for and while also carry break values through the optimized path.
+x = for (i = 0; i < 3; i += 1) {
+    if (i == 1) { break i * 10 }
+}
+assert(x == 10, "C-style for break value")
+
+x = while (true) { break 7 }
+assert(x == 7, "while break value")
+
+// Bare labeled break returns none.
+x = for :outer (i in @[1, 2]) {
+    for (j in @[1, 2]) { break :outer }
+    42
+}
+assert(x == none, "bare labeled break returns none")
+
+// continue :label continues the named outer loop.
+seen = none
+x = for :outer (i in @[1, 2, 3]) {
+    for :inner (j in @[10, 20]) {
+        if (i == 2 && j == 10) { continue :outer }
+        seen = i * j
+    }
+    0
+}
+assert(x == none, "continue does not set a loop value")
+assert(seen == 60, "continue :outer advances the outer loop")
+
+// A labeled continue from a C-style loop still runs the update.
+last = -1
+for :outer (i = 0; i < 3; i += 1) {
+    if (i == 1) { continue :outer }
+    last = i
+}
+assert(last == 2, "continue :outer runs the for update")
+
+// A labeled continue from a for-in loop advances the iterator.
+sum = 0
+for :outer (v in @[1, 2, 3, 4]) {
+    if (v == 2) { continue :outer }
+    sum += v
+}
+assert(sum == 8, "continue :outer advances for-in")
+
+// while loop label.
+hits = 0
+for :outer (i in @[1, 2]) {
+    while :inner (true) {
+        hits += 1
+        break :inner
+    }
+}
+assert(hits == 2, "labeled while runs once per outer iteration")
+
+// Sibling loops may reuse a label; only active nesting is forbidden.
+count = 0
+for :same (i in @[1, 2]) { count += i }
+for :same (j in @[3]) { count += j }
+assert(count == 6, "sibling loops may reuse a label")
+
+// break value is evaluated before defer cleanup.
+order = @[]
+x = for :outer (i in @[1]) {
+    defer order.push("defer")
+    order.push("value")
+    break :outer 1
+}
+assert(x == 1, "break value expression is evaluated")
+assert(order == @["value", "defer"], "defer runs after break value evaluation")
+
+// A leading block whose first statement has a loop label is not a dict literal.
+{
+    local ordered = @[]
+    local result = for :outer (i in @[10]) {
+        defer ordered.push("outer_defer")
+        for :inner (j in @[20]) {
+            defer ordered.push("inner_defer")
+            break :outer { ordered.push("eval_break_val"); i + j }
+        }
+    }
+    assert(result == 30, "labeled loop block expression yields the break value")
+    assert(ordered == @["eval_break_val", "inner_defer", "outer_defer"],
+        "break value runs before inner and outer defers")
+}
+
+// Loop value can be returned from a function.
+f() = {
+    return for :outer (i in @[1, 2, 3]) {
+        if (i == 2) { break :outer i * 10 }
+    }
+}
+assert(f() == 20, "loop value can be returned")
+}
+
+// ── features/test_labeled_loops_errors.jc2 ─────────────────────────────────────────────
+{
+// Labeled-loop syntax errors and line-boundary rules, exercised through eval.
+
+expect(code, kind) = {
+    try {
+        eval(code)
+        return false
+    } catch (e) {
+        return e.type == kind
+    }
+}
+
+assert(expect(
+    "for :a (i in @[1]) { for :a (j in @[1]) { break :a } }",
+    "SyntaxError"), "nested duplicate label is rejected")
+assert(expect(
+    "for :a (i in @[1]) { break :b }",
+    "SyntaxError"), "unknown break label is rejected")
+assert(expect(
+    "for :a (i in @[1]) { continue :b }",
+    "SyntaxError"), "unknown continue label is rejected")
+assert(expect(
+    "for :a\n(i in @[1]) { }",
+    "ParserError"), "for header must stay on one line")
+assert(expect(
+    "for :a\n(x in @[1]) { }",
+    "ParserError"), "for-in header must stay on one line")
+assert(expect(
+    "while :a\n(true) { }",
+    "ParserError"), "while header must stay on one line")
+assert(expect(
+    "for :a (i in @[1]) { f = () => { break :a } }",
+    "SyntaxError"), "labels cannot cross a lambda boundary")
+assert(expect(
+    "while :a (true) { for :a (j in @[1]) { break :a } }",
+    "SyntaxError"), "nested while/for duplicate label is rejected")
+
+// Same-line label and value are valid.
+assert(eval("for :a (i in @[1]) { break :a 1 }") == 1, "labeled break value")
+
+// A newline ends bare break; 42 is the next expression, not a value.
+assert(eval("for :a (i in @[1]) { break\n42 }") == none, "break does not swallow the next line")
+assert(eval("for :a (i in @[1]) { break :a\n42 }") == none, "labeled break does not swallow the next line")
+
+// continue keeps the loop's normal none result.
+assert(eval("for :a (i in @[1]) { continue :a }") == none, "continue has no loop value")
+}
+
+// ── features/test_match.jc2 ─────────────────────────────────────────────
+{
+test_literal() = {
+    f(code) = match(code) {
+        200, 201 => "OK",
+        404 => "Not Found",
+        _ => "Unknown"
+    }
+    assert(f(201) == "OK", "Literal match OR failed")
+    assert(f(500) == "Unknown", "Literal match fallback failed")
+}
+test_literal()
+
+test_guard() = {
+    f(val) = match(val) {
+        n if (type(n) == int) => "Int: " + str(n),
+        s if (type(s) == string) => "Str: " + s,
+        _ => "Other"
+    }
+    assert(f(42) == "Int: 42", "Guard int failed")
+    assert(f("JC2") == "Str: JC2", "Guard string failed")
+}
+test_guard()
+
+test_middle() = {
+    f(arr) = match(arr) {
+        @[first, ...mid, last] => str(first) + "|" + str(mid) + "|" + str(last),
+        _ => "Fail"
+    }
+    assert(f(@[1, 2, 3, 4]) == "1|@[2, 3]|4", "Middle rest failed")
+    assert(f(@[9, 8]) == "9|@[]|8", "Middle rest empty failed")
+}
+test_middle()
+
+test_matrix_slice() = {
+    f(m) = match(m) {
+        [topleft, ...rest_col; ...rest_rows] => str(topleft) + "&" + str(rest_col) + "&" + str(rest_rows),
+        _ => "Fail"
+    }
+    mat3x3 = [1, 2, 3; 4, 5, 6; 7, 8, 9]
+    assert(f(mat3x3) == "1.0&[2.0, 3.0]&[4.0, 5.0, 6.0]\n[7.0, 8.0, 9.0]", "Matrix slice failed")
+}
+test_matrix_slice()
+
+test_strict_rows() = {
+    f(m) = match(m) {
+        [...r1; ...r2;] => "Exactly 2 rows",
+        _ => "Other"
+    }
+    assert(f([1, 2; 3, 4]) == "Exactly 2 rows", "Strict rows match failed")
+    assert(f([1, 2, 3; 4, 5, 6; 7, 8, 9]) == "Other", "Strict rows mismatch failed")
+}
+test_strict_rows()
+
+test_dict() = {
+    f(d) = match(d) {
+        %{name, ...extras} => name + "&" + str(extras),
+        %{} => "Empty",
+        _ => "Fail"
+    }
+    assert(f(%{"name": "JC2", "ver": 2}) == "JC2&%{\"ver\": 2}", "Dict shorthand failed")
+}
+test_dict()
+
+test_deep() = {
+    f(data) = match(data) {
+        %{"users": @[%{id, name}, ..._]} => str(id) + ":" + name,
+        _ => "Fail"
+    }
+    payload = %{"users": @[%{"id": 101, "name": "Admin"}, %{"id": 102, "name": "Guest"}]}
+    assert(f(payload) == "101:Admin", "Deep nesting failed")
+}
+test_deep()
+}

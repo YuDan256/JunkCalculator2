@@ -3665,23 +3665,46 @@ std::string VM::formatException(const Value& errVal) {
 }
 
 std::string VM::buildStackTrace() const {
-    std::ostringstream oss;
-    oss << jc::col(jc::Ansi::GRAY) << "\nTraceback (most recent call last):\n";
+    struct FrameLine {
+        std::string text;
+        std::string key;
+        int count = 1;
+    };
+    std::vector<FrameLine> lines;
+    lines.reserve(static_cast<size_t>(frameCount));
+
     for (int i = frameCount - 1; i >= 0; --i) {
         const CallFrame& f = frames[i];
         int line = (f.ip > 0 && f.ip <= static_cast<int>(f.chunk->lines.size())) ? f.chunk->lines[f.ip - 1] : 0;
         std::string fnName = f.function ? f.function->name : "<unknown>";
-        if (fnName == "<script>" || fnName == "<eval>") {
+        bool isScriptFrame = (fnName == "<script>" || fnName == "<eval>");
+        if (isScriptFrame) {
             std::string srcFile = f.function ? f.function->sourceFile : "";
             if (srcFile.empty()) fnName = "REPL";
             else {
                 try { fnName = from_path(to_path(srcFile).filename()); }
                 catch (...) { fnName = srcFile; }
             }
-            oss << "  at [Line " << line << "] in " << fnName << "\n";
-        } else {
-            oss << "  at [Line " << line << "] in " << fnName << "()\n";
         }
+
+        std::string text = "  at [Line " + std::to_string(line) + "] in " + fnName;
+        if (!isScriptFrame) text += "()";
+        std::string key = std::to_string(line) + "\x1f" + fnName + "\x1f" + (isScriptFrame ? "S" : "F");
+        if (!lines.empty() && lines.back().key == key) {
+            ++lines.back().count;
+        } else {
+            lines.push_back({std::move(text), std::move(key), 1});
+        }
+    }
+
+    std::ostringstream oss;
+    oss << jc::col(jc::Ansi::GRAY) << "\nTraceback (most recent call last):\n";
+    for (const auto& line : lines) {
+        oss << line.text;
+        if (line.count > 1) {
+            oss << " (repeated " << line.count << " times)";
+        }
+        oss << "\n";
     }
     oss << jc::col(jc::Ansi::RESET);
     return oss.str();

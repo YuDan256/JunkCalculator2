@@ -2079,6 +2079,8 @@
       "    s[start : end]      Slice [start, end)",
       "    s[start:end:step]   Slice with stepping",
       "                          \"hello\"[::-1] → \"olleh\" (String reversal!)",
+      "    Slice bounds are ordinary expressions: s[m.start : m.end] is valid.",
+      "    The ':' belongs to slicing, not to a type annotation.",
       "",
       "  Substrings",
       "  ──────────────────────",
@@ -2194,6 +2196,9 @@
       "    v[: end]                  From beginning to end",
       "    v[:]                      Full copy",
       "    v[::-1]                   Complete reversal",
+      "",
+      "    Slice bounds are ordinary expressions: v[i + 1 : m.end] is valid.",
+      "    The ':' belongs to slicing, not to a type annotation.",
       "",
       "    All indices support negative wrapping:",
       "      v[-3 : -1]              Extract 3rd-to-last to 2nd-to-last",
@@ -2361,7 +2366,8 @@
       "  ──────────────────────",
       "    L[start : end]          list slice [start, end)",
       "    L[start : end : step]   list slice with stepping (negative wraps)",
-        "    L[1:2] = @[9]           Slice assignment; replacement length must match",
+      "    L[1:2] = @[9]           Slice assignment; replacement length must match",
+      "    Bounds are expressions: L[i + 1 : m.end]; ':' is not a type annotation.",
       "    ",
       "    Function form:",
       "    L.slice(start, end)     Equivalent to L[start:end]",
@@ -6841,9 +6847,10 @@
     },
     "slice": {
       "signature": "slice([start], [end], [step]) / v.slice(start, [end])",
-      "desc": "Constructs a first-class slice object, or extracts a slice of the container from start to end. Slice objects have .start, .end, and .step properties.",
+      "desc": "Constructs a first-class slice object, or extracts a slice of the container from start to end. Slice objects have .start, .end, and .step properties. In v[a : b], both bounds are ordinary expressions; the ':' belongs to slicing, not to a type annotation.",
       "examples": [
-        "@[1, 2, 3, 4].slice(1, 3)"
+        "@[1, 2, 3, 4].slice(1, 3)",
+        "s[m.start : m.end]"
       ]
     },
     "reverse": {

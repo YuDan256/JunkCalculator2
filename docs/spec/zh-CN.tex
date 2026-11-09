@@ -532,8 +532,8 @@ postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 
 call-suffix    = "(" [ arguments ] ")" ;
 index-suffix   = "[" index-arg { "," index-arg } "]" ;
-index-arg      = assign-expr
-               | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
+index-arg      = ternary
+               | [ ternary ] ":" [ ternary ] [ ":" [ ternary ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 
 primary        = literal | identifier | "(" expression ")"
@@ -1297,6 +1297,8 @@ NaN 与其他值的相等结果为假；NaN 参与 \jc{<=>} 时产生 \jc{TypeEr
 
 负索引从末尾回绕。越界读取产生 \jc{ValueError}。
 \jc{x[i:j:k]} 产生切片；切片边界按第~\ref{sec:collections} 节规定。
+切片边界是普通表达式，可以包含成员访问或函数调用，例如
+\jc{s[m.start : m.end]}；这里的冒号属于切片语法，不解释为类型注解。
 切片起点与终点按长度回绕；步长为零时产生 \jc{ValueError}。
 \jc{slice(start, end, step)} 构造一级 slice 值，字段 \jc{start}、\jc{end}、\jc{step} 可读。
 \jc{x[s]} 等价于 \jc{x[s.start:s.end:s.step]}；省略的边界按容器长度处理。
@@ -2466,8 +2468,8 @@ as-expr        = postfix { "as" postfix } ;
 postfix        = primary { call-suffix | index-suffix | member-suffix } ;
 call-suffix    = "(" [ arguments ] ")" ;
 index-suffix   = "[" index-arg { "," index-arg } "]" ;
-index-arg      = assign-expr
-               | [ expression ] ":" [ expression ] [ ":" [ expression ] ] ;
+index-arg      = ternary
+               | [ ternary ] ":" [ ternary ] [ ":" [ ternary ] ] ;
 member-suffix  = "." ( identifier | keyword ) ;
 \end{lstlisting}
 

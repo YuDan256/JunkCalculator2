@@ -177,10 +177,9 @@ Fact = Y((rec) => (n) =>
 
 ToInt = (n) => n((x) => x + 1)(0)
 
-// Pointwise addition of two curried binary functions: (* + *) applied to
-// Church numerals computes (2*3) + (2*3).
-AddFunc = (f) => (g) => (x) => (y) => Add(f(x)(y))(g(x)(y))
-StarPlusStar = AddFunc(Mul)(Mul)
+// Church numerals are higher-order: Add itself can add two Mul values,
+// producing the pointwise function (* + *).
+StarPlusStar = Add(Mul)(Mul)
 assert(ToInt(StarPlusStar(Two)(Three)) == 12, "(* + *) Two Three")
 
 assert(If(True)(1)(2) == 1, "Church True selects the first branch")

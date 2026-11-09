@@ -1507,12 +1507,12 @@ void BuiltinRegistry::registerMatrixOps() {
             else s = s + nextVal;
             return true;
         })) {
-            if (first) return Value(0.0);
+            if (first) return Value::fromInt32(0);
             return s;
         }
         if (self.isObjType(ObjType::LIST)) {
             const auto& L = static_cast<ObjList*>(self.asObj())->vec;
-            if (L.empty()) return Value(0.0);
+            if (L.empty()) return Value::fromInt32(0);
             Value listSum = L[0];
             GcValueGuard listSumGuard(listSum);
             for (size_t i = 1; i < L.size(); ++i) {
@@ -1522,7 +1522,7 @@ void BuiltinRegistry::registerMatrixOps() {
         }
         if (self.isObjType(ObjType::SET)) {
             const auto& S = static_cast<ObjSet*>(self.asObj())->elements;
-            if (S.empty()) return Value(0.0);
+            if (S.empty()) return Value::fromInt32(0);
             Value setSum = S[0];
             GcValueGuard setSumGuard(setSum);
             for (size_t i = 1; i < S.size(); ++i) {

@@ -179,6 +179,14 @@ ToInt = (n) => n((x) => x + 1)(0)
 
 // Church numerals are higher-order: Add itself can add two Mul values,
 // producing the pointwise function (* + *).
+//
+//   Add(Mul)(Mul)(m)(n)
+//     = Mul(m)( Mul(m)(n) )
+//     = Mul(m)( m * n )
+//     = m * ( m * n )
+//     = m^2 * n
+//
+// With m = Two, n = Three: 2^2 * 3 = 12.
 StarPlusStar = Add(Mul)(Mul)
 assert(ToInt(StarPlusStar(Two)(Three)) == 12, "(* + *) Two Three")
 

@@ -5758,6 +5758,19 @@ static bool execIsValidUtf8(const std::string& raw) {
                                static_cast<int>(raw.size()), nullptr, 0) > 0;
 }
 
+static bool utf8ToWideString(const std::string& raw, std::wstring& out) {
+    if (raw.empty()) {
+        out.clear();
+        return true;
+    }
+    int wlen = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw.data(),
+                                   static_cast<int>(raw.size()), nullptr, 0);
+    if (wlen <= 0) return false;
+    out.resize(static_cast<size_t>(wlen));
+    return MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw.data(),
+                               static_cast<int>(raw.size()), out.data(), wlen) == wlen;
+}
+
 static std::string execCodepageToUtf8(const std::string& raw, UINT cp) {
     if (raw.empty()) return raw;
     int wlen = MultiByteToWideChar(cp, 0, raw.data(), static_cast<int>(raw.size()), nullptr, 0);
@@ -5997,10 +6010,14 @@ void BuiltinRegistry::registerSystemShell() {
     regModule(sys_ns, "system", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (!args[0].isString())
             JC2_THROW(TypeError, "sys.system() expects a command string.");
-        int rc = std::system(args[0].asString().c_str());
 #ifdef _WIN32
+        std::wstring wideCommand;
+        if (!utf8ToWideString(args[0].asString(), wideCommand))
+            JC2_THROW(RuntimeError, "sys.system(): command is not valid UTF-8.");
+        int rc = _wsystem(wideCommand.c_str());
         return Value::fromInt32(rc);
 #else
+        int rc = std::system(args[0].asString().c_str());
         if (WIFEXITED(rc)) return Value::fromInt32(WEXITSTATUS(rc));
         if (WIFSIGNALED(rc)) return Value::fromInt32(128 + WTERMSIG(rc));
         return Value::fromInt32(rc);

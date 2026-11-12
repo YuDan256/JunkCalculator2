@@ -92,6 +92,7 @@ assert("sys" in mods, "sys should be listed as imported")
 // ── core/test_sys_exec.jc2 ─────────────────────────────────────────────
 {
 import sys
+import io
 
 if (sys.platform() == "windows") {
     r = sys.exec("cmd", @["/c", "echo hello"])
@@ -130,6 +131,15 @@ if (sys.platform() == "windows") {
     assert(t["timedOut"], "timeout")
 
     assert(sys.system("exit 0") == 0, "sys.system")
+
+    utf8_name = "jc2_中文_system_test.txt"
+    if (io.exists(utf8_name)) { io.remove(utf8_name) }
+    out = io.open(utf8_name, "w")
+    out.write("x")
+    out.close()
+    code = sys.system("if exist \"" + utf8_name + "\" (exit /b 0) else (exit /b 1)")
+    if (io.exists(utf8_name)) { io.remove(utf8_name) }
+    assert(code == 0, "sys.system converts UTF-8 paths to UTF-16")
 } else {
     r = sys.exec("sh", @["-c", "echo hello"])
     assert(r["code"] == 0, "exit code")

@@ -2989,6 +2989,8 @@ namespace jc {
                     pairArgs.push_back(transformQuote(p.value.get()));
                     pairArgs.push_back(std::make_unique<Literal>(p.isLocal ? "true" : "false", false, false, true));
                     pairArgs.push_back(std::make_unique<Literal>(p.isConst ? "true" : "false", false, false, true));
+                    pairArgs.push_back(std::make_unique<Literal>(p.is_abstract ? "true" : "false", false, false, true));
+                    pairArgs.push_back(transformQuote(p.typeHint.get()));
                     args.push_back(std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(pairArgs)));
                 }
                 return std::make_unique<Call>(Token(TokenType::IDENTIFIER, "list", 0, 0), std::move(args));
@@ -3765,7 +3767,11 @@ namespace jc {
             }
 
             std::unique_ptr<Expr> value;
+            std::shared_ptr<Expr> fieldTypeHint;
             bool isAbstract = false;
+            if (match({ TokenType::COLON })) {
+                fieldTypeHint = std::shared_ptr<Expr>(ternary().release());
+            }
             if (match({ TokenType::ASSIGN })) {
                 value = ternary();
             } else if (!check(TokenType::LPAREN)) {
@@ -3773,6 +3779,9 @@ namespace jc {
                 //   初值必须由构造期提供（“必须初始化”的检查在下一阶段接入）。
                 value = nullptr;
             } else {
+                if (fieldTypeHint) {
+                    JC2_THROW(ParserError, "Method return type uses '->', not ':'.");
+                }
                 consume(TokenType::LPAREN, "Parser Error: Expect '(' after method name.");
 
                 std::vector<Token> params;
@@ -3973,10 +3982,24 @@ namespace jc {
                     "Static member '" + memberName.lexeme + "' requires an initializer.");
             }
 
+            if (fieldTypeHint) {
+                if (isStatic && !value) {
+                    JC2_THROW(ParserError,
+                        "Static field '" + memberName.lexeme + "' requires an initializer.");
+                }
+                if (value) {
+                    // One-time assertion on the initializer, matching variable
+                    // annotations: later assignments are not checked.
+                    value = std::make_unique<TypeAssertExpr>(
+                        memberName, std::move(value), std::move(fieldTypeHint));
+                    fieldTypeHint = nullptr;
+                }
+            }
+
             if (isStatic) {
-                staticProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract });
+                staticProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract, std::move(fieldTypeHint) });
             } else {
-                instanceProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract });
+                instanceProperties.push_back({ memberName, std::move(value), isLocal, isConst, isAbstract, std::move(fieldTypeHint) });
             }
 
             if (!check(TokenType::RBRACE) && !isAtEnd() && !check(TokenType::SEMICOLON) && !check(TokenType::NEWLINE)) {

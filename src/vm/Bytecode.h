@@ -18,6 +18,7 @@ namespace jc {
 // 必须用 <...> 包裹：jc::isReservedInternalName 以 `<` 开头、`>` 结尾判定内部名，
 // 这样它（a）不会被用户声明或引用抢占，（b）不会出现在 vars()/反射等用户可见列表里。
 inline constexpr const char* JC2_FIELD_INIT_NAME = "<fieldinit>";
+inline constexpr const char* JC2_FIELD_CHECK_NAME = "<fieldcheck>";
 // ★ 保留成员名：用户定义的构造函数（编译期由 "init" 映射而来）
 inline constexpr const char* JC2_USER_INIT_NAME = "<init>";
 

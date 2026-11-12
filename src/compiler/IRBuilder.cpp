@@ -4245,6 +4245,32 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
     for (auto& p : expr->instanceProperties) if (p.isLocal) ctx.privateMembers.insert(p.name.lexeme);
     classStack.push_back(ctx);
 
+    // Fields declared as `x: T` have no initializer to wrap, so synthesize a
+    // construction-time checker. VM calls it after required-member checks.
+    std::vector<ClassDefExpr::PropertyDef*> typedDeclarations;
+    for (auto& p : expr->instanceProperties) {
+        if (p.typeHint && !p.value) typedDeclarations.push_back(&p);
+    }
+    if (!typedDeclarations.empty()) {
+        std::vector<std::unique_ptr<Expr>> checks;
+        for (auto* p : typedDeclarations) {
+            auto selfExpr = std::make_unique<SelfExpr>();
+            auto fieldAccess = std::make_unique<DotAccess>(std::move(selfExpr), p->name);
+            checks.push_back(std::make_unique<TypeAssertExpr>(
+                p->name, std::move(fieldAccess), p->typeHint));
+        }
+        auto checkBody = std::make_shared<Block>(std::move(checks));
+        auto checkLambda = std::make_unique<LambdaExpr>(
+            JC2_FIELD_CHECK_NAME,
+            std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{},
+            std::vector<std::shared_ptr<Expr>>{}, "",
+            std::vector<std::shared_ptr<Expr>>{}, nullptr, "",
+            checkBody);
+        expr->instanceProperties.push_back({
+            Token(TokenType::IDENTIFIER, JC2_FIELD_CHECK_NAME, expr->name.line),
+            std::move(checkLambda), false, false, false, nullptr});
+    }
+
     bool hasInit = false;
     for (auto& p : expr->instanceProperties) {
         if (p.name.lexeme == "init") hasInit = true;

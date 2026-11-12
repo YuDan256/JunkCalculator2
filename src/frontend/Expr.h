@@ -686,6 +686,9 @@ struct IncludeExpr;
             bool isLocal = false;
             bool isConst = false;
             bool is_abstract = false;  // ★ 抽象方法（无实现签名）
+            // Only set for a field declared without an initializer; such a
+            // field is type-checked after construction.
+            std::shared_ptr<Expr> typeHint;
         };
         std::vector<PropertyDef> staticProperties;
         std::vector<PropertyDef> instanceProperties;

@@ -675,6 +675,23 @@ void VM::checkRequiredMembersInitialized(ObjClass* cls, const Value& self) {
                 JC2_THROW(RuntimeError, "member '" + name + "' was not initialized in init()");
         }
     }
+
+    // `x: T` without an initializer is checked once, after construction.
+    // The checker is synthesized by IRBuilder and stored as <fieldcheck>.
+    for (ObjClass* c = cls; c; c = c->parent) {
+        const PropertyDescriptor* checker = nullptr;
+        auto mit = c->members.find(JC2_FIELD_CHECK_NAME);
+        if (mit != c->members.end()) checker = &mit->second;
+        else {
+            auto pit = c->properties.find(JC2_FIELD_CHECK_NAME);
+            if (pit != c->properties.end()) checker = &pit->second;
+        }
+        if (!checker || !checker->val.isFunctionClosure()) continue;
+        ObjClosure* closure = checker->val.asFunction();
+        if (closure->isBytecode()) {
+            callVMFunction(closure->compiledFnIndex, {}, closure, self, Value(c));
+        }
+    }
 }
 
 uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t* arg_bits, uint32_t argc) {

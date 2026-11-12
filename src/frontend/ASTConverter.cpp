@@ -522,11 +522,18 @@ public:
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 GcObjGuard pGuard(pair);
                 pair->vec.push_back(Value(p.name.lexeme));
-                p.value->accept(*this);
+                if (p.value) p.value->accept(*this);
+                else result = Value::none();
                 pair->vec.push_back(result);
                 pair->vec.push_back(Value(p.isLocal));
                 pair->vec.push_back(Value(p.isConst));
                 pair->vec.push_back(Value(p.is_abstract));
+                if (p.typeHint) {
+                    p.typeHint->accept(*this);
+                    pair->vec.push_back(result);
+                } else {
+                    pair->vec.push_back(Value::none());
+                }
                 list->vec.push_back(Value(pair));
             }
             return list;
@@ -1182,7 +1189,11 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
                             bool isLoc = pList->vec.size() > 2 ? pList->vec[2].truthy() : false;
                             bool isCon = pList->vec.size() > 3 ? pList->vec[3].truthy() : false;
                             bool isAbs = pList->vec.size() > 4 ? pList->vec[4].truthy() : false;
-                            properties.push_back({pName, toAST(pList->vec[1]), isLoc, isCon, isAbs});
+                            std::shared_ptr<Expr> typeHint;
+                            if (pList->vec.size() > 5 && !pList->vec[5].isNone()) {
+                                typeHint = std::shared_ptr<Expr>(toAST(pList->vec[5]).release());
+                            }
+                            properties.push_back({pName, toAST(pList->vec[1]), isLoc, isCon, isAbs, std::move(typeHint)});
                         }
                     }
                 }

@@ -127,6 +127,34 @@ assert(LocalInit().read() == 7, "init still runs when written with a modifier")
 {
 // 多种类型断言的统一测试（赋值 / 属性 / 索引 / 解构 / 声明 / match 守卫 / as / in / 参数返回）
 
+// ============ class 字段注解 ============
+class TypedFields {
+    x: int
+    y: int = 1
+    init(v) = { self.x = v }
+    read() = self.x
+}
+tf = TypedFields(5)
+assert(tf.read() == 5 && tf.y == 1, "field annotations on initialized fields")
+tf.x = "bad"
+assert(tf.x == "bad", "field annotation is one-time")
+assert(throws(() => TypedFields("bad")), "uninitialized annotated field checks construction")
+
+class MissingTypedField {
+    x: int
+}
+assert(throws(() => MissingTypedField()), "annotated field must be initialized")
+
+class BadTypedInit {
+    x: int = "bad"
+}
+assert(throws(() => BadTypedInit()), "field initializer is checked")
+
+class TypedStatic {
+    static x: int = 1
+}
+assert(TypedStatic.x == 1, "static field annotation")
+
 // ============ 变量赋值断言 ============
 test_assign_var() = {
     x: int = 10

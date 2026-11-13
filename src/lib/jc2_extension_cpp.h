@@ -46,6 +46,7 @@ public:
     bool is_set() const { return Env::api->is_set(Env::ctx, handle); }
     bool is_real_matrix() const { return Env::api->is_real_matrix(Env::ctx, handle); }
     bool is_complex_matrix() const { return Env::api->is_complex_matrix(Env::ctx, handle); }
+    bool is_sym_matrix() const { return Env::api->is_sym_matrix(Env::ctx, handle); }
     bool is_function() const { return Env::api->is_function(Env::ctx, handle); }
     bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }
@@ -284,6 +285,16 @@ public:
     void set(int row, int col, double r, double i) { Env::api->complex_matrix_set(Env::ctx, get_handle(), row, col, r, i); }
     int rows() const { return Env::api->complex_matrix_rows(Env::ctx, get_handle()); }
     int cols() const { return Env::api->complex_matrix_cols(Env::ctx, get_handle()); }
+};
+
+class SymMatrix : public Value {
+public:
+    SymMatrix(JC2_ValueHandle h) : Value(h) {}
+    int rows() const { return Env::api->sym_matrix_rows(Env::ctx, get_handle()); }
+    int cols() const { return Env::api->sym_matrix_cols(Env::ctx, get_handle()); }
+    Value get(int row, int col) const {
+        return Value(Env::api->sym_matrix_get(Env::ctx, get_handle(), row, col));
+    }
 };
 
 class Function : public Value {

@@ -500,6 +500,30 @@ static bool host_is_complex_matrix(JC2_VMContext, JC2_ValueHandle v) {
     return from_handle(v).isObjType(ObjType::COMPLEX_MATRIX);
 }
 
+static bool host_is_sym_matrix(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isObjType(ObjType::SYM_MATRIX);
+}
+
+static int host_sym_matrix_rows(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::SYM_MATRIX)) return static_cast<ObjSymMatrix*>(m.asObj())->mat.getRows();
+    return 0;
+}
+
+static int host_sym_matrix_cols(JC2_VMContext, JC2_ValueHandle mat) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::SYM_MATRIX)) return static_cast<ObjSymMatrix*>(m.asObj())->mat.getCols();
+    return 0;
+}
+
+static JC2_ValueHandle host_sym_matrix_get(JC2_VMContext, JC2_ValueHandle mat, int row, int col) {
+    Value m = from_handle(mat);
+    if (m.isObjType(ObjType::SYM_MATRIX)) {
+        return protect(Value(static_cast<ObjSymMatrix*>(m.asObj())->mat(row, col)));
+    }
+    return protect(Value::none());
+}
+
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -899,7 +923,11 @@ static const JC2_HostAPI host_api = {
     host_instance_get_field,
     host_instance_set_field,
     host_freeze_object,
-    host_throw_error_class
+    host_throw_error_class,
+    host_is_sym_matrix,
+    host_sym_matrix_rows,
+    host_sym_matrix_cols,
+    host_sym_matrix_get
 };
 
 const JC2_HostAPI* get_host_api() {

@@ -719,6 +719,20 @@ static std::string renderValue(const jc2::Value& val) {
         oss << "\\end{pmatrix}";
         return oss.str();
     }
+    if (val.is_sym_matrix()) {
+        jc2::SymMatrix m(val.get_handle());
+        std::ostringstream oss;
+        oss << "\\begin{pmatrix}\n";
+        for (int i = 0; i < m.rows(); ++i) {
+            for (int j = 0; j < m.cols(); ++j) {
+                if (j) oss << " & ";
+                oss << m.get(i, j).to_string();
+            }
+            oss << (i + 1 < m.rows() ? " \\\\\n" : "\n");
+        }
+        oss << "\\end{pmatrix}";
+        return oss.str();
+    }
     if (val.is_complex_matrix()) {
         jc2::ComplexMatrix m(val.get_handle());
         std::ostringstream oss;

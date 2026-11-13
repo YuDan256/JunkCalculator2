@@ -379,7 +379,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
         }
     }
     if (!std::filesystem::exists(jc::to_path(resolvedPath))) {
-        std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
+        std::cerr << "IO Error: Cannot open script '" << filepath << "'." << std::endl;
         return;
     }
 
@@ -429,7 +429,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
 
     std::ifstream file(jc::to_path(resolvedPath));
     if (!file.is_open()) {
-        std::cerr << "   IO Error: Cannot open script '" << filepath << "'." << std::endl;
+        std::cerr << "IO Error: Cannot open script '" << filepath << "'." << std::endl;
         return;
     }
 

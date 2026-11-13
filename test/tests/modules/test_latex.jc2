@@ -1,0 +1,40 @@
+import latex
+import math
+
+throws(f) = {
+    try { f(); return false } catch (e) { return true }
+}
+
+// Parsing, precedence and command coverage.
+assert(latex.eval(r"\frac{1 + 2}{3}") == 1, "fraction")
+assert(latex.eval(r"2^3^2") == 512, "power is right-associative")
+assert(latex.eval(r"-2^2") == -4, "unary minus binds below power")
+assert(latex.eval(r"\sqrt{9}") == 3, "square root")
+assert(latex.eval(r"\sqrt[3]{27}") == 3, "nth root")
+assert(abs(latex.eval(r"\sin(\pi / 2)") - 1.0) < 1e-12, "function and pi")
+assert(latex.eval(r"\left(1 + 2\right) * 3") == 9, "left/right delimiters")
+assert(latex.eval(r"\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}") == [1, 2; 3, 4], "matrix")
+
+// compile validates variables and lowers a real closure.
+f = latex.compile(r"\frac{\sin(\theta)}{x^2}", @["x", "theta"])
+assert(abs(f(2.0, math.pi() / 2) - 0.25) < 1e-12, "compiled formula")
+g = latex.compile(r"\begin{pmatrix} x & 2 \\ 3 & y \end{pmatrix}", @["x", "y"])
+assert(g(1, 4) == [1, 2; 3, 4], "compiled matrix")
+h = latex.compile(r"\mathrm{velocity} * 2", @["velocity"])
+assert(h(3) == 6, "mathrm long variable")
+i = latex.compile(r"2x", @["x"])
+assert(i(3) == 6, "implicit multiplication")
+
+// Reverse rendering.
+assert(latex.to_latex(frac(1, 2)) == r"\frac{1}{2}", "fraction rendering")
+assert(latex.to_latex(3 + 4i) == "3+4i", "complex rendering")
+matrix_tex = latex.to_latex([1, 2; 3, 4])
+assert("\\begin{pmatrix}" in matrix_tex && "1 & 2" in matrix_tex, "matrix rendering")
+assert("\\left[" in latex.to_latex(@[1, 2]), "list rendering")
+
+// Strict failures.
+assert(throws(() => latex.eval(r"\foo{1}")), "unknown command")
+assert(throws(() => latex.eval(r"\frac{1}")), "missing denominator")
+assert(throws(() => latex.eval(r"\begin{pmatrix} 1 & 2 \\ 3 \end{pmatrix}")), "non-rectangular matrix")
+assert(throws(() => latex.compile(r"x + z", @["x"])), "unknown symbol")
+assert(throws(() => latex.compile(r"x", @["bad-name"])), "invalid variable")

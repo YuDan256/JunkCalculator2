@@ -76,6 +76,15 @@ private:
     IRBuilder* parent = nullptr;
     CompiledFunction* currentFunction = nullptr;
 
+    // A synthesized top-level function (sys.compileCode/compileFile) is still
+    // the script root for state/ref-upvalue purposes. Ordinary nested
+    // functions have their own names and are allowed to declare state.
+    bool isTopLevelCodeContext() const {
+        return !currentFunction ||
+               currentFunction->name == "<compiled_code>" ||
+               currentFunction->name == "<compiled_file>";
+    }
+
     IRNode* readVariable(const std::string& name, ResolvedSym sym);
 public:
     struct UpvalueTarget {

@@ -87,6 +87,19 @@ assert(sys.getenv("JC2_TEST_MISSING_12345", "dflt") == "dflt", "getenv default")
 
 mods = sys.loadedModules()
 assert("sys" in mods, "sys should be listed as imported")
+
+// compileCode has a script-root context: top-level state must be rejected,
+// while state inside a returned closure is legal.
+bad = false
+try {
+    sys.compileCode("state a = 1")
+} catch (e) {
+    bad = e.type == "SyntaxError"
+}
+assert(bad, "compileCode rejects top-level state")
+factory = sys.compileCode("g = () => { state a = 1; a += 1; return a }; g")
+counter = factory()
+assert(counter() == 2 && counter() == 3, "compileCode closure state persists")
 }
 
 // ── core/test_sys_exec.jc2 ─────────────────────────────────────────────

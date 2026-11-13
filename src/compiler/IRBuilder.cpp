@@ -1818,7 +1818,7 @@ void IRBuilder::visitAssign(Assign* expr) {
         //   currentFunction->upvalues 解引用 → 空指针（0xC0000005）。
         //   在 -e 模式下更是静默无输出，只有崩溃码。
         //   与 visitStateDecl / visitAssign 的同名检查保持同一措辞。
-        if (!currentFunction) error(expr->name.line, "Syntax Error: 'state' modifier cannot be used at the top level.");
+        if (isTopLevelCodeContext()) error(expr->name.line, "Syntax Error: 'state' modifier cannot be used at the top level.");
         IRNode* getVal = readVariable(expr->name.lexeme, sym);
         IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
         isUninit->addData(getVal);
@@ -3078,7 +3078,7 @@ void IRBuilder::visitRefDecl(RefDecl* expr) {
 void IRBuilder::visitStateDecl(StateDecl* expr) {
     if (!allowInternalNames && isReservedInternalName(expr->name.lexeme)) error(expr->name.line, "Compile Error: Illegal use of reserved internal name '" + expr->name.lexeme + "'.");
     graph->currentLine = expr->name.line;
-    if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
+    if (isTopLevelCodeContext()) error("Syntax Error: 'state' modifier cannot be used at the top level.");
     
     if (expr->name.lexeme != "_") {
         int upvalIdx = resolveUpvalue(expr->name.lexeme, false);
@@ -3173,7 +3173,7 @@ void IRBuilder::visitCompoundAssign(CompoundAssign* expr) {
     if (auto* var = dynamic_cast<Variable*>(expr->target.get())) {
         graph->currentLine = var->name.line;
         if (expr->isState) {
-            if (!currentFunction) error("Syntax Error: 'state' modifier cannot be used at the top level.");
+            if (isTopLevelCodeContext()) error("Syntax Error: 'state' modifier cannot be used at the top level.");
             int upvalIdx = resolveUpvalue(var->name.lexeme, false);
             if (upvalIdx == -1) {
                 CompiledFunction::UpvalueInfo uv;
@@ -5053,7 +5053,7 @@ void IRBuilder::visitDestructAssign(DestructAssign* expr) {
     //   下面那段 state 初始化还带 `&& currentFunction`，不加这条检查它会
     //   静默跳过、把畸形 IR 留到后面炸。与 visitVarDecl / visitAssign /
     //   visitStateDecl 的同名检查保持同一措辞。
-    if (!currentFunction) {
+    if (isTopLevelCodeContext()) {
         bool usesState = expr->isState;
         for (const auto& varTuple : boundVars) {
             if (std::get<1>(varTuple) == ScopeModifier::State) { usesState = true; break; }

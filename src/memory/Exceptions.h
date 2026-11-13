@@ -90,7 +90,7 @@ namespace jc {
     [[noreturn]] inline void errCallFrameOverflow() { JC2_THROW(RuntimeError, "CallFrame stack overflow."); }
     [[noreturn]] inline void errMatrixElementType() { JC2_THROW(RuntimeError, "Matrix elements must be numeric, complex, or symbolic. Use @[...] for lists."); }
     [[noreturn]] inline void errInvalidRefParamIndex() { JC2_THROW(RuntimeError, "Invalid ref param index."); }
-    [[noreturn]] inline void errInvalidUpvalueIndex() { JC2_THROW(RuntimeError, "Invalid upvalue index."); }
+    [[noreturn]] inline void errInvalidUpvalueIndex() { JC2_THROW(InternalError, "Invalid upvalue index."); }
     [[noreturn]] inline void errSetPrivateOnType() { JC2_THROW(RuntimeError, "Cannot set private property on this type."); }
     [[noreturn]] inline void errUnsupportedIndexDim() { JC2_THROW(RuntimeError, "Unsupported index dimensionality."); }
     [[noreturn]] inline void errSuperInstanceContext() { JC2_THROW(RuntimeError, "'super' requires an instance context."); }

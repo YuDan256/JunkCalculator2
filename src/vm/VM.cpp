@@ -10421,7 +10421,7 @@ uint64_t jc2_jit_get_upval(uint32_t uvIdx) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
-        JC2_THROW(RuntimeError, "Invalid upvalue index.");
+        JC2_THROW(InternalError, "Invalid upvalue index.");
     Value res = vm->readUpvalue(frame->closure->upvalues[uvIdx]);
     frame->jitReturnSlot = res;
     return res.as_bits;
@@ -10433,7 +10433,7 @@ void jc2_jit_set_upval(uint32_t uvIdx, uint64_t val_bits) {
     VM* vm = VM::activeVM;
     CallFrame* frame = vm->getCurrentFrame();
     if (!frame->closure || uvIdx >= static_cast<uint32_t>(frame->closure->upvalueCount))
-        JC2_THROW(RuntimeError, "Invalid upvalue index.");
+        JC2_THROW(InternalError, "Invalid upvalue index.");
     vm->writeUpvalue(frame->closure->upvalues[uvIdx], Value::fromRawBits(val_bits));
     JIT_CALLOUT_CATCH_VOID
 }

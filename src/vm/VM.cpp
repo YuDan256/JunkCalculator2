@@ -421,7 +421,8 @@ static void collectPrivateCandidates(const ObjClass* lexical, ObjClass* ctx, Obj
 }
 
 bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
-                           Value*& foundVal, PropFlags& foundFlags, ObjClass* lexical, ObjClass** foundIn) {
+                           Value*& foundVal, PropFlags& foundFlags, ObjClass* lexical, ObjClass** foundIn,
+                           bool allowFieldDecl) {
     foundVal = nullptr;
     foundFlags = PropFlags{};
     if (foundIn) *foundIn = nullptr;
@@ -444,8 +445,8 @@ bool VM::findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& 
         const PropertyDescriptor* pd = c->ownPrivate(name);
         if (pd) {
             // 实例私有字段的类表项只是字段声明登记（没有实例值）。
-            // receiver 不是该类实例时，绝不能把模板里的 none/默认值当成读取结果。
-            if (inst && pd->is_field_decl) continue;
+            // 读取路径必须跳过；SET_PRIVATE 写入路径允许命中，随后在实例上建字段。
+            if (inst && pd->is_field_decl && !allowFieldDecl) continue;
             foundVal = const_cast<Value*>(&pd->val);
             foundFlags = ObjInstance::toFlags(*pd);
             if (foundIn) *foundIn = c;
@@ -7689,7 +7690,7 @@ Value VM::run(int targetFrameDepth) {
                     if (op == OpCode::SET_PRIVATE) {
                         Value* pdv = nullptr; PropFlags pdf;
                         ObjClass* foundIn = nullptr;
-                        if (!VM::findPrivateMember(owner, inst, pname, pdv, pdf, lexical, &foundIn)) {
+                        if (!VM::findPrivateMember(owner, inst, pname, pdv, pdf, lexical, &foundIn, true)) {
                             JC2_THROW(RuntimeError, "Private property '" + pname + "' is not accessible on this receiver.");
                         }
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + pname + "'.");
@@ -11439,11 +11440,20 @@ void jc2_jit_set_private(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, c
         ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
         Value* pdv = nullptr; PropFlags pdf;
         ObjClass* foundIn = nullptr;
-        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn)) {
+        if (!VM::findPrivateMember(owner, inst, keyVal.asString(), pdv, pdf, lexical, &foundIn, true)) {
             JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' is not accessible on this receiver.");
         }
         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private property '" + keyVal.asString() + "'.");
-        *pdv = val;
+        bool classFieldDecl = false;
+        if (foundIn && !inst->hasPrivate(foundIn, keyVal.asString())) {
+            const PropertyDescriptor* ce = foundIn->ownPrivate(keyVal.asString());
+            classFieldDecl = (ce && ce->is_field_decl);
+        }
+        if (classFieldDecl) {
+            inst->putPrivate(foundIn, keyVal.asString(), val, false);
+        } else {
+            *pdv = val;
+        }
     } else if (obj.isClass()) {
         ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
         if (!owner) errAccessPrivateOutsideClass();

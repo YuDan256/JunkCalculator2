@@ -155,6 +155,13 @@ class TypedStatic {
 }
 assert(TypedStatic.x == 1, "static field annotation")
 
+class PrivateTypedField {
+    local n: int
+    init(v) = { self.n = v }
+    read() = self.n
+}
+assert(PrivateTypedField(3).read() == 3, "private uninitialized field is assigned by init")
+
 // ============ 变量赋值断言 ============
 test_assign_var() = {
     x: int = 10

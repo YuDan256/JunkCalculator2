@@ -169,7 +169,8 @@ public:
     // foundIn 可选：返回命中的 owner 类（用于把绑定闭包的 classContext 指向正确的作用域）。
     static bool findPrivateMember(ObjClass* cls, ObjInstance* inst, const std::string& name,
                                   Value*& foundVal, PropFlags& foundFlags,
-                                  ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);
+                                  ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr,
+                                  bool allowFieldDecl = false);
     static bool findPrivateMember(const Value& obj, const std::string& name,
                                   Value*& foundVal, PropFlags& foundFlags,
                                   ObjClass* lexical = nullptr, ObjClass** foundIn = nullptr);

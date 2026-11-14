@@ -1,0 +1,427 @@
+#platform windows
+// ═══════════════════════════════════════════════════════════════
+// midi_synth.jc2 - 88-key piano, US keyboard layout, MIDI + LUT
+//
+// Windows only: winmm.dll MIDI output. If no MIDI device is
+// available the visual piano still runs; MIDI calls are skipped.
+// ═══════════════════════════════════════════════════════════════
+import window
+import image
+import ffi
+import bytes
+import math
+import sys
+
+// ── 1. winmm MIDI output ────────────────────────────────────────
+winmm = ffi.FFILibrary("winmm.dll")
+midiOutOpen = winmm.bind("midiOutOpen", "u32", "pointer", "u32", "u64", "u64", "u32")
+midiOutShortMsg = winmm.bind("midiOutShortMsg", "u32", "u64", "u32")
+midiOutClose = winmm.bind("midiOutClose", "u32", "u64")
+
+h_buf = bytes.alloc(8)           // zeroed; readU64 is safe on x64 and x86
+init_rc = midiOutOpen(h_buf, 0xFFFFFFFF, 0, 0, 0)
+hMidi = h_buf.readU64()
+midi_ok_box = @[init_rc == 0]
+midi_error = @[init_rc == 0 ? "" : "visual only: open failed " + str(init_rc)]
+
+send_midi = (msg) => {
+    if (!midi_ok_box[0]) return
+    local rc = midiOutShortMsg(hMidi, msg)
+    if (rc != 0) {
+        midi_ok_box[0] = false
+        midi_error[0] = "send failed: " + str(rc)
+    }
+}
+
+if (midi_ok_box[0]) {
+    // Acoustic Grand Piano: program change on channel 0.
+    send_midi(0xC0)
+}
+
+note_on = (midi) => {
+    send_midi(0x90 | (midi << 8) | (110 << 16))
+}
+
+note_off = (midi) => {
+    send_midi(0x80 | (midi << 8))
+}
+
+close_midi = () => {
+    // close iff open succeeded, regardless of later send failures
+    if (init_rc == 0) midiOutClose(hMidi)
+}
+
+// ── 2. 256-point sine lookup table (no trig in the main loop) ──
+SIN_LUT = @[sin(2 * math.PI * i / 256) for (local i in range(256))]
+
+// ── 3. Note geometry ────────────────────────────────────────────
+note_names = @["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+black_pc = @[false, true, false, true, false, false, true, false, true, false, true, false]
+
+is_black = (midi) => black_pc[midi % 12]
+note_name = (midi) => note_names[midi % 12] + str(int(midi / 12) - 1)
+
+// A0 (MIDI 21) through C8 (MIDI 108): 52 white + 36 black keys.
+white_midis = @[]
+for (local midi in range(21, 109)) {
+    if (!is_black(midi)) white_midis.push(midi)
+}
+
+LEFT = 32
+TOP = 110
+WHITE_W = 23
+WHITE_H = 190
+BLACK_W = 16
+BLACK_H = 115
+WIDTH = 1260
+HEIGHT = 580
+
+// One row, 52 white keys. The window is fixed at 1260 px; 23 px keys
+// leave room for labels and keep the last key visible.
+key_pos = %{}
+for (local wi = 0; wi < white_midis.len(); wi += 1) {
+    local midi = white_midis[wi]
+    key_pos[midi] = %{
+        x: LEFT + wi * WHITE_W,
+        y: TOP,
+        black: false
+    }
+}
+white_pos = 0
+for (local midi in range(21, 109)) {
+    if (is_black(midi)) {
+        key_pos[midi] = %{
+            x: LEFT + white_pos * WHITE_W - int(BLACK_W / 2),
+            y: TOP,
+            black: true
+        }
+    } else {
+        white_pos += 1
+    }
+}
+
+// ── 4. US keyboard layout, two octaves ──────────────────────────
+// Lower octave whites: Z X C V B N M (C D E F G A B)
+// Lower octave blacks: S D   G H J    (C# D# F# G# A#)
+// Upper octave whites: Q W E R T Y U I (C D E F G A B C)
+// Upper octave blacks: 2 3   5 6 7   9 0
+key_map = @[
+    // Extra low keys: with base C1 these are A0 and B0.
+    %{k: "A", off: -3}, %{k: "K", off: -2}, %{k: "L", off: -1},
+    %{k: "Z", off: 0},  %{k: "X", off: 2},  %{k: "C", off: 4},
+    %{k: "V", off: 5},  %{k: "B", off: 7},  %{k: "N", off: 9},
+    %{k: "M", off: 11},
+    %{k: "S", off: 1},  %{k: "D", off: 3},  %{k: "G", off: 6},
+    %{k: "H", off: 8},  %{k: "J", off: 10},
+    %{k: "Q", off: 12}, %{k: "W", off: 14}, %{k: "E", off: 16},
+    %{k: "R", off: 17}, %{k: "T", off: 19}, %{k: "Y", off: 21},
+    %{k: "U", off: 23}, %{k: "I", off: 24},
+    %{k: "2", off: 13}, %{k: "3", off: 15}, %{k: "5", off: 18},
+    %{k: "6", off: 20}, %{k: "7", off: 22}, %{k: "9", off: 25},
+    %{k: "0", off: 26}
+]
+
+base_box = @[60]                 // C4
+down_state = @[false for (local i in range(key_map.len()))]
+blocked_state = @[false for (local i in range(key_map.len()))]
+mouse_note = @[0]                // 0 = none
+mouse_down = @[false]
+sustain_box = @[false]
+sustained = %{}                  // MIDI notes held only by the pedal
+prev_left = false
+prev_right = false
+prev_space = false
+cur_note = "C4"
+cur_col = "#A6E3A1"
+amp = 0.0
+phase = 0
+
+// ── 5. Window and canvas ────────────────────────────────────────
+win = window.Window("JC2 88-Key MIDI Piano (US Keyboard)", WIDTH, HEIGHT)
+win.setImeEnabled(false)
+im = image.Image(WIDTH, HEIGHT, "#11111B")
+
+is_note_held = (midi) => {
+    for (local i = 0; i < key_map.len(); i += 1) {
+        if (down_state[i] && base_box[0] + key_map[i].off == midi) return true
+    }
+    return mouse_note[0] == midi
+}
+
+play_note = (midi) => {
+    if (sustained.has(midi)) sustained.removeKey(midi)
+    note_on(midi)
+}
+
+release_note = (midi) => {
+    if (sustain_box[0]) {
+        sustained[midi] = true
+    } else {
+        if (sustained.has(midi)) sustained.removeKey(midi)
+        note_off(midi)
+    }
+}
+
+release_sustained = () => {
+    for (local midi in sustained.keys()) {
+        if (!is_note_held(midi)) note_off(midi)
+        sustained.removeKey(midi)
+    }
+}
+
+release_all = () => {
+    for (local i = 0; i < key_map.len(); i += 1) {
+        if (down_state[i]) {
+            if (!blocked_state[i]) release_note(base_box[0] + key_map[i].off)
+            down_state[i] = false
+            blocked_state[i] = false
+        }
+    }
+    if (mouse_note[0] != 0) {
+        release_note(mouse_note[0])
+        mouse_note[0] = 0
+    }
+    mouse_down[0] = false
+}
+
+shift_octave = (delta) => {
+    local next_base = base_box[0] + delta
+    if (next_base < 24) next_base = 24   // C1
+    if (next_base > 84) next_base = 84   // C6
+    if (next_base == base_box[0]) return
+    release_all()
+    base_box[0] = next_base
+    // A key held across a shift must not retrigger the new mapping.
+    for (local i = 0; i < key_map.len(); i += 1) {
+        if (win.isKeyDown(key_map[i].k)) {
+            down_state[i] = true
+            blocked_state[i] = true
+        }
+    }
+}
+
+find_key_at = (mx, my) => {
+    if (my < TOP || my > TOP + WHITE_H) return 0
+
+    // Black keys are on top of white keys.
+    if (my <= TOP + BLACK_H) {
+        for (local midi in range(21, 109)) {
+            if (!is_black(midi)) continue
+            local p = key_pos[midi]
+            if (mx >= p.x && mx < p.x + BLACK_W) return midi
+        }
+    }
+    if (mx >= LEFT && mx < LEFT + white_midis.len() * WHITE_W) {
+        local idx = int((mx - LEFT) / WHITE_W)
+        return white_midis[idx]
+    }
+    return 0
+}
+
+while (win.isOpen()) {
+    while (local ev = win.pollEvent()) {
+        if (ev.type == "close" || (ev.type == "keydown" && ev.key == "ESC")) {
+            release_all()
+            close_midi()
+            sys.exit(0)
+        }
+
+        if (ev.type == "mousedown" && ev.button == 0) {
+            mouse_down[0] = true
+            local midi = find_key_at(ev.x, ev.y)
+            if (midi != 0) {
+                if (mouse_note[0] != 0) release_note(mouse_note[0])
+                mouse_note[0] = midi
+                play_note(midi)
+                cur_note = note_name(midi)
+                cur_col = "#89DCEB"
+                amp = 80.0
+            }
+        }
+        if (ev.type == "mousemove" && mouse_down[0]) {
+            local midi = find_key_at(ev.x, ev.y)
+            if (midi != mouse_note[0]) {
+                if (mouse_note[0] != 0) release_note(mouse_note[0])
+                mouse_note[0] = midi
+                if (midi != 0) {
+                    play_note(midi)
+                    cur_note = note_name(midi)
+                    cur_col = "#89DCEB"
+                    amp = 80.0
+                }
+            }
+        }
+        if (ev.type == "mouseup" && ev.button == 0) {
+            if (mouse_note[0] != 0) {
+                release_note(mouse_note[0])
+                mouse_note[0] = 0
+            }
+            mouse_down[0] = false
+        }
+    }
+
+    // Octave shift is edge-triggered: Windows repeats keydown while a key is
+    // held, which previously moved the mapping many octaves in one press.
+    local left_now = win.isKeyDown("LEFT")
+    if (left_now && !prev_left) shift_octave(-12)
+    prev_left = left_now
+
+    local right_now = win.isKeyDown("RIGHT")
+    if (right_now && !prev_right) shift_octave(12)
+    prev_right = right_now
+
+    // Space is the sustain pedal: note-offs are deferred until release.
+    local space_now = win.isKeyDown("SPACE")
+    if (space_now && !prev_space) sustain_box[0] = true
+    if (!space_now && prev_space) {
+        sustain_box[0] = false
+        release_sustained()
+    }
+    prev_space = space_now
+
+    // Keyboard state (polling avoids key-repeat delays).
+    for (local i = 0; i < key_map.len(); i += 1) {
+        local item = key_map[i]
+        local midi = base_box[0] + item.off
+        if (midi < 21 || midi > 108) {
+            down_state[i] = false
+            blocked_state[i] = false
+            continue
+        }
+        local is_down = win.isKeyDown(item.k)
+        if (is_down != down_state[i]) {
+            down_state[i] = is_down
+            if (is_down) {
+                if (!blocked_state[i]) {
+                    play_note(midi)
+                    cur_note = note_name(midi)
+                    cur_col = "#89DCEB"
+                    amp = 80.0
+                }
+            } else {
+                if (!blocked_state[i]) release_note(midi)
+                blocked_state[i] = false
+            }
+        }
+    }
+
+    // If the window lost focus, keyup events may be missed. Once no mapped
+    // physical key is down, release any keyboard note still marked down.
+    local any_key_down = false
+    for (local i = 0; i < key_map.len(); i += 1) {
+        if (win.isKeyDown(key_map[i].k)) { any_key_down = true; break }
+    }
+    if (!any_key_down) {
+        for (local i = 0; i < key_map.len(); i += 1) {
+            if (down_state[i]) {
+                if (!blocked_state[i]) release_note(base_box[0] + key_map[i].off)
+                down_state[i] = false
+                blocked_state[i] = false
+            }
+        }
+    }
+
+    im.clear("#11111B")
+
+    // White keys. Note names are split into two lines so 52 keys fit while
+    // keeping both the pitch class and the octave readable.
+    for (local wi = 0; wi < white_midis.len(); wi += 1) {
+        local midi = white_midis[wi]
+        local x = LEFT + wi * WHITE_W
+        im.fillRect(x, TOP, WHITE_W - 1, WHITE_H, "#E6E9EF")
+        im.fillRect(x, TOP + WHITE_H - 3, WHITE_W - 1, 3, "#B8BEC9")
+        local nn = note_name(midi)
+        im.text(nn.substr(0, nn.len() - 1), x + 3, TOP + WHITE_H + 5, "#6C7086", 1)
+        im.text(nn.substr(nn.len() - 1, 1), x + 9, TOP + WHITE_H + 15, "#6C7086", 1)
+    }
+
+    // White-key highlights must be painted before black keys, otherwise the
+    // white fill covers the black keys that sit on top of them.
+    for (local i = 0; i < key_map.len(); i += 1) {
+        local midi = base_box[0] + key_map[i].off
+        if (midi < 21 || midi > 108) continue
+        local p = key_pos[midi]
+        if (!p.black && down_state[i]) {
+            im.fillRect(p.x + 2, TOP + 2, WHITE_W - 5, WHITE_H - 8, "#89B4FA")
+        }
+    }
+    if (mouse_note[0] != 0 && !key_pos[mouse_note[0]].black) {
+        local p = key_pos[mouse_note[0]]
+        im.fillRect(p.x + 2, TOP + 2, WHITE_W - 5, WHITE_H - 8, "#F9E2AF")
+    }
+
+    // Black keys and their note labels.
+    for (local midi in range(21, 109)) {
+        if (!is_black(midi)) continue
+        local p = key_pos[midi]
+        im.fillRect(p.x, TOP, BLACK_W, BLACK_H, "#181825")
+        im.fillRect(p.x + 2, TOP + 2, BLACK_W - 4, BLACK_H - 5, "#292A3A")
+        local nn = note_name(midi)
+        im.text(nn.substr(0, nn.len() - 1), p.x, TOP + BLACK_H + 5, "#585B70", 1)
+        im.text(nn.substr(nn.len() - 1, 1), p.x + 4, TOP + BLACK_H + 15, "#585B70", 1)
+    }
+
+    // Black-key highlights (only black area, so white keys are untouched).
+    for (local i = 0; i < key_map.len(); i += 1) {
+        local midi = base_box[0] + key_map[i].off
+        if (midi < 21 || midi > 108) continue
+        local p = key_pos[midi]
+        if (p.black && down_state[i]) {
+            im.fillRect(p.x, TOP, BLACK_W, BLACK_H, "#89B4FA")
+        }
+    }
+    if (mouse_note[0] != 0 && key_pos[mouse_note[0]].black) {
+        local p = key_pos[mouse_note[0]]
+        im.fillRect(p.x, TOP, BLACK_W, BLACK_H, "#F9E2AF")
+    }
+
+    // Key caps last, so highlights do not hide the keyboard letters.
+    for (local i = 0; i < key_map.len(); i += 1) {
+        local item = key_map[i]
+        local midi = base_box[0] + item.off
+        if (midi < 21 || midi > 108) continue
+        local p = key_pos[midi]
+        if (p.black) {
+            im.text(item.k, p.x + 4, TOP + BLACK_H - 14, "#CDD6F4", 1)
+        } else {
+            im.text(item.k, p.x + 7, TOP + WHITE_H - 16, "#11111B", 1)
+        }
+    }
+
+    // Waveform from the LUT.
+    if (amp > 0.5) {
+        local idx = phase & 255
+        local y_prev = 390 - amp * 0.42 * SIN_LUT[idx]
+        for (local x = LEFT + 24; x <= WIDTH - LEFT; x += 24) {
+            idx = (idx + 9) & 255
+            local y_curr = 390 - amp * 0.42 * SIN_LUT[idx]
+            im.line(x - 24, y_prev, x, y_curr, cur_col, 2.0)
+            y_prev = y_curr
+        }
+        amp *= 0.985
+        phase = (phase + 7) & 255
+    }
+
+    im.text("JC2 88-Key Piano - MIDI + LUT", 20, 16, "#CDD6F4", 2)
+    im.text("Note: " + cur_note, 20, 44, cur_col, 1)
+    im.text("Octave base: " + note_name(base_box[0]) + "  [LEFT/RIGHT shifts octave]", 20, 66, "#6C7086", 1)
+    local midi_status = midi_ok_box[0] ? "connected" : midi_error[0]
+    im.text("MIDI: " + midi_status, 20, 86, "#6C7086", 1)
+    if (sustain_box[0]) {
+        im.text("SUSTAIN", WIDTH - 100, 86, "#F9E2AF", 1)
+    }
+
+    // US layout legend: rows follow the physical keyboard, not alphabet order.
+    im.text("US layout:", 20, 450, "#9399B2", 1)
+    im.text("2 3   5 6 7   9 0        upper black", 20, 470, "#585B70", 1)
+    im.text("Q W E R T Y U I           upper white", 20, 488, "#89B4FA", 1)
+    im.text(" S D   G H J             lower black", 20, 506, "#585B70", 1)
+    im.text("Z X C V B N M             lower white", 20, 524, "#A6E3A1", 1)
+    im.text("Mouse: drag = glissando. SPACE = sustain. A/K/L = A0/A#0/B0 at C1. ESC = quit.", 20, 552, "#6C7086", 1)
+
+    win.show(im)
+    sys.sleep(0.005)
+}
+
+release_all()
+close_midi()

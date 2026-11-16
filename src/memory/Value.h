@@ -3165,26 +3165,26 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
                     auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
                     if (foundRepl) {
                         if (replRes.isString()) os << replRes.asString();
-                        else os << replRes;
+                        else printValue(os, replRes, full, visited, true);
                         break;
                     }
                     auto [foundStr, strRes] = invokeDunder(inst, "__str__");
                     if (foundStr) {
                         if (strRes.isString()) os << strRes.asString();
-                        else os << strRes;
+                        else printValue(os, strRes, full, visited, true);
                         break;
                     }
                 } else {
                     auto [foundStr, strRes] = invokeDunder(inst, "__str__");
                     if (foundStr) {
                         if (strRes.isString()) os << strRes.asString();
-                        else os << strRes;
+                        else printValue(os, strRes, full, visited, true);
                         break;
                     }
                     auto [foundRepl, replRes] = invokeDunder(inst, "__repr__");
                     if (foundRepl) {
                         if (replRes.isString()) os << replRes.asString();
-                        else os << replRes;
+                        else printValue(os, replRes, full, visited, true);
                         break;
                     }
                 }

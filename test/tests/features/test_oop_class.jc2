@@ -53,6 +53,15 @@ test_dunder_methods() = {
 }
 test_dunder_methods()
 
+test_dunder_str_self_cycle() = {
+    class Loop {
+        __str__() = self
+    }
+    text = repr(Loop())
+    assert("Loop" in text, "self-returning __str__ must fall back to cycle marker")
+}
+test_dunder_str_self_cycle()
+
 test_super_call() = {
     class Base {
         greet() = "Hello from Base"

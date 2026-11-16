@@ -710,7 +710,10 @@ int main(int argc, char* argv[]) {
     std::vector<std::string> utf8Storage;
     std::vector<char*> utf8Ptrs;
     normalizeUtf8Argv(argc, argv, utf8Storage, utf8Ptrs);
-    std::system("chcp 65001 > nul");
+    // Set the console code pages directly. Spawning `cmd /c chcp 65001`
+    // added a full child process (~20-35 ms) to every startup.
+    SetConsoleCP(CP_UTF8);
+    SetConsoleOutputCP(CP_UTF8);
 #endif
     for (int i = 1; i < argc; ++i) {
         if (argv[i] && std::string(argv[i]) == "lsp") {

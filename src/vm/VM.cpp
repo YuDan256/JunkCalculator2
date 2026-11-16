@@ -4894,6 +4894,7 @@ Value VM::run(int targetFrameDepth) {
     int prevLine = -1;
     int lastBrokenLine = -1;
     int pendingKwArgc = 0;
+    int interruptPollCountdown = 0;
 
     while (true) {
         try {
@@ -6010,11 +6011,16 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::JMP: {
                 if (sax < 0) {
+                    if (--interruptPollCountdown <= 0) {
+                        interruptPollCountdown = 1024;
+                        jc::checkInterrupt();
+                    }
                     int loopHeaderIp = ip + sax;
                     if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
                         ENSURE_OSR_LOOP_HEADERS();
                         if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
                             if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                jc::checkInterrupt();
                                 if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                                     int fnIdx = frame->closure->compiledFnIndex;
                                     if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
@@ -6041,11 +6047,16 @@ Value VM::run(int targetFrameDepth) {
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (cond) {
                     if (sbx < 0) {
+                        if (--interruptPollCountdown <= 0) {
+                            interruptPollCountdown = 1024;
+                            jc::checkInterrupt();
+                        }
                         int loopHeaderIp = ip + sbx;
                         if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
                             ENSURE_OSR_LOOP_HEADERS();
                             if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
                                 if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                    jc::checkInterrupt();
                                     if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                                         int fnIdx = frame->closure->compiledFnIndex;
                                         if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {
@@ -6073,11 +6084,16 @@ Value VM::run(int targetFrameDepth) {
                 else { const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80; cond = val.isInstance() ? evaluateTruthiness(val) : val.truthy(); }
                 if (!cond) {
                     if (sbx < 0) {
+                        if (--interruptPollCountdown <= 0) {
+                            interruptPollCountdown = 1024;
+                            jc::checkInterrupt();
+                        }
                         int loopHeaderIp = ip + sbx;
                         if (loopHeaderIp >= 0 && loopHeaderIp < static_cast<int>(chunk->code.size())) {
                             ENSURE_OSR_LOOP_HEADERS();
                             if (chunk->osrLoopHeaderFlags[loopHeaderIp]) {
                                 if (++const_cast<Chunk*>(chunk)->osrCounters[op_ip] >= 1000) {
+                                    jc::checkInterrupt();
                                     if (g_enableJit && frame->closure && frame->closure->isBytecode()) {
                                         int fnIdx = frame->closure->compiledFnIndex;
                                         if (osrEntryPoints[fnIdx].find(loopHeaderIp) == osrEntryPoints[fnIdx].end()) {

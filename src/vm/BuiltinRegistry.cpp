@@ -3640,6 +3640,18 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto countFn = [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::STRING) && args[0].isString()) {
+            const std::string& haystack = static_cast<ObjString*>(self.asObj())->str;
+            const std::string& needle = args[0].asString();
+            if (needle.empty()) return Value::fromInt32(0);
+            int32_t found = 0;
+            size_t pos = 0;
+            while ((pos = haystack.find(needle, pos)) != std::string::npos) {
+                ++found;
+                pos += needle.size();
+            }
+            return Value::fromInt32(found);
+        }
         int c = 0;
         if (helpers::iterateIterable(self, [&](const Value& nextVal) {
             if (Value::equals(nextVal, args[0])) c++;

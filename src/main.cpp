@@ -55,9 +55,44 @@ namespace jc {
 // 信号处理
 static std::atomic<int> g_sigintCount{ 0 };
 static std::atomic<int> g_promptSigintCount{ 0 };
+static std::atomic<bool> g_promptInterruptHandled{ false };
 static auto g_lastSigintTime = std::chrono::steady_clock::now();
 
+static void resetAnsiColors();
 extern jc::VM vm;
+
+#ifdef _WIN32
+static bool stdinIsConsole() {
+    DWORD mode = 0;
+    HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+    return in != INVALID_HANDLE_VALUE && GetConsoleMode(in, &mode) != 0;
+}
+#else
+static bool stdinIsConsole() { return isatty(fileno(stdin)) != 0; }
+#endif
+
+// One physical Ctrl+C may surface either as SIGINT or as an EOF from
+// getline. Count it once, require three distinct presses, and let the
+// REPL consume the "already handled" marker on the EOF path.
+static void notePromptInterrupt() {
+    auto now = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastSigintTime).count();
+    if (elapsed < 50) return; // duplicate delivery of the same keypress
+    if (elapsed < 1000) g_promptSigintCount++;
+    else g_promptSigintCount = 1;
+    g_lastSigintTime = now;
+    g_promptInterruptHandled.store(true, std::memory_order_relaxed);
+
+    if (g_promptSigintCount >= 3) {
+        extern bool g_quiet;
+        if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+        resetAnsiColors();
+        vm.shutdown();
+        std::exit(0);
+    }
+
+    jc::g_interruptRequested.store(true, std::memory_order_relaxed);
+}
 
 void saveWorkspace(const std::string& filename, bool silent = false);
 
@@ -117,25 +152,7 @@ void sigintHandler(int signum) {
     std::signal(SIGINT, sigintHandler); // 重新注册，防止某些平台恢复默认处理
 
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
-        // At the prompt a single Ctrl+C only cancels the current line.
-        // Three consecutive presses exit, matching the run-time behavior.
-        auto now = std::chrono::steady_clock::now();
-        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastSigintTime).count() < 1000) {
-            g_promptSigintCount++;
-        } else {
-            g_promptSigintCount = 1;
-        }
-        g_lastSigintTime = now;
-
-        if (g_promptSigintCount >= 3) {
-            extern bool g_quiet;
-            if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-            resetAnsiColors();
-            vm.shutdown();
-            std::exit(0);
-        }
-
-        jc::g_interruptRequested.store(true, std::memory_order_relaxed);
+        notePromptInterrupt();
         return;
     }
 
@@ -1233,9 +1250,13 @@ int main(int argc, char* argv[]) {
         if (!getlineResult) {
             bool isInterrupt = jc::g_interruptRequested.load(std::memory_order_relaxed);
             bool isEof = std::cin.eof();
+            bool consoleEof = isEof && stdinIsConsole();
+            bool alreadyHandled = g_promptInterruptHandled.exchange(false, std::memory_order_relaxed);
             std::cin.clear(); // 清除错误状态
 
-            if (isInterrupt) {
+            if (isInterrupt || consoleEof) {
+                if (!alreadyHandled) notePromptInterrupt();
+                g_promptInterruptHandled.store(false, std::memory_order_relaxed);
                 std::cout << "\n";
                 continue;
             }
@@ -1250,6 +1271,7 @@ int main(int argc, char* argv[]) {
         }
 
         g_promptSigintCount.store(0, std::memory_order_relaxed);
+        g_promptInterruptHandled.store(false, std::memory_order_relaxed);
 
         size_t start = input.find_first_not_of(" \t");
         size_t end = input.find_last_not_of(" \t");

@@ -54,6 +54,7 @@ namespace jc {
 
 // 信号处理
 static std::atomic<int> g_sigintCount{ 0 };
+static std::atomic<int> g_promptSigintCount{ 0 };
 static auto g_lastSigintTime = std::chrono::steady_clock::now();
 
 extern jc::VM vm;
@@ -116,11 +117,26 @@ void sigintHandler(int signum) {
     std::signal(SIGINT, sigintHandler); // 重新注册，防止某些平台恢复默认处理
 
     if (jc::g_isWaitingForInput.load(std::memory_order_relaxed)) {
-        extern bool g_quiet;
-        if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
-        resetAnsiColors();
-        vm.shutdown();
-        std::exit(0);
+        // At the prompt a single Ctrl+C only cancels the current line.
+        // Three consecutive presses exit, matching the run-time behavior.
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::milliseconds>(now - g_lastSigintTime).count() < 1000) {
+            g_promptSigintCount++;
+        } else {
+            g_promptSigintCount = 1;
+        }
+        g_lastSigintTime = now;
+
+        if (g_promptSigintCount >= 3) {
+            extern bool g_quiet;
+            if (!g_quiet) std::cout << "\nGoodbye!" << std::endl;
+            resetAnsiColors();
+            vm.shutdown();
+            std::exit(0);
+        }
+
+        jc::g_interruptRequested.store(true, std::memory_order_relaxed);
+        return;
     }
 
     auto now = std::chrono::steady_clock::now();
@@ -1232,6 +1248,8 @@ int main(int argc, char* argv[]) {
             std::cout << "\n";
             continue;
         }
+
+        g_promptSigintCount.store(0, std::memory_order_relaxed);
 
         size_t start = input.find_first_not_of(" \t");
         size_t end = input.find_last_not_of(" \t");

@@ -3310,7 +3310,7 @@ void BuiltinRegistry::registerStringFunctions() {
     auto containsFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()) JC2_THROW(TypeError, "contains() expects a string."); return Value(self.asString().find(args[0].asString())!=std::string::npos); };
     regMethod(VM::activeVM->stringProto, "contains", {"sub"}, containsFn);
 
-    auto replaceFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()||!args[1].isString()) JC2_THROW(TypeError, "replace() expects two strings."); std::string s=self.asString(); const std::string& from=args[0].asString(); const std::string& to=args[1].asString(); if (from.empty()) return Value(s); size_t pos=0; while ((pos=s.find(from, pos))!=std::string::npos) { s.replace(pos, from.size(), to); pos+=to.size(); } return Value(s); };
+    auto replaceFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()||!args[0].isString()||!args[1].isString()) JC2_THROW(TypeError, "replace() expects two strings."); const std::string& s=self.asString(); const std::string& from=args[0].asString(); const std::string& to=args[1].asString(); if (from.empty()) return Value(s); std::string result; result.reserve(s.size()); size_t start=0, pos; while ((pos=s.find(from, start))!=std::string::npos) { result.append(s, start, pos-start); result.append(to); start=pos+from.size(); } result.append(s, start, std::string::npos); return Value(std::move(result)); };
     regMethod(VM::activeVM->stringProto, "replace", {"old", "new"}, replaceFn);
 
     auto repeatFn = [](const std::vector<Value>& args) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "repeat() expects a string."); const std::string& s = self.asString(); int n=static_cast<int>(std::round(args[0].asFloat())); if (n<0) JC2_THROW(RuntimeError, "repeat() count must be non-negative."); std::string result; result.reserve(s.size()*n); for (int i=0;i<n;++i) result+=s; return Value(result); };
@@ -3614,6 +3614,22 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto indexOfFn = [expectContainer, this](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::STRING)) {
+            if (!args[0].isString()) return Value::fromInt32(-1);
+            ObjString* obj = static_cast<ObjString*>(self.asObj());
+            const std::string& haystack = obj->str;
+            const std::string& needle = args[0].asString();
+            size_t bytePos = haystack.find(needle);
+            if (bytePos == std::string::npos) return Value::fromInt32(-1);
+            if (obj->isAscii) return Value::fromInt32(static_cast<int32_t>(bytePos));
+            // Convert a UTF-8 byte offset to a code-point index without
+            // constructing one Value per character.
+            int32_t charPos = 0;
+            for (size_t i = 0; i < bytePos; ++i) {
+                if ((static_cast<unsigned char>(haystack[i]) & 0xC0) != 0x80) ++charPos;
+            }
+            return Value::fromInt32(charPos);
+        }
         int idx = 0;
         int foundIdx = -1;
         if (helpers::iterateIterable(self, [&](const Value& nextVal) {

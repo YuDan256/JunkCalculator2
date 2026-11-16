@@ -56,10 +56,21 @@ namespace jc {
 static std::atomic<int> g_sigintCount{ 0 };
 static std::atomic<int> g_promptSigintCount{ 0 };
 static std::atomic<bool> g_promptInterruptHandled{ false };
+static std::atomic<bool> g_hardKillRequested{ false };
 static auto g_lastSigintTime = std::chrono::steady_clock::now();
 
 static void resetAnsiColors();
 extern jc::VM vm;
+
+// Runs on the VM/main thread after the interpreter has unwound. Never perform
+// VM teardown or std::exit from the signal/console thread.
+static void finishHardKill() {
+    if (!g_hardKillRequested.exchange(false, std::memory_order_relaxed)) return;
+    std::cerr << "\n[Hard Kill] Multiple Ctrl+C detected. Exiting immediately.\n";
+    resetAnsiColors();
+    vm.shutdown();
+    std::exit(1);
+}
 
 #ifdef _WIN32
 static bool stdinIsConsole() {
@@ -166,10 +177,11 @@ void sigintHandler(int signum) {
     g_lastSigintTime = now;
 
     if (g_sigintCount >= 3) {
-        std::cerr << "\n[Hard Kill] Multiple Ctrl+C detected. Exiting immediately.\n";
-        resetAnsiColors();
-        vm.shutdown();
-        std::exit(1);
+        // Do not touch the VM or call std::exit on the signal thread. The
+        // interpreter notices g_interruptRequested and unwinds to main.
+        g_hardKillRequested.store(true, std::memory_order_relaxed);
+        jc::g_interruptRequested.store(true, std::memory_order_relaxed);
+        return;
     }
 
     jc::g_interruptRequested.store(true, std::memory_order_relaxed);
@@ -428,6 +440,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
                 vm.setGlobal("ANS", result);
             }
         } catch (const jc::EngineInterruptError&) {
+            finishHardKill();
             if (isImport) throw;
             std::cerr << "\n^C KeyboardInterrupt in script '" << resolvedPath << "'" << std::endl;
         } catch (const jc::Jc2Error& ex) {
@@ -482,6 +495,7 @@ void runScript(const std::string& filepath, bool isImport = false) {
         }
     }
     catch (const jc::EngineInterruptError&) {
+        finishHardKill();
         if (isImport) throw;
         std::cerr << "\n^C KeyboardInterrupt in script '" << resolvedPath << "'" << std::endl;
     }
@@ -1683,6 +1697,7 @@ int main(int argc, char* argv[]) {
             }
         }
         catch (const jc::EngineInterruptError&) {
+            finishHardKill();
             std::cerr << "^C KeyboardInterrupt" << std::endl;
             if (g_profile) {
                 vm.printProfileInfo();

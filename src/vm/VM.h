@@ -268,6 +268,9 @@ public:
                 frames[i].closure = nullptr;
             }
         }
+        // The caller has unwound before shutdown; do not let the final GC
+        // traverse frames left behind by an interrupted run.
+        frameCount = 0;
         jit_exception_value = Value::none();
         // ★ 这一轮 GC 的目的：clearGlobals() 已断开 globals / openUpvalues / deferStack
         //   这些用户根，仍然存活的 finalize 对象都已不可达，跑一轮就能把 close/free 补上

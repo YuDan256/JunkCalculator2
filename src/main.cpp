@@ -27,6 +27,7 @@
 #include "utils/lsp/LspServer.h"
 #include <csignal>
 #include <atomic>
+#include <thread>
 #include <random>
 #include <array>
 #include <string_view>
@@ -70,6 +71,33 @@ static void finishHardKill() {
     resetAnsiColors();
     vm.shutdown();
     std::exit(1);
+}
+
+// Last-resort watchdog. The normal path above unwinds and shuts down on the
+// VM thread. If a native call cannot be interrupted, force process exit
+// without running destructors while the VM is still alive.
+static void startHardKillWatchdog() {
+    std::thread([]() {
+        bool armed = false;
+        auto armedAt = std::chrono::steady_clock::now();
+        while (true) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            bool requested = g_hardKillRequested.load(std::memory_order_relaxed);
+            if (!requested) {
+                armed = false;
+                continue;
+            }
+            if (!armed) {
+                armed = true;
+                armedAt = std::chrono::steady_clock::now();
+                continue;
+            }
+            if (std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - armedAt).count() >= 1000) {
+                std::_Exit(1);
+            }
+        }
+    }).detach();
 }
 
 #ifdef _WIN32
@@ -781,6 +809,7 @@ int main(int argc, char* argv[]) {
     });
 #endif
     std::signal(SIGINT, sigintHandler);
+    startHardKillWatchdog();
     std::string exeDir = getExecutableDir();
     // ===== 初始化超级虚拟机 =====
     jc::VM::activeVM = &vm;

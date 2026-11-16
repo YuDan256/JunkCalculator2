@@ -378,3 +378,19 @@ test_deep() = {
 }
 test_deep()
 }
+
+// ── if-without-else control flow ────────────────────────────────
+{
+immediate() = {
+    local n = 2000
+    while (true) if (n > 1000) break n
+}
+assert(immediate() == 2000, "if-without-else break path")
+
+counted() = {
+    local n = 0
+    while (true) { if (n > 1000) break n; n += 1 }
+}
+assert(counted() == 1001, "if-without-else plus increment")
+}
+

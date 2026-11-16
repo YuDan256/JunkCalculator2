@@ -12,6 +12,7 @@ struct EncodedInst {
     OpCode jumpOp = OpCode::MOVE;
     int jumpA = 0;
     BasicBlock* jumpTarget = nullptr;
+    BasicBlock* ownerBlock = nullptr;
     bool isTrampoline = false;
     int offset = 0;
 };
@@ -919,6 +920,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     jmpTrue.jumpOp = OpCode::JMP_TRUE;
                     jmpTrue.jumpA = condReg;
                     jmpTrue.jumpTarget = trueBlock;
+                    jmpTrue.ownerBlock = bb;
                     insts.push_back(jmpTrue);
                 } else if (trueBlock == nextBb) {
                     EncodedInst jmpFalse;
@@ -926,6 +928,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     jmpFalse.jumpOp = OpCode::JMP_FALSE;
                     jmpFalse.jumpA = condReg;
                     jmpFalse.jumpTarget = falseBlock;
+                    jmpFalse.ownerBlock = bb;
                     insts.push_back(jmpFalse);
                 } else {
                     EncodedInst jmpFalse;
@@ -933,12 +936,14 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     jmpFalse.jumpOp = OpCode::JMP_FALSE;
                     jmpFalse.jumpA = condReg;
                     jmpFalse.jumpTarget = falseBlock;
+                    jmpFalse.ownerBlock = bb;
                     insts.push_back(jmpFalse);
                     
                     EncodedInst jmpTrue;
                     jmpTrue.isJump = true;
                     jmpTrue.jumpOp = OpCode::JMP;
                     jmpTrue.jumpTarget = trueBlock;
+                    jmpTrue.ownerBlock = bb;
                     insts.push_back(jmpTrue);
                 }
             }
@@ -957,6 +962,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                 // A 的最高位是 silent 标记；低 7 位仍是 errReg（寄存器最大 126）。
                 tryInst.jumpA = errReg | (cNode->payload1 ? 0x80 : 0);
                 tryInst.jumpTarget = catchBlock;
+                tryInst.ownerBlock = bb;
                 insts.push_back(tryInst);
                 
                 if (tryBlock != nextBb) {
@@ -964,6 +970,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     jmpInst.isJump = true;
                     jmpInst.jumpOp = OpCode::JMP;
                     jmpInst.jumpTarget = tryBlock;
+                    jmpInst.ownerBlock = bb;
                     insts.push_back(jmpInst);
                 }
             }
@@ -973,6 +980,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     jmpInst.isJump = true;
                     jmpInst.jumpOp = OpCode::JMP;
                     jmpInst.jumpTarget = bb->succs[0];
+                    jmpInst.ownerBlock = bb;
                     insts.push_back(jmpInst);
                 }
             }
@@ -1123,8 +1131,26 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
 
                 int targetOffset = insts[blockToInstIdx[inst.jumpTarget]].offset;
                 int relOffset = targetOffset - (inst.offset + static_cast<int>(inst.words.size()));
-                
-                if (inst.jumpOp == OpCode::JMP) {
+                bool selfLoop = inst.ownerBlock && inst.jumpTarget == inst.ownerBlock;
+
+                if (selfLoop) {
+                    // A zero offset here means "jump to the label immediately
+                    // before this instruction", not "fall through". Encode a
+                    // real backedge; dropping it creates an empty chunk.
+                    int assumedSize = inst.words.empty() ? 1 : static_cast<int>(inst.words.size());
+                    int selfRel = targetOffset - (inst.offset + assumedSize);
+                    std::vector<uint32_t> newWords;
+                    if (inst.jumpOp == OpCode::JMP) {
+                        newWords = {CREATE_sAx(OpCode::JMP, selfRel)};
+                    } else {
+                        newWords = buildInstAsBx(inst.jumpOp, inst.jumpA, selfRel);
+                    }
+                    if (inst.words != newWords) {
+                        inst.words = newWords;
+                        inst.isTrampoline = false;
+                        changed = true;
+                    }
+                } else if (inst.jumpOp == OpCode::JMP) {
                     if (relOffset == 0) {
                         if (!inst.words.empty()) {
                             inst.words.clear();

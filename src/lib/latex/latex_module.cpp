@@ -872,9 +872,17 @@ static std::string renderSymbolic(const jc2::Value& val, int parentPrecedence) {
         }
         case JC2_SYM_MUL:
             for (int i = 0; i < val.symbolic_child_count(); ++i) {
-                std::string factor = renderSymbolic(val.symbolic_child(i), 20);
+                const jc2::Value child = val.symbolic_child(i);
+                std::string factor = renderSymbolic(child, 20);
                 if (factor.empty()) continue;
-                if (!body.empty()) body += " \\cdot ";
+                if (!body.empty()) {
+                    // Adjacent numeric factors need \cdot; symbol/function
+                    // factors read better with a thin space.
+                    const bool prevNumeric = (i > 0 &&
+                        val.symbolic_child(i - 1).symbolic_kind() == JC2_SYM_NUM);
+                    const bool curNumeric = child.symbolic_kind() == JC2_SYM_NUM;
+                    body += (prevNumeric && curNumeric) ? " \\cdot " : "\\,";
+                }
                 if (!body.empty() && factor[0] == '-') {
                     body += "\\left(" + factor + "\\right)";
                 } else {

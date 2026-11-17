@@ -38,6 +38,7 @@ assert("x^{2}" in sym_expr_tex, "symbolic power rendering")
 assert("\\frac{1}{5}" in sym_expr_tex, "symbolic fraction rendering")
 assert("\\sin" in sym_expr_tex, "symbolic function rendering")
 assert("e^{x}" in sym_expr_tex, "symbolic exponential rendering")
+assert(!("\\cdot" in sym_expr_tex), "mixed factors use thin spaces, not \\cdot")
 assert(!("*" in sym_expr_tex), "symbolic renderer must not emit JC2 '*'")
 assert("\\left[" in latex.to_latex(@[1, 2]), "list rendering")
 

@@ -408,3 +408,36 @@ test_tensor_io() = {
     io.remove(path)
 }
 test_tensor_io()
+
+// ============================================================================
+// 14. CSV load/save
+// ============================================================================
+test_tensor_csv_io() = {
+    path = "local/_tensor_io.csv"
+
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2], "float64")
+    t.saveCSV(path, %{delimiter: ";", header: @["a", "b"]})
+    u = tensor.loadCSV(path, %{delimiter: ";", header: true})
+    assert(u.shape() == @[2, 2], "CSV shape")
+    assert(u.dtype() == "float64", "CSV dtype")
+    assert(u.getFlat(0) == 1.0 && u.getFlat(3) == 4.0, "CSV values")
+
+    f = tensor.tensor(@[1.5, 2.5, 3.5, 4.5], @[2, 2], "float32")
+    f.saveCSV(path)
+    uf = tensor.loadCSV(path, %{dtype: "float32"})
+    assert(uf.dtype() == "float32", "CSV float32 dtype")
+    assert(abs(uf.getFlat(0) - 1.5) < 0.0001, "CSV float32 values")
+
+    io.writeFile(path, "1,2\n3\n")
+    bad = false
+    try { tensor.loadCSV(path) } catch (e) { bad = true }
+    assert(bad, "ragged CSV must fail")
+
+    io.writeFile(path, "1,2\n3,abc\n")
+    bad = false
+    try { tensor.loadCSV(path) } catch (e) { bad = true }
+    assert(bad, "non-numeric CSV must fail")
+
+    io.remove(path)
+}
+test_tensor_csv_io()

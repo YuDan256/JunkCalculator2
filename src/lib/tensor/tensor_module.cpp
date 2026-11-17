@@ -6,6 +6,9 @@
 #include <cstring>
 #include <cstdint>
 #include <limits>
+#include <charconv>
+#include <string_view>
+#include <cctype>
 
 static jc2::Class* g_tensorClass = nullptr;
 jc2::Class* g_tensorErrorClass = nullptr;
@@ -221,6 +224,200 @@ static jc::Tensor loadTensorFromFile(const std::string& path) {
     return tensor;
 }
 
+// ── CSV helpers ────────────────────────────────────────────────────────────
+struct CsvLoadOptions {
+    char delimiter = ',';
+    bool header = false;
+    size_t skipRows = 0;
+    jc::DType dtype = jc::DType::Float64;
+};
+
+static std::string readTextFile(const std::string& path) {
+    std::ifstream in(jc2::Env::resolve_path(path), std::ios::binary | std::ios::ate);
+    if (!in.is_open()) throwTensorError("Cannot open CSV file: " + path);
+    const std::streamoff size = in.tellg();
+    if (size < 0) throwTensorError("Cannot read CSV file: " + path);
+    in.seekg(0, std::ios::beg);
+    std::string text(static_cast<size_t>(size), '\0');
+    if (size > 0 && !in.read(text.data(), size)) throwTensorError("Failed to read CSV file: " + path);
+    // Strip UTF-8 BOM.
+    if (text.size() >= 3 && static_cast<unsigned char>(text[0]) == 0xEF &&
+        static_cast<unsigned char>(text[1]) == 0xBB && static_cast<unsigned char>(text[2]) == 0xBF) {
+        text.erase(0, 3);
+    }
+    return text;
+}
+
+static CsvLoadOptions parseCsvLoadOptions(const jc2::Value& value) {
+    CsvLoadOptions options;
+    if (value.is_none()) return options;
+    if (!value.is_dict()) throwTensorError("loadCSV options must be a dict.");
+    jc2::Dict dict(value.get_handle());
+    if (dict.has(jc2::Value("delimiter"))) {
+        jc2::Value d = dict.get(jc2::Value("delimiter"));
+        if (!d.is_string() || d.as_string().size() != 1) throwTensorError("CSV delimiter must be one character.");
+        options.delimiter = d.as_string()[0];
+    }
+    if (dict.has(jc2::Value("header"))) options.header = dict.get(jc2::Value("header")).as_bool();
+    if (dict.has(jc2::Value("skipRows"))) {
+        double n = dict.get(jc2::Value("skipRows")).as_float();
+        if (n < 0) throwTensorError("CSV skipRows must be non-negative.");
+        options.skipRows = static_cast<size_t>(n);
+    }
+    if (dict.has(jc2::Value("dtype"))) options.dtype = jc::stringToDType(dict.get(jc2::Value("dtype")).as_string());
+    return options;
+}
+
+static std::vector<std::vector<std::string>> parseCsv(std::string_view text, char delimiter) {
+    std::vector<std::vector<std::string>> rows;
+    std::vector<std::string> row;
+    std::string field;
+    bool inQuotes = false;
+
+    auto endField = [&]() { row.push_back(std::move(field)); field.clear(); };
+    auto endRow = [&]() {
+        endField();
+        bool nonEmpty = row.size() != 1 || !row[0].empty();
+        if (nonEmpty) rows.push_back(std::move(row));
+        row.clear();
+    };
+
+    for (size_t i = 0; i < text.size(); ++i) {
+        char c = text[i];
+        if (inQuotes) {
+            if (c == '"') {
+                if (i + 1 < text.size() && text[i + 1] == '"') { field.push_back('"'); ++i; }
+                else inQuotes = false;
+            } else {
+                field.push_back(c);
+            }
+        } else if (c == '"' && field.empty()) {
+            inQuotes = true;
+        } else if (c == delimiter) {
+            endField();
+        } else if (c == '\n') {
+            endRow();
+        } else if (c == '\r') {
+            if (i + 1 < text.size() && text[i + 1] == '\n') ++i;
+            endRow();
+        } else {
+            field.push_back(c);
+        }
+    }
+    if (inQuotes) throwTensorError("CSV has an unterminated quoted field.");
+    if (!field.empty() || !row.empty()) endRow();
+    return rows;
+}
+
+static std::string trimAscii(std::string s) {
+    size_t begin = 0;
+    while (begin < s.size() && std::isspace(static_cast<unsigned char>(s[begin]))) ++begin;
+    size_t end = s.size();
+    while (end > begin && std::isspace(static_cast<unsigned char>(s[end - 1]))) --end;
+    return s.substr(begin, end - begin);
+}
+
+static double parseCsvNumber(const std::string& raw, size_t row, size_t col) {
+    std::string s = trimAscii(raw);
+    if (s.empty()) throwTensorError("Empty CSV value at row " + std::to_string(row + 1) + ", column " + std::to_string(col + 1) + ".");
+    double value = 0.0;
+    auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    if (ec != std::errc{} || ptr != s.data() + s.size()) {
+        throwTensorError("Invalid number '" + s + "' at row " + std::to_string(row + 1) + ", column " + std::to_string(col + 1) + ".");
+    }
+    return value;
+}
+
+static jc::Tensor loadTensorCsv(const std::string& path, const CsvLoadOptions& options) {
+    std::vector<std::vector<std::string>> rows = parseCsv(readTextFile(path), options.delimiter);
+    size_t begin = options.skipRows;
+    if (begin >= rows.size()) throwTensorError("CSV has no data rows.");
+    if (options.header) ++begin;
+    if (begin >= rows.size()) throwTensorError("CSV has no data rows.");
+    const size_t cols = rows[begin].size();
+    if (cols == 0) throwTensorError("CSV first row is empty.");
+    const size_t dataRows = rows.size() - begin;
+    jc::Tensor tensor({static_cast<int>(dataRows), static_cast<int>(cols)}, options.dtype, false);
+    for (size_t r = 0; r < dataRows; ++r) {
+        const auto& row = rows[begin + r];
+        if (row.size() != cols) {
+            throwTensorError("CSV row " + std::to_string(begin + r + 1) + " has " + std::to_string(row.size()) +
+                             " columns, expected " + std::to_string(cols) + ".");
+        }
+        for (size_t c = 0; c < cols; ++c) {
+            tensor.setFlat(r * cols + c, parseCsvNumber(row[c], begin + r, c));
+        }
+    }
+    return tensor;
+}
+
+static std::string csvEscape(const std::string& value, char delimiter) {
+    bool needsQuote = value.find(delimiter) != std::string::npos ||
+                      value.find('"') != std::string::npos ||
+                      value.find('\n') != std::string::npos ||
+                      value.find('\r') != std::string::npos;
+    if (!needsQuote) return value;
+    std::string out = "\"";
+    for (char c : value) {
+        if (c == '"') out += "\"\"";
+        else out += c;
+    }
+    return out + "\"";
+}
+
+static std::string formatCsvNumber(double value) {
+    char buffer[64];
+    auto [ptr, ec] = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::general);
+    if (ec == std::errc{}) return std::string(buffer, ptr);
+    std::ostringstream oss;
+    oss << value;
+    return oss.str();
+}
+
+static void saveTensorCsv(const jc::Tensor& source, const std::string& path, const jc2::Value& optionsValue) {
+    char delimiter = ',';
+    std::vector<std::string> header;
+    if (!optionsValue.is_none()) {
+        if (!optionsValue.is_dict()) throwTensorError("saveCSV options must be a dict.");
+        jc2::Dict dict(optionsValue.get_handle());
+        if (dict.has(jc2::Value("delimiter"))) {
+            jc2::Value d = dict.get(jc2::Value("delimiter"));
+            if (!d.is_string() || d.as_string().size() != 1) throwTensorError("CSV delimiter must be one character.");
+            delimiter = d.as_string()[0];
+        }
+        if (dict.has(jc2::Value("header"))) {
+            jc2::Value h = dict.get(jc2::Value("header"));
+            if (!h.is_list()) throwTensorError("saveCSV header must be a list.");
+            jc2::List list(h.get_handle());
+            for (size_t i = 0; i < list.size(); ++i) header.push_back(list.get(i).as_string());
+        }
+    }
+    const jc::Tensor tensor = source.contiguous();
+    if (tensor.shape.size() != 2) throwTensorError("saveCSV requires a 2D tensor.");
+    const int rows = tensor.shape[0];
+    const int cols = tensor.shape[1];
+    if (!header.empty() && static_cast<int>(header.size()) != cols) {
+        throwTensorError("saveCSV header length must match tensor columns.");
+    }
+    std::ofstream out(jc2::Env::resolve_path(path), std::ios::binary | std::ios::trunc);
+    if (!out.is_open()) throwTensorError("Cannot open CSV file for writing: " + path);
+    if (!header.empty()) {
+        for (int c = 0; c < cols; ++c) {
+            if (c) out << delimiter;
+            out << csvEscape(header[static_cast<size_t>(c)], delimiter);
+        }
+        out << '\n';
+    }
+    for (int r = 0; r < rows; ++r) {
+        for (int c = 0; c < cols; ++c) {
+            if (c) out << delimiter;
+            out << formatCsvNumber(tensor.getFlat(static_cast<size_t>(r) * cols + c));
+        }
+        out << '\n';
+    }
+    if (!out.good()) throwTensorError("Failed to write CSV file: " + path);
+}
+
 // Macros for methods
 #define METHOD(name) JC2_ValueHandle tensor_##name(JC2_VMContext, [[maybe_unused]] int argc, JC2_ValueHandle* argv, void*)
 #define GET_SELF auto t1 = getTensor(jc2::Value(argv[0]))
@@ -419,6 +616,29 @@ METHOD(save) {
 JC2_ValueHandle tensor_load(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
     if (argc < 1 || !jc2::Value(argv[0]).is_string()) throwTensorError("tensor.load() expects a file path.");
     return wrapTensor(loadTensorFromFile(jc2::Value(argv[0]).as_string())).get_handle();
+}
+
+METHOD(saveCSV) {
+    GET_SELF;
+    if (argc < 2 || !jc2::Value(argv[1]).is_string()) throwTensorError("saveCSV() expects a file path.");
+    jc2::Value options = argc >= 3 ? jc2::Value(argv[2]) : jc2::Value::none();
+    saveTensorCsv(*t1, jc2::Value(argv[1]).as_string(), options);
+    return argv[0];
+}
+
+JC2_ValueHandle tensor_loadCSV(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) throwTensorError("tensor.loadCSV() expects a file path.");
+    jc2::Value options = argc >= 2 ? jc2::Value(argv[1]) : jc2::Value::none();
+    return wrapTensor(loadTensorCsv(jc2::Value(argv[0]).as_string(), parseCsvLoadOptions(options))).get_handle();
+}
+
+JC2_ValueHandle tensor_save_csv_global(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 2 || !jc2::Value(argv[0]).is_instance() || !jc2::Value(argv[1]).is_string()) {
+        throwTensorError("tensor.saveCSV() expects a tensor and a file path.");
+    }
+    jc2::Value options = argc >= 3 ? jc2::Value(argv[2]) : jc2::Value::none();
+    saveTensorCsv(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_string(), options);
+    return argv[0];
 }
 METHOD(view) { GET_SELF; return wrapTensor(t1->view(listToShape(jc2::Value(argv[1])))).get_handle(); }
 METHOD(reshape) { GET_SELF; return wrapTensor(t1->contiguous().view(listToShape(jc2::Value(argv[1])))).get_handle(); }
@@ -722,6 +942,7 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("to", tensor_to, 1, 1, {"dtype"});
     g_tensorClass->bind_method("clone", tensor_clone, 0, 0);
     g_tensorClass->bind_method("save", tensor_save, 1, 1, {"path"});
+    g_tensorClass->bind_method("saveCSV", tensor_saveCSV, 1, 2, {"path", "options"});
     g_tensorClass->bind_method("contiguous", tensor_contiguous, 0, 0);
     g_tensorClass->bind_method("view", tensor_view, 1, 1, {"shape"});
     g_tensorClass->bind_method("reshape", tensor_reshape, 1, 1, {"shape"});
@@ -758,6 +979,8 @@ int jc2_init(jc2::Module& mod) {
 
     mod.register_function("tensor", global_tensor, 1, 4, {"data", "shape", "dtype", "requires_grad"});
     mod.register_function("load", tensor_load, 1, 1, {"path"});
+    mod.register_function("loadCSV", tensor_loadCSV, 1, 2, {"path", "options"});
+    mod.register_function("saveCSV", tensor_save_csv_global, 2, 3, {"t", "path", "options"});
     mod.register_function("scalar", global_scalar, 1, 3, {"val", "dtype", "requires_grad"});
     mod.register_function("zeros", global_zeros, 1, 3, {"shape", "dtype", "requires_grad"});
     mod.register_function("ones", global_ones, 1, 3, {"shape", "dtype", "requires_grad"});
@@ -1034,3 +1257,4 @@ int jc2_init(jc2::Module& mod) {
 }
 
 JC2_EXTENSION_INIT
+

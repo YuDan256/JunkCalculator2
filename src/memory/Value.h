@@ -550,6 +550,9 @@ namespace jc {
         uint64_t classId;
         std::string name;
         ObjClass* parent = nullptr;
+        // Generic buffer provider protocol (see services/buffer_service.h).
+        // Stored as void* in the core so Value.h does not depend on the C ABI.
+        void* bufferProvider = nullptr;
         // ★ 类袋子分两张表（docs/OOP_MODEL_DESIGN.md §2.6 / §六 统一写规则）：
         //   properties —— static 域（可写）+ 字段声明登记（只带标志）；
         //   members    —— 实例成员模板（方法、抽象方法），类定义完成后只读。
@@ -843,8 +846,6 @@ namespace jc {
         void* c_nativeData = nullptr;
         void (*c_nativeDtor)(void*) = nullptr;
         Value (*c_nativeNext)(ObjInstance*) = nullptr;
-        void* c_bufferData = nullptr;
-        size_t c_bufferSize = 0;
         bool is_frozen = false;
         bool is_finalized = false;
         mutable bool is_hashable_cached = false;
@@ -1343,8 +1344,6 @@ namespace jc {
         }
         c_nativeData = nullptr;
         c_nativeDtor = nullptr;
-        c_bufferData = nullptr;
-        c_bufferSize = 0;
         properties.clear();
         privateMembers.clear();
         delete[] slots;
@@ -3831,3 +3830,4 @@ inline std::string applyFormatSpec(const Value& val, const std::string& spec) {
 #pragma warning(pop)
 #endif
 #endif // JC2_VALUE_H
+

@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "services/service_types.h"
+#include "services/buffer_service.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -21,7 +24,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 10
+#define JC2_EXT_VERSION 11
 
 /* Symbolic AST node kinds exposed to extensions. */
 typedef enum JC2_SymbolicKind {
@@ -37,9 +40,7 @@ typedef enum JC2_SymbolicKind {
 #define JC2_SLICE_NONE (-2147483647 - 1)
 
 /* 完美契合 JC2 的 NaN-Boxing (8 bytes)，无需堆分配即可传递值 */
-typedef uint64_t JC2_ValueHandle;
-typedef void* JC2_ModuleHandle;
-typedef void* JC2_VMContext;
+/* JC2_ValueHandle / JC2_ModuleHandle / JC2_VMContext in service_types.h */
 
 /* =========================================================================
  * 2. 回调函数签名 (Callbacks)
@@ -101,8 +102,6 @@ typedef struct JC2_HostAPI {
     void* (*get_native_data)(JC2_VMContext ctx, JC2_ValueHandle instance);
     
     /* --- 官方 Buffer 协议 (Buffer Protocol) --- */
-    void (*set_buffer_data)(JC2_VMContext ctx, JC2_ValueHandle instance, void* data, size_t size);
-    void* (*get_buffer_data)(JC2_VMContext ctx, JC2_ValueHandle instance, size_t* out_size);
     
     /* --- 模块注册 (Module Registration) --- */
     void (*register_help)(JC2_VMContext ctx, const char* topic, const char* help_text);
@@ -236,6 +235,17 @@ typedef struct JC2_HostAPI {
     /* CONST 节点返回常量 id：0=pi, 1=e, 2=i。 */
     int (*symbolic_const_id)(JC2_VMContext ctx, JC2_ValueHandle v);
 
+    /* --- 通用 Buffer Provider 协议 --- */
+    /* 按类注册；provider 函数指针位于模块 DLL，模块进程内不卸载。 */
+    void (*register_buffer_provider)(JC2_VMContext ctx,
+                                     JC2_ValueHandle cls,
+                                     JC2_BufferAcquireFn acquire);
+    /* 返回 1=成功，0=无 provider/不适用，-1=provider 失败。 */
+    int (*acquire_buffer)(JC2_VMContext ctx,
+                          JC2_ValueHandle value,
+                          uint32_t requested,
+                          JC2_BufferView* out);
+
 } JC2_HostAPI;
 
 /* =========================================================================
@@ -249,3 +259,4 @@ typedef int (*JC2_ExtensionInitFunc)(JC2_VMContext ctx, JC2_ModuleHandle mod, co
 #endif
 
 #endif /* JC2_EXTENSION_API_H */
+

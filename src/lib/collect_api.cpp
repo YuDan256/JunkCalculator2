@@ -132,8 +132,17 @@ namespace jcsym {
         api.bind_method = cb_bind_method;
         api.set_native_data = [](JC2_VMContext, JC2_ValueHandle, void*, JC2_NativeDestructor) {};
         api.get_native_data = [](JC2_VMContext, JC2_ValueHandle) -> void* { return nullptr; };
-        api.set_buffer_data = [](JC2_VMContext, JC2_ValueHandle, void*, size_t) {};
-        api.get_buffer_data = [](JC2_VMContext, JC2_ValueHandle, size_t* out) -> void* { if (out) *out = 0; return nullptr; };
+        api.register_buffer_provider = [](JC2_VMContext, JC2_ValueHandle, JC2_BufferAcquireFn) {};
+        api.acquire_buffer = [](JC2_VMContext, JC2_ValueHandle, uint32_t, JC2_BufferView*) -> int { return 0; };
+
+        // Symbolic AST accessors (collection never evaluates symbolic values)
+        api.is_symbolic = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
+        api.symbolic_kind = [](JC2_VMContext, JC2_ValueHandle) -> int { return -1; };
+        api.symbolic_child_count = [](JC2_VMContext, JC2_ValueHandle) -> int { return 0; };
+        api.symbolic_child = [](JC2_VMContext, JC2_ValueHandle, int) -> JC2_ValueHandle { return 0; };
+        api.symbolic_number = [](JC2_VMContext, JC2_ValueHandle) -> JC2_ValueHandle { return 0; };
+        api.symbolic_name = [](JC2_VMContext, JC2_ValueHandle, size_t* n) -> const char* { if (n) *n = 0; return ""; };
+        api.symbolic_const_id = [](JC2_VMContext, JC2_ValueHandle) -> int { return -1; };
 
         // 模块注册（真实收集）
         api.register_help = cb_register_help;
@@ -326,3 +335,4 @@ namespace jcsym {
     }
 
 } // namespace jcsym
+

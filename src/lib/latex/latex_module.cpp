@@ -1000,7 +1000,7 @@ JC2_ValueHandle global_compile(JC2_VMContext, int, JC2_ValueHandle* argv, void*)
 int jc2_init(jc2::Module& mod) {
     g_latexErrorClass = new jc2::Class("LatexError");
     jc2::Value exceptionCls = jc2::get_global("Exception");
-    g_latexErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
+    if (exceptionCls.get_handle() != 0) g_latexErrorClass->set_parent(jc2::Class(exceptionCls.get_handle()));
     mod.register_value("LatexError", *g_latexErrorClass);
 
     mod.register_function("to_latex", global_to_latex, 1, 1, {"obj"});

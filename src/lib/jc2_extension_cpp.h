@@ -112,16 +112,13 @@ public:
         return static_cast<T*>(Env::api->get_native_data(Env::ctx, handle));
     }
 
-    void set_buffer_data(void* data, size_t size) {
-        Env::api->set_buffer_data(Env::ctx, handle, data, size);
-    }
-
-    void* get_buffer_data(size_t* out_size = nullptr) const {
-        return Env::api->get_buffer_data(Env::ctx, handle, out_size);
-    }
 
     void freeze() const {
         Env::api->freeze_object(Env::ctx, handle);
+    }
+
+    int acquire_buffer(uint32_t requested, JC2_BufferView* out) const {
+        return Env::api->acquire_buffer(Env::ctx, handle, requested, out);
     }
 };
 
@@ -153,6 +150,10 @@ public:
 
     void set_parent(const Class& parent) {
         Env::api->set_class_parent(Env::ctx, get_handle(), parent.get_handle());
+    }
+
+    void set_buffer_provider(JC2_BufferAcquireFn acquire) {
+        Env::api->register_buffer_provider(Env::ctx, get_handle(), acquire);
     }
 
     void bind_method(const std::string& name, JC2_NativeFunc fn, int min_arity = 0, int max_arity = 16777215,
@@ -479,3 +480,4 @@ inline Value get_global(const std::string& name) {
 // User must implement: int jc2_init(jc2::Module& mod);
 
 #endif
+

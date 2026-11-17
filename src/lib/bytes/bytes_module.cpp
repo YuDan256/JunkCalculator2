@@ -26,7 +26,34 @@ struct ByteBufferContext {
     uint8_t* view_data;
     size_t view_size;
     size_t pos = 0;
+    std::shared_ptr<size_t> activeViews = std::make_shared<size_t>(0);
 };
+
+struct BufferToken {
+    std::shared_ptr<std::vector<uint8_t>> owner;
+    std::shared_ptr<size_t> activeViews;
+};
+
+static int bytes_acquire_view(JC2_ValueHandle handle, uint32_t requested, JC2_BufferView* out) {
+    if (!out) return -1;
+    jc2::Value val(handle);
+    if (!val.is_instance()) return 0;
+    auto* ctx = val.get_native_data<ByteBufferContext>();
+    if (!ctx) return 0;
+    if ((requested & ~(JC2_BUFFER_READ | JC2_BUFFER_WRITE)) != 0) return -1;
+    auto* token = new BufferToken{ctx->shared_data, ctx->activeViews};
+    if (ctx->activeViews) ++(*ctx->activeViews);
+    out->data = ctx->view_data;
+    out->size = ctx->view_size;
+    out->flags = JC2_BUFFER_READ | JC2_BUFFER_WRITE;
+    out->token = token;
+    out->release = [](void* p) {
+        auto* t = static_cast<BufferToken*>(p);
+        if (t->activeViews && *t->activeViews > 0) --(*t->activeViews);
+        delete t;
+    };
+    return 1;
+}
 
 static ByteBufferContext* getBuf(const jc2::Value& val) {
     if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Bytes instance.");
@@ -42,17 +69,17 @@ static jc2::Value makeBytesInstance(std::vector<uint8_t> data) {
     inst.set_native_data(ptr, [](void* p) {
         delete static_cast<ByteBufferContext*>(p);
     });
-    inst.set_buffer_data(ptr->view_data, ptr->view_size);
     return inst;
 }
 
-static jc2::Value makeBytesView(std::shared_ptr<std::vector<uint8_t>> shared, uint8_t* view_data, size_t view_size) {
+static jc2::Value makeBytesView(std::shared_ptr<std::vector<uint8_t>> shared, uint8_t* view_data, size_t view_size,
+                                std::shared_ptr<size_t> activeViews = {}) {
     jc2::Instance inst(*g_bytesClass);
-    auto ptr = new ByteBufferContext{std::move(shared), view_data, view_size, 0};
+    auto ptr = new ByteBufferContext{std::move(shared), view_data, view_size, 0,
+                                     activeViews ? std::move(activeViews) : std::make_shared<size_t>(0)};
     inst.set_native_data(ptr, [](void* p) {
         delete static_cast<ByteBufferContext*>(p);
     });
-    inst.set_buffer_data(ptr->view_data, ptr->view_size);
     return inst;
 }
 
@@ -233,7 +260,7 @@ METHOD(view) {
     if (start > buf.size() || start + len > buf.size()) {
         throwBytesError("View out of bounds.");
     }
-    return makeBytesView(ctx->shared_data, buf.data() + start, len).get_handle();
+    return makeBytesView(ctx->shared_data, buf.data() + start, len, ctx->activeViews).get_handle();
 }
 
 METHOD(toBase64) {
@@ -271,6 +298,9 @@ METHOD(truncate) {
     // 根缓冲（不是 view）时把底层 vector 一起缩掉；view 只缩自己，不动父缓冲
     if (ctx->shared_data && ctx->view_data == ctx->shared_data->data() &&
         ctx->view_size == ctx->shared_data->size()) {
+        if (ctx->activeViews && *ctx->activeViews > 0) {
+            throwBytesError("Bytes buffer is borrowed by another module.");
+        }
         ctx->shared_data->resize(want);
         ctx->view_data = ctx->shared_data->data();
     }
@@ -405,6 +435,7 @@ FUNC(readFile) {
 
 int jc2_init(jc2::Module& mod) {
     g_bytesClass = new jc2::Class("Bytes");
+    g_bytesClass->set_buffer_provider(bytes_acquire_view);
     mod.register_value("Bytes", *g_bytesClass);
 
     // 注册 bytes 模块自己的错误类 bytes.BytesError（继承 Exception）

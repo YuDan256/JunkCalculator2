@@ -229,25 +229,6 @@ static void* host_get_native_data(JC2_VMContext, JC2_ValueHandle instance) {
     return nullptr;
 }
 
-static void host_set_buffer_data(JC2_VMContext, JC2_ValueHandle instance, void* data, size_t size) {
-    Value val = from_handle(instance);
-    if (val.isInstance()) {
-        auto inst = val.asInstance();
-        inst->c_bufferData = data;
-        inst->c_bufferSize = size;
-    }
-}
-
-static void* host_get_buffer_data(JC2_VMContext, JC2_ValueHandle instance, size_t* out_size) {
-    Value val = from_handle(instance);
-    if (val.isInstance()) {
-        auto inst = val.asInstance();
-        if (out_size) *out_size = inst->c_bufferSize;
-        return inst->c_bufferData;
-    }
-    if (out_size) *out_size = 0;
-    return nullptr;
-}
 
 static void host_register_help(JC2_VMContext, const char* topic, const char* help_text) {
     jc::DynamicHelp[topic] = help_text;
@@ -614,6 +595,29 @@ static int host_symbolic_const_id(JC2_VMContext, JC2_ValueHandle v) {
     return static_cast<int>(static_cast<SymConst*>(node)->id);
 }
 
+static void host_register_buffer_provider(JC2_VMContext, JC2_ValueHandle cls, JC2_BufferAcquireFn acquire) {
+    Value value = from_handle(cls);
+    if (!value.isClass()) return;
+    static_cast<ObjClass*>(value.asObj())->bufferProvider = reinterpret_cast<void*>(acquire);
+}
+
+static int host_acquire_buffer(JC2_VMContext ctx, JC2_ValueHandle value, uint32_t requested, JC2_BufferView* out) {
+    if (!out) return -1;
+    *out = JC2_BufferView{};
+    Value v = from_handle(value);
+    ObjClass* cls = nullptr;
+    if (v.isInstance()) cls = v.asInstance()->classDef;
+    else if (v.isClass()) cls = static_cast<ObjClass*>(v.asObj());
+    for (ObjClass* c = cls; c; c = c->parent) {
+        if (c->bufferProvider) {
+            auto acquire = reinterpret_cast<JC2_BufferAcquireFn>(c->bufferProvider);
+            return acquire(value, requested, out);
+        }
+    }
+    (void)ctx;
+    return 0;
+}
+
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -937,8 +941,6 @@ static const JC2_HostAPI host_api = {
     host_bind_method,
     host_set_native_data,
     host_get_native_data,
-    host_set_buffer_data,
-    host_get_buffer_data,
     host_register_help,
     host_register_function_help,
     host_register_function,
@@ -1024,7 +1026,9 @@ static const JC2_HostAPI host_api = {
     host_symbolic_child,
     host_symbolic_number,
     host_symbolic_name,
-    host_symbolic_const_id
+    host_symbolic_const_id,
+    host_register_buffer_provider,
+    host_acquire_buffer
 };
 
 const JC2_HostAPI* get_host_api() {
@@ -1032,3 +1036,4 @@ const JC2_HostAPI* get_host_api() {
 }
 
 } // namespace jc
+

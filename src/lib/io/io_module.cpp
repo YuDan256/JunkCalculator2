@@ -253,9 +253,13 @@ METHOD(close) {
 METHOD(readBuf) {
     GET_SELF;
     if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "readBuf expects a buffer object.");
-    size_t bsize = 0;
-    void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
-    if (!bdata) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
+    jc2::Value bufferValue(argv[1]);
+    JC2_BufferView view{};
+    int acquireRc = bufferValue.acquire_buffer(JC2_BUFFER_READ | JC2_BUFFER_WRITE, &view);
+    if (acquireRc != 1) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
+    struct ViewGuard { JC2_BufferView v; ~ViewGuard() { if (v.release) v.release(v.token); } } guard{view};
+    size_t bsize = view.size;
+    void* bdata = view.data;
 
     size_t read_size = bsize;
     if (argc >= 3) {
@@ -275,9 +279,13 @@ METHOD(readBuf) {
 METHOD(writeBuf) {
     GET_SELF;
     if (argc < 2) jc2::throw_error(jc2::ErrorType::TypeError, "writeBuf expects a buffer object.");
-    size_t bsize = 0;
-    void* bdata = jc2::Value(argv[1]).get_buffer_data(&bsize);
-    if (!bdata) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
+    jc2::Value bufferValue(argv[1]);
+    JC2_BufferView view{};
+    int acquireRc = bufferValue.acquire_buffer(JC2_BUFFER_READ | JC2_BUFFER_WRITE, &view);
+    if (acquireRc != 1) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a valid buffer object (e.g., from bytes module).");
+    struct ViewGuard { JC2_BufferView v; ~ViewGuard() { if (v.release) v.release(v.token); } } guard{view};
+    size_t bsize = view.size;
+    void* bdata = view.data;
 
     size_t write_size = bsize;
     if (argc >= 3) {

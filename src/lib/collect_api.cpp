@@ -136,6 +136,8 @@ namespace jcsym {
         api.acquire_buffer = [](JC2_VMContext, JC2_ValueHandle, uint32_t, JC2_BufferView*) -> int { return 0; };
         api.register_service = [](JC2_VMContext, const char*, uint32_t, const void*) -> int { return 0; };
         api.get_service = [](JC2_VMContext, const char*, uint32_t) -> const void* { return nullptr; };
+        api.is_frozen = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };
+        api.set_native_clone = [](JC2_VMContext, JC2_ValueHandle, void* (*)(void*)) {};
 
         // Symbolic AST accessors (collection never evaluates symbolic values)
         api.is_symbolic = [](JC2_VMContext, JC2_ValueHandle) -> bool { return false; };

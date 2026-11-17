@@ -441,3 +441,24 @@ test_tensor_csv_io() = {
     io.remove(path)
 }
 test_tensor_csv_io()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_tensor_freeze_copy() = {
+    t = tensor.ones(@[2, 2], "float64")
+    c = copy(t)
+    c.fill_(0)
+    assert(t.getFlat(0) == 1.0, "copy(tensor) must be independent")
+
+    freeze(t)
+    threw = false
+    try { t.fill_(0) } catch (e) { threw = true }
+    assert(threw, "frozen tensor fill must fail")
+
+    threw = false
+    try { t[0, 0] = 5.0 } catch (e) { threw = true }
+    assert(threw, "frozen tensor setitem must fail")
+
+    assert(isfrozen(copy(t)), "copy preserves tensor frozen state")
+    assert(!isfrozen(copy(t, false)), "copy(tensor, false) unfreezes")
+}
+test_tensor_freeze_copy()

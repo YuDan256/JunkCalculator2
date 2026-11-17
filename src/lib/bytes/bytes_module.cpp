@@ -55,6 +55,20 @@ static int bytes_acquire_view(JC2_ValueHandle handle, uint32_t requested, JC2_Bu
     return 1;
 }
 
+static void* bytes_clone(void* p) {
+    auto* src = static_cast<ByteBufferContext*>(p);
+    if (!src) return nullptr;
+    auto shared = std::make_shared<std::vector<uint8_t>>(
+        src->view_data, src->view_data + src->view_size);
+    auto* copy = new ByteBufferContext{shared, shared->data(), src->view_size, src->pos,
+                                       std::make_shared<size_t>(0)};
+    return copy;
+}
+
+static void ensureBytesMutable(const jc2::Value& value) {
+    if (value.is_frozen()) throwBytesError("Cannot modify frozen Bytes.");
+}
+
 static ByteBufferContext* getBuf(const jc2::Value& val) {
     if (!val.is_instance()) jc2::throw_error(jc2::ErrorType::TypeError, "Expected a Bytes instance.");
     auto ptr = val.get_native_data<ByteBufferContext>();
@@ -69,6 +83,7 @@ static jc2::Value makeBytesInstance(std::vector<uint8_t> data) {
     inst.set_native_data(ptr, [](void* p) {
         delete static_cast<ByteBufferContext*>(p);
     });
+    inst.set_native_clone(bytes_clone);
     return inst;
 }
 
@@ -80,6 +95,7 @@ static jc2::Value makeBytesView(std::shared_ptr<std::vector<uint8_t>> shared, ui
     inst.set_native_data(ptr, [](void* p) {
         delete static_cast<ByteBufferContext*>(p);
     });
+    inst.set_native_clone(bytes_clone);
     return inst;
 }
 
@@ -135,6 +151,7 @@ METHOD(writeFile) {
 
 METHOD(set) {
     GET_SELF;
+    ensureBytesMutable(jc2::Value(argv[0]));
     size_t offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_float()));
     if (!jc2::Value(argv[3]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "type must be string.");
     std::string type = jc2::Value(argv[3]).as_string();
@@ -170,6 +187,7 @@ METHOD(set) {
 
 METHOD(write_arr) {
     GET_SELF;
+    ensureBytesMutable(jc2::Value(argv[0]));
     size_t offset = static_cast<size_t>(std::max(0.0, jc2::Value(argv[1]).as_float()));
     auto arr = extractDS(jc2::Value(argv[2]), "write_arr");
     if (!jc2::Value(argv[3]).is_string()) jc2::throw_error(jc2::ErrorType::TypeError, "type must be string.");
@@ -260,7 +278,9 @@ METHOD(view) {
     if (start > buf.size() || start + len > buf.size()) {
         throwBytesError("View out of bounds.");
     }
-    return makeBytesView(ctx->shared_data, buf.data() + start, len, ctx->activeViews).get_handle();
+    auto view = makeBytesView(ctx->shared_data, buf.data() + start, len, ctx->activeViews);
+    if (jc2::Value(argv[0]).is_frozen()) view.freeze();
+    return view.get_handle();
 }
 
 METHOD(toBase64) {
@@ -291,6 +311,7 @@ METHOD(isEnd) { GET_SELF; return jc2::Value(pos >= buf.size()).get_handle(); }
 // --- Chainable Writers ---
 METHOD(truncate) {
     GET_SELF;
+    ensureBytesMutable(jc2::Value(argv[0]));
     const double wantD = jc2::Value(argv[1]).as_float();
     if (wantD < 0) throwBytesError("Truncate length must be non-negative.");
     const size_t want = static_cast<size_t>(wantD);
@@ -311,24 +332,26 @@ METHOD(truncate) {
 
 METHOD(writeStr) {
     GET_SELF;
+    ensureBytesMutable(jc2::Value(argv[0]));
     std::string s = jc2::Value(argv[1]).as_string();
     if (pos + s.size() > buf.size()) throwBytesError("Write out of bounds.");
     std::memcpy(buf.data() + pos, s.data(), s.size());
     pos += s.size();
     return argv[0];
 }
-METHOD(writeU8) { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); buf[pos++] = static_cast<uint8_t>(jc2::Value(argv[1]).as_float()); return argv[0]; }
-METHOD(writeI8)  { GET_SELF; if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); int8_t v = static_cast<int8_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 1); pos += 1; return argv[0]; }
-METHOD(writeU16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); uint16_t v = static_cast<uint16_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
-METHOD(writeU32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); uint32_t v = static_cast<uint32_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeF32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); float v = static_cast<float>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeF64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); double v = jc2::Value(argv[1]).as_float(); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
-METHOD(writeI16) { GET_SELF; if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); int16_t v = static_cast<int16_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
-METHOD(writeI32) { GET_SELF; if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); int32_t v = static_cast<int32_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
-METHOD(writeI64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); int64_t v = std::stoll(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
-METHOD(writeU64) { GET_SELF; if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); uint64_t v = std::stoull(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeU8) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); buf[pos++] = static_cast<uint8_t>(jc2::Value(argv[1]).as_float()); return argv[0]; }
+METHOD(writeI8)  { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 1 > buf.size()) throwBytesError("Write out of bounds."); int8_t v = static_cast<int8_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 1); pos += 1; return argv[0]; }
+METHOD(writeU16) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); uint16_t v = static_cast<uint16_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
+METHOD(writeU32) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); uint32_t v = static_cast<uint32_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF32) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); float v = static_cast<float>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeF64) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); double v = jc2::Value(argv[1]).as_float(); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeI16) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 2 > buf.size()) throwBytesError("Write out of bounds."); int16_t v = static_cast<int16_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 2); pos += 2; return argv[0]; }
+METHOD(writeI32) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 4 > buf.size()) throwBytesError("Write out of bounds."); int32_t v = static_cast<int32_t>(jc2::Value(argv[1]).as_float()); std::memcpy(buf.data() + pos, &v, 4); pos += 4; return argv[0]; }
+METHOD(writeI64) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); int64_t v = std::stoll(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
+METHOD(writeU64) { GET_SELF; ensureBytesMutable(jc2::Value(argv[0])); if (pos + 8 > buf.size()) throwBytesError("Write out of bounds."); uint64_t v = std::stoull(jc2::Value(argv[1]).to_string()); std::memcpy(buf.data() + pos, &v, 8); pos += 8; return argv[0]; }
 METHOD(writePcmArray) {
     GET_SELF;
+    ensureBytesMutable(jc2::Value(argv[0]));
     auto arr = extractDS(jc2::Value(argv[1]), "writePcmArray");
     if (pos + arr.size() * 2 > buf.size()) throwBytesError("Write out of bounds.");
     int16_t* ptr = reinterpret_cast<int16_t*>(buf.data() + pos);
@@ -612,3 +635,4 @@ int jc2_init(jc2::Module& mod) {
 }
 
 JC2_EXTENSION_INIT
+

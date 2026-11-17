@@ -845,6 +845,7 @@ namespace jc {
         std::any nativeData;
         void* c_nativeData = nullptr;
         void (*c_nativeDtor)(void*) = nullptr;
+        void* (*c_nativeClone)(void*) = nullptr;
         Value (*c_nativeNext)(ObjInstance*) = nullptr;
         bool is_frozen = false;
         bool is_finalized = false;
@@ -1344,6 +1345,7 @@ namespace jc {
         }
         c_nativeData = nullptr;
         c_nativeDtor = nullptr;
+        c_nativeClone = nullptr;
         properties.clear();
         privateMembers.clear();
         delete[] slots;

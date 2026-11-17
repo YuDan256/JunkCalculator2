@@ -640,6 +640,23 @@ static const void* host_get_service(JC2_VMContext, const char* name, uint32_t mi
     return (it->second.version >= min_version) ? it->second.service : nullptr;
 }
 
+static bool host_is_frozen(JC2_VMContext, JC2_ValueHandle value) {
+    Value v = from_handle(value);
+    if (v.isObjType(ObjType::INSTANCE)) return v.asInstance()->is_frozen;
+    if (v.isObjType(ObjType::LIST)) return static_cast<ObjList*>(v.asObj())->is_frozen;
+    if (v.isObjType(ObjType::DICT)) return static_cast<ObjDict*>(v.asObj())->is_frozen;
+    if (v.isObjType(ObjType::SET)) return static_cast<ObjSet*>(v.asObj())->is_frozen;
+    if (v.isObjType(ObjType::NAMESPACE)) return static_cast<ObjNamespace*>(v.asObj())->is_frozen;
+    if (v.isClass()) return static_cast<ObjClass*>(v.asObj())->is_frozen;
+    return false;
+}
+
+static void host_set_native_clone(JC2_VMContext, JC2_ValueHandle instance, void* (*clone)(void*)) {
+    Value v = from_handle(instance);
+    if (!v.isInstance()) return;
+    v.asInstance()->c_nativeClone = clone;
+}
+
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -1052,7 +1069,9 @@ static const JC2_HostAPI host_api = {
     host_register_buffer_provider,
     host_acquire_buffer,
     host_register_service,
-    host_get_service
+    host_get_service,
+    host_is_frozen,
+    host_set_native_clone
 };
 
 const JC2_HostAPI* get_host_api() {

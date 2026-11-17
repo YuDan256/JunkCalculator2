@@ -124,6 +124,14 @@ public:
         Env::api->freeze_object(Env::ctx, handle);
     }
 
+    bool is_frozen() const {
+        return Env::api->is_frozen(Env::ctx, handle);
+    }
+
+    void set_native_clone(void* (*clone)(void*)) {
+        Env::api->set_native_clone(Env::ctx, handle, clone);
+    }
+
     int acquire_buffer(uint32_t requested, JC2_BufferView* out) const {
         return Env::api->acquire_buffer(Env::ctx, handle, requested, out);
     }

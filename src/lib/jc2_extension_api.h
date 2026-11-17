@@ -24,7 +24,7 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 12
+#define JC2_EXT_VERSION 13
 
 /* Symbolic AST node kinds exposed to extensions. */
 typedef enum JC2_SymbolicKind {
@@ -256,6 +256,13 @@ typedef struct JC2_HostAPI {
     const void* (*get_service)(JC2_VMContext ctx,
                                const char* name,
                                uint32_t min_version);
+
+    /* --- 冻结查询与 native 深拷贝 --- */
+    bool (*is_frozen)(JC2_VMContext ctx, JC2_ValueHandle v);
+    /* clone 必须返回独立 native data；失败返回 NULL，不可抛异常。 */
+    void (*set_native_clone)(JC2_VMContext ctx,
+                             JC2_ValueHandle instance,
+                             void* (*clone)(void* data));
 
 } JC2_HostAPI;
 

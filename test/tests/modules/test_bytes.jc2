@@ -161,3 +161,30 @@ test_truncate_bounds_and_cursor() = {
 }
 test_truncate_saves_only_the_used_prefix()
 test_truncate_bounds_and_cursor()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_bytes_freeze_copy() = {
+    b = bytes.alloc(4)
+    b.writeU8(7)
+
+    c = copy(b)
+    c.seek(0)
+    c.writeU8(9)
+    b.seek(0)
+    assert(b.readU8() == 7, "copy(bytes) must be independent")
+
+    freeze(b)
+    threw = false
+    try { b.writeU8(1) } catch (e) { threw = true }
+    assert(threw, "frozen bytes write must fail")
+
+    assert(isfrozen(copy(b)), "copy preserves frozen state")
+    assert(!isfrozen(copy(b, false)), "copy(bytes, false) unfreezes")
+
+    v = b.view(0, 2)
+    assert(isfrozen(v), "view of frozen bytes is frozen")
+    threw = false
+    try { v.writeU8(1) } catch (e) { threw = true }
+    assert(threw, "frozen view write must fail")
+}
+test_bytes_freeze_copy()

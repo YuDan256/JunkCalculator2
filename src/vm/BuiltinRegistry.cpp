@@ -2722,6 +2722,20 @@ void BuiltinRegistry::registerSystemUtils() {
                 GcObjGuard guard(newInst);
                 newInst->classDef = inst->classDef;
                 newInst->nativeData = inst->nativeData;
+                if (inst->c_nativeData) {
+                    if (!inst->c_nativeClone) {
+                        JC2_THROW(TypeError, "copy(): native instance of '" +
+                            (inst->classDef ? inst->classDef->name : std::string("unknown")) +
+                            "' does not support deep copy.");
+                    }
+                    void* cloned = inst->c_nativeClone(inst->c_nativeData);
+                    if (!cloned) {
+                        JC2_THROW(RuntimeError, "copy(): native clone failed.");
+                    }
+                    newInst->c_nativeData = cloned;
+                    newInst->c_nativeDtor = inst->c_nativeDtor;
+                    newInst->c_nativeClone = inst->c_nativeClone;
+                }
                 Value newVal(newInst);
                 visited[inst] = newVal;
                 inst->ownForEach([&](const std::string& k, const PropertyDescriptor& prop) {

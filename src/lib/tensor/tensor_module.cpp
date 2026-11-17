@@ -26,12 +26,20 @@ static jc2::Value wrapTensor(const jc::Tensor& t) {
     inst.set_native_data(data, [](void* ptr) {
         delete static_cast<jc::Tensor*>(ptr);
     });
+    inst.set_native_clone([](void* ptr) -> void* {
+        auto* source = static_cast<jc::Tensor*>(ptr);
+        return source ? new jc::Tensor(source->clone()) : nullptr;
+    });
     return inst;
 }
 
 static bool isTensor(const jc2::Value& val) {
     if (!val.is_instance()) return false;
     return val.get_native_data<jc::Tensor>() != nullptr;
+}
+
+static void ensureTensorMutable(const jc2::Value& val) {
+    if (val.is_frozen()) throwTensorError("Cannot modify frozen Tensor.");
 }
 
 static std::vector<int> listToShape(const jc2::Value& val) {
@@ -646,7 +654,7 @@ METHOD(T) { GET_SELF; return wrapTensor(t1->T()).get_handle(); }
 METHOD(transpose) { GET_SELF; return wrapTensor(t1->transpose(static_cast<int>(jc2::Value(argv[1]).as_float()), static_cast<int>(jc2::Value(argv[2]).as_float()))).get_handle(); }
 METHOD(unsqueeze) { GET_SELF; return wrapTensor(t1->unsqueeze(static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }
 METHOD(squeeze) { GET_SELF; return wrapTensor(t1->squeeze()).get_handle(); }
-METHOD(fill_) { GET_SELF; t1->fill_(jc2::Value(argv[1]).as_float()); return argv[0]; }
+METHOD(fill_) { GET_SELF; ensureTensorMutable(jc2::Value(argv[0])); t1->fill_(jc2::Value(argv[1]).as_float()); return argv[0]; }
 METHOD(sum) {
     GET_SELF;
     int axis = -1;
@@ -834,9 +842,9 @@ FUNC(softmax) {
     int axis = (argc >= 2) ? static_cast<int>(jc2::Value(argv[1]).as_float()) : -1;
     return wrapTensor(jc::tensor_softmax(*getTensor(jc2::Value(argv[0])), axis)).get_handle();
 }
-FUNC(backward) { (void)argc; getTensor(jc2::Value(argv[0]))->backward(); return jc2::Value().get_handle(); }
-FUNC(zero_grad) { (void)argc; jc::tensor_zero_grad(*getTensor(jc2::Value(argv[0]))); return jc2::Value().get_handle(); }
-FUNC(sgd_step) { (void)argc; jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_float()); return jc2::Value().get_handle(); }
+FUNC(backward) { (void)argc; ensureTensorMutable(jc2::Value(argv[0])); getTensor(jc2::Value(argv[0]))->backward(); return jc2::Value().get_handle(); }
+FUNC(zero_grad) { (void)argc; ensureTensorMutable(jc2::Value(argv[0])); jc::tensor_zero_grad(*getTensor(jc2::Value(argv[0]))); return jc2::Value().get_handle(); }
+FUNC(sgd_step) { (void)argc; ensureTensorMutable(jc2::Value(argv[0])); jc::tensor_sgd_step(*getTensor(jc2::Value(argv[0])), jc2::Value(argv[1]).as_float()); return jc2::Value().get_handle(); }
 FUNC(isTensor) { (void)argc; return jc2::Value(isTensor(jc2::Value(argv[0]))).get_handle(); }
 FUNC(to) { (void)argc; return wrapTensor(getTensor(jc2::Value(argv[0]))->to(jc::stringToDType(jc2::Value(argv[1]).as_string()))).get_handle(); }
 FUNC(getrow) { (void)argc; return wrapTensor(jc::tensor_getrow(*getTensor(jc2::Value(argv[0])), static_cast<int>(jc2::Value(argv[1]).as_float()))).get_handle(); }

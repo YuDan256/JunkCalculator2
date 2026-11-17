@@ -47,6 +47,21 @@ public:
     bool is_real_matrix() const { return Env::api->is_real_matrix(Env::ctx, handle); }
     bool is_complex_matrix() const { return Env::api->is_complex_matrix(Env::ctx, handle); }
     bool is_sym_matrix() const { return Env::api->is_sym_matrix(Env::ctx, handle); }
+    bool is_symbolic() const { return Env::api->is_symbolic(Env::ctx, handle); }
+    int symbolic_kind() const { return Env::api->symbolic_kind(Env::ctx, handle); }
+    int symbolic_child_count() const { return Env::api->symbolic_child_count(Env::ctx, handle); }
+    Value symbolic_child(int index) const {
+        return Value(Env::api->symbolic_child(Env::ctx, handle, index));
+    }
+    Value symbolic_number() const {
+        return Value(Env::api->symbolic_number(Env::ctx, handle));
+    }
+    std::string symbolic_name() const {
+        size_t len = 0;
+        const char* s = Env::api->symbolic_name(Env::ctx, handle, &len);
+        return s ? std::string(s, len) : std::string();
+    }
+    int symbolic_const_id() const { return Env::api->symbolic_const_id(Env::ctx, handle); }
     bool is_function() const { return Env::api->is_function(Env::ctx, handle); }
     bool is_bigint() const { return Env::api->is_bigint(Env::ctx, handle); }
     bool is_fraction() const { return Env::api->is_fraction(Env::ctx, handle); }

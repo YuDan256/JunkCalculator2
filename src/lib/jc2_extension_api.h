@@ -21,7 +21,18 @@ extern "C" {
  * 隔离 C++ 的 jc::Value, ObjNamespace, VM 等复杂对象
  * ========================================================================= */
 #define JC2_EXT_MAGIC 0x4A433245 // 'JC2E'
-#define JC2_EXT_VERSION 8
+#define JC2_EXT_VERSION 10
+
+/* Symbolic AST node kinds exposed to extensions. */
+typedef enum JC2_SymbolicKind {
+    JC2_SYM_NUM = 0,
+    JC2_SYM_VAR = 1,
+    JC2_SYM_CONST = 2,
+    JC2_SYM_ADD = 3,
+    JC2_SYM_MUL = 4,
+    JC2_SYM_POW = 5,
+    JC2_SYM_FUNC = 6
+} JC2_SymbolicKind;
 
 #define JC2_SLICE_NONE (-2147483647 - 1)
 
@@ -209,6 +220,21 @@ typedef struct JC2_HostAPI {
     int (*sym_matrix_cols)(JC2_VMContext ctx, JC2_ValueHandle mat);
     /* 返回一个 SYMBOLIC 标量 Value；生命周期由引擎管理。 */
     JC2_ValueHandle (*sym_matrix_get)(JC2_VMContext ctx, JC2_ValueHandle mat, int row, int col);
+
+    /* --- 符号标量结构 --- */
+    bool (*is_symbolic)(JC2_VMContext ctx, JC2_ValueHandle v);
+    /* 返回 JC2_SymbolicKind；非符号值返回 -1。 */
+    int (*symbolic_kind)(JC2_VMContext ctx, JC2_ValueHandle v);
+    /* ADD/MUL 返回参数个数，POW 返回 2，FUNC 返回参数个数，其余返回 0。 */
+    int (*symbolic_child_count)(JC2_VMContext ctx, JC2_ValueHandle v);
+    /* 返回子节点；生命周期由引擎临时根管理。 */
+    JC2_ValueHandle (*symbolic_child)(JC2_VMContext ctx, JC2_ValueHandle v, int index);
+    /* NUM 节点返回普通数值 Value（int/bigint/fraction/float）。 */
+    JC2_ValueHandle (*symbolic_number)(JC2_VMContext ctx, JC2_ValueHandle v);
+    /* VAR/FUNC 节点返回名称；指针在节点存活期间有效。 */
+    const char* (*symbolic_name)(JC2_VMContext ctx, JC2_ValueHandle v, size_t* len);
+    /* CONST 节点返回常量 id：0=pi, 1=e, 2=i。 */
+    int (*symbolic_const_id)(JC2_VMContext ctx, JC2_ValueHandle v);
 
 } JC2_HostAPI;
 

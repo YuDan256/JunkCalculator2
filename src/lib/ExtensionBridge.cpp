@@ -524,6 +524,96 @@ static JC2_ValueHandle host_sym_matrix_get(JC2_VMContext, JC2_ValueHandle mat, i
     return protect(Value::none());
 }
 
+static bool host_is_symbolic(JC2_VMContext, JC2_ValueHandle v) {
+    return from_handle(v).isSymbolic();
+}
+
+static int host_symbolic_kind(JC2_VMContext, JC2_ValueHandle v) {
+    Value value = from_handle(v);
+    if (!value.isSymbolic()) return -1;
+    switch (value.asSymbolic().ptr->getType()) {
+        case SymType::NUM: return JC2_SYM_NUM;
+        case SymType::VAR: return JC2_SYM_VAR;
+        case SymType::CONST: return JC2_SYM_CONST;
+        case SymType::ADD: return JC2_SYM_ADD;
+        case SymType::MUL: return JC2_SYM_MUL;
+        case SymType::POW: return JC2_SYM_POW;
+        case SymType::FUNC: return JC2_SYM_FUNC;
+    }
+    return -1;
+}
+
+static SymNode* symbolic_node(JC2_ValueHandle v) {
+    Value value = from_handle(v);
+    return value.isSymbolic() ? value.asSymbolic().ptr : nullptr;
+}
+
+static int host_symbolic_child_count(JC2_VMContext, JC2_ValueHandle v) {
+    SymNode* node = symbolic_node(v);
+    if (!node) return 0;
+    switch (node->getType()) {
+        case SymType::ADD: return static_cast<int>(static_cast<SymAdd*>(node)->args.size());
+        case SymType::MUL: return static_cast<int>(static_cast<SymMul*>(node)->args.size());
+        case SymType::POW: return 2;
+        case SymType::FUNC: return static_cast<int>(static_cast<SymFunc*>(node)->args.size());
+        default: return 0;
+    }
+}
+
+static JC2_ValueHandle host_symbolic_child(JC2_VMContext, JC2_ValueHandle v, int index) {
+    SymNode* node = symbolic_node(v);
+    if (!node || index < 0) return protect(Value::none());
+    SymNode* child = nullptr;
+    switch (node->getType()) {
+        case SymType::ADD: {
+            auto& args = static_cast<SymAdd*>(node)->args;
+            if (index < static_cast<int>(args.size())) child = args[static_cast<size_t>(index)];
+            break;
+        }
+        case SymType::MUL: {
+            auto& args = static_cast<SymMul*>(node)->args;
+            if (index < static_cast<int>(args.size())) child = args[static_cast<size_t>(index)];
+            break;
+        }
+        case SymType::POW:
+            child = index == 0 ? static_cast<SymPow*>(node)->base
+                               : index == 1 ? static_cast<SymPow*>(node)->exp : nullptr;
+            break;
+        case SymType::FUNC: {
+            auto& args = static_cast<SymFunc*>(node)->args;
+            if (index < static_cast<int>(args.size())) child = args[static_cast<size_t>(index)];
+            break;
+        }
+        default: break;
+    }
+    if (!child) return protect(Value::none());
+    return protect(Value(SymExpr::fromInterned(child)));
+}
+
+static JC2_ValueHandle host_symbolic_number(JC2_VMContext, JC2_ValueHandle v) {
+    SymNode* node = symbolic_node(v);
+    if (!node || node->getType() != SymType::NUM) return protect(Value::none());
+    const CASVal& value = static_cast<SymNum*>(node)->value;
+    return protect(std::visit([](const auto& x) -> Value { return Value(x); }, value));
+}
+
+static const char* host_symbolic_name(JC2_VMContext, JC2_ValueHandle v, size_t* len) {
+    SymNode* node = symbolic_node(v);
+    if (!node) { if (len) *len = 0; return ""; }
+    const std::string* name = nullptr;
+    if (node->getType() == SymType::VAR) name = &static_cast<SymVar*>(node)->name;
+    else if (node->getType() == SymType::FUNC) name = &static_cast<SymFunc*>(node)->name;
+    if (!name) { if (len) *len = 0; return ""; }
+    if (len) *len = name->size();
+    return name->c_str();
+}
+
+static int host_symbolic_const_id(JC2_VMContext, JC2_ValueHandle v) {
+    SymNode* node = symbolic_node(v);
+    if (!node || node->getType() != SymType::CONST) return -1;
+    return static_cast<int>(static_cast<SymConst*>(node)->id);
+}
+
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -927,7 +1017,14 @@ static const JC2_HostAPI host_api = {
     host_is_sym_matrix,
     host_sym_matrix_rows,
     host_sym_matrix_cols,
-    host_sym_matrix_get
+    host_sym_matrix_get,
+    host_is_symbolic,
+    host_symbolic_kind,
+    host_symbolic_child_count,
+    host_symbolic_child,
+    host_symbolic_number,
+    host_symbolic_name,
+    host_symbolic_const_id
 };
 
 const JC2_HostAPI* get_host_api() {

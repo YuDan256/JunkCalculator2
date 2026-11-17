@@ -681,7 +681,10 @@ static std::string formatDouble(double v) {
     return s;
 }
 
+static std::string renderSymbolic(const jc2::Value& val, int parentPrecedence = 0);
+
 static std::string renderValue(const jc2::Value& val) {
+    if (val.is_symbolic()) return renderSymbolic(val);
     if (val.is_int()) return std::to_string(val.as_int());
     if (val.is_bigint()) return jc2::BigInt(val.get_handle()).to_string();
     if (val.is_float()) return formatDouble(val.as_float());
@@ -726,7 +729,7 @@ static std::string renderValue(const jc2::Value& val) {
         for (int i = 0; i < m.rows(); ++i) {
             for (int j = 0; j < m.cols(); ++j) {
                 if (j) oss << " & ";
-                oss << m.get(i, j).to_string();
+                oss << renderValue(m.get(i, j));
             }
             oss << (i + 1 < m.rows() ? " \\\\\n" : "\n");
         }
@@ -774,6 +777,129 @@ static std::string renderValue(const jc2::Value& val) {
         return out + "}";
     }
     return val.to_string();
+}
+
+static int symbolicPrecedence(int kind) {
+    switch (kind) {
+        case JC2_SYM_ADD: return 10;
+        case JC2_SYM_MUL: return 20;
+        case JC2_SYM_POW: return 30;
+        default: return 100;
+    }
+}
+
+static std::string escapeSymbolicName(const std::string& name) {
+    std::string out;
+    for (char c : name) {
+        if (c == '_' || c == '%' || c == '#' || c == '{' || c == '}') out += '\\';
+        out += c;
+    }
+    return out;
+}
+
+static std::string renderSymbolicFunction(const jc2::Value& val) {
+    const std::string name = val.symbolic_name();
+    const int count = val.symbolic_child_count();
+    if (name == "exp" && count == 1) {
+        return "e^{" + renderSymbolic(val.symbolic_child(0)) + "}";
+    }
+    if (name == "sqrt" && count == 1) {
+        return "\\sqrt{" + renderSymbolic(val.symbolic_child(0)) + "}";
+    }
+    if (name == "abs" && count == 1) {
+        return "\\left|" + renderSymbolic(val.symbolic_child(0)) + "\\right|";
+    }
+    static const std::unordered_map<std::string, std::string> known = {
+        {"sin", "\\sin"}, {"cos", "\\cos"}, {"tan", "\\tan"},
+        {"cot", "\\cot"}, {"sec", "\\sec"}, {"csc", "\\csc"},
+        {"asin", "\\arcsin"}, {"acos", "\\arccos"}, {"atan", "\\arctan"},
+        {"sinh", "\\sinh"}, {"cosh", "\\cosh"}, {"tanh", "\\tanh"},
+        {"ln", "\\ln"}, {"log", "\\log"}, {"lg", "\\lg"},
+        {"det", "\\det"}, {"min", "\\min"}, {"max", "\\max"},
+    };
+    auto it = known.find(name);
+    std::string out = (it != known.end()) ? it->second
+        : "\\operatorname{" + escapeSymbolicName(name) + "}";
+    out += "\\left(";
+    for (int i = 0; i < count; ++i) {
+        if (i) out += ", ";
+        out += renderSymbolic(val.symbolic_child(i));
+    }
+    return out + "\\right)";
+}
+
+static std::string renderSymbolic(const jc2::Value& val, int parentPrecedence) {
+    const int kind = val.symbolic_kind();
+    std::string body;
+    switch (kind) {
+        case JC2_SYM_NUM:
+            body = renderValue(val.symbolic_number());
+            break;
+        case JC2_SYM_VAR: {
+            const std::string name = val.symbolic_name();
+            if (name.size() == 1 && std::isalpha(static_cast<unsigned char>(name[0]))) {
+                body = name;
+            } else {
+                body = "\\mathrm{" + escapeSymbolicName(name) + "}";
+            }
+            break;
+        }
+        case JC2_SYM_CONST:
+            switch (val.symbolic_const_id()) {
+                case 0: body = "\\pi"; break;
+                case 1: body = "e"; break;
+                case 2: body = "i"; break;
+                default: body = "?"; break;
+            }
+            break;
+        case JC2_SYM_ADD: {
+            bool first = true;
+            for (int i = 0; i < val.symbolic_child_count(); ++i) {
+                std::string term = renderSymbolic(val.symbolic_child(i), 11);
+                if (term.empty()) continue;
+                const bool negative = term[0] == '-';
+                if (first) {
+                    body += term;
+                    first = false;
+                } else if (negative) {
+                    body += " - " + term.substr(1);
+                } else {
+                    body += " + " + term;
+                }
+            }
+            if (first) body = "0";
+            break;
+        }
+        case JC2_SYM_MUL:
+            for (int i = 0; i < val.symbolic_child_count(); ++i) {
+                std::string factor = renderSymbolic(val.symbolic_child(i), 20);
+                if (factor.empty()) continue;
+                if (!body.empty()) body += " \\cdot ";
+                if (!body.empty() && factor[0] == '-') {
+                    body += "\\left(" + factor + "\\right)";
+                } else {
+                    body += factor;
+                }
+            }
+            if (body.empty()) body = "1";
+            break;
+        case JC2_SYM_POW: {
+            std::string base = renderSymbolic(val.symbolic_child(0), 30);
+            if (!base.empty() && base[0] == '-') base = "\\left(" + base + "\\right)";
+            body = base + "^{" + renderSymbolic(val.symbolic_child(1)) + "}";
+            break;
+        }
+        case JC2_SYM_FUNC:
+            body = renderSymbolicFunction(val);
+            break;
+        default:
+            body = val.to_string();
+            break;
+    }
+    if (symbolicPrecedence(kind) < parentPrecedence) {
+        return "\\left(" + body + "\\right)";
+    }
+    return body;
 }
 
 } // namespace latex

@@ -32,6 +32,13 @@ matrix_tex = latex.to_latex([1, 2; 3, 4])
 assert("\\begin{pmatrix}" in matrix_tex && "1 & 2" in matrix_tex, "matrix rendering")
 sym_tex = latex.to_latex(symmatrix(2, 2, sym("x"), 1, 2, 3))
 assert("x & 1" in sym_tex, "symbolic matrix rendering")
+x = sym("x")
+sym_expr_tex = latex.to_latex(x^2 + frac(1, 5) * sin(2 * x) + exp(x))
+assert("x^{2}" in sym_expr_tex, "symbolic power rendering")
+assert("\\frac{1}{5}" in sym_expr_tex, "symbolic fraction rendering")
+assert("\\sin" in sym_expr_tex, "symbolic function rendering")
+assert("e^{x}" in sym_expr_tex, "symbolic exponential rendering")
+assert(!("*" in sym_expr_tex), "symbolic renderer must not emit JC2 '*'")
 assert("\\left[" in latex.to_latex(@[1, 2]), "list rendering")
 
 // Strict failures.

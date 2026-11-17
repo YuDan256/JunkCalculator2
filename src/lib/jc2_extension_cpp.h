@@ -16,6 +16,13 @@ public:
     static inline JC2_VMContext ctx = nullptr;
     static inline const JC2_HostAPI* api = nullptr;
 
+    static int register_service(const char* name, uint32_t version, const void* service) {
+        return api->register_service(ctx, name, version, service);
+    }
+    static const void* get_service(const char* name, uint32_t min_version) {
+        return api->get_service(ctx, name, min_version);
+    }
+
     static std::string resolve_path(const std::string& path);
 };
 

@@ -3,6 +3,8 @@
 #include "../vm/BuiltinRegistry.h"
 #include "../vm/VM.h"
 #include <stdexcept>
+#include <string>
+#include <unordered_map>
 
 namespace jc {
 
@@ -618,6 +620,26 @@ static int host_acquire_buffer(JC2_VMContext ctx, JC2_ValueHandle value, uint32_
     return 0;
 }
 
+struct ServiceEntry {
+    uint32_t version = 0;
+    const void* service = nullptr;
+};
+
+static std::unordered_map<std::string, ServiceEntry> g_services;
+
+static int host_register_service(JC2_VMContext, const char* name, uint32_t version, const void* service) {
+    if (!name || !*name || !service) return -1;
+    auto [it, inserted] = g_services.emplace(name, ServiceEntry{version, service});
+    return inserted ? 0 : -1;
+}
+
+static const void* host_get_service(JC2_VMContext, const char* name, uint32_t min_version) {
+    if (!name) return nullptr;
+    auto it = g_services.find(name);
+    if (it == g_services.end()) return nullptr;
+    return (it->second.version >= min_version) ? it->second.service : nullptr;
+}
+
 static JC2_ValueHandle host_make_set(JC2_VMContext) {
     ObjSet* set = GcHeap::get().allocate<ObjSet>();
     return protect(Value(set));
@@ -1028,7 +1050,9 @@ static const JC2_HostAPI host_api = {
     host_symbolic_name,
     host_symbolic_const_id,
     host_register_buffer_provider,
-    host_acquire_buffer
+    host_acquire_buffer,
+    host_register_service,
+    host_get_service
 };
 
 const JC2_HostAPI* get_host_api() {

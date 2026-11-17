@@ -149,6 +149,14 @@ struct FFIArrayViewData {
     uint8_t* base_ptr;
 };
 
+static void* ffi_struct_clone(void* p) {
+    auto* src = static_cast<StructInstanceData*>(p);
+    if (!src || !src->shared_mem) return nullptr;
+    auto shared = std::make_shared<std::vector<uint8_t>>(*src->shared_mem);
+    const size_t offset = src->base_ptr - src->shared_mem->data();
+    return new StructInstanceData{src->layout, shared, shared->data() + offset};
+}
+
 /* Keeps provider-acquired buffers alive until the native call returns. */
 struct BufferLease {
     std::vector<JC2_BufferView> views;
@@ -291,6 +299,7 @@ Value read_memory(std::shared_ptr<std::vector<uint8_t>> shared_mem, uint8_t* ptr
             Instance inst(*g_structInstClass);
             StructInstanceData* data = new StructInstanceData{t.layout, shared_mem, ptr};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_native_clone(ffi_struct_clone);
             return inst.get_handle();
         }
         default: return Value();
@@ -480,6 +489,7 @@ public:
             auto shared = std::make_shared<std::vector<uint8_t>>(ret_struct_mem);
             StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_native_clone(ffi_struct_clone);
             return inst.get_handle();
         }
 
@@ -513,6 +523,7 @@ public:
             std::memcpy(shared->data(), &out_i, retType.size);
             StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_native_clone(ffi_struct_clone);
             return inst.get_handle();
         }
         default: return Value();
@@ -680,6 +691,7 @@ public:
             auto shared = std::make_shared<std::vector<uint8_t>>(ret_struct_mem);
             StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_native_clone(ffi_struct_clone);
             return inst.get_handle();
         }
 
@@ -710,6 +722,7 @@ public:
             std::memcpy(shared->data(), &out_ret.i, std::min((size_t)8, retType.size));
             StructInstanceData* data = new StructInstanceData{retType.layout, shared, shared->data()};
             inst.set_native_data(data, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+            inst.set_native_clone(ffi_struct_clone);
             return inst.get_handle();
         }
         default: return Value();
@@ -820,6 +833,7 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space
                         std::memcpy(shared->data(), &raw_val, t.size);
                         StructInstanceData* sdata = new StructInstanceData{t.layout, shared, shared->data()};
                         inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+                        inst.set_native_clone(ffi_struct_clone);
                         args.push_back(inst.get_handle());
                     } else {
                         Instance inst(*g_structInstClass);
@@ -827,6 +841,7 @@ extern "C" void generic_callback_handler(CallbackData* data, uint64_t* gpr_space
                         std::memcpy(shared->data(), reinterpret_cast<void*>(raw_val), t.size);
                         StructInstanceData* sdata = new StructInstanceData{t.layout, shared, shared->data()};
                         inst.set_native_data(sdata, [](void* p) { delete static_cast<StructInstanceData*>(p); });
+                        inst.set_native_clone(ffi_struct_clone);
                         args.push_back(inst.get_handle());
                     }
                     break;
@@ -1110,6 +1125,7 @@ JC2_ValueHandle struct_layout_call(JC2_VMContext ctx, int argc, JC2_ValueHandle*
     auto shared = std::make_shared<std::vector<uint8_t>>(layout->size, static_cast<uint8_t>(0));
     StructInstanceData* data = new StructInstanceData{layout, shared, shared->data()};
     inst.set_native_data(data, [](void* ptr) { delete static_cast<StructInstanceData*>(ptr); });
+    inst.set_native_clone(ffi_struct_clone);
     return inst.get_handle();
 }
 
@@ -1535,4 +1551,6 @@ int jc2_init(jc2::Module& mod) {
 }
 
 JC2_EXTENSION_INIT
+
+
 

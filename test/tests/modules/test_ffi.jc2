@@ -192,3 +192,22 @@ test_ffi_complex_structs_and_arrays() = {
     assert(a.data[1] == 777, "Slice modifies original")
 }
 test_ffi_complex_structs_and_arrays()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_ffi_freeze_copy() = {
+    Point = ffi.Struct(%{x: "i32", y: "i32"})
+    p = Point()
+    p.x = 1
+    q = copy(p)
+    q.x = 9
+    assert(p.x == 1 && q.x == 9, "Struct copy must be independent")
+
+    freeze(p)
+    threw = false
+    try { p.x = 3 } catch (e) { threw = true }
+    assert(threw, "frozen Struct setattr must fail")
+
+    assert(isfrozen(copy(p)), "copy preserves Struct frozen state")
+    assert(!isfrozen(copy(p, false)), "copy(Struct, false) unfreezes")
+}
+test_ffi_freeze_copy()

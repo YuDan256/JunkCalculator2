@@ -365,3 +365,46 @@ test_utilities() = {
     assert(abs(t.getFlat(0) - 5.0) < 1e-10, "fill_() failed")
 }
 test_utilities()
+
+// ============================================================================
+// 13. Binary save/load
+// ============================================================================
+import io
+
+test_tensor_io() = {
+    path = "local/_tensor_io_roundtrip.jct"
+
+    t = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2], "float64")
+    t.save(path)
+    u = tensor.load(path)
+    assert(u.shape() == @[2, 2], "load shape")
+    assert(u.dtype() == "float64", "load dtype")
+    assert(u.getFlat(0) == 1.0 && u.getFlat(3) == 4.0, "load values")
+
+    f = tensor.full(@[2, 3], 2.0, "float32")
+    f.save(path)
+    uf = tensor.load(path)
+    assert(uf.dtype() == "float32", "float32 dtype round-trip")
+    assert(uf.getFlat(0) == 2.0, "float32 value round-trip")
+
+    i = tensor.full(@[2, 2], 7.0, "int32")
+    i.save(path)
+    ui = tensor.load(path)
+    assert(ui.dtype() == "int32", "int32 dtype round-trip")
+    assert(ui.getFlat(0) == 7.0, "int32 value round-trip")
+
+    // Non-contiguous transpose must be serialized contiguously.
+    a = tensor.tensor(@[1.0, 2.0, 3.0, 4.0], @[2, 2], "float64")
+    a.T().save(path)
+    at = tensor.load(path)
+    assert(at.shape() == @[2, 2], "transpose shape")
+    assert(at.getFlat(0) == 1.0 && at.getFlat(1) == 3.0, "transpose data")
+
+    io.writeFile(path, "bad")
+    bad = false
+    try { tensor.load(path) } catch (e) { bad = true }
+    assert(bad, "corrupt magic must fail")
+
+    io.remove(path)
+}
+test_tensor_io()

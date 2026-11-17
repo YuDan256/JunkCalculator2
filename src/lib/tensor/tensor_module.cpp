@@ -1,6 +1,11 @@
 #include "../jc2_extension_cpp.h"
 #include "Tensor.h"
 #include <memory>
+#include <fstream>
+#include <filesystem>
+#include <cstring>
+#include <cstdint>
+#include <limits>
 
 static jc2::Class* g_tensorClass = nullptr;
 jc2::Class* g_tensorErrorClass = nullptr;
@@ -58,6 +63,162 @@ static std::pair<jc::DType, bool> parseTensorOptions(int argc, JC2_ValueHandle* 
         }
     }
     return {dt, req_grad};
+}
+
+// ── Tensor binary format (JCT1) ────────────────────────────────────────────
+// magic "JCT1" | version u16 | dtype u8 | ndim u8 | shape u64[ndim] |
+// raw little-endian data | crc32 u32
+static constexpr uint8_t kTensorMagic[4] = {'J', 'C', 'T', '1'};
+static constexpr uint16_t kTensorVersion = 1;
+static constexpr uint8_t kTensorMaxDims = 8;
+
+static uint32_t tensorCrc32(const uint8_t* data, size_t size) {
+    uint32_t crc = 0xFFFFFFFFu;
+    for (size_t i = 0; i < size; ++i) {
+        crc ^= data[i];
+        for (int bit = 0; bit < 8; ++bit) {
+            crc = (crc >> 1) ^ (0xEDB88320u & (0u - (crc & 1u)));
+        }
+    }
+    return ~crc;
+}
+
+static uint8_t tensorDTypeCode(jc::DType dtype) {
+    switch (dtype) {
+        case jc::DType::Float32: return 0;
+        case jc::DType::Float64: return 1;
+        case jc::DType::Int32: return 2;
+        case jc::DType::Int64: return 3;
+        case jc::DType::Bool: return 4;
+    }
+    throwTensorError("Unsupported tensor dtype for save.");
+}
+
+static jc::DType tensorDTypeFromCode(uint8_t code) {
+    switch (code) {
+        case 0: return jc::DType::Float32;
+        case 1: return jc::DType::Float64;
+        case 2: return jc::DType::Int32;
+        case 3: return jc::DType::Int64;
+        case 4: return jc::DType::Bool;
+        default: throwTensorError("Unknown tensor dtype code in file.");
+    }
+}
+
+static void appendU64(std::vector<uint8_t>& out, uint64_t value) {
+    for (int i = 0; i < 8; ++i) out.push_back(static_cast<uint8_t>(value >> (i * 8)));
+}
+
+static uint64_t readU64(const uint8_t* data) {
+    uint64_t value = 0;
+    for (int i = 0; i < 8; ++i) value |= static_cast<uint64_t>(data[i]) << (i * 8);
+    return value;
+}
+
+static void saveTensorToFile(const jc::Tensor& source, const std::string& path) {
+    const jc::Tensor tensor = source.contiguous();
+    if (tensor.shape.empty()) throwTensorError("Cannot save a scalar tensor.");
+    if (tensor.shape.size() > kTensorMaxDims) throwTensorError("Tensor has too many dimensions to save.");
+    const uint64_t elements = static_cast<uint64_t>(tensor.numel());
+    const size_t elementSize = tensor.impl->storage->element_size();
+    if (elementSize && elements > std::numeric_limits<uint64_t>::max() / elementSize) {
+        throwTensorError("Tensor is too large to save.");
+    }
+    const uint64_t dataBytes = elements * static_cast<uint64_t>(elementSize);
+    if (dataBytes > static_cast<uint64_t>(std::numeric_limits<size_t>::max())) {
+        throwTensorError("Tensor is too large to save.");
+    }
+
+    std::vector<uint8_t> header;
+    header.insert(header.end(), kTensorMagic, kTensorMagic + 4);
+    header.push_back(static_cast<uint8_t>(kTensorVersion & 0xFF));
+    header.push_back(static_cast<uint8_t>((kTensorVersion >> 8) & 0xFF));
+    header.push_back(tensorDTypeCode(tensor.dtype()));
+    header.push_back(static_cast<uint8_t>(tensor.shape.size()));
+    for (int dim : tensor.shape) appendU64(header, static_cast<uint64_t>(dim));
+
+    std::vector<uint8_t> data(static_cast<size_t>(dataBytes));
+    if (dataBytes) std::memcpy(data.data(), tensor.impl->storage->data_ptr(), static_cast<size_t>(dataBytes));
+    std::vector<uint8_t> all;
+    all.reserve(header.size() + data.size());
+    all.insert(all.end(), header.begin(), header.end());
+    all.insert(all.end(), data.begin(), data.end());
+    const uint32_t crc = tensorCrc32(all.data(), all.size());
+
+    const std::filesystem::path target = jc2::Env::resolve_path(path);
+    const std::filesystem::path temp = target.string() + ".tmp";
+    {
+        std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+        if (!out.is_open()) throwTensorError("Cannot open tensor file for writing: " + target.string());
+        out.write(reinterpret_cast<const char*>(all.data()), static_cast<std::streamsize>(all.size()));
+        uint8_t crcBytes[4] = {
+            static_cast<uint8_t>(crc & 0xFF), static_cast<uint8_t>((crc >> 8) & 0xFF),
+            static_cast<uint8_t>((crc >> 16) & 0xFF), static_cast<uint8_t>((crc >> 24) & 0xFF)
+        };
+        out.write(reinterpret_cast<const char*>(crcBytes), 4);
+        out.flush();
+        if (!out.good()) throwTensorError("Failed to write tensor file: " + target.string());
+    }
+    std::error_code ec;
+    std::filesystem::rename(temp, target, ec);
+    if (ec) {
+        std::filesystem::remove(target, ec);
+        ec.clear();
+        std::filesystem::rename(temp, target, ec);
+        if (ec) {
+            std::filesystem::remove(temp, ec);
+            throwTensorError("Cannot replace tensor file: " + target.string());
+        }
+    }
+}
+
+static jc::Tensor loadTensorFromFile(const std::string& path) {
+    const std::filesystem::path filePath = jc2::Env::resolve_path(path);
+    std::ifstream in(filePath, std::ios::binary | std::ios::ate);
+    if (!in.is_open()) throwTensorError("Cannot open tensor file: " + filePath.string());
+    const std::streamoff fileSize = in.tellg();
+    if (fileSize < 12) throwTensorError("Tensor file is truncated.");
+    in.seekg(0, std::ios::beg);
+    std::vector<uint8_t> bytes(static_cast<size_t>(fileSize));
+    if (!in.read(reinterpret_cast<char*>(bytes.data()), fileSize)) throwTensorError("Failed to read tensor file.");
+
+    size_t cursor = 0;
+    if (std::memcmp(bytes.data(), kTensorMagic, 4) != 0) throwTensorError("Bad tensor file magic.");
+    cursor += 4;
+    uint16_t version = static_cast<uint16_t>(bytes[cursor] | (bytes[cursor + 1] << 8));
+    cursor += 2;
+    if (version != kTensorVersion) throwTensorError("Unsupported tensor file version.");
+    jc::DType dtype = tensorDTypeFromCode(bytes[cursor++]);
+    uint8_t ndim = bytes[cursor++];
+    if (ndim == 0) throwTensorError("Scalar tensor files are not supported.");
+    if (ndim > kTensorMaxDims) throwTensorError("Tensor file has too many dimensions.");
+    if (cursor + static_cast<size_t>(ndim) * 8 > bytes.size()) throwTensorError("Tensor file is truncated.");
+    std::vector<int> shape;
+    shape.reserve(ndim);
+    uint64_t elements = 1;
+    for (uint8_t i = 0; i < ndim; ++i) {
+        uint64_t dim = readU64(bytes.data() + cursor);
+        cursor += 8;
+        if (dim > static_cast<uint64_t>(std::numeric_limits<int>::max())) throwTensorError("Tensor dimension is too large.");
+        if (dim != 0 && elements > std::numeric_limits<uint64_t>::max() / dim) throwTensorError("Tensor shape overflows.");
+        elements *= dim;
+        shape.push_back(static_cast<int>(dim));
+    }
+    jc::Tensor tensor(shape, dtype, false);
+    const size_t elementSize = tensor.impl->storage->element_size();
+    if (elementSize && elements > std::numeric_limits<size_t>::max() / elementSize) throwTensorError("Tensor is too large.");
+    const size_t dataBytes = static_cast<size_t>(elements) * elementSize;
+    if (cursor + dataBytes + 4 > bytes.size()) throwTensorError("Tensor file is truncated.");
+    if (dataBytes) std::memcpy(tensor.impl->storage->data_ptr(), bytes.data() + cursor, dataBytes);
+    cursor += dataBytes;
+    uint32_t storedCrc = static_cast<uint32_t>(bytes[cursor]) |
+                         (static_cast<uint32_t>(bytes[cursor + 1]) << 8) |
+                         (static_cast<uint32_t>(bytes[cursor + 2]) << 16) |
+                         (static_cast<uint32_t>(bytes[cursor + 3]) << 24);
+    if (cursor + 4 != bytes.size()) throwTensorError("Tensor file has trailing bytes.");
+    uint32_t actualCrc = tensorCrc32(bytes.data(), cursor);
+    if (storedCrc != actualCrc) throwTensorError("Tensor file checksum mismatch.");
+    return tensor;
 }
 
 // Macros for methods
@@ -248,6 +409,17 @@ METHOD(dtype) { GET_SELF; return jc2::Value(jc::dtypeToString(t1->dtype())).get_
 METHOD(to) { GET_SELF; return wrapTensor(t1->to(jc::stringToDType(jc2::Value(argv[1]).as_string()))).get_handle(); }
 METHOD(clone) { GET_SELF; return wrapTensor(t1->clone()).get_handle(); }
 METHOD(contiguous) { GET_SELF; return wrapTensor(t1->contiguous()).get_handle(); }
+METHOD(save) {
+    GET_SELF;
+    if (argc < 2 || !jc2::Value(argv[1]).is_string()) throwTensorError("save() expects a file path.");
+    saveTensorToFile(*t1, jc2::Value(argv[1]).as_string());
+    return argv[0];
+}
+
+JC2_ValueHandle tensor_load(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    if (argc < 1 || !jc2::Value(argv[0]).is_string()) throwTensorError("tensor.load() expects a file path.");
+    return wrapTensor(loadTensorFromFile(jc2::Value(argv[0]).as_string())).get_handle();
+}
 METHOD(view) { GET_SELF; return wrapTensor(t1->view(listToShape(jc2::Value(argv[1])))).get_handle(); }
 METHOD(reshape) { GET_SELF; return wrapTensor(t1->contiguous().view(listToShape(jc2::Value(argv[1])))).get_handle(); }
 METHOD(T) { GET_SELF; return wrapTensor(t1->T()).get_handle(); }
@@ -549,6 +721,7 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->bind_method("dtype", tensor_dtype, 0, 0);
     g_tensorClass->bind_method("to", tensor_to, 1, 1, {"dtype"});
     g_tensorClass->bind_method("clone", tensor_clone, 0, 0);
+    g_tensorClass->bind_method("save", tensor_save, 1, 1, {"path"});
     g_tensorClass->bind_method("contiguous", tensor_contiguous, 0, 0);
     g_tensorClass->bind_method("view", tensor_view, 1, 1, {"shape"});
     g_tensorClass->bind_method("reshape", tensor_reshape, 1, 1, {"shape"});
@@ -584,6 +757,7 @@ int jc2_init(jc2::Module& mod) {
     g_tensorClass->set_allocator(global_tensor);
 
     mod.register_function("tensor", global_tensor, 1, 4, {"data", "shape", "dtype", "requires_grad"});
+    mod.register_function("load", tensor_load, 1, 1, {"path"});
     mod.register_function("scalar", global_scalar, 1, 3, {"val", "dtype", "requires_grad"});
     mod.register_function("zeros", global_zeros, 1, 3, {"shape", "dtype", "requires_grad"});
     mod.register_function("ones", global_ones, 1, 3, {"shape", "dtype", "requires_grad"});

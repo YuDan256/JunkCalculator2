@@ -211,3 +211,15 @@ test_ffi_freeze_copy() = {
     assert(!isfrozen(copy(p, false)), "copy(Struct, false) unfreezes")
 }
 test_ffi_freeze_copy()
+
+// ── array view copy ────────────────────────────────────────────
+test_ffi_arrayview_copy() = {
+    Arr = ffi.Struct(%{a: "i32[4]"})
+    p = Arr()
+    p.a[0] = 7
+    v = copy(p.a)
+    v[0] = 9
+    assert(p.a[0] == 7, "ArrayView copy must be independent")
+    assert(v[0] == 9, "copied ArrayView must keep data")
+}
+test_ffi_arrayview_copy()

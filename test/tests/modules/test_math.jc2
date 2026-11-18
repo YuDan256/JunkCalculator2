@@ -1,6 +1,7 @@
 import prob
 import math
 import latex
+import decimal
 
 test_math_i() = {
     assert(type(math.i) == function, "math.i must be a function")
@@ -106,3 +107,15 @@ test_latex_parse_error() = {
     }
 }
 test_latex_parse_error()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_native_data_copy() = {
+    d = prob.Normal(0, 1)
+    dc = copy(d)
+    assert(abs(dc.mean() - d.mean()) < 1e-10, "copy(distribution) failed")
+
+    dec = decimal.Decimal("1.5")
+    dcc = copy(dec)
+    assert(str(dcc) == str(dec), "copy(decimal) failed")
+}
+test_native_data_copy()

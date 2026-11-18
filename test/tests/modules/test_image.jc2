@@ -37,3 +37,20 @@ test_image_invalid_size() = {
     }
 }
 test_image_invalid_size()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_image_freeze_copy() = {
+    im = image.img(2, 2, "black")
+    im.setPixel(0, 0, "red")
+
+    cp = copy(im)
+    cp.setPixel(0, 0, "blue")
+    assert(im.getPixel(0, 0) == "#FF0000", "copy(image) must be independent")
+
+    freeze(im)
+    threw = false
+    try { im.setPixel(0, 0, "green") } catch (e) { threw = true }
+    assert(threw, "frozen image setPixel must fail")
+    assert(isfrozen(copy(im)), "copy preserves image frozen state")
+}
+test_image_freeze_copy()

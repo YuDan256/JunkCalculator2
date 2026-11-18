@@ -74,3 +74,12 @@ test_catastrophic_backtracking() = {
     assert(evil_re.test("aaaaaaaaaaaaaaaaaaaaaaaaaaaaa") == false, "Catastrophic backtracking defense failed")
 }
 test_catastrophic_backtracking()
+
+// ── freeze / copy ──────────────────────────────────────────────
+test_regex_freeze_copy() = {
+    r = regex.compile(r"^a+$")
+    cp = copy(r)
+    assert(cp.test("aaa"), "copy(regex) must keep pattern")
+    assert(isfrozen(cp), "regex copy preserves frozen state")
+}
+test_regex_freeze_copy()

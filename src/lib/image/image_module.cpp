@@ -16,6 +16,10 @@ jc::Image* getImg(JC2_ValueHandle* argv) {
     return img;
 }
 
+static void ensureImgMutable(JC2_ValueHandle* argv) {
+    if (Value(argv[0]).is_frozen()) throw_error(jc2::ErrorType::TypeError, "Cannot modify frozen Image.");
+}
+
 JC2_ValueHandle img_width(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return Value(getImg(argv)->width()).get_handle();
 }
@@ -28,6 +32,7 @@ JC2_ValueHandle img_str(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return Value(s).get_handle();
 }
 JC2_ValueHandle img_plot(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     jc::Image* im = getImg(argv);
     Function fn_actual(argv[1]);
     double xMin = Value(argv[2]).as_float(), xMax = Value(argv[3]).as_float();
@@ -51,6 +56,7 @@ JC2_ValueHandle img_plot(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     return argv[0];
 }
 JC2_ValueHandle img_setPixel(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     getImg(argv)->setPixel(Value(argv[1]).as_int(), Value(argv[2]).as_int(), parseColor(Value(argv[3])));
     return argv[0];
 }
@@ -58,33 +64,40 @@ JC2_ValueHandle img_getPixel(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
     return Value(getImg(argv)->getPixel(Value(argv[1]).as_int(), Value(argv[2]).as_int()).toHex()).get_handle();
 }
 JC2_ValueHandle img_clear(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     getImg(argv)->clear(parseColor(Value(argv[1])));
     return argv[0];
 }
 JC2_ValueHandle img_line(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_float() : 1.0;
     getImg(argv)->line(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), Value(argv[4]).as_float(), parseColor(Value(argv[5])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_rect(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     double thickness = (argc == 7 && !Value(argv[6]).is_none()) ? Value(argv[6]).as_float() : 1.0;
     getImg(argv)->rect(Value(argv[1]).as_int(), Value(argv[2]).as_int(), Value(argv[3]).as_int(), Value(argv[4]).as_int(), parseColor(Value(argv[5])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_fillRect(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     getImg(argv)->fillRect(Value(argv[1]).as_int(), Value(argv[2]).as_int(), Value(argv[3]).as_int(), Value(argv[4]).as_int(), parseColor(Value(argv[5])));
     return argv[0];
 }
 JC2_ValueHandle img_circle(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     double thickness = (argc == 6 && !Value(argv[5]).is_none()) ? Value(argv[5]).as_float() : 1.0;
     getImg(argv)->circle(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), parseColor(Value(argv[4])), thickness);
     return argv[0];
 }
 JC2_ValueHandle img_fillCircle(JC2_VMContext, int, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     getImg(argv)->fillCircle(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), parseColor(Value(argv[4])));
     return argv[0];
 }
 JC2_ValueHandle img_text(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     std::string txt = Value(argv[1]).as_string();
     int x = Value(argv[2]).as_int();
     int y = Value(argv[3]).as_int();
@@ -93,6 +106,7 @@ JC2_ValueHandle img_text(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) 
     return argv[0];
 }
 JC2_ValueHandle img_axes(JC2_VMContext, int argc, JC2_ValueHandle* argv, void*) {
+    ensureImgMutable(argv);
     jc::Color c = (argc == 6 && !Value(argv[5]).is_none()) ? parseColor(Value(argv[5])) : jc::Color{100, 100, 100};
     getImg(argv)->drawAxes(Value(argv[1]).as_float(), Value(argv[2]).as_float(), Value(argv[3]).as_float(), Value(argv[4]).as_float(), c);
     return argv[0];
@@ -116,6 +130,10 @@ JC2_ValueHandle create_image(JC2_VMContext, int argc, JC2_ValueHandle* argv, voi
     Instance inst(*g_imageClass);
     inst.set_native_data(new jc::Image(w, h, bg), [](void* ptr) {
         delete static_cast<jc::Image*>(ptr);
+    });
+    inst.set_native_clone([](void* ptr) -> void* {
+        auto* src = static_cast<jc::Image*>(ptr);
+        return src ? new jc::Image(*src) : nullptr;
     });
     return inst.get_handle();
 }

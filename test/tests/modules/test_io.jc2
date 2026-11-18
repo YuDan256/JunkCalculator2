@@ -229,3 +229,15 @@ test_io_remove_recursive() = {
     io.remove(dir_name, true)
 }
 test_io_remove_recursive()
+
+// ── resource copy is intentionally unsupported ─────────────────
+test_file_copy_rejected() = {
+    path = "local/_copy_file_probe.txt"
+    f = io.open(path, "w")
+    threw = false
+    try { copy(f) } catch (e) { threw = true }
+    f.close()
+    io.remove(path)
+    assert(threw, "copy(File) must fail without a clone hook")
+}
+test_file_copy_rejected()

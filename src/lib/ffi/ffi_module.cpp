@@ -157,6 +157,14 @@ static void* ffi_struct_clone(void* p) {
     return new StructInstanceData{src->layout, shared, shared->data() + offset};
 }
 
+static void* ffi_array_view_clone(void* p) {
+    auto* src = static_cast<FFIArrayViewData*>(p);
+    if (!src || !src->shared_mem) return nullptr;
+    auto shared = std::make_shared<std::vector<uint8_t>>(*src->shared_mem);
+    const size_t offset = src->base_ptr - src->shared_mem->data();
+    return new FFIArrayViewData{src->desc, shared, shared->data() + offset};
+}
+
 /* Keeps provider-acquired buffers alive until the native call returns. */
 struct BufferLease {
     std::vector<JC2_BufferView> views;
@@ -277,6 +285,7 @@ Value read_memory(std::shared_ptr<std::vector<uint8_t>> shared_mem, uint8_t* ptr
         Instance inst(*g_arrayViewClass);
         FFIArrayViewData* data = new FFIArrayViewData{t, shared_mem, ptr};
         inst.set_native_data(data, [](void* p) { delete static_cast<FFIArrayViewData*>(p); });
+        inst.set_native_clone(ffi_array_view_clone);
         return inst.get_handle();
     }
     switch (t.type) {
@@ -1205,6 +1214,7 @@ JC2_ValueHandle array_view_getitem(JC2_VMContext ctx, int argc, JC2_ValueHandle*
         Instance inst(*g_arrayViewClass);
         FFIArrayViewData* new_data = new FFIArrayViewData{new_desc, data->shared_mem, data->base_ptr + start * sub_size};
         inst.set_native_data(new_data, [](void* p) { delete static_cast<FFIArrayViewData*>(p); });
+        inst.set_native_clone(ffi_array_view_clone);
         return inst.get_handle();
     }
 

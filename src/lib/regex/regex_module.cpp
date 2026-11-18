@@ -694,6 +694,10 @@ static jc2::Value wrapRegex(std::shared_ptr<RegexVM> vm, const std::string& pat)
     inst.set_native_data(data, [](void* ptr) {
         delete static_cast<std::shared_ptr<RegexVM>*>(ptr);
     });
+    inst.set_native_clone([](void* ptr) -> void* {
+        auto* src = static_cast<std::shared_ptr<RegexVM>*>(ptr);
+        return src ? new std::shared_ptr<RegexVM>(*src) : nullptr;
+    });
     inst.set("pattern", jc2::Value(pat));
     inst.freeze();
     return inst;

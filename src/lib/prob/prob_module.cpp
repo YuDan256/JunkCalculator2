@@ -18,6 +18,10 @@ static jc2::Value makeDist(jc::Distribution d) {
     inst.set_native_data(data, [](void* ptr) {
         delete static_cast<std::shared_ptr<jc::Distribution>*>(ptr);
     });
+    inst.set_native_clone([](void* ptr) -> void* {
+        auto* src = static_cast<std::shared_ptr<jc::Distribution>*>(ptr);
+        return src ? new std::shared_ptr<jc::Distribution>(*src) : nullptr;
+    });
     return inst;
 }
 

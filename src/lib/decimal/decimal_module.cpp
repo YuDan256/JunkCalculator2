@@ -26,6 +26,10 @@ static jc2::Value wrapDecimal(const Decimal& d) {
     inst.set_native_data(data, [](void* ptr) {
         delete static_cast<std::shared_ptr<Decimal>*>(ptr);
     });
+    inst.set_native_clone([](void* ptr) -> void* {
+        auto* src = static_cast<std::shared_ptr<Decimal>*>(ptr);
+        return src ? new std::shared_ptr<Decimal>(*src) : nullptr;
+    });
     inst.freeze();
     return inst;
 }

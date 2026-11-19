@@ -1846,12 +1846,37 @@ void BuiltinRegistry::registerMatrixOps() {
     auto reshapeFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         int r = static_cast<int>(std::round(args[0].asFloat())), c = static_cast<int>(std::round(args[1].asFloat()));
-        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.reshape(r, c));
-        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.reshape(r, c));
-        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.reshape(r, c));
+        bool rowMajor = false;
+        if (args.size() > 2 && !args[2].isUninit()) {
+            if (!args[2].isString()) JC2_THROW(TypeError, "reshape order must be 'row' or 'col'.");
+            std::string order = args[2].asString();
+            if (order == "row") rowMajor = true;
+            else if (order == "col") rowMajor = false;
+            else JC2_THROW(ValueError, "reshape order must be 'row' or 'col'.");
+        }
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.reshape(r, c, rowMajor));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.reshape(r, c, rowMajor));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.reshape(r, c, rowMajor));
         JC2_THROW(TypeError, "reshape() requires a matrix.");
     };
-    regMethod(VM::activeVM->matrixProto, "reshape", {"r", "c"}, reshapeFn);
+    regMethod(VM::activeVM->matrixProto, "reshape", {"r", "c", "order"}, reshapeFn, 1);
+
+    auto flattenFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        bool rowMajor = false;
+        if (!args.empty() && !args[0].isUninit()) {
+            if (!args[0].isString()) JC2_THROW(TypeError, "flatten order must be 'row' or 'col'.");
+            std::string order = args[0].asString();
+            if (order == "row") rowMajor = true;
+            else if (order == "col") rowMajor = false;
+            else JC2_THROW(ValueError, "flatten order must be 'row' or 'col'.");
+        }
+        if (self.isObjType(ObjType::REAL_MATRIX)) return Value(static_cast<ObjRealMatrix*>(self.asObj())->mat.flatten(rowMajor));
+        if (self.isObjType(ObjType::COMPLEX_MATRIX)) return Value(static_cast<ObjComplexMatrix*>(self.asObj())->mat.flatten(rowMajor));
+        if (self.isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(self.asObj())->mat.flatten(rowMajor));
+        JC2_THROW(TypeError, "flatten() requires a matrix.");
+    };
+    regMethod(VM::activeVM->matrixProto, "flatten", {"order"}, flattenFn, 1);
 
     auto subFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();

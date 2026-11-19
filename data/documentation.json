@@ -6180,10 +6180,17 @@
       ]
     },
     "reshape": {
-      "signature": "A.reshape(r, c)",
-      "desc": "Reshapes a matrix to r rows and c columns. Total element count must match.",
+      "signature": "A.reshape(r, c, [order])",
+      "desc": "Reshapes a matrix to r rows and c columns. Total element count must match. order is 'row' or 'col' (default 'col').",
       "examples": [
-        "[1, 2, 3, 4].reshape(2, 2)"
+        "[1, 2; 3, 4].reshape(1, 4, \"row\")"
+      ]
+    },
+    "flatten": {
+      "signature": "A.flatten([order])",
+      "desc": "Flattens a matrix into a 1xN matrix. order is 'row' or 'col' (default 'col').",
+      "examples": [
+        "[1, 2; 3, 4].flatten(\"row\")"
       ]
     },
     "hcat": {

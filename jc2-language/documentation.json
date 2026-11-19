@@ -758,7 +758,10 @@
       "signature": "A.col()"
     },
     "reshape": {
-      "signature": "A.reshape(r, c)"
+      "signature": "A.reshape(r, c, [order])"
+    },
+    "flatten": {
+      "signature": "A.flatten([order])"
     },
     "hcat": {
       "signature": "A.hcat(B)"

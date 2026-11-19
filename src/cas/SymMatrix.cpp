@@ -300,12 +300,41 @@ namespace jc {
     }
 
     SymMatrix SymMatrix::reshape(int newRows, int newCols) const {
+        return reshape(newRows, newCols, false);
+    }
+
+    SymMatrix SymMatrix::reshape(int newRows, int newCols, bool rowMajor) const {
+        if (newRows < 0 || newCols < 0) JC2_THROW(ValueError, "reshape dimensions must be non-negative.");
         if (newRows * newCols != rows * cols) JC2_THROW(ValueError, "Element count mismatch in reshape (" + std::to_string(newRows * newCols) + " vs " + std::to_string(rows * cols) + ").");
         SymMatrix result(newRows, newCols);
-        for (int idx = 0; idx < rows * cols; ++idx) {
-            result.data[idx] = data[idx];
+        if (newRows == 0 || newCols == 0) return result;
+
+        if (!rowMajor) {
+            size_t k = 0;
+            for (int j = 0; j < cols; ++j) {
+                for (int i = 0; i < rows; ++i) {
+                    const int rr = static_cast<int>(k % static_cast<size_t>(newRows));
+                    const int cc = static_cast<int>(k / static_cast<size_t>(newRows));
+                    result(rr, cc) = (*this)(i, j);
+                    ++k;
+                }
+            }
+        } else {
+            size_t k = 0;
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    const int rr = static_cast<int>(k / static_cast<size_t>(newCols));
+                    const int cc = static_cast<int>(k % static_cast<size_t>(newCols));
+                    result(rr, cc) = (*this)(i, j);
+                    ++k;
+                }
+            }
         }
         return result;
+    }
+
+    SymMatrix SymMatrix::flatten(bool rowMajor) const {
+        return reshape(1, rows * cols, rowMajor);
     }
 
     SymMatrix SymMatrix::identity(int n) {

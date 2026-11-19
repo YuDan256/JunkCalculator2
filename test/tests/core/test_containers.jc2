@@ -432,3 +432,27 @@ test_kron_preserves_matrix_kind() = {
     assert(type(A.kron(S)) == symmatrix, "real.kron(symbolic) must return symmatrix")
 }
 test_kron_preserves_matrix_kind()
+
+// ── reshape / flatten order flag ───────────────────────────────
+test_reshape_order_flag() = {
+    A = [1, 2; 3, 4]
+
+    // default: column-major, backward compatible
+    assert(A.reshape(1, 4) == [1, 3, 2, 4], "reshape default is col")
+    assert(A.reshape(1, 4, "col") == [1, 3, 2, 4], "reshape col")
+    assert(A.reshape(1, 4, "row") == [1, 2, 3, 4], "reshape row")
+
+    assert(A.flatten() == [1, 3, 2, 4], "flatten default is col")
+    assert(A.flatten("col") == [1, 3, 2, 4], "flatten col")
+    assert(A.flatten("row") == [1, 2, 3, 4], "flatten row")
+
+    // non-contiguous view must use the same order rules
+    T = A.trans()
+    assert(T.reshape(1, 4, "col") == [1, 2, 3, 4], "transposed reshape col")
+    assert(T.reshape(1, 4, "row") == [1, 3, 2, 4], "transposed reshape row")
+
+    bad = false
+    try { A.reshape(1, 4, "C") } catch (e) { bad = true }
+    assert(bad, "unknown order must fail")
+}
+test_reshape_order_flag()

@@ -68,6 +68,8 @@ namespace jc {
         SymMatrix integC(const SymMatrix& other) const;
         SymMatrix integD(const SymMatrix& other) const;
         SymMatrix reshape(int newRows, int newCols) const;
+        SymMatrix reshape(int newRows, int newCols, bool rowMajor) const;
+        SymMatrix flatten(bool rowMajor = false) const;
 
         static SymMatrix identity(int n);
         static SymMatrix zeros(int r, int c);

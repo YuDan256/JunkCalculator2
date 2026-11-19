@@ -3410,7 +3410,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
                 const SymExpr& se = raw[idx];
                 size_t h = (se.ptr && se.ptr->getType() == SymType::NUM)
                     ? hashCASValForValue(static_cast<SymNum*>(se.ptr)->value)
-                    : sipHash24String(se.toString());
+                    : static_cast<size_t>(symbolicHash(se));
                 h += 0x9e3779b9 + idx;
                 seed ^= h + 0x9e3779b9 + (seed << 6) + (seed >> 2);
             }
@@ -3428,7 +3428,7 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             if (se.ptr && se.ptr->getType() == SymType::NUM) {
                 return hashCASValForValue(static_cast<SymNum*>(se.ptr)->value);
             }
-            return sipHash24String(se.toString());
+            return static_cast<size_t>(symbolicHash(se));
         }
         case ObjType::TYPE_DEF: { const void* p = obj; return static_cast<size_t>(sipHash24(&p, sizeof(p))); }
         case ObjType::SLICE: {

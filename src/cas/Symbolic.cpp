@@ -3189,6 +3189,29 @@ namespace jc {
         return {false, Value()};
     }
 
+    uint64_t symbolicHash(const SymExpr& expr) {
+        if (!expr.ptr) return 0;
+
+        // Numeric-valued expressions must hash like their native value. This
+        // keeps sym(1), sym(1)+1 and native 1/2 in the same dict/set bucket.
+        auto [isConst, native] = tryEvalConst(expr);
+        if (isConst && !native.isSymbolic()) {
+            return static_cast<uint64_t>(ValueHasher{}(native));
+        }
+
+        try {
+            // Uses the same expansion/simplification path as symEquivalent, so
+            // x^2 - 1 and (x + 1) * (x - 1) produce the same hash.
+            return static_cast<uint64_t>(hashString(canonicalCompareText(expr)));
+        } catch (const EngineInterruptError&) {
+            throw;
+        } catch (...) {
+            // Last resort: structural hash. This can only cause an equal-value
+            // hash mismatch for expressions that failed canonicalization.
+            return static_cast<uint64_t>(expr.ptr->hashValue);
+        }
+    }
+
     // ==========================================
     // 代入引擎 (Substitution Engine)
     // ==========================================

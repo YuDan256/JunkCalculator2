@@ -379,3 +379,26 @@ test_matrix_cross_representation_inequality() = {
 }
 test_matrix_cross_representation_inequality()
 }
+
+// 符号表达式的代数等价必须对应相同哈希
+test_symbolic_algebraic_hash() = {
+    x = sym("x")
+    a = x^2 - 1
+    b = (x + 1) * (x - 1)
+
+    assert(a == b, "algebraic equality")
+    assert(hash(a) == hash(b), "algebraically equal expressions must hash equally")
+
+    d = %{}
+    d[a] = "v"
+    assert(d[b] == "v", "equivalent symbolic dict key")
+    assert(len(d) == 1, "equivalent symbolic keys collapse")
+
+    assert(len(toSet(@[a, b])) == 1, "equivalent symbolic values collapse in a set")
+
+    A = symmatrix(2, 2, a, 0, 0, 0)
+    B = symmatrix(2, 2, b, 0, 0, 0)
+    assert(A == B, "symbolic matrix equality")
+    assert(hash(A) == hash(B), "equivalent symbolic matrices must hash equally")
+}
+test_symbolic_algebraic_hash()

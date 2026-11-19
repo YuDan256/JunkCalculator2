@@ -117,6 +117,11 @@ namespace jc {
     // 结构相等，必要时回退到展开后的规范多项式比较（见 SymExpr::operator==）
     bool symEquivalent(const SymExpr& a, const SymExpr& b);
 
+    // Canonical hash consistent with symEquivalent: algebraically equivalent
+    // expressions must hash equally. Numeric-valued expressions use the same
+    // native-number hash as ValueHasher.
+    uint64_t symbolicHash(const SymExpr& expr);
+
     // factor 记忆化（定义在 Factorization.cpp）：纯函数的重复调用占了大头，
     // 清空时机由顶层 full_simplify 掌握，见那里的说明。
     void clearFactorMemo();

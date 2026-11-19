@@ -1013,8 +1013,8 @@ public:
                             break;
                         }
 
-                        auto isUninit = builder_.createCallout(
-                            reinterpret_cast<void*>(jc2_jit_is_uninit), JITType::Bool, 1, {callout}, fs);
+                        auto isUninit = builder_.createCmpEqTagged(
+                            callout, builder_.createInt64Constant(QNAN | TAG_UNINIT));
                         auto branch = builder_.createBranch(isUninit);
                         auto ifTrue = builder_.createIfTrue(branch);
                         auto ifFalse = builder_.createIfFalse(branch);
@@ -1588,10 +1588,9 @@ public:
                         break;
                     }
                     case OpCode::CHECK_INIT: {
-                        auto fs = captureFrameState(currentIp);
                         HIRNode* val = getBoxedRKNode(b);
-                        auto isUninit = builder_.createCallout(
-                            reinterpret_cast<void*>(jc2_jit_is_uninit), JITType::Bool, 1, {val}, fs);
+                        auto isUninit = builder_.createCmpEqTagged(
+                            val, builder_.createInt64Constant(QNAN | TAG_UNINIT));
                         auto branch = builder_.createBranch(isUninit);
                         auto ifTrue = builder_.createIfTrue(branch);
                         auto ifFalse = builder_.createIfFalse(branch);

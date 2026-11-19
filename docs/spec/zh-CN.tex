@@ -732,6 +732,11 @@ class 数据属性省略初始化器时进入待初始化状态。
 普通 \jc{local}、\jc{ref}、\jc{state} 声明省略初始化器时捕获外层绑定，不进入待初始化状态。
 只读绑定在首次提交后保持只读。
 
+函数体内的普通赋值建立函数级 auto-local 绑定。该绑定在整个函数体内可见，
+并遮蔽同名的外层或全局绑定；其值按控制流确定。读取一个在所有路径上都未赋值的
+auto-local 产生 \jc{SyntaxError}；读取一个仅部分路径赋值的 auto-local 产生
+\jc{RuntimeError}。所有路径均已赋值时读取正常。
+
 \subsubsection{重声明与遮蔽}
 
 同一作用域内的显式重声明产生 \jc{SyntaxError}：
@@ -745,7 +750,9 @@ local x = 2       // SyntaxError: Variable 'x' has already been declared
 声明自身采用先求值右侧、后注册左侧的顺序，因此 \jc{local x = x} 捕获外层 \jc{x}。
 独立声明 \jc{local x} 捕获外层 \jc{x} 的当前值；外层 \jc{x} 缺失时产生 \jc{RuntimeError}。
 
-局部名字在声明点之后可用；在声明点之前读取产生 \jc{SyntaxError}。
+显式局部名字在声明点之后可用；在声明点之前读取产生 \jc{SyntaxError}。
+函数体内的普通赋值建立函数级 auto-local 绑定；它在整个函数体内遮蔽外层同名绑定，
+读取发生在任何赋值之前时按未初始化处理，不回退到外层。
 函数名与其他全局或命名空间绑定在调用时解析，因此后定义的函数可以从先定义的函数体调用。
 
 \subsubsection{局部捕获与闭包}
@@ -800,7 +807,8 @@ match 分支变量与 comprehension 变量保持局部。
 
 顶层程序的普通赋值进入全局绑定。函数体内的普通赋值进入函数级 auto-local 绑定。
 块、if、for、while 的普通赋值继续路由到所属函数或全局；\jc{local} 将绑定限制在当前块。
-自赋值声明 \jc{x = x} 在注册新绑定前求值右侧，右侧读取外层 \jc{x}。
+显式声明 \jc{local x = x} 在注册新绑定前求值右侧，右侧读取外层 \jc{x}；
+普通赋值 \jc{x = x} 建立 auto-local，右侧读取的是尚未初始化的 auto-local，不回退外层。
 
 \subsection{修饰符}
 
@@ -848,11 +856,18 @@ match 分支变量与 comprehension 变量保持局部。
 系统常量可以恢复：先 \jc{import sys}，再调用 \jc{sys.resetConst()}。
 用户 \jc{const} 绑定保持只读。
 
-\jc{delete a, b} 删除变量绑定；\jc{delete @macro} 删除编译期宏定义。
+\jc{delete a, b} 对全局绑定删除绑定，对局部绑定则使其变为未绑定状态；
+\jc{delete @macro} 删除编译期宏定义。
 删除表达式返回 \jc{none}；\jc{const} 绑定删除产生 \jc{RuntimeError}，
 \jc{state} 绑定删除产生 \jc{SyntaxError}。
 删除操作接受变量名列表，索引目标通过容器方法删除。
-内建函数可以被用户绑定遮蔽；\jc{delete} 删除遮蔽绑定，内建函数本身继续存在。
+
+局部绑定被删除后仍保留词法绑定，但读取产生 \jc{RuntimeError}；它不回退到外层或全局同名绑定。
+删除后再次赋值会重新绑定该局部变量。条件分支中的删除按控制流处理：
+仅部分路径执行删除时，后续读取在该路径上产生 \jc{RuntimeError}。
+
+内建函数可以被用户绑定遮蔽。若遮蔽绑定是全局绑定，\jc{delete} 删除该全局绑定，
+内建函数本身继续存在；若遮蔽绑定是局部绑定，\jc{delete} 仅使其未绑定，不恢复内建函数。
 
 \subsection{模块与 include}
 
@@ -1515,7 +1530,9 @@ process(@[5, 20, 1, 2])   // 28
 调用中的 \jc{...expr} 展开位置实参；\jc{; ...expr} 展开关键字实参。
 展开值必须为可迭代对象或映射对象；传入值属于其他类型时产生 \jc{TypeError}。
 \jc{args.apply(f)} 将 list 或矩阵展开为位置实参，等价于 \jc{f(...args)}。
-内置函数可以被同作用域的用户函数或变量遮蔽；\jc{delete} 删除遮蔽绑定，内置函数继续可用。
+内置函数可以被同作用域的用户函数或变量遮蔽。全局遮蔽时，\jc{delete} 删除
+全局遮蔽绑定，内置函数继续可用；局部遮蔽时，\jc{delete} 仅使局部绑定未绑定，
+不恢复内置函数。
 
 \begin{lstlisting}
 f(a, b = 2) = a + b

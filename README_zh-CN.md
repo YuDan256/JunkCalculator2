@@ -14,6 +14,8 @@
 
 由清华大学 Yu Liangyang 开发。
 
+由 [DeepSeek](https://www.deepseek.com/) AI 协助开发。
+
 ---
 
 ## 技术概览

@@ -14,6 +14,8 @@ A scripting language and computer algebra system (CAS) implemented in C++20. It 
 
 Developed by Yu Liangyang, Tsinghua University.
 
+Developed with assistance from [DeepSeek](https://www.deepseek.com/) AI.
+
 ---
 
 ## Technical Overview

@@ -1775,7 +1775,10 @@ void IRBuilder::visitVariable(Variable* expr) {
         error(expr->name.line, "'" + expr->name.lexeme + "' is used before its declaration is initialized.");
     }
     lastValue = readVariable(expr->name.lexeme, sym);
-    if (sym.needsInitCheck) lastValue = emitUninitCheck(lastValue, expr->name.lexeme);
+    if (sym.needsInitCheck) {
+        if (lastValue->op == IROp::GetUpvalue) lastValue->payload2 = 1;
+        else lastValue = emitUninitCheck(lastValue, expr->name.lexeme);
+    }
 }
 
 void IRBuilder::visitTypeAssertExpr(TypeAssertExpr* expr) {

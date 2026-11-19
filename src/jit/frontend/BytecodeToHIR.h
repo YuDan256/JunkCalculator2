@@ -1005,6 +1005,11 @@ public:
                         break;
                     }
                     case OpCode::GET_UPVAL: {
+                        if (c != 0) {
+                            auto fs = captureFrameState(currentIp);
+                            builder_.createDeoptimize(fs);
+                            break;
+                        }
                         auto fs = captureFrameState(currentIp);
                         auto uvIdxNode = builder_.createInt32Constant(b);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_upval), JITType::TaggedValue, 1, {uvIdxNode}, fs);

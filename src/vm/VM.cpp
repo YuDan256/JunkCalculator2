@@ -5403,7 +5403,10 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (!frame->closure || b >= frame->closure->upvalueCount)
                     errInvalidUpvalueIndex();
-                getReg(a) = readUpvalue(frame->closure->upvalues[b]);
+                Value value = readUpvalue(frame->closure->upvalues[b]);
+                if (c != 0 && value.isUninit())
+                    JC2_THROW(RuntimeError, "Variable is used before its assignment.");
+                getReg(a) = value;
                 break;
             }
             case OpCode::SET_UPVAL: {

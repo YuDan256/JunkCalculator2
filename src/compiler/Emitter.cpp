@@ -415,7 +415,8 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::GetUpvalue: {
-                        auto w = buildInstAB(OpCode::GET_UPVAL, node->physicalReg, node->payload1);
+                        auto w = buildInstABC(OpCode::GET_UPVAL, node->physicalReg, node->payload1,
+                                              node->payload2 ? 1 : 0);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

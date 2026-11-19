@@ -7172,6 +7172,18 @@ void BuiltinRegistry::registerCAS() {
         return doEvalf(args[0].asSymbolic());
         }, {"expr"});
 
+    // Numeric converters use this internal hook instead of resolving a global
+    // named "evalf". The evaluator returns a native number for constant
+    // expressions, and leaves the symbolic value unchanged when free variables
+    // prevent numeric evaluation.
+    if (VM::activeVM) {
+        VM::activeVM->setSymbolicNumericEvaluator(
+            [doEvalf](const Value& value) -> Value {
+                if (!value.isSymbolic()) return value;
+                return doEvalf(value.asSymbolic());
+            });
+    }
+
     regModule(cas_ns, "evalv", { 1 }, [fnsPtr, this](const std::vector<Value>& args) -> Value {
         if (args[0].isObjType(ObjType::SYM_MATRIX)) return Value(static_cast<ObjSymMatrix*>(args[0].asObj())->mat.evalValue());
         SymExpr expr = args[0].asSymbolic();

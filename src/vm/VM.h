@@ -102,6 +102,10 @@ private:
     std::unordered_map<std::string, TypeSig> builtinReturnType;
     std::unordered_map<std::string, Value> builtinClosures;
     std::unordered_map<std::string, Value> builtinValues;
+    // CAS numeric evaluator, installed by BuiltinRegistry after CAS setup.
+    // This is an explicit internal hook; numeric converters must not look up
+    // user-visible globals such as "evalf".
+    std::function<Value(const Value&)> symbolicNumericEvaluator;
 
     ObjUpVal* openUpvalues = nullptr;
     void closeUpvalues(int lastRegIndex);
@@ -405,6 +409,9 @@ public:
     }
 
     void registerBuiltin(const std::string& name, NativeCallable fn, std::set<int> arity, std::vector<std::string> paramNames = {}, std::string restName = "", std::vector<std::string> kwargNames = {}, std::string kwargsName = "", int kwargDefaultCount = 0, std::vector<std::string> kwargDefaultValueTexts = {}, std::vector<TypeSig> paramTypes = {}, TypeSig returnType = TypeSig());
+    void setSymbolicNumericEvaluator(std::function<Value(const Value&)> fn) {
+        symbolicNumericEvaluator = std::move(fn);
+    }
     Value getBuiltinClosure(const std::string& name);
     void registerBuiltinValue(const std::string& name, const Value& val) { builtinValues[name] = val; }
     void injectModule(const std::string& name, const Value& moduleVal) { 

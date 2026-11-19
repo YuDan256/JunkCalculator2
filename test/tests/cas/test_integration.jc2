@@ -767,3 +767,25 @@ assert(str(sqrt(2) * sqrt(3) * sqrt(5)) == "sqrt(30)", "three radicals")
 assert(sqrt(4) * sqrt(9) == 6, "perfect squares")
 assert(str(sqrt(-2) * sqrt(-3)) == "-sqrt(6)", "negative radicands keep sign")
 }
+
+// ── direct symbolic numeric conversion ─────────────────────────
+test_symbolic_numeric_conversion() = {
+    assert(abs(float(cas.pi()) - 3.14159265) < 1e-6, "float(pi)")
+    assert(int(cas.pi()) == 3, "int(pi)")
+    assert(abs(float(cas.pi() * 2) - 6.2831853) < 1e-6, "float(2*pi)")
+    assert(int(cas.i() ^ 2) == -1, "int(i^2)")
+
+    x = sym("x")
+    threw = false
+    try { float(x) } catch (e) { threw = true }
+    assert(threw, "float(x) must reject free variables")
+
+    threw = false
+    try { int(x ^ 2) } catch (e) { threw = true }
+    assert(threw, "int(x^2) must reject free variables")
+
+    threw = false
+    try { float(cas.i() * 2) } catch (e) { threw = true }
+    assert(threw, "float(2i) must reject nonzero imaginary part")
+}
+test_symbolic_numeric_conversion()

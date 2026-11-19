@@ -4162,9 +4162,9 @@ VM::VM() {
     // ===== 可调用类型的转换回调（call/invoke 直接调用，不再查同名函数）=====
     {
         auto evalIfSym = [this](Value v) -> Value {
-            if (v.isSymbolic()) {
-                auto it = nativeBuiltins.find("evalf");
-                if (it != nativeBuiltins.end()) return it->second({v});
+            if (v.isSymbolic() && symbolicNumericEvaluator) {
+                Value evaluated = symbolicNumericEvaluator(v);
+                if (!evaluated.isSymbolic()) return evaluated;
             }
             return v;
         };
@@ -4243,6 +4243,9 @@ VM::VM() {
                 }
                 JC2_THROW(TypeError, "Cannot parse '" + val.asString() + "' as integer.");
             }
+            if (val.isSymbolic()) {
+                JC2_THROW(TypeError, "Cannot convert a symbolic expression with free variables to int; substitute values first.");
+            }
             return Value(val.asBigInt());
         });
 
@@ -4297,6 +4300,9 @@ VM::VM() {
                 if (!Tol::isEq(c.imag, 0.0))
                     JC2_THROW(TypeError, "Cannot convert complex with nonzero imaginary part to double.");
                 return Value(c.real);
+            }
+            if (val.isSymbolic()) {
+                JC2_THROW(TypeError, "Cannot convert a symbolic expression with free variables to float; substitute values first.");
             }
             return Value(val.asFloat());
         });

@@ -1296,6 +1296,10 @@ Value VM::callTypeConverter(ObjTypeDef* td, int posArgc, int kwArgc, Value* args
 
 void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCall, Value explicitSelf) {
     CallFrame* currentFrame = &frames[frameCount - 1];
+    // A tail call reuses the current register window. Close open upvalues before
+    // argument setup overwrites that window; otherwise a by-reference capture
+    // (ref x) would observe the callee's locals instead of the caller's x.
+    if (isTailCall) closeUpvalues(currentFrame->registerBase);
     Value callee = registers[currentFrame->registerBase + calleeReg];
     
     if (callee.isString()) {
@@ -2237,6 +2241,7 @@ void VM::execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx
 
 void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate) {
     CallFrame* currentFrame = &frames[frameCount - 1];
+    if (isTailCall) closeUpvalues(currentFrame->registerBase);
     InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
     uint32_t nameIdx = ic.nameIdx;
     Value keyVal = currentFrame->function->chunk.constants.data()[nameIdx];
@@ -2678,6 +2683,7 @@ invoke_method:
 
 void VM::execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall) {
     CallFrame* currentFrame = &frames[frameCount - 1];
+    if (isTailCall) closeUpvalues(currentFrame->registerBase);
     const std::string& methodName = currentFrame->function->chunk.constants.data()[nameIdx].asString();
     const Value& selfVal = registers[currentFrame->registerBase + a];
     int argc = b;

@@ -969,6 +969,30 @@ assert(sum_tail(200, 0) == 20100, "tail-position call (200 frames)")
 // 真正的 TCO：这个深度远超 1024 帧上限，没有帧复用必然爆栈
 assert(sum_tail(20000, 0) == 200010000, "tail call must reuse the frame (TCO)")
 
+// A tail call reuses the caller frame; open ref upvalues must be closed
+// before the reused window is overwritten by callee locals.
+ref_tail_capture() = {
+    local x = 7
+    b() = {
+        ref x
+        f = 1
+        return x
+    }
+    return b()
+}
+assert(ref_tail_capture() == 7, "ref upvalue must survive tail-call frame reuse")
+
+ref_tail_closure() = {
+    local x = 7
+    b() = {
+        ref x
+        f = () => x
+        return f()
+    }
+    return b()
+}
+assert(ref_tail_closure() == 7, "ref closure must read the closed upvalue across a tail call")
+
 // ── 尾调用与异常：try 内不做 TCO，catch 必须还能接住 ──
 boom() = { throw "x" }
 safe() = {

@@ -1005,14 +1005,23 @@ public:
                         break;
                     }
                     case OpCode::GET_UPVAL: {
-                        if (c != 0) {
-                            auto fs = captureFrameState(currentIp);
-                            builder_.createDeoptimize(fs);
-                            break;
-                        }
                         auto fs = captureFrameState(currentIp);
                         auto uvIdxNode = builder_.createInt32Constant(b);
                         auto callout = builder_.createCallout(reinterpret_cast<void*>(jc2_jit_get_upval), JITType::TaggedValue, 1, {uvIdxNode}, fs);
+                        if (c == 0) {
+                            setLocalSync(a, callout);
+                            break;
+                        }
+
+                        auto isUninit = builder_.createCallout(
+                            reinterpret_cast<void*>(jc2_jit_is_uninit), JITType::Bool, 1, {callout}, fs);
+                        auto branch = builder_.createBranch(isUninit);
+                        auto ifTrue = builder_.createIfTrue(branch);
+                        auto ifFalse = builder_.createIfFalse(branch);
+
+                        builder_.setCurrentControl(ifTrue);
+                        builder_.createDeoptimize(captureFrameState(currentIp));
+                        builder_.setCurrentControl(ifFalse);
                         setLocalSync(a, callout);
                         break;
                     }
@@ -1578,9 +1587,23 @@ public:
                         setLocalSync(a, callout);
                         break;
                     }
-                    case OpCode::THROW:
-                    case OpCode::THROW_TYPED:
                     case OpCode::CHECK_INIT: {
+                        auto fs = captureFrameState(currentIp);
+                        HIRNode* val = getBoxedRKNode(b);
+                        auto isUninit = builder_.createCallout(
+                            reinterpret_cast<void*>(jc2_jit_is_uninit), JITType::Bool, 1, {val}, fs);
+                        auto branch = builder_.createBranch(isUninit);
+                        auto ifTrue = builder_.createIfTrue(branch);
+                        auto ifFalse = builder_.createIfFalse(branch);
+
+                        builder_.setCurrentControl(ifTrue);
+                        builder_.createDeoptimize(captureFrameState(currentIp));
+                        builder_.setCurrentControl(ifFalse);
+                        setLocalSync(a, val);
+                        break;
+                    }
+                    case OpCode::THROW:
+                    case OpCode::THROW_TYPED: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);
                         break;

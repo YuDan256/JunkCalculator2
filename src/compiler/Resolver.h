@@ -124,12 +124,6 @@ private:
     // ★ 提升阶段逐语句设置，供 declareVariable 记录"声明所在的块 + 语句序号"
     int declSerial = -1;
     int declStmt = -1;
-    // The direct body block of the current lambda. Auto-local declarations are
-    // only source-order diagnosed when they are direct statements of this block;
-    // assignments inside nested blocks are hoisted to the function but are not
-    // valid "declaration before use" anchors.
-    int functionBodySerial = -1;
-    bool pendingFunctionBody = false;
 
     void checkExplicitDecl(void* node, const std::string& name);
     void beginScope(bool isFunc = false, bool isNamespace = false);

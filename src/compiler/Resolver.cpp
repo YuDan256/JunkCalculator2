@@ -1,8 +1,374 @@
 #include "Resolver.h"
 #include "../memory/Exceptions.h"
 #include <set>
+#include <algorithm>
 
 namespace jc {
+
+// ---------------------------------------------------------------------------
+// Phase 1 definite-assignment analysis for function-level auto-locals.
+//
+// This is intentionally separate from name resolution: it answers only
+// "can this auto-local be unbound on some path?" and rejects the definite
+// case before IR generation. Reads that are merely *possibly* unbound are
+// left for the runtime check phase.
+// ---------------------------------------------------------------------------
+namespace {
+
+struct DAState {
+    std::unordered_set<std::string> must;
+    std::unordered_set<std::string> may;
+};
+
+static void daMerge(const DAState& a, const DAState& b, DAState& out) {
+    out.must.clear();
+    out.may.clear();
+    for (const auto& name : a.must) {
+        if (b.must.count(name)) out.must.insert(name);
+    }
+    out.may = a.may;
+    out.may.insert(b.may.begin(), b.may.end());
+}
+
+class AutoLocalDefiniteAssignment {
+public:
+    AutoLocalDefiniteAssignment(const std::unordered_set<std::string>& autoLocals,
+                                const std::vector<Token>& params,
+                                const std::vector<Token>& kwargParams,
+                                const std::string& restName,
+                                const std::string& kwargsName)
+        : autoLocals_(autoLocals) {
+        auto markParam = [&](const std::string& name) {
+            if (!name.empty() && name != "_") {
+                state_.must.insert(name);
+                state_.may.insert(name);
+            }
+        };
+        for (const auto& p : params) markParam(p.lexeme);
+        for (const auto& p : kwargParams) markParam(p.lexeme);
+        markParam(restName);
+        markParam(kwargsName);
+    }
+
+    void analyze(Expr* body) { walk(body); }
+
+private:
+    const std::unordered_set<std::string>& autoLocals_;
+    DAState state_;
+
+    void checkRead(const std::string& name, int line) {
+        if (!autoLocals_.count(name)) return;
+        if (state_.may.count(name)) return;
+        JC2_THROW(SyntaxError, "[Line " + std::to_string(line) + "] Variable '" +
+                                name + "' is used before its assignment.");
+    }
+
+    void markBound(const std::string& name) {
+        if (!autoLocals_.count(name)) return;
+        state_.must.insert(name);
+        state_.may.insert(name);
+    }
+
+    void walk(Expr* expr) {
+        if (!expr) return;
+
+        if (auto* b = dynamic_cast<Block*>(expr)) {
+            for (auto& stmt : b->statements) walk(stmt.get());
+            return;
+        }
+        if (auto* seq = dynamic_cast<SequenceExpr*>(expr)) {
+            for (auto& e : seq->expressions) walk(e.get());
+            return;
+        }
+        if (auto* a = dynamic_cast<Assign*>(expr)) {
+            walk(a->value.get());
+            if (!a->isLocal && !a->isState && !a->isRef && !a->isConst) {
+                if (!dynamic_cast<LambdaExpr*>(a->value.get()) &&
+                    !dynamic_cast<ClassDefExpr*>(a->value.get())) {
+                    markBound(a->name.lexeme);
+                }
+            }
+            return;
+        }
+        if (auto* c = dynamic_cast<CompoundAssign*>(expr)) {
+            if (auto* v = dynamic_cast<Variable*>(c->target.get())) checkRead(v->name.lexeme, v->name.line);
+            else walk(c->target.get());
+            walk(c->value.get());
+            if (auto* v = dynamic_cast<Variable*>(c->target.get())) markBound(v->name.lexeme);
+            return;
+        }
+        if (auto* v = dynamic_cast<Variable*>(expr)) {
+            checkRead(v->name.lexeme, v->name.line);
+            return;
+        }
+        if (auto* g = dynamic_cast<GroupingExpr*>(expr)) {
+            walk(g->expression.get());
+            return;
+        }
+        if (auto* u = dynamic_cast<Unary*>(expr)) {
+            walk(u->right.get());
+            return;
+        }
+        if (auto* b = dynamic_cast<Binary*>(expr)) {
+            walk(b->left.get());
+            walk(b->right.get());
+            return;
+        }
+        if (auto* call = dynamic_cast<Call*>(expr)) {
+            for (auto& arg : call->arguments) walk(arg.get());
+            return;
+        }
+        if (auto* inv = dynamic_cast<InvokeExpr*>(expr)) {
+            walk(inv->callee.get());
+            for (auto& arg : inv->arguments) walk(arg.get());
+            return;
+        }
+        if (auto* mc = dynamic_cast<MethodCallExpr*>(expr)) {
+            walk(mc->object.get());
+            for (auto& arg : mc->arguments) walk(arg.get());
+            return;
+        }
+        if (auto* ia = dynamic_cast<IndexAccess*>(expr)) {
+            walk(ia->object.get());
+            for (auto& i : ia->indices) walk(i.get());
+            return;
+        }
+        if (auto* ias = dynamic_cast<IndexAssign*>(expr)) {
+            if (ias->objectExpr) walk(ias->objectExpr.get());
+            for (auto& chain : ias->indexChain) for (auto& i : chain) walk(i.get());
+            walk(ias->value.get());
+            return;
+        }
+        if (auto* da = dynamic_cast<DotAccess*>(expr)) {
+            walk(da->object.get());
+            return;
+        }
+        if (auto* das = dynamic_cast<DotAssign*>(expr)) {
+            walk(das->object.get());
+            walk(das->value.get());
+            return;
+        }
+        if (auto* ife = dynamic_cast<IfExpr*>(expr)) {
+            walk(ife->condition.get());
+            DAState before = state_;
+            DAState thenState = state_;
+            state_ = thenState;
+            walk(ife->thenBranch.get());
+            thenState = state_;
+            DAState elseState = before;
+            if (ife->elseBranch) {
+                state_ = elseState;
+                walk(ife->elseBranch.get());
+                elseState = state_;
+            }
+            daMerge(thenState, elseState, state_);
+            return;
+        }
+        if (auto* wh = dynamic_cast<WhileExpr*>(expr)) {
+            walk(wh->condition.get());
+            DAState before = state_;
+            state_ = before;
+            walk(wh->body.get());
+            DAState bodyState = state_;
+            state_ = before;
+            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            return;
+        }
+        if (auto* fr = dynamic_cast<ForExpr*>(expr)) {
+            walk(fr->initializer.get());
+            DAState afterInit = state_;
+            walk(fr->condition.get());
+            state_ = afterInit;
+            walk(fr->body.get());
+            DAState bodyState = state_;
+            state_ = afterInit;
+            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            walk(fr->update.get());
+            return;
+        }
+        if (auto* fi = dynamic_cast<ForInExpr*>(expr)) {
+            walk(fi->iterable.get());
+            DAState before = state_;
+            walk(fi->body.get());
+            DAState bodyState = state_;
+            state_ = before;
+            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            return;
+        }
+        if (auto* m = dynamic_cast<MatchExpr*>(expr)) {
+            walk(m->subject.get());
+            DAState before = state_;
+            bool first = true;
+            DAState merged;
+            for (auto& branch : m->branches) {
+                state_ = before;
+                if (branch.guard) walk(branch.guard.get());
+                walk(branch.body.get());
+                if (first) { merged = state_; first = false; }
+                else daMerge(merged, state_, merged);
+            }
+            state_ = first ? before : merged;
+            return;
+        }
+        if (auto* tc = dynamic_cast<TryCatchExpr*>(expr)) {
+            DAState before = state_;
+            walk(tc->tryBody.get());
+            DAState tryState = state_;
+            DAState merged;
+            bool first = true;
+            for (auto& branch : tc->catchBranches) {
+                state_ = before;
+                if (branch.guard) walk(branch.guard.get());
+                walk(branch.body.get());
+                if (first) { merged = state_; first = false; }
+                else daMerge(merged, state_, merged);
+            }
+            state_ = first ? tryState : merged;
+            return;
+        }
+        if (auto* ret = dynamic_cast<ReturnExpr*>(expr)) { walk(ret->value.get()); return; }
+        if (auto* th = dynamic_cast<ThrowExpr*>(expr)) { walk(th->value.get()); return; }
+        if (auto* dl = dynamic_cast<DictLiteral*>(expr)) {
+            for (auto& [k, v] : dl->entries) { walk(k.get()); walk(v.get()); }
+            return;
+        }
+        if (auto* sl = dynamic_cast<SetLiteral*>(expr)) {
+            for (auto& e : sl->elements) walk(e.get());
+            return;
+        }
+        if (auto* ln = dynamic_cast<ListNode*>(expr)) {
+            for (auto& row : ln->elements) for (auto& e : row) walk(e.get());
+            return;
+        }
+        if (auto* mn = dynamic_cast<MatrixNode*>(expr)) {
+            for (auto& row : mn->elements) for (auto& e : row) walk(e.get());
+            return;
+        }
+        if (auto* fs = dynamic_cast<FStringExpr*>(expr)) {
+            for (auto& e : fs->exprs) walk(e.get());
+            return;
+        }
+        if (auto* slice = dynamic_cast<SliceExpr*>(expr)) {
+            walk(slice->start.get()); walk(slice->end.get()); walk(slice->step.get());
+            return;
+        }
+        // Lambda/Class bodies are separate call-time scopes and are handled
+        // when their own IRBuilder compiles them.
+    }
+};
+
+static void collectPatternNames(Pattern* pat, std::unordered_set<std::string>& out) {
+    if (!pat) return;
+    if (auto* dp = dynamic_cast<DefaultPattern*>(pat)) { collectPatternNames(dp->inner.get(), out); return; }
+    if (auto* vp = dynamic_cast<VariablePattern*>(pat)) { if (vp->name.lexeme != "_") out.insert(vp->name.lexeme); return; }
+    if (auto* rp = dynamic_cast<RestPattern*>(pat)) { if (rp->name.lexeme != "_") out.insert(rp->name.lexeme); return; }
+    if (auto* lp = dynamic_cast<ListPattern*>(pat)) {
+        for (auto& e : lp->elements) collectPatternNames(e.get(), out);
+        collectPatternNames(lp->rest.get(), out);
+        return;
+    }
+    if (auto* mp = dynamic_cast<MatrixPattern*>(pat)) {
+        for (auto& row : mp->rows) for (auto& e : row) collectPatternNames(e.get(), out);
+        collectPatternNames(mp->restRow.get(), out);
+        return;
+    }
+    if (auto* dp = dynamic_cast<DictPattern*>(pat)) {
+        for (auto& e : dp->entries) collectPatternNames(e.second.get(), out);
+        collectPatternNames(dp->rest.get(), out);
+    }
+}
+
+static void collectExplicitLocals(Expr* expr, std::unordered_set<std::string>& out) {
+    if (!expr) return;
+    if (auto* b = dynamic_cast<Block*>(expr)) {
+        for (auto& s : b->statements) collectExplicitLocals(s.get(), out);
+        return;
+    }
+    if (auto* a = dynamic_cast<Assign*>(expr)) {
+        if (a->isLocal || a->isState || a->isRef || a->isConst) out.insert(a->name.lexeme);
+        collectExplicitLocals(a->value.get(), out);
+        return;
+    }
+    if (auto* ld = dynamic_cast<LocalDecl*>(expr)) { out.insert(ld->name.lexeme); return; }
+    if (auto* sd = dynamic_cast<StateDecl*>(expr)) { out.insert(sd->name.lexeme); return; }
+    if (auto* cd = dynamic_cast<ConstDecl*>(expr)) { out.insert(cd->name.lexeme); return; }
+    if (auto* rd = dynamic_cast<RefDecl*>(expr)) { out.insert(rd->name.lexeme); return; }
+    if (auto* da = dynamic_cast<DestructAssign*>(expr)) { collectPatternNames(da->pattern.get(), out); return; }
+    if (auto* fi = dynamic_cast<ForInExpr*>(expr)) {
+        collectPatternNames(fi->pattern.get(), out);
+        collectExplicitLocals(fi->body.get(), out);
+        return;
+    }
+    if (auto* m = dynamic_cast<MatchExpr*>(expr)) {
+        for (auto& b : m->branches) {
+            for (auto& p : b.patterns) collectPatternNames(p.get(), out);
+            collectExplicitLocals(b.body.get(), out);
+        }
+        return;
+    }
+    if (auto* tc = dynamic_cast<TryCatchExpr*>(expr)) {
+        collectExplicitLocals(tc->tryBody.get(), out);
+        for (auto& b : tc->catchBranches) {
+            for (auto& p : b.patterns) collectPatternNames(p.get(), out);
+            collectExplicitLocals(b.body.get(), out);
+        }
+        return;
+    }
+    if (auto* ife = dynamic_cast<IfExpr*>(expr)) {
+        collectExplicitLocals(ife->thenBranch.get(), out);
+        collectExplicitLocals(ife->elseBranch.get(), out);
+        return;
+    }
+    if (auto* wh = dynamic_cast<WhileExpr*>(expr)) { collectExplicitLocals(wh->body.get(), out); return; }
+    if (auto* fr = dynamic_cast<ForExpr*>(expr)) { collectExplicitLocals(fr->body.get(), out); return; }
+    if (auto* seq = dynamic_cast<SequenceExpr*>(expr)) {
+        for (auto& e : seq->expressions) collectExplicitLocals(e.get(), out);
+    }
+}
+
+static void collectAutoLocals(Expr* expr, std::unordered_set<std::string>& out,
+                              const std::unordered_set<std::string>& excluded) {
+    if (!expr) return;
+    if (auto* b = dynamic_cast<Block*>(expr)) {
+        for (auto& s : b->statements) collectAutoLocals(s.get(), out, excluded);
+        return;
+    }
+    if (auto* a = dynamic_cast<Assign*>(expr)) {
+        if (!a->isLocal && !a->isState && !a->isRef && !a->isConst &&
+            !excluded.count(a->name.lexeme) &&
+            !dynamic_cast<LambdaExpr*>(a->value.get()) &&
+            !dynamic_cast<ClassDefExpr*>(a->value.get())) {
+            out.insert(a->name.lexeme);
+        }
+        collectAutoLocals(a->value.get(), out, excluded);
+        return;
+    }
+    if (dynamic_cast<LambdaExpr*>(expr) || dynamic_cast<ClassDefExpr*>(expr)) return;
+    if (auto* ife = dynamic_cast<IfExpr*>(expr)) {
+        collectAutoLocals(ife->thenBranch.get(), out, excluded);
+        collectAutoLocals(ife->elseBranch.get(), out, excluded);
+        return;
+    }
+    if (auto* wh = dynamic_cast<WhileExpr*>(expr)) { collectAutoLocals(wh->body.get(), out, excluded); return; }
+    if (auto* fr = dynamic_cast<ForExpr*>(expr)) { collectAutoLocals(fr->body.get(), out, excluded); return; }
+    if (auto* fi = dynamic_cast<ForInExpr*>(expr)) { collectAutoLocals(fi->body.get(), out, excluded); return; }
+    if (auto* m = dynamic_cast<MatchExpr*>(expr)) {
+        for (auto& b : m->branches) collectAutoLocals(b.body.get(), out, excluded);
+        return;
+    }
+    if (auto* tc = dynamic_cast<TryCatchExpr*>(expr)) {
+        collectAutoLocals(tc->tryBody.get(), out, excluded);
+        for (auto& b : tc->catchBranches) collectAutoLocals(b.body.get(), out, excluded);
+        return;
+    }
+    if (auto* seq = dynamic_cast<SequenceExpr*>(expr)) {
+        for (auto& e : seq->expressions) collectAutoLocals(e.get(), out, excluded);
+        return;
+    }
+}
+
+} // namespace
+
 
 void Resolver::checkExplicitDecl(void* node, const std::string& name) {
     if (name == "_") return;
@@ -51,15 +417,6 @@ void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool
                 }
                 if (scopes[i].symbols.find(name) == scopes[i].symbols.end()) {
                     sym.depth = i;
-                    // Only direct function-body assignments are safe anchors for
-                    // "used before its declaration". Assignments hoisted out of
-                    // nested if/for blocks must not make earlier branch reads
-                    // look like forward references.
-                    if (declSerial >= 0 && declSerial == functionBodySerial &&
-                        sym.scope != VarScope::Global) {
-                        sym.declBlock = declSerial;
-                        sym.declStmt = declStmt;
-                    }
                     scopes[i].symbols[name] = sym;
                 }
                 return;
@@ -142,10 +499,6 @@ void Resolver::visitBlock(Block* expr) {
     beginScope();
     // ★ 诊断：先压本块帧（含块序号），hoistBlock 才能把声明记到本块与正确语句序号上
     int serial = nextBlockSerial++;
-    bool isFunctionBody = pendingFunctionBody;
-    pendingFunctionBody = false;
-    int savedFunctionBodySerial = functionBodySerial;
-    if (isFunctionBody) functionBodySerial = serial;
     blockFrames.push_back({serial, 0});
     hoistBlock(expr);
     for (size_t k = 0; k < expr->statements.size(); ++k) {
@@ -153,7 +506,6 @@ void Resolver::visitBlock(Block* expr) {
         resolve(expr->statements[k].get());
     }
     blockFrames.pop_back();
-    functionBodySerial = savedFunctionBodySerial;
     endScope();
 }
 
@@ -431,14 +783,16 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     }
 
     // Mark the next Block as this lambda's direct body. Its direct statements
-    // are the only auto-local declarations that can be diagnosed by source order.
-    bool savedPendingFunctionBody = pendingFunctionBody;
-    int savedFunctionBodySerial = functionBodySerial;
-    pendingFunctionBody = true;
-    functionBodySerial = -1;
     resolve(expr->body.get());
-    pendingFunctionBody = savedPendingFunctionBody;
-    functionBodySerial = savedFunctionBodySerial;
+
+    std::unordered_set<std::string> autoLocals;
+    std::unordered_set<std::string> explicitLocals;
+    collectExplicitLocals(expr->body.get(), explicitLocals);
+    collectAutoLocals(expr->body.get(), autoLocals, explicitLocals);
+    AutoLocalDefiniteAssignment analyzer(autoLocals, expr->params, expr->kwargParams,
+                                          expr->restName, expr->kwargsName);
+    analyzer.analyze(expr->body.get());
+
     endScope();
 }
 

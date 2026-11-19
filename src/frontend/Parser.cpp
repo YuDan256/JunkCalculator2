@@ -4165,8 +4165,11 @@ namespace jc {
             }
 
             // ★ 检测集合推导式：@{expr for x in ...}
+            // 允许 value 与 for 之间换行，与 list comprehension 保持一致。
+            while (match({ TokenType::NEWLINE })) {}
             if (elements.empty() && check(TokenType::FOR)) {
                 auto clauses = parseCompClauses();
+                while (match({ TokenType::NEWLINE })) {}
                 consume(TokenType::RBRACE, "Parser Error: Expect '}' after set comprehension.");
                 int endPos = previous().position + static_cast<int>(previous().lexeme.length());
                 return withPos(std::make_unique<SetCompExpr>(std::move(expr), std::move(clauses)), startPos, endPos);
@@ -4261,6 +4264,8 @@ namespace jc {
             }
 
             // ★ 检测字典推导式：{k: v for x in ...}
+            // 允许 value 与 for 之间换行，与 list comprehension 保持一致。
+            while (match({ TokenType::NEWLINE })) {}
             if (entries.empty() && !isRest && check(TokenType::FOR)) {
                 if (!hasColon) {
                     JC2_THROW(ParserError, "Dict comprehension requires 'key: value' format.");
@@ -4270,6 +4275,7 @@ namespace jc {
                     key = withPos(std::make_unique<Variable>(maybeIdTok), maybeIdTok.position, maybeIdTok.position + static_cast<int>(maybeIdTok.lexeme.length()));
                 }
                 auto clauses = parseCompClauses();
+                while (match({ TokenType::NEWLINE })) {}
                 consume(TokenType::RBRACE, "Parser Error: Expect '}' after dict comprehension.");
                 int endPos = previous().position + static_cast<int>(previous().lexeme.length());
                 return withPos(std::make_unique<DictCompExpr>(std::move(key), std::move(value), std::move(clauses)), startPos, endPos);

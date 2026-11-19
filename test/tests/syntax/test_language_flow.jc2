@@ -273,3 +273,25 @@ test_get_and_pop() = {
 }
 test_get_and_pop()
 }
+
+// ── multiline comprehensions ───────────────────────────────────
+test_multiline_comprehensions() = {
+    a = @[
+        x * 2
+        for (local x in @[1, 2])
+    ]
+    assert(a == @[2, 4], "multiline list comprehension")
+
+    s = @{
+        x * 2
+        for (local x in @[1, 2])
+    }
+    assert(s == @{2, 4}, "multiline set comprehension")
+
+    d = %{
+        str(x): x * 2
+        for (local x in @[1, 2])
+    }
+    assert(d["1"] == 2 && d["2"] == 4, "multiline dict comprehension")
+}
+test_multiline_comprehensions()

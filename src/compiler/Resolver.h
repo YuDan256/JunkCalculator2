@@ -29,6 +29,8 @@ struct ResolvedSym {
     // Ordinary assignment-created local (not a parameter, explicit local,
     // class, or function binding). Captured auto-locals use CHECK_INIT.
     bool isAutoLocal = false;
+    // A local binding that has been deleted and not rebound.
+    bool deletedLocal = false;
     // True when a read has a path on which the auto-local may be unbound.
     // IRBuilder lowers that read through CHECK_INIT.
     bool needsInitCheck = false;

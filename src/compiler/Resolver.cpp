@@ -579,6 +579,7 @@ void Resolver::visitVariable(Variable* expr) {
     }
     ResolvedSym sym = resolveName(expr->name.lexeme);
     if (sym.scope == VarScope::Upvalue && sym.isAutoLocal) sym.needsInitCheck = true;
+    if (sym.scope == VarScope::Local && sym.deletedLocal) sym.needsInitCheck = true;
     exprSymbols[expr] = sym;
 }
 
@@ -621,6 +622,12 @@ void Resolver::visitAssign(Assign* expr) {
         bool isDefinition = dynamic_cast<LambdaExpr*>(expr->value.get()) != nullptr ||
                             dynamic_cast<ClassDefExpr*>(expr->value.get()) != nullptr;
         declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, false, !isDefinition);
+    }
+    if (!expr->isState && !expr->isRef) {
+        for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+            auto it = scopes[i].symbols.find(expr->name.lexeme);
+            if (it != scopes[i].symbols.end()) { it->second.deletedLocal = false; break; }
+        }
     }
     exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
@@ -739,6 +746,16 @@ void Resolver::visitDeleteExpr(DeleteExpr* expr) {
         }
         // Python-style delete: a local binding stays in scope but becomes
         // unbound. It must not fall back to an outer binding of the same name.
+        if (sym.scope == VarScope::Local || sym.scope == VarScope::RefParam) {
+            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+                auto it = scopes[i].symbols.find(tok.lexeme);
+                if (it != scopes[i].symbols.end()) {
+                    it->second.deletedLocal = true;
+                    syms.back().deletedLocal = true;
+                    break;
+                }
+            }
+        }
     }
     deleteSyms[expr] = std::move(syms);
 }
@@ -746,6 +763,14 @@ void Resolver::visitDeleteExpr(DeleteExpr* expr) {
 void Resolver::visitCompoundAssign(CompoundAssign* expr) {
     resolve(expr->target.get());
     resolve(expr->value.get());
+    if (!expr->isState && !expr->isRef) {
+        if (auto* v = dynamic_cast<Variable*>(expr->target.get())) {
+            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
+                auto it = scopes[i].symbols.find(v->name.lexeme);
+                if (it != scopes[i].symbols.end()) { it->second.deletedLocal = false; break; }
+            }
+        }
+    }
 }
 
 void Resolver::visitLambdaExpr(LambdaExpr* expr) {

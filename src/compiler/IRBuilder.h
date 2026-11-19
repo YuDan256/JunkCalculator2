@@ -139,6 +139,7 @@ private:
     void buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* accNode, IROp appendOp);
     void buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* setNode);
     void buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode* dictNode);
+    IRNode* emitUninitCheck(IRNode* value, const std::string& name);
 
     [[noreturn]] void error(const std::string& message) const {
         JC2_THROW(SyntaxError, "[Line " + std::to_string(graph->currentLine) + "] " + message);

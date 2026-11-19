@@ -316,7 +316,7 @@ public:
                         if (c == ESCAPE_NORMAL_8) c = fetchExtra();
                         break;
 
-                    case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::UNM: case OpCode::NOT:
+                    case OpCode::MOVE: case OpCode::IS_UNINIT: case OpCode::CHECK_INIT: case OpCode::UNM: case OpCode::NOT:
                     case OpCode::BNOT: case OpCode::TO_BOOL: case OpCode::INHERIT: case OpCode::WITH_TRAIT: case OpCode::LIST_APPEND:
                     case OpCode::MATRIX_COMP_APPEND: case OpCode::MAKE_SPREAD:
                     case OpCode::SET_APPEND: case OpCode::STRINGIFY: case OpCode::ITER_NEXT:
@@ -1574,7 +1574,8 @@ public:
                         break;
                     }
                     case OpCode::THROW:
-                    case OpCode::THROW_TYPED: {
+                    case OpCode::THROW_TYPED:
+                    case OpCode::CHECK_INIT: {
                         auto fs = captureFrameState(currentIp);
                         builder_.createDeoptimize(fs);
                         break;

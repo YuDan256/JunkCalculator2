@@ -28,6 +28,14 @@ static void collectPatternVars(Pattern* pat, std::vector<std::tuple<std::string,
     }
 }
 
+IRNode* IRBuilder::emitUninitCheck(IRNode* value, const std::string& name) {
+    IRNode* checked = graph->createValueNode(IROp::CheckInit);
+    link(checked);
+    checked->addData(value);
+    checked->name = name;
+    return checked;
+}
+
 IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
     if (stagingPatternBindings_) {
         auto stageIt = stagingBindingValues_.find(name);
@@ -1767,6 +1775,7 @@ void IRBuilder::visitVariable(Variable* expr) {
         error(expr->name.line, "'" + expr->name.lexeme + "' is used before its declaration is initialized.");
     }
     lastValue = readVariable(expr->name.lexeme, sym);
+    if (sym.needsInitCheck) lastValue = emitUninitCheck(lastValue, expr->name.lexeme);
 }
 
 void IRBuilder::visitTypeAssertExpr(TypeAssertExpr* expr) {

@@ -5805,7 +5805,10 @@
     "delete": {
       "signature": "delete name[, name...] | delete @macro",
       "desc": [
-        "Removes a variable from the current scope entirely.",
+        "Removes a global variable or namespace entry entirely.",
+        "Deleting a local binding makes it unbound; a later read raises an error.",
+        "A deleted local does not fall back to an outer binding of the same name.",
+        "Assigning the name again rebinds it.",
         "Accepts a comma-separated list of names.",
         "`delete @macro` removes a compile-time macro definition.",
         "Works on ordinary variables and namespace constants (like math.PI).",

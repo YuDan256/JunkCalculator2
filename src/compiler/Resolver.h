@@ -26,6 +26,12 @@ struct ResolvedSym {
     int index = -1;      // 局部变量槽位、上值索引等
     int depth = -1;      // 作用域深度
     bool isConst = false;
+    // Ordinary assignment-created local (not a parameter, explicit local,
+    // class, or function binding). Captured auto-locals use CHECK_INIT.
+    bool isAutoLocal = false;
+    // True when a read has a path on which the auto-local may be unbound.
+    // IRBuilder lowers that read through CHECK_INIT.
+    bool needsInitCheck = false;
     // ★ 诊断用：声明所在的块序号与语句序号；引用若出现在声明之前则为 true
     int declBlock = -1;
     int declStmt = -1;
@@ -128,7 +134,7 @@ private:
     void checkExplicitDecl(void* node, const std::string& name);
     void beginScope(bool isFunc = false, bool isNamespace = false);
     void endScope();
-    void declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal = false);
+    void declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal = false, bool isAutoLocal = false);
     ResolvedSym resolveName(const std::string& name);
     
     void hoistBlock(Block* block);

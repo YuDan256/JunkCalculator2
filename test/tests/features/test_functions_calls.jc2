@@ -1173,3 +1173,32 @@ test_auto_local_forward_reference() = {
     assert(eval("f() = { y = 1; y }; f()") == 1, "assignment before read remains valid")
 }
 test_auto_local_forward_reference()
+
+// ── auto-local maybe-unbound branch ─────────────────────────────
+test_auto_local_branch_unbound() = {
+    assert(eval("f(c) = { if (c) { y = 1 }; y }; f(true)") == 1,
+           "assigned branch must be readable")
+
+    caught = false
+    try { eval("f(c) = { if (c) { y = 1 }; y }; f(false)") } catch (e) {
+        caught = true
+    }
+    assert(caught, "unassigned branch must fail at the checked read")
+
+    assert(eval("f(c) = { if (c) { y = 1 } else { y = 2 }; y }; f(false)") == 2,
+           "both branches assign")
+}
+test_auto_local_branch_unbound()
+
+// ── captured auto-local runtime check ───────────────────────────
+test_auto_local_closure_unbound() = {
+    assert(eval("f(c) = { if (c) { y = 1 }; g() = y; g() }; f(true)") == 1,
+           "captured bound value must be readable")
+
+    caught = false
+    try { eval("f(c) = { if (c) { y = 1 }; g() = y; g() }; f(false)") } catch (e) {
+        caught = true
+    }
+    assert(caught, "captured unbound value must fail at the checked read")
+}
+test_auto_local_closure_unbound()

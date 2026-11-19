@@ -5209,6 +5209,15 @@ Value VM::run(int targetFrameDepth) {
                 getReg(a) = Value(getReg(b).isUninit());
                 break;
             }
+            case OpCode::CHECK_INIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (getReg(b).isUninit()) {
+                    JC2_THROW(RuntimeError, "Variable is used before its assignment.");
+                }
+                getReg(a) = getReg(b);
+                break;
+            }
             case OpCode::CLOSURE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (bx == ESCAPE_NORMAL_16) bx = FETCH_EXTRA();

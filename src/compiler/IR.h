@@ -53,6 +53,7 @@ enum class IROp {
     DefineConstGlobal,
     DeleteGlobal,
     IsUninit,
+    CheckInit,
     UpdateCaptured,
     
     // 闭包与上值
@@ -203,6 +204,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::DefineConstGlobal: return "DefineConstGlobal";
         case IROp::DeleteGlobal: return "DeleteGlobal";
         case IROp::IsUninit: return "IsUninit";
+        case IROp::CheckInit: return "CheckInit";
         case IROp::UpdateCaptured: return "UpdateCaptured";
         case IROp::Closure: return "Closure";
         case IROp::GetUpvalue: return "GetUpvalue";

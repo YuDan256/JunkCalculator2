@@ -42,6 +42,7 @@ enum class OpCode : uint8_t {
     SET_UPVAL,      // UpValue[B] := R(A) [Ext]
     DELETE_GLOBAL,  // Delete Globals[Bx] [Ext]
     IS_UNINIT,      // R(A) := is_uninit(R(B))
+    CHECK_INIT,     // R(A) := R(B); throw if R(B) is uninit
 
     // 算术与逻辑运算 (支持 K-Bit: B 和 C 可以是寄存器或常量)
     ADD,            // R(A) := RK(B) + RK(C)
@@ -194,6 +195,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::SET_UPVAL: return "SET_UPVAL";
         case OpCode::DELETE_GLOBAL: return "DELETE_GLOBAL";
         case OpCode::IS_UNINIT: return "IS_UNINIT";
+        case OpCode::CHECK_INIT: return "CHECK_INIT";
         case OpCode::ADD: return "ADD";
         case OpCode::SUB: return "SUB";
         case OpCode::MUL: return "MUL";

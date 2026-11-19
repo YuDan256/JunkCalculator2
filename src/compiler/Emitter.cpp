@@ -240,6 +240,7 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
             case IROp::Not: case IROp::Neg: case IROp::ToBool:
             case IROp::BitAnd: case IROp::BitOr: case IROp::BitXor: case IROp::BitNot:
             case IROp::Shl: case IROp::Shr: case IROp::IsUninit:
+            case IROp::CheckInit:
             case IROp::BuildList: case IROp::BuildDict: case IROp::BuildSet:
             case IROp::BuildMatrix: case IROp::BuildNamespace: case IROp::BuildSlice:
             case IROp::IndexGet: case IROp::In: case IROp::Stringify:
@@ -398,6 +399,12 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     case IROp::IsUninit: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         auto w = buildInstAB(OpCode::IS_UNINIT, node->physicalReg, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
+                    case IROp::CheckInit: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        auto w = buildInstAB(OpCode::CHECK_INIT, node->physicalReg, b);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

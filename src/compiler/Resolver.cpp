@@ -33,11 +33,12 @@ static void daMerge(const DAState& a, const DAState& b, DAState& out) {
 class AutoLocalDefiniteAssignment {
 public:
     AutoLocalDefiniteAssignment(const std::unordered_set<std::string>& autoLocals,
+                                std::unordered_map<Expr*, ResolvedSym>* symbols,
                                 const std::vector<Token>& params,
                                 const std::vector<Token>& kwargParams,
                                 const std::string& restName,
                                 const std::string& kwargsName)
-        : autoLocals_(autoLocals) {
+        : autoLocals_(autoLocals), symbols_(symbols) {
         auto markParam = [&](const std::string& name) {
             if (!name.empty() && name != "_") {
                 state_.must.insert(name);
@@ -54,13 +55,20 @@ public:
 
 private:
     const std::unordered_set<std::string>& autoLocals_;
+    std::unordered_map<Expr*, ResolvedSym>* symbols_;
     DAState state_;
 
-    void checkRead(const std::string& name, int line) {
+    void checkRead(Variable* var) {
+        const std::string& name = var->name.lexeme;
         if (!autoLocals_.count(name)) return;
-        if (state_.may.count(name)) return;
-        JC2_THROW(SyntaxError, "[Line " + std::to_string(line) + "] Variable '" +
-                                name + "' is used before its assignment.");
+        if (!state_.may.count(name)) {
+            JC2_THROW(SyntaxError, "[Line " + std::to_string(var->name.line) +
+                                    "] Variable '" + name + "' is used before its assignment.");
+        }
+        if (!state_.must.count(name) && symbols_) {
+            auto it = symbols_->find(var);
+            if (it != symbols_->end()) it->second.needsInitCheck = true;
+        }
     }
 
     void markBound(const std::string& name) {
@@ -90,15 +98,24 @@ private:
             }
             return;
         }
+        if (auto* del = dynamic_cast<DeleteExpr*>(expr)) {
+            for (auto& tok : del->names) {
+                if (autoLocals_.count(tok.lexeme)) {
+                    state_.must.erase(tok.lexeme);
+                    state_.may.erase(tok.lexeme);
+                }
+            }
+            return;
+        }
         if (auto* c = dynamic_cast<CompoundAssign*>(expr)) {
-            if (auto* v = dynamic_cast<Variable*>(c->target.get())) checkRead(v->name.lexeme, v->name.line);
+            if (auto* v = dynamic_cast<Variable*>(c->target.get())) checkRead(v);
             else walk(c->target.get());
             walk(c->value.get());
             if (auto* v = dynamic_cast<Variable*>(c->target.get())) markBound(v->name.lexeme);
             return;
         }
         if (auto* v = dynamic_cast<Variable*>(expr)) {
-            checkRead(v->name.lexeme, v->name.line);
+            checkRead(v);
             return;
         }
         if (auto* g = dynamic_cast<GroupingExpr*>(expr)) {
@@ -170,8 +187,7 @@ private:
             state_ = before;
             walk(wh->body.get());
             DAState bodyState = state_;
-            state_ = before;
-            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            daMerge(before, bodyState, state_);
             return;
         }
         if (auto* fr = dynamic_cast<ForExpr*>(expr)) {
@@ -181,8 +197,7 @@ private:
             state_ = afterInit;
             walk(fr->body.get());
             DAState bodyState = state_;
-            state_ = afterInit;
-            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            daMerge(afterInit, bodyState, state_);
             walk(fr->update.get());
             return;
         }
@@ -191,8 +206,7 @@ private:
             DAState before = state_;
             walk(fi->body.get());
             DAState bodyState = state_;
-            state_ = before;
-            state_.may.insert(bodyState.may.begin(), bodyState.may.end());
+            daMerge(before, bodyState, state_);
             return;
         }
         if (auto* m = dynamic_cast<MatchExpr*>(expr)) {
@@ -392,7 +406,7 @@ void Resolver::endScope() {
     scopes.pop_back();
 }
 
-void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal) {
+void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool isConst, bool isExplicitLocal, bool isAutoLocal) {
     if (name == "_") return;
     if (scopes.empty()) return;
     
@@ -401,6 +415,7 @@ void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool
     ResolvedSym sym;
     sym.scope = scopeType;
     sym.isConst = isConst;
+    sym.isAutoLocal = isAutoLocal;
     
     if (scopeType == VarScope::Local && !isExplicitLocal) {
         // Auto-local: 先检查当前函数/命名空间内是否已经有这个变量
@@ -527,7 +542,11 @@ void Resolver::hoistBlock(Block* block) {
                 declareVariable(assign->name.lexeme, existing.scope, assign->isConst, true);
             }
             else if (assign->isLocal) declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, true);
-            else declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false);
+            else {
+                bool isDefinition = dynamic_cast<LambdaExpr*>(assign->value.get()) != nullptr ||
+                                    dynamic_cast<ClassDefExpr*>(assign->value.get()) != nullptr;
+                declareVariable(assign->name.lexeme, VarScope::Local, assign->isConst, false, !isDefinition);
+            }
         } else if (auto* locDecl = dynamic_cast<LocalDecl*>(stmt.get())) {
             checkExplicitDecl(locDecl, locDecl->name.lexeme);
             exprSymbols[locDecl] = resolveName(locDecl->name.lexeme);  // 捕获外层符号（declareVariable 之前）
@@ -558,7 +577,9 @@ void Resolver::visitVariable(Variable* expr) {
     if (expr->name.lexeme == "_") {
         JC2_THROW(SyntaxError, "'_' is a placeholder and cannot be read.");
     }
-    exprSymbols[expr] = resolveName(expr->name.lexeme);
+    ResolvedSym sym = resolveName(expr->name.lexeme);
+    if (sym.scope == VarScope::Upvalue && sym.isAutoLocal) sym.needsInitCheck = true;
+    exprSymbols[expr] = sym;
 }
 
 void Resolver::visitAssign(Assign* expr) {
@@ -596,7 +617,11 @@ void Resolver::visitAssign(Assign* expr) {
         declareVariable(expr->name.lexeme, existing.scope, expr->isConst, true);
     }
     else if (expr->isLocal) declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, true);
-    else declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, false);
+    else {
+        bool isDefinition = dynamic_cast<LambdaExpr*>(expr->value.get()) != nullptr ||
+                            dynamic_cast<ClassDefExpr*>(expr->value.get()) != nullptr;
+        declareVariable(expr->name.lexeme, VarScope::Local, expr->isConst, false, !isDefinition);
+    }
     exprSymbols[expr] = resolveName(expr->name.lexeme);
 }
 
@@ -712,16 +737,8 @@ void Resolver::visitDeleteExpr(DeleteExpr* expr) {
         if (sym.isConst && sym.scope != VarScope::Global) {
             JC2_THROW(SyntaxError, "Cannot delete const variable '" + tok.lexeme + "'.");
         }
-        // 局部遮蔽：从 scopes 移除，让后续 resolveName 回落到外层作用域（内置/全局/外层局部）
-        if (sym.scope == VarScope::Local || sym.scope == VarScope::RefParam) {
-            for (int i = static_cast<int>(scopes.size()) - 1; i >= 0; --i) {
-                auto it = scopes[i].symbols.find(tok.lexeme);
-                if (it != scopes[i].symbols.end()) {
-                    scopes[i].symbols.erase(it);
-                    break;
-                }
-            }
-        }
+        // Python-style delete: a local binding stays in scope but becomes
+        // unbound. It must not fall back to an outer binding of the same name.
     }
     deleteSyms[expr] = std::move(syms);
 }
@@ -789,7 +806,7 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
     std::unordered_set<std::string> explicitLocals;
     collectExplicitLocals(expr->body.get(), explicitLocals);
     collectAutoLocals(expr->body.get(), autoLocals, explicitLocals);
-    AutoLocalDefiniteAssignment analyzer(autoLocals, expr->params, expr->kwargParams,
+    AutoLocalDefiniteAssignment analyzer(autoLocals, &exprSymbols, expr->params, expr->kwargParams,
                                           expr->restName, expr->kwargsName);
     analyzer.analyze(expr->body.get());
 

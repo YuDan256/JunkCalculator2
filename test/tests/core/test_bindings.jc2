@@ -351,3 +351,30 @@ test_delete_const_rejected() = {
     assert(global_caught, "delete global const must be a runtime error")
 }
 test_delete_const_rejected()
+
+test_delete_local_unbound() = {
+    assert(eval("f() = { y = 1; delete y; y = 2; y }; f()") == 2,
+           "assignment after delete must rebind the local")
+
+    caught = false
+    try { eval("f() = { y = 1; delete y; y }; f()") } catch (e) {
+        caught = true
+    }
+    assert(caught, "reading a deleted local must fail")
+
+    assert(eval("f(c) = { y = 1; if (c) { delete y } else { y = 2 }; y }; f(false)") == 2,
+           "non-deleting branch remains readable")
+
+    caught = false
+    try { eval("f(c) = { y = 1; if (c) { delete y } else { y = 2 }; y }; f(true)") } catch (e) {
+        caught = true
+    }
+    assert(caught, "deleting branch must fail at the checked read")
+
+    caught = false
+    try { eval("y = 42; f() = { y = 1; delete y; y }; f()") } catch (e) {
+        caught = true
+    }
+    assert(caught, "deleted local must not fall back to the global")
+}
+test_delete_local_unbound()

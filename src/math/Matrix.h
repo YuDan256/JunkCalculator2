@@ -429,6 +429,24 @@ inline constexpr int kMaxPrintMatrixDim = 10;
         }
 
         // 智能矩阵乘法入口
+        Matrix kroneckerProduct(const Matrix& other) const {
+            if (rows <= 0 || cols <= 0 || other.rows <= 0 || other.cols <= 0) {
+                JC2_THROW(ValueError, "Kronecker product requires non-empty matrices.");
+            }
+            Matrix out(rows * other.rows, cols * other.cols);
+            for (int i = 0; i < rows; ++i) {
+                for (int j = 0; j < cols; ++j) {
+                    const T a = (*this)(i, j);
+                    for (int k = 0; k < other.rows; ++k) {
+                        for (int l = 0; l < other.cols; ++l) {
+                            out(i * other.rows + k, j * other.cols + l) = a * other(k, l);
+                        }
+                    }
+                }
+            }
+            return out;
+        }
+
         Matrix operator*(const Matrix& other) const {
             if (cols != other.rows) JC2_THROW(ValueError, "Cols must equal rows (*): " + std::to_string(cols) + " vs " + std::to_string(other.rows) + ".");
 

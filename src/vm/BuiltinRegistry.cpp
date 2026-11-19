@@ -3860,7 +3860,19 @@ void BuiltinRegistry::registerArrayFunctions() {
 
     auto kronFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        return Value(self.asSymMatrix().kroneckerProduct(args[0].asSymMatrix()));
+        const Value& other = args[0];
+        const bool selfReal = self.isObjType(ObjType::REAL_MATRIX);
+        const bool otherReal = other.isObjType(ObjType::REAL_MATRIX);
+        const bool selfComplex = self.isObjType(ObjType::COMPLEX_MATRIX);
+        const bool otherComplex = other.isObjType(ObjType::COMPLEX_MATRIX);
+
+        if (selfReal && otherReal) {
+            return Value(self.asRealMatrix().kroneckerProduct(other.asRealMatrix()));
+        }
+        if ((selfReal || selfComplex) && (otherReal || otherComplex)) {
+            return Value(self.asComplexMatrix().kroneckerProduct(other.asComplexMatrix()));
+        }
+        return Value(self.asSymMatrix().kroneckerProduct(other.asSymMatrix()));
     };
     regMethod(VM::activeVM->matrixProto, "kron", {"B"}, kronFn);
 

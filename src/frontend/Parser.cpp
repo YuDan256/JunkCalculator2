@@ -3385,8 +3385,8 @@ namespace jc {
             advance();
             advance();
             isDictPattern = true;
-        } else if (match({TokenType::LBRACE})) {
-            isDictPattern = true;
+        } else if (check(TokenType::LBRACE)) {
+            JC2_THROW(ParserError, "Parser Error: dict patterns must use '%{...}' instead of '{...}'.");
         }
         if (isDictPattern) {
             std::vector<std::pair<std::string, std::unique_ptr<Pattern>>> entries;

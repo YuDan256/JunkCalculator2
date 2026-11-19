@@ -248,7 +248,7 @@ test_nested_defaults() = {
     @[@[na, nb = 2] = @[1], nc = 3] = @[]
     assert(na == 1 && nb == 2 && nc == 3, "Nested Destructuring Defaults Failed")
 
-    %{nested: {nx, ny = 20} = %{nx: 10}} = %{}
+    %{nested: %{nx, ny = 20} = %{nx: 10}} = %{}
     assert(nx == 10 && ny == 20, "Nested Dict Destructuring Defaults Failed")
 }
 test_nested_defaults()

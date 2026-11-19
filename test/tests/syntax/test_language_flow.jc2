@@ -53,6 +53,12 @@ test_match_expr() = {
     
     assert(process(%{type: "user", id: 123}) == "User 123", "Match dict pattern")
     assert(process(%{type: "admin", level: 1}) == "Admin", "Match dict rest pattern")
+    caught = false
+    try { eval("match(%{a: 1}) { {a} => a }") } catch (e) { caught = true }
+    assert(caught, "bare dict match pattern must be rejected")
+    caught = false
+    try { eval("{a} = %{a: 1}") } catch (e) { caught = true }
+    assert(caught, "bare dict destructuring pattern must be rejected")
     assert(process(@[5, 2]) == "Descending", "Match list with guard")
     assert(process("hello") == "Unknown", "Match default")
 }

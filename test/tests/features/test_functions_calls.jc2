@@ -1155,3 +1155,21 @@ assert(throws(() => eval("namespace f\"X\" { }")), "f-string namespace name reje
 assert(throws(() => eval("enum f\"X\" { A }")), "f-string enum name rejected")
 assert(throws(() => eval("enum Dup { A, A }")), "duplicate enum member rejected")
 }
+
+// ── auto-local use before assignment ───────────────────────────
+test_auto_local_forward_reference() = {
+    cases = @[
+        "f() = { print(y); y = 1 }; f()",
+        "f() = { x = y; y = 1; x }; f()",
+        "f() = { print(1 + y); y = 1 }; f()",
+        "y = 42; f() = { print(y); y = 1 }; f()"
+    ]
+    for (src in cases) {
+        caught = false
+        try { eval(src) } catch (e) { caught = true }
+        assert(caught, "auto-local forward reference must be a compile error")
+    }
+
+    assert(eval("f() = { y = 1; y }; f()") == 1, "assignment before read remains valid")
+}
+test_auto_local_forward_reference()

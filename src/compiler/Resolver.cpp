@@ -51,6 +51,15 @@ void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool
                 }
                 if (scopes[i].symbols.find(name) == scopes[i].symbols.end()) {
                     sym.depth = i;
+                    // Only direct function-body assignments are safe anchors for
+                    // "used before its declaration". Assignments hoisted out of
+                    // nested if/for blocks must not make earlier branch reads
+                    // look like forward references.
+                    if (declSerial >= 0 && declSerial == functionBodySerial &&
+                        sym.scope != VarScope::Global) {
+                        sym.declBlock = declSerial;
+                        sym.declStmt = declStmt;
+                    }
                     scopes[i].symbols[name] = sym;
                 }
                 return;
@@ -80,6 +89,11 @@ void Resolver::declareVariable(const std::string& name, VarScope scopeType, bool
 // ★ 诊断辅助：若符号声明于当前语句之后（同一块内），标记 declaredLater
 static void markDeclaredLater(ResolvedSym& sym, const std::vector<std::pair<int, int>>& frames) {
     if (sym.declBlock < 0) return;
+    // Only diagnose when the read is in the declaration's own block. A read
+    // inside a nested branch may happen after an earlier assignment in that
+    // branch; comparing it against a later statement of the parent block would
+    // produce a false "used before declaration" error.
+    if (frames.empty() || frames.back().first != sym.declBlock) return;
     for (size_t i = 0; i < frames.size(); ++i) {
         if (frames[i].first == sym.declBlock) {
             if (sym.declStmt > frames[i].second) sym.declaredLater = true;
@@ -106,8 +120,11 @@ ResolvedSym Resolver::resolveName(const std::string& name) {
                 } else if (sym.scope == VarScope::Local || sym.scope == VarScope::RefParam) {
                     sym.scope = VarScope::Upvalue;
                 }
+                // A nested function/method resolves outer names at call time.
+                // A later module-level declaration is not a source-order error.
+            } else {
+                markDeclaredLater(sym, blockFrames);
             }
-            markDeclaredLater(sym, blockFrames);
             return sym;
         }
     }
@@ -125,6 +142,10 @@ void Resolver::visitBlock(Block* expr) {
     beginScope();
     // ★ 诊断：先压本块帧（含块序号），hoistBlock 才能把声明记到本块与正确语句序号上
     int serial = nextBlockSerial++;
+    bool isFunctionBody = pendingFunctionBody;
+    pendingFunctionBody = false;
+    int savedFunctionBodySerial = functionBodySerial;
+    if (isFunctionBody) functionBodySerial = serial;
     blockFrames.push_back({serial, 0});
     hoistBlock(expr);
     for (size_t k = 0; k < expr->statements.size(); ++k) {
@@ -132,6 +153,7 @@ void Resolver::visitBlock(Block* expr) {
         resolve(expr->statements[k].get());
     }
     blockFrames.pop_back();
+    functionBodySerial = savedFunctionBodySerial;
     endScope();
 }
 
@@ -407,7 +429,16 @@ void Resolver::visitLambdaExpr(LambdaExpr* expr) {
         }
         declareVariable(expr->kwargsName, VarScope::Local, false, true);
     }
+
+    // Mark the next Block as this lambda's direct body. Its direct statements
+    // are the only auto-local declarations that can be diagnosed by source order.
+    bool savedPendingFunctionBody = pendingFunctionBody;
+    int savedFunctionBodySerial = functionBodySerial;
+    pendingFunctionBody = true;
+    functionBodySerial = -1;
     resolve(expr->body.get());
+    pendingFunctionBody = savedPendingFunctionBody;
+    functionBodySerial = savedFunctionBodySerial;
     endScope();
 }
 

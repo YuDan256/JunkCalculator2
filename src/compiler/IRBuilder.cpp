@@ -2262,6 +2262,7 @@ void IRBuilder::visitCall(Call* expr) {
         error(expr->callee.line, "'" + calleeName + "' is used before its declaration is initialized.");
     }
     IRNode* calleeNode = readVariable(calleeName, sym);
+    if (sym.needsInitCheck) calleeNode = emitUninitCheck(calleeNode, calleeName);
     
     std::vector<IRNode*> argNodes;
     IRCallSignature sig;

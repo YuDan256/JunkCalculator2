@@ -376,6 +376,12 @@ test_delete_local_unbound() = {
         caught = true
     }
     assert(caught, "deleted local must not fall back to the global")
+
+    caught = false
+    try { eval("f() = { g() = 1; delete g; g() }; f()") } catch (e) {
+        caught = true
+    }
+    assert(caught, "calling a deleted local must fail at the checked read")
 }
 test_delete_local_unbound()
 
@@ -387,3 +393,4 @@ test_delete_explicit_local_unbound() = {
     assert(caught, "deleted explicit local must fail")
 }
 test_delete_explicit_local_unbound()
+

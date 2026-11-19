@@ -649,7 +649,10 @@ void Resolver::visitUnary(Unary* expr) {
 void Resolver::visitLiteral(Literal* /*expr*/) {}
 
 void Resolver::visitCall(Call* expr) {
-    exprSymbols[expr] = resolveName(expr->callee.lexeme);
+    ResolvedSym sym = resolveName(expr->callee.lexeme);
+    if (sym.scope == VarScope::Upvalue && sym.isAutoLocal) sym.needsInitCheck = true;
+    if (sym.scope == VarScope::Local && sym.deletedLocal) sym.needsInitCheck = true;
+    exprSymbols[expr] = sym;
     for (auto& arg : expr->arguments) resolve(arg.get());
 }
 

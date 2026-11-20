@@ -71,7 +71,7 @@
       "    const G = 9.81                 immutable constant",
       "    z = 3 + 4i                     complex number",
       "    A = [1, 2; 3, 4]               2×2 matrix",
-      "    L = @[1, \"hi\", [1,2]]          heterogeneous list",
+      "    L = @[1, \"hi\", @[1,2]]          heterogeneous list",
       "    d = %{a: 1, b: 2}               dictionary literal",
       "    s = @{1, 2, 3}                 set literal",
       "    [ref a, state b] = [1, 2]      destructuring with scope modifiers",
@@ -251,7 +251,9 @@
       "        • return / throw values:      return a, b   → returns a; b is next stmt",
       "        • const declarations:         const x = 1   → comma not consumed",
       "        • import paths:               import \"lib\"  → comma not consumed",
-      "        • List/Dict/Matrix literals:  [1, 2, 3]     → three elements",
+      "        • List literal:    @[1, 2, 3]     → three elements",
+      "        • Dict literal:    %{a: 1}        → one entry",
+      "        • Matrix literal:  [1, 2; 3, 4]   → 2×2 matrix",
       "",
       "    Multi-step lambda returns: Use block braces ({})",
       "        f = (x) => { t = x^2; t + 1 }",
@@ -1024,7 +1026,7 @@
       "    cas.limit(sin(x)/x, x, 0)    → 1 (Gruntz asymptotic expansion algorithm)",
       "    cas.limit(1/x, x, 0, \"-\")    → -inf (Left-sided limit)",
       "    cas.taylor(sin(x), x, 0, 5)  → x - 1/6 * x^3 + 1/120 * x^5",
-      "    sys.symconfig({\"debugIntegration\": true})  Print detailed integration steps & Risch trace",
+      "    sys.symconfig(%{\"debugIntegration\": true})  Print detailed integration steps & Risch trace",
       "",
       "  Equation Solving",
       "  ──────────────────────",
@@ -1719,8 +1721,8 @@
       "    sys.symconfig()                  Returns current CAS limits as a Dict",
       "    sys.symconfig(\"default\")         Reset CAS limits to default",
       "    sys.setSymLimit(\"maxDepth\", 50)  Set specific CAS limit",
-      "    sys.symconfig({\"debugIntegration\": true})   Enable verbose integration debug output",
-      "    sys.symconfig({\"debugIntegration\": false})  Disable it",
+      "    sys.symconfig(%{\"debugIntegration\": true})   Enable verbose integration debug output",
+      "    sys.symconfig(%{\"debugIntegration\": false})  Disable it",
       "",
       "  Workspace & Path Management",
       "  ──────────────────────",
@@ -2154,7 +2156,7 @@
     ],
     "array": [
       "═══ Array / Data Functions ═══",
-      "  These functions operate on lists, sets, and strings (NOT matrices).",
+      "  These functions operate on lists, sets, strings, and matrices (where applicable).",
       "  Use @[...] for a list when you need array semantics:  @[1, 2, 3]",
       "  ",
       "  ★ UNIVERSAL COMPATIBILITY:",
@@ -2340,9 +2342,10 @@
       "",
       "  Adding & Removing",
       "  ──────────────────────",
-      "    add(L, val)             Append value (same as push)",
-      "    remove(L, idx)          Remove at specific index",
-      "    clear(L)                Erase all elements",
+      "    L.append(val) / L.push(val)  Append value",
+      "    L.erase(idx)                 Remove at specific index",
+      "    L.remove(value)              Remove first matching value",
+      "    L.clear()                    Erase all elements",
       "",
       "    Legacy functions (also work):",
       "    push(L, val)            Append value to the end",
@@ -3197,7 +3200,7 @@
       "    `__match__()` and matches against the returned 'view' object instead.",
       "      class Point {",
       "          init(x, y) = { self.x = x; self.y = y }",
-      "          __match__() = [self.x, self.y]  // Expose as an array!",
+      "          __match__() = @[self.x, self.y]  // Expose as an array!",
       "      }",
       "      [x, y] = Point(3, 4)                // Works perfectly!",
       "",
@@ -3272,7 +3275,7 @@
       "    multiple local variables without trapping them in a Block scope.",
       "    ",
       "      macro declare_two() = {",
-      "          return [",
+      "          return @[",
       "              quote local a = 1,",
       "              quote local b = 2",
       "          ]",
@@ -4394,10 +4397,6 @@
     "len": {
       "signature": "len(x)",
       "desc": "Returns the length or element count of a string, vector, matrix, dict, list, set, or the number of digits in an integer.",
-      "aliases": [
-        "length",
-        "size"
-      ],
       "examples": [
         "len(\"hello\")",
         "len([1, 2, 3])",
@@ -5027,14 +5026,14 @@
       "signature": "__match__()",
       "desc": "Dunder method: Returns a view object (e.g., list or dict) to be used for pattern matching and destructuring. Returning self falls back to default field matching.",
       "examples": [
-        "__match__() = [self.x, self.y]"
+        "__match__() = @[self.x, self.y]"
       ]
     },
     "__unpack__": {
       "signature": "__unpack__()",
       "desc": "Dunder method: Returns a list to unpack the instance during positional spread (f(...obj)).",
       "examples": [
-        "__unpack__() = [self.x, self.y]"
+        "__unpack__() = @[self.x, self.y]"
       ]
     },
     "__mapping__": {
@@ -7315,37 +7314,37 @@
     },
     "sum": {
       "signature": "A.sum()",
-      "desc": "Returns the sum of all elements in a matrix or list.",
+      "desc": "Returns the sum of all elements in a matrix, list, or set.",
       "examples": [
-        "[1, 2, 3].sum()"
+        "@{1, 2, 3}.sum()"
       ]
     },
     "prod": {
       "signature": "A.prod()",
-      "desc": "Returns the product of all elements in a matrix or list.",
+      "desc": "Returns the product of all elements in a matrix, list, or set.",
       "examples": [
-        "[1, 2, 3, 4].prod()"
+        "@{1, 2, 3, 4}.prod()"
       ]
     },
     "max": {
       "signature": "X.max()",
-      "desc": "Returns the maximum value in a dataset or list.",
+      "desc": "Returns the maximum value in a dataset, list, or set.",
       "examples": [
-        "[1, 5, 3].max()"
+        "@{1, 5, 3}.max()"
       ]
     },
     "min": {
       "signature": "X.min()",
-      "desc": "Returns the minimum value in a dataset or list.",
+      "desc": "Returns the minimum value in a dataset, list, or set.",
       "examples": [
-        "[1, 5, 3].min()"
+        "@{1, 5, 3}.min()"
       ]
     },
     "span": {
       "signature": "X.span()",
-      "desc": "Returns the statistical range (max - min) of a dataset.",
+      "desc": "Returns the statistical range (max - min) of a dataset, list, or set.",
       "examples": [
-        "[1, 5, 3].span()"
+        "@{1, 5, 3}.span()"
       ]
     },
     "len": {
@@ -8790,4 +8789,6 @@
     }
   ]
 }
+
+
 

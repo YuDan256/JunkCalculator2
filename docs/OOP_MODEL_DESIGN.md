@@ -272,7 +272,7 @@ T.m  = ...   ->  RuntimeError: Cannot modify frozen trait 'T'.
 | 12 | `1.0.sin()` | `0.841471` | **报缺参数** → 写 `sin(1.0)` | **变** |
 | 13 | `1.0.abs()` / `1.0.sqrt()` | 可用 | 同上 | **变** |
 | 14 | `L.len()` / `S.len()` / `D.len()` | 可用（全局 `len` + UFCS） | **报缺参数** → 见 §六 第 1 步 | **变** |
-| 15 | `[1,2,3].sum()` | 可用 | 不变（listProto 成员） | 不变 |
+| 15 | `@[1,2,3].sum()` | 可用 | 不变（listProto 成员） | 不变 |
 | 16 | `"ab".upper().reverse()` | 可用 | 不变（stringProto 成员） | 不变 |
 | 17 | `D.keys()` | 可用 | 不变（dictProto 成员） | 不变 |
 | 18 | `d.f(1.0)`（字典的键） | `0.841471`（self=字典） | `0.841471`（self=字典） | 不变 |

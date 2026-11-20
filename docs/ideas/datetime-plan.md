@@ -146,7 +146,7 @@ f.tell()    -> 0.0
 ```
 
 ```
-Point = ffi.Struct({x: "i32", y: "i32"});  p = Point();  p.x = 100
+Point = ffi.Struct(%{x: "i32", y: "i32"});  p = Point();  p.x = 100
 p.x         -> 100                     ← 未绑同名方法，__getattr__ 被调用，返回字段值
 p.zzz       -> RuntimeError: Property 'zzz' not found.
 ```

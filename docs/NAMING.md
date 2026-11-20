@@ -13,21 +13,25 @@
 数学词汇本身就是小写，所以矩阵/数学那一层绝大多数名字天然落在"单字全小写"里；
 真正需要判断的是多字复合名，它们一律驼峰。
 
-## 二、谓词（`is*`）：全小写，与 C/C++ 一致
+## 二、谓词（`is*`）：全小写，按语义分层
 
-`is*` 是一个**独立族**，跨层统一为全小写（`<ctype.h>` / `<math.h>` / C99 的拼法）：
+`is*` 保持全小写（C99 拼法），但入口按语义分层：
 
 ```
-全局    isnan isinf isfinite isalpha isdigit isalnum isspace isupper islower
-        isprime iseven isodd ispositive isnegative iszero isapprox
-        isiterable iscallable isindexable ishashable isempty isfrozen
-        isinstance isperp isparallel
-原型    a.issubset(b)   a.issuperset(b)   a.isdisjoint(b)
-模块    math.isprime(n) math.isperfect(n)
+全局行为谓词    isiterable iscallable isindexable ishashable isempty isfrozen
+全局类型谓词    isinstance istrait isperp isparallel
+string 方法     s.isalpha() s.isdigit() s.isalnum() s.isspace()
+                s.isupper() s.islower()
+math 模块       math.isnan(n) math.isinf(n) math.isfinite(n)
+                math.isprime(n) math.iseven(n) math.isodd(n)
+                math.ispositive(n) math.isnegative(n) math.iszero(n)
+                math.isapprox(a, b, ...)
+原型            a.issubset(b)   a.issuperset(b)   a.isdisjoint(b)
 ```
 
-理由：这些名字与 C/C++ 标准库同名，用户有肌肉记忆；且谓词不分层——`a.issubset(b)`
-与 `math.isprime(n)` 属于同一族，例外只会制造新的不一致。
+行为谓词依赖运行期结构（`__iter__`、`__call__`、`__hash__`、冻结状态），
+不能由类型替代；文本谓词是 string 的操作；数值谓词是 math 的函数。
+名字统一小写，但不再把所有 `is*` 塞进全局命名空间。
 
 ## 三、C/C++ 同名/同形：从标准库
 
@@ -35,8 +39,8 @@ C99/C++ 的浮点精度后缀是小写 `f`，JC2 跟随：
 
 ```
 sqrtf  cbrtf  rootf      ← 取 float 精度版本（对应双精度 sqrt / cbrt / root）
-isnan  isinf  isfinite   ← <math.h>
-isalpha isdigit ...      ← <ctype.h>
+math.isnan  math.isinf  math.isfinite   ← <math.h>
+s.isalpha  s.isdigit ...                ← <ctype.h>
 ```
 
 ## 四、第三类：转换与反射（保留驼峰）

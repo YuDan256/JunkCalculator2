@@ -3340,6 +3340,62 @@ void BuiltinRegistry::registerStringFunctions() {
     auto lowerFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "lower() expects a string."); std::string s = self.asString(); std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) -> char { return static_cast<char>(std::tolower(c)); }); return Value(s); };
     regMethod(VM::activeVM->stringProto, "lower", {}, lowerFn);
 
+    // Text predicates are string methods; they are not global builtins.
+    auto isalphaFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "isalpha() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (!std::isalpha(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "isalpha", {}, isalphaFn);
+    auto isdigitFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "isdigit() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (!std::isdigit(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "isdigit", {}, isdigitFn);
+    auto isalnumFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "isalnum() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (!std::isalnum(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "isalnum", {}, isalnumFn);
+    auto isspaceFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "isspace() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (!std::isspace(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "isspace", {}, isspaceFn);
+    auto isupperFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "isupper() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::isupper(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "isupper", {}, isupperFn);
+    auto islowerFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isString()) JC2_THROW(TypeError, "islower() expects a string.");
+        const std::string& s = self.asString();
+        if (s.empty()) return Value(false);
+        for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::islower(static_cast<unsigned char>(c))) return Value(false);
+        return Value(true);
+    };
+    regMethod(VM::activeVM->stringProto, "islower", {}, islowerFn);
+
     auto trimFn = [](const std::vector<Value>&) -> Value { Value self = helpers::nativeSelfStack.back(); if (!self.isString()) JC2_THROW(TypeError, "trim() expects a string."); std::string s = self.asString(); size_t a=s.find_first_not_of(" \t\r\n"); size_t b=s.find_last_not_of(" \t\r\n"); if (a==std::string::npos) return Value(std::string("")); return Value(s.substr(a, b-a+1)); };
     regMethod(VM::activeVM->stringProto, "trim", {}, trimFn);
 
@@ -6499,55 +6555,7 @@ void BuiltinRegistry::registerSystemShell() {
 // =================================================================
 void BuiltinRegistry::registerTypeChecks() {
 
-    // ═══ 字符串谓词 ═══
-
-    reg("isalpha", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (!std::isalpha(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
-
-    reg("isdigit", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (!std::isdigit(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
-
-    reg("isalnum", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (!std::isalnum(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
-
-    reg("isspace", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (!std::isspace(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
-
-    reg("isupper", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::isupper(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
-
-    reg("islower", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (!args[0].isString()) return Value(false);
-        const auto& s = args[0].asString();
-        if (s.empty()) return Value(false);
-        for (char c : s) if (std::isalpha(static_cast<unsigned char>(c)) && !std::islower(static_cast<unsigned char>(c))) return Value(false);
-        return Value(true);
-        }, {"s"});
+    // ═══ 字符串谓词已移到 string 方法 ═══
 
     reg("isempty", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isString())
@@ -6575,34 +6583,26 @@ void BuiltinRegistry::registerTypeChecks() {
 
     // ═══ 特殊谓词 ═══
 
-    reg("isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isnan", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isFloat())
             return Value(std::isnan(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
-    reg("isinf", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isinf", { 1 }, [](const std::vector<Value>& args) -> Value {
         if (args[0].isFloat())
             return Value(std::isinf(args[0].asFloatRaw()));
         return Value(false);
         }, {"x"});
 
-    reg("isfinite", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isfinite", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isFloat()) return Value(std::isfinite(v.asFloatRaw()));
         if (v.isInt32() || v.isBigInt() || v.isObjType(ObjType::FRACTION)) return Value(true);
         return Value(false);
         }, {"x"});
 
-    reg("isprime", { 1 }, [](const std::vector<Value>& args) -> Value {
-        const Value& v = args[0];
-        if (v.isInt32()) return Value(BigInt(v.asInt32()).isPrime());
-        if (v.isBigInt()) return Value(static_cast<ObjBigInt*>(v.asObj())->num.isPrime());
-        if (v.isFloat()) return Value(BigInt(static_cast<int64_t>(std::round(v.asFloatRaw()))).isPrime());
-        return Value(false);
-        }, {"x"});
-
-    reg("iseven", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "iseven", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) == 0);
         if (v.isBigInt()) return Value((static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
@@ -6613,7 +6613,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isodd", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isodd", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value((v.asInt32() & 1) != 0);
         if (v.isBigInt()) return Value(!(static_cast<ObjBigInt*>(v.asObj())->num % BigInt(2)).isZero());
@@ -6624,7 +6624,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("ispositive", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "ispositive", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() > 0);
         if (v.isFloat()) return Value(v.asFloatRaw() > 0.0);
@@ -6633,7 +6633,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isnegative", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isnegative", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() < 0);
         if (v.isFloat()) return Value(v.asFloatRaw() < 0.0);
@@ -6642,7 +6642,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("iszero", { 1 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "iszero", { 1 }, [](const std::vector<Value>& args) -> Value {
         const Value& v = args[0];
         if (v.isInt32()) return Value(v.asInt32() == 0);
         if (v.isFloat()) return Value(v.asFloatRaw() == 0.0);
@@ -6655,7 +6655,7 @@ void BuiltinRegistry::registerTypeChecks() {
         return Value(false);
         }, {"x"});
 
-    reg("isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
+    regModule(math_ns, "isapprox", { 2, 3, 4 }, [](const std::vector<Value>& args) -> Value {
         double rtol = (args.size() >= 3 && !args[2].isUninit()) ? args[2].asFloat() : 1e-9;
         double atol = (args.size() == 4 && !args[3].isUninit()) ? args[3].asFloat() : 0.0;
 

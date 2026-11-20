@@ -1365,7 +1365,6 @@
       "  ──────────────────────",
       "    math.gcd(a, b), math.lcm(a, b), math.digits(n)",
       "    math.isprime(n)      Deterministic Miller-Rabin test",
-      "    math.isprime(n)      Lowercase alias (same function)",
       "    math.nextPrime(n)    Smallest prime > n",
       "    math.nthPrime(k)     k-th prime (requires mounted Prime.bin)",
       "    math.primePi(n)      π(n) — number of primes ≤ n",
@@ -1396,12 +1395,12 @@
       "  Numeric Predicates (see also: /help type)",
       "  ──────────────────────",
       "    x in int             Is x an int? (int32 or bigint)",
-      "    iseven(n)            Is n even?",
-      "    isodd(n)             Is n odd?",
-      "    isprime(n)           Is n prime?",
-      "    ispositive(n)        Is n > 0?",
-      "    isnegative(n)        Is n < 0?",
-      "    iszero(n)            Is n = 0?"
+      "    math.iseven(n)       Is n even?",
+      "    math.isodd(n)        Is n odd?",
+      "    math.isprime(n)      Is n prime?",
+      "    math.ispositive(n)   Is n > 0?",
+      "    math.isnegative(n)   Is n < 0?",
+      "    math.iszero(n)       Is n = 0?"
     ],
     "math": [
       "═══ Mathematics Module (math) ═══",
@@ -1608,12 +1607,12 @@
       "",
       "  String & Value Predicates",
       "  ──────────────────────",
-      "    isalpha(s)          All characters alphabetic? (\"abc\" → true)",
-      "    isdigit(s)          All characters digits? (\"123\" → true)",
-      "    isalnum(s)          All characters alphanumeric? (\"abc123\" → true)",
-      "    isspace(s)          All characters whitespace? (\"  \\\\t\" → true)",
-      "    isupper(s)          All alphabetic chars uppercase? (\"ABC\" → true)",
-      "    islower(s)          All alphabetic chars lowercase? (\"abc\" → true)",
+      "    s.isalpha()         All characters alphabetic? (\"abc\" → true)",
+      "    s.isdigit()         All characters digits? (\"123\" → true)",
+      "    s.isalnum()         All characters alphanumeric? (\"abc123\" → true)",
+      "    s.isspace()         All characters whitespace? (\"  \\\\t\" → true)",
+      "    s.isupper()         All alphabetic chars uppercase? (\"ABC\" → true)",
+      "    s.islower()         All alphabetic chars lowercase? (\"abc\" → true)",
       "    isempty(x)          Empty string, empty list, empty dict,",
       "                        or zero-dimension matrix?",
       "",
@@ -1625,23 +1624,23 @@
       "",
       "  Floating-Point Checks",
       "  ──────────────────────",
-      "    isnan(x)            Is x NaN? (only for float type)",
-      "    isinf(x)            Is x ±Infinity? (only for float type)",
-      "    isfinite(x)         Is x a finite number? (int/Fraction → always true)",
+      "    math.isnan(x)       Is x NaN? (only for float type)",
+      "    math.isinf(x)       Is x ±Infinity? (only for float type)",
+      "    math.isfinite(x)    Is x a finite number? (int/Fraction → always true)",
       "",
       "  Numeric Value Predicates",
       "  ──────────────────────",
-      "    isapprox(a, b, [rtol], [atol])   Numbers, or matrices of the same shape (elementwise).",
+      "    math.isapprox(a, b, [rtol], [atol])   Numbers, or matrices of the same shape (elementwise).",
       "                        Returns true if a and b are approximately equal.",
       "                        rtol defaults to 1e-9, atol defaults to 0.0.",
       "                        Formula: |a - b| <= max(atol, rtol * max(|a|, |b|))",
-      "    iszero(x)           Is x equal to zero? (works on float, int,",
+      "    math.iszero(x)      Is x equal to zero? (works on float, int,",
       "                        complex, fraction — exact comparison)",
-      "    ispositive(x)       Is x > 0? (float, int, fraction)",
-      "    isnegative(x)       Is x < 0? (float, int, fraction)",
-      "    iseven(n)           Is n an even integer?",
-      "    isodd(n)            Is n an odd integer?",
-      "    isprime(n)          Is n a prime number? (Miller-Rabin test)"
+      "    math.ispositive(x)  Is x > 0? (float, int, fraction)",
+      "    math.isnegative(x)  Is x < 0? (float, int, fraction)",
+      "    math.iseven(n)      Is n an even integer?",
+      "    math.isodd(n)       Is n an odd integer?",
+      "    math.isprime(n)     Is n a prime number? (Miller-Rabin test)"
     ],
     "sys": [
       "═══ System, Generators & Runtime ═══",
@@ -2112,12 +2111,12 @@
       "  String Predicates (return true or false)",
       "  ──────────────────────",
       "    x in string         Is x a string type?",
-      "    isalpha(s)          All characters are alphabetic?",
-      "    isdigit(s)          All characters are digits?",
-      "    isalnum(s)          All characters are alphanumeric?",
-      "    isspace(s)          All characters are whitespace?",
-      "    isupper(s)          All alphabetic characters are uppercase?",
-      "    islower(s)          All alphabetic characters are lowercase?",
+      "    s.isalpha()         All characters are alphabetic?",
+      "    s.isdigit()         All characters are digits?",
+      "    s.isalnum()         All characters are alphanumeric?",
+      "    s.isspace()         All characters are whitespace?",
+      "    s.isupper()         All alphabetic characters are uppercase?",
+      "    s.islower()         All alphabetic characters are lowercase?",
       "    isempty(s)          Is the string empty (length 0)?",
       "",
       "  String Interpolation (f-strings)",
@@ -5129,18 +5128,18 @@
     },
     "nan": {
       "signature": "nan()",
-      "desc": "Returns NaN (Not a Number) as a float. JC2 forbids division by zero (0/0 and 1.0/0.0 both throw MathError), so NaN cannot be produced by arithmetic and must be constructed explicitly. Use isnan() to test for it.",
+      "desc": "Returns NaN (Not a Number) as a float. JC2 forbids division by zero (0/0 and 1.0/0.0 both throw MathError), so NaN cannot be produced by arithmetic and must be constructed explicitly. Use math.isnan() to test for it.",
       "examples": [
-        "isnan(nan())"
+        "import math; math.isnan(nan())"
       ]
     },
     "inf": {
       "signature": "inf()",
-      "desc": "Returns positive infinity as a float; use -inf() for negative infinity. Infinity can also arise from overflow (e.g. exp(1000.0)), but NaN has no other way to be produced. Use isinf() / isfinite() to test.",
+      "desc": "Returns positive infinity as a float; use -inf() for negative infinity. Infinity can also arise from overflow (e.g. exp(1000.0)), but NaN has no other way to be produced. Use math.isinf() / math.isfinite() to test.",
       "examples": [
-        "isinf(inf())",
-        "isinf(-inf())",
-        "isfinite(inf())"
+        "import math; math.isinf(inf())",
+        "import math; math.isinf(-inf())",
+        "import math; math.isfinite(inf())"
       ]
     },
     "isiterable": {
@@ -5178,125 +5177,11 @@
         "trait T { foo() = 1 }; istrait(T)"
       ]
     },
-    "isalpha": {
-      "signature": "isalpha(s)",
-      "desc": "Returns true if all characters in s are alphabetic.",
-      "examples": [
-        "isalpha(\"abc\")"
-      ]
-    },
-    "isdigit": {
-      "signature": "isdigit(s)",
-      "desc": "Returns true if all characters in s are digits.",
-      "examples": [
-        "isdigit(\"123\")"
-      ]
-    },
-    "isalnum": {
-      "signature": "isalnum(s)",
-      "desc": "Returns true if all characters in s are alphanumeric.",
-      "examples": [
-        "isalnum(\"abc123\")"
-      ]
-    },
-    "isspace": {
-      "signature": "isspace(s)",
-      "desc": "Returns true if all characters in s are whitespace.",
-      "examples": [
-        "isspace(\"  \\t\")"
-      ]
-    },
-    "isupper": {
-      "signature": "isupper(s)",
-      "desc": "Returns true if all alphabetic characters in s are uppercase.",
-      "examples": [
-        "isupper(\"ABC\")"
-      ]
-    },
-    "islower": {
-      "signature": "islower(s)",
-      "desc": "Returns true if all alphabetic characters in s are lowercase.",
-      "examples": [
-        "islower(\"abc\")"
-      ]
-    },
     "isempty": {
       "signature": "isempty(x)",
       "desc": "Returns true if the string, list, dict, or matrix is empty.",
       "examples": [
         "isempty(\"\")"
-      ]
-    },
-    "isnan": {
-      "signature": "isnan(x)",
-      "desc": "Returns true if x is NaN (Not a Number). Since JC2 rejects division by zero, NaN has to be created with nan(). Non-float values return false.",
-      "examples": [
-        "isnan(nan())",
-        "isnan(1.0)"
-      ]
-    },
-    "isinf": {
-      "signature": "isinf(x)",
-      "desc": "Returns true if x is +Infinity or -Infinity. Non-float values return false.",
-      "examples": [
-        "isinf(inf())",
-        "isinf(1.0)"
-      ]
-    },
-    "isfinite": {
-      "signature": "isfinite(x)",
-      "desc": "Returns true if x is a finite number.",
-      "examples": [
-        "isfinite(42)"
-      ]
-    },
-    "isprime": {
-      "signature": "isprime(x)",
-      "desc": "Returns true if x is a prime number.",
-      "examples": [
-        "isprime(7)"
-      ]
-    },
-    "iseven": {
-      "signature": "iseven(x)",
-      "desc": "Returns true if x is an even integer.",
-      "examples": [
-        "iseven(4)"
-      ]
-    },
-    "isodd": {
-      "signature": "isodd(x)",
-      "desc": "Returns true if x is an odd integer.",
-      "examples": [
-        "isodd(3)"
-      ]
-    },
-    "ispositive": {
-      "signature": "ispositive(x)",
-      "desc": "Returns true if x > 0.",
-      "examples": [
-        "ispositive(5)"
-      ]
-    },
-    "isnegative": {
-      "signature": "isnegative(x)",
-      "desc": "Returns true if x < 0.",
-      "examples": [
-        "isnegative(-5)"
-      ]
-    },
-    "iszero": {
-      "signature": "iszero(x)",
-      "desc": "Returns true if x is equal to zero.",
-      "examples": [
-        "iszero(0)"
-      ]
-    },
-    "isapprox": {
-      "signature": "isapprox(a, b, [rtol], [atol])",
-      "desc": "Returns true if a and b are approximately equal within relative tolerance rtol (default 1e-9) and absolute tolerance atol (default 0.0).",
-      "examples": [
-        "isapprox(1.0000000001, 1.0)"
       ]
     },
     "length": {
@@ -7169,6 +7054,48 @@
         "\"HELLO\".lower()"
       ]
     },
+    "isalpha": {
+      "signature": "s.isalpha()",
+      "desc": "Returns true if every byte is an ASCII alphabetic character; an empty string returns false.",
+      "examples": [
+        "\"abc\".isalpha()"
+      ]
+    },
+    "isdigit": {
+      "signature": "s.isdigit()",
+      "desc": "Returns true if every byte is an ASCII digit; an empty string returns false.",
+      "examples": [
+        "\"123\".isdigit()"
+      ]
+    },
+    "isalnum": {
+      "signature": "s.isalnum()",
+      "desc": "Returns true if every byte is an ASCII letter or digit; an empty string returns false.",
+      "examples": [
+        "\"abc123\".isalnum()"
+      ]
+    },
+    "isspace": {
+      "signature": "s.isspace()",
+      "desc": "Returns true if every byte is ASCII whitespace; an empty string returns false.",
+      "examples": [
+        "\" \\t\".isspace()"
+      ]
+    },
+    "isupper": {
+      "signature": "s.isupper()",
+      "desc": "Returns true if every ASCII alphabetic byte is uppercase; an empty string returns false.",
+      "examples": [
+        "\"ABC\".isupper()"
+      ]
+    },
+    "islower": {
+      "signature": "s.islower()",
+      "desc": "Returns true if every ASCII alphabetic byte is lowercase; an empty string returns false.",
+      "examples": [
+        "\"abc\".islower()"
+      ]
+    },
     "trim": {
       "signature": "s.trim()",
       "desc": "Removes leading and trailing whitespace from a string.",
@@ -8002,11 +7929,71 @@
     "isprime": {
       "signature": "math.isprime(n)",
       "desc": "Returns true if n is a prime number (via Miller-Rabin test), false otherwise.",
-      "aliases": [
-        "isprime"
-      ],
       "examples": [
         "import math; math.isprime(10^9 + 7)"
+      ]
+    },
+    "isnan": {
+      "signature": "math.isnan(x)",
+      "desc": "Returns true if x is NaN (Not a Number); non-float values return false.",
+      "examples": [
+        "import math; math.isnan(nan())"
+      ]
+    },
+    "isinf": {
+      "signature": "math.isinf(x)",
+      "desc": "Returns true if x is +Infinity or -Infinity; non-float values return false.",
+      "examples": [
+        "import math; math.isinf(inf())"
+      ]
+    },
+    "isfinite": {
+      "signature": "math.isfinite(x)",
+      "desc": "Returns true if x is a finite number.",
+      "examples": [
+        "import math; math.isfinite(42)"
+      ]
+    },
+    "iseven": {
+      "signature": "math.iseven(x)",
+      "desc": "Returns true if x is an even integer.",
+      "examples": [
+        "import math; math.iseven(4)"
+      ]
+    },
+    "isodd": {
+      "signature": "math.isodd(x)",
+      "desc": "Returns true if x is an odd integer.",
+      "examples": [
+        "import math; math.isodd(3)"
+      ]
+    },
+    "ispositive": {
+      "signature": "math.ispositive(x)",
+      "desc": "Returns true if x > 0.",
+      "examples": [
+        "import math; math.ispositive(5)"
+      ]
+    },
+    "isnegative": {
+      "signature": "math.isnegative(x)",
+      "desc": "Returns true if x < 0.",
+      "examples": [
+        "import math; math.isnegative(-5)"
+      ]
+    },
+    "iszero": {
+      "signature": "math.iszero(x)",
+      "desc": "Returns true if x is equal to zero.",
+      "examples": [
+        "import math; math.iszero(0)"
+      ]
+    },
+    "isapprox": {
+      "signature": "math.isapprox(a, b, [rtol], [atol])",
+      "desc": "Returns true if a and b are approximately equal within relative tolerance rtol (default 1e-9) and absolute tolerance atol (default 0.0).",
+      "examples": [
+        "import math; math.isapprox(1.0000000001, 1.0)"
       ]
     },
     "nextPrime": {

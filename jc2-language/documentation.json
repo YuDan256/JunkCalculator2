@@ -504,56 +504,8 @@
     "istrait": {
       "signature": "istrait(x)"
     },
-    "isalpha": {
-      "signature": "isalpha(s)"
-    },
-    "isdigit": {
-      "signature": "isdigit(s)"
-    },
-    "isalnum": {
-      "signature": "isalnum(s)"
-    },
-    "isspace": {
-      "signature": "isspace(s)"
-    },
-    "isupper": {
-      "signature": "isupper(s)"
-    },
-    "islower": {
-      "signature": "islower(s)"
-    },
     "isempty": {
       "signature": "isempty(x)"
-    },
-    "isnan": {
-      "signature": "isnan(x)"
-    },
-    "isinf": {
-      "signature": "isinf(x)"
-    },
-    "isfinite": {
-      "signature": "isfinite(x)"
-    },
-    "isprime": {
-      "signature": "isprime(x)"
-    },
-    "iseven": {
-      "signature": "iseven(x)"
-    },
-    "isodd": {
-      "signature": "isodd(x)"
-    },
-    "ispositive": {
-      "signature": "ispositive(x)"
-    },
-    "isnegative": {
-      "signature": "isnegative(x)"
-    },
-    "iszero": {
-      "signature": "iszero(x)"
-    },
-    "isapprox": {
-      "signature": "isapprox(a, b, [rtol], [atol])"
     },
     "length": {
       "signature": "length(x)"
@@ -1202,6 +1154,24 @@
     "lower": {
       "signature": "s.lower()"
     },
+    "isalpha": {
+      "signature": "s.isalpha()"
+    },
+    "isdigit": {
+      "signature": "s.isdigit()"
+    },
+    "isalnum": {
+      "signature": "s.isalnum()"
+    },
+    "isspace": {
+      "signature": "s.isspace()"
+    },
+    "isupper": {
+      "signature": "s.isupper()"
+    },
+    "islower": {
+      "signature": "s.islower()"
+    },
     "trim": {
       "signature": "s.trim()"
     },
@@ -1605,6 +1575,33 @@
     },
     "isprime": {
       "signature": "math.isprime(n)"
+    },
+    "isnan": {
+      "signature": "math.isnan(x)"
+    },
+    "isinf": {
+      "signature": "math.isinf(x)"
+    },
+    "isfinite": {
+      "signature": "math.isfinite(x)"
+    },
+    "iseven": {
+      "signature": "math.iseven(x)"
+    },
+    "isodd": {
+      "signature": "math.isodd(x)"
+    },
+    "ispositive": {
+      "signature": "math.ispositive(x)"
+    },
+    "isnegative": {
+      "signature": "math.isnegative(x)"
+    },
+    "iszero": {
+      "signature": "math.iszero(x)"
+    },
+    "isapprox": {
+      "signature": "math.isapprox(a, b, [rtol], [atol])"
     },
     "nextPrime": {
       "signature": "math.nextPrime(n)"

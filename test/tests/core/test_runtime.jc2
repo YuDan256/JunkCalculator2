@@ -217,9 +217,9 @@ test_closure_caching() = {
     calcB = make_calc(sin)
     calcC = make_calc(sin)
 
-    assert(isapprox(calcA(math.PI), -1.0), "calcA failed")
-    assert(isapprox(calcB(math.PI), 0.0, 1e-9, 1e-9), "calcB failed")
-    assert(isapprox(calcC(math.PI), 0.0, 1e-9, 1e-9), "calcC failed")
+    assert(math.isapprox(calcA(math.PI), -1.0), "calcA failed")
+    assert(math.isapprox(calcB(math.PI), 0.0, 1e-9, 1e-9), "calcB failed")
+    assert(math.isapprox(calcC(math.PI), 0.0, 1e-9, 1e-9), "calcC failed")
 }
 test_closure_caching()
 
@@ -307,3 +307,4 @@ for (local item in nested) {
 }
 assert(n == 2, "nested snapshot limits iteration")
 }
+

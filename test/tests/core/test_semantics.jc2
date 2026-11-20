@@ -1,3 +1,5 @@
+import math
+
 // ═══════════════════════════════════════════════════════════════
 // Merged battery: arithmetic, cmp, equality
 // ═══════════════════════════════════════════════════════════════
@@ -78,17 +80,17 @@ test_matrix_math()
 throws(f) = { try { f(); return false } catch (e) { return true } }
 
 test_non_finite() = {
-    assert(isnan(nan()), "nan() should be NaN")
-    assert(!isnan(1.0), "finite value should not be NaN")
-    assert(!isnan("abc"), "non-float should not be NaN")
+    assert(math.isnan(nan()), "nan() should be NaN")
+    assert(!math.isnan(1.0), "finite value should not be NaN")
+    assert(!math.isnan("abc"), "non-float should not be NaN")
 
-    assert(isinf(inf()), "inf() should be infinite")
-    assert(isinf(-inf()), "-inf() should be infinite")
-    assert(!isinf(1.0), "finite value should not be infinite")
+    assert(math.isinf(inf()), "inf() should be infinite")
+    assert(math.isinf(-inf()), "-inf() should be infinite")
+    assert(!math.isinf(1.0), "finite value should not be infinite")
 
-    assert(!isfinite(inf()), "inf is not finite")
-    assert(!isfinite(nan()), "nan is not finite")
-    assert(isfinite(1.0), "1.0 is finite")
+    assert(!math.isfinite(inf()), "inf is not finite")
+    assert(!math.isfinite(nan()), "nan is not finite")
+    assert(math.isfinite(1.0), "1.0 is finite")
 
     // 除零仍然报错（不是靠产生 inf 来"绕过"）
     assert(throws(() => 1.0 / 0.0), "float division by zero should throw")
@@ -164,7 +166,7 @@ test_numeric_promotion_and_errors() = {
 
     assert(1 / 3 == frac(1, 3), "division exact fraction")
     assert(type(1 / 3) == fraction, "division type")
-    assert(isinf(1.0e308 * 10.0), "float overflow becomes inf")
+    assert(math.isinf(1.0e308 * 10.0), "float overflow becomes inf")
 
     checks = @[
         () => 0 / 0,
@@ -402,3 +404,30 @@ test_symbolic_algebraic_hash() = {
     assert(hash(A) == hash(B), "equivalent symbolic matrices must hash equally")
 }
 test_symbolic_algebraic_hash()
+
+
+// Text predicates are string methods; math predicates live in math.
+test_predicate_placement() = {
+    assert("abc".isalpha() && !"ab1".isalpha(), "isalpha method")
+    assert("123".isdigit() && !"12a".isdigit(), "isdigit method")
+    assert("abc123".isalnum() && !"abc 123".isalnum(), "isalnum method")
+    assert(" \t".isspace() && !" a".isspace(), "isspace method")
+    assert("ABC".isupper() && !"AbC".isupper(), "isupper method")
+    assert("abc".islower() && !"aBc".islower(), "islower method")
+
+    assert(math.isnan(nan()) && !math.isnan(1.0), "math.isnan")
+    assert(math.isinf(inf()) && !math.isinf(1.0), "math.isinf")
+    assert(math.isfinite(1.0) && !math.isfinite(inf()), "math.isfinite")
+    assert(math.isprime(7) && !math.isprime(8), "math.isprime")
+    assert(math.iseven(4) && math.isodd(3), "math parity")
+    assert(math.ispositive(5) && math.isnegative(-5) && math.iszero(0), "math sign")
+    assert(math.isapprox(1.0, 1.0000000001), "math.isapprox")
+
+    caught = false
+    try { eval("isalpha(\"abc\")") } catch (e) { caught = true }
+    assert(caught, "global isalpha must be removed")
+    caught = false
+    try { eval("isnan(1.0)") } catch (e) { caught = true }
+    assert(caught, "global isnan must be removed")
+}
+test_predicate_placement()

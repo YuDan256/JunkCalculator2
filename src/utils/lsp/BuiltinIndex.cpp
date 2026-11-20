@@ -180,7 +180,9 @@ namespace lsp {
 
         static const std::unordered_map<std::string, std::string> typeToCat = {
             {"matrix", "matrix_methods"}, {"list", "list_methods"},
-            {"string", "string_methods"}, {"dict", "dict_methods"}, {"set", "set_methods"}
+            {"string", "string_methods"}, {"dict", "dict_methods"}, {"set", "set_methods"},
+            {"instance", "instance_methods"}, {"class", "class_methods"},
+            {"namespace", "namespace_methods"}
         };
 
         for (const auto& [typeName, catName] : typeToCat) {
@@ -215,6 +217,7 @@ namespace lsp {
 
         static const std::vector<std::string> categories = {
             "matrix_methods", "list_methods", "string_methods", "dict_methods", "set_methods",
+            "instance_methods", "class_methods", "namespace_methods",
             "sys_methods", "math_methods", "cas_methods", "random_methods"
         };
         for (const auto& catName : categories) {

@@ -432,6 +432,9 @@ namespace jc {
             if (cat == "string_methods") return "string";
             if (cat == "dict_methods") return "dict";
             if (cat == "set_methods") return "set";
+            if (cat == "instance_methods") return "instance";
+            if (cat == "class_methods") return "class";
+            if (cat == "namespace_methods") return "namespace";
             if (cat == "sys_methods") return "sys";
             if (cat == "math_methods") return "math";
             if (cat == "cas_methods") return "cas";
@@ -549,6 +552,8 @@ namespace jc {
                 {"matrix_methods", "matrix"}, {"list_methods", "list"},
                 {"string_methods", "string"}, {"dict_methods", "dict"},
                 {"set_methods", "set"}, {"sys_methods", "sys"},
+                {"instance_methods", "instance"}, {"class_methods", "class"},
+                {"namespace_methods", "namespace"},
                 {"math_methods", "math"}, {"cas_methods", "cas"},
                 {"random_methods", "random"}
             };

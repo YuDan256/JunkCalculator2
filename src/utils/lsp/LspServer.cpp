@@ -469,6 +469,7 @@ namespace lsp {
                                 std::vector<std::string> categories = {
                                     "global_functions", "matrix_methods", "list_methods", 
                                     "string_methods", "dict_methods", "set_methods",
+                                    "instance_methods", "class_methods", "namespace_methods",
                                     "sys_methods", "math_methods", "cas_methods", "random_methods"
                                 };
                                 
@@ -715,6 +716,12 @@ namespace lsp {
                                 targetCategories.push_back("dict_methods");
                             } else if (targetType == "set") {
                                 targetCategories.push_back("set_methods");
+                            } else if (targetType == "instance") {
+                                targetCategories.push_back("instance_methods");
+                            } else if (targetType == "class" || targetType == "class_type") {
+                                targetCategories.push_back("class_methods");
+                            } else if (targetType == "namespace") {
+                                targetCategories.push_back("namespace_methods");
                             } else if (objectName == "sys") {
                                 targetCategories.push_back("sys_methods");
                             } else if (objectName == "math") {
@@ -724,7 +731,7 @@ namespace lsp {
                             } else if (objectName == "random") {
                                 targetCategories.push_back("random_methods");
                             } else if (targetType.empty() || targetType == "any") {
-                                targetCategories = {"matrix_methods", "list_methods", "string_methods", "dict_methods", "set_methods", "sys_methods", "math_methods", "cas_methods", "random_methods"};
+                                targetCategories = {"matrix_methods", "list_methods", "string_methods", "dict_methods", "set_methods", "instance_methods", "class_methods", "namespace_methods", "sys_methods", "math_methods", "cas_methods", "random_methods"};
                             }
                             
                             for (const auto& cat : targetCategories) {

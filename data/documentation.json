@@ -3960,13 +3960,6 @@
     ]
   },
   "global_functions": {
-    "i": {
-      "signature": "math.i()",
-      "desc": "Returns the imaginary unit (0 + 1i) as a function. Requires `import math`; math.I is the constant form, and the literal suffix `1i` works without an import.",
-      "examples": [
-        "import math; z = 3 + 4 * math.i()"
-      ]
-    },
     "complex": {
       "signature": "complex(real, [imag])",
       "desc": "Constructs a complex number. If imag is omitted, it defaults to 0.",
@@ -8093,6 +8086,13 @@
       "examples": [
         "import math; math.pi()",
         "import math; math.pi() == math.PI"
+      ]
+    },
+    "i": {
+      "signature": "math.i()",
+      "desc": "Returns the imaginary unit (0 + 1i) as a function. Requires `import math`; math.I is the constant form, and the literal suffix `1i` works without an import.",
+      "examples": [
+        "import math; z = 3 + 4 * math.i()"
       ]
     }
   },

@@ -302,3 +302,19 @@ test_multiline_comprehensions() = {
 }
 test_multiline_comprehensions()
 
+
+// Empty catch blocks rethrow the original exception, not none.
+test_empty_catch_rethrows() = {
+    caught = false
+    try { eval("try 1/0 catch {}") } catch (e) {
+        caught = e.type == "MathError" && "Division by zero" in e.message
+    }
+    assert(caught, "empty catch must preserve the original exception")
+
+    caught = false
+    try { eval("try { throw \"boom\" } catch {}") } catch (e) {
+        caught = "boom" in e.message
+    }
+    assert(caught, "empty catch must preserve a thrown message")
+}
+test_empty_catch_rethrows()

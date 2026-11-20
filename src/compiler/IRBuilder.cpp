@@ -4030,7 +4030,9 @@ void IRBuilder::visitTryCatchExpr(TryCatchExpr* expr) {
     IRNode* tryBegin = createCFGNode(IROp::TryBegin);
     link(tryBegin);
     // 裸 try：不需要异常对象，只需要失败后跳到 catch 块并得到 none。
-    tryBegin->payload1 = expr->catchBranches.empty() ? 1 : 0;
+    // 空 catch {} 是“不匹配则 rethrow”，必须保留原始异常对象；silent 优化
+    // 会丢弃它，导致重新抛出时变成 none。
+    tryBegin->payload1 = 0;
 
     auto baseEnv = envStack;
 

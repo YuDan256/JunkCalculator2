@@ -1226,3 +1226,11 @@ test_auto_local_closure_unbound() = {
     assert(caught, "captured unbound value must fail at the checked read")
 }
 test_auto_local_closure_unbound()
+
+// A function with a defer must not reuse its frame: the return expression
+// (including a tail call) is evaluated before the deferred block runs.
+defer_events = @[]
+defer_g() = { defer_events.push("G"); return 1 }
+defer_f() = { defer defer_events.push("D"); return defer_g() }
+assert(defer_f() == 1, "defer + tail call result")
+assert(defer_events == @["G", "D"], "return value is evaluated before defer")

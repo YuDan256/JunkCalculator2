@@ -49,10 +49,10 @@ assert(c.fields() == f, "an instance reports the same instance properties")
 assert(Base.fields() == @["baseMethod", "shared"], "base class view")
 
 // ── hasField 覆盖两个域，但看不到私有 ──
-assert(C.hasField("m"), "hasField sees methods")
-assert(C.hasField("T"), "hasField sees statics")
-assert(!C.hasField("p"), "hasField hides private properties")
-assert(!C.hasField("nope"), "unknown name is false")
+assert("m" in C.fields(), "class fields see methods")
+assert(C.has("T"), "hasField sees statics")
+assert(!C.has("p"), "hasField hides private properties")
+assert(!C.has("nope"), "unknown name is false")
 
 // ── 参数校验 ──
 assert(throws(() => c.statics()), "getStatics requires a class")
@@ -81,7 +81,7 @@ assert(Anon.name() == "", "anonymous class has an empty name")
 NS = namespace "Geo" { origin = "0,0" }
 assert(NS.name() == "Geo", "namespace name")
 assert(NS.fields() == @["origin"], "namespace fields")
-assert(NS.hasField("origin"), "namespace hasField")
+assert(NS.has("origin"), "namespace hasField")
 assert(NS.fieldInfo("origin")["isMethod"] == false, "namespace fieldInfo")
 assert(c.classDef() == C, "instance classDef")
 assert(c.superclass() == Base, "instance superclass")
@@ -224,7 +224,7 @@ test_getfields_lists_only_accessible() = {
     assert("shown" in f, "public field must be listed")
     assert(!("hidden" in f), "private method must not be listed")
     for (k in f) {
-        assert(r.hasField(k), "every listed field must be accessible: " + k)
+        assert(r.has(k), "every listed field must be accessible: " + k)
         assert(!k.startsWith("<"), "internal name must not be listed: " + k)
     }
 }
@@ -296,5 +296,7 @@ test_value_copy_and_index() = {
 }
 test_value_copy_and_index()
 }
+
+
 
 

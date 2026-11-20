@@ -268,10 +268,10 @@ test_get_and_pop() = {
     assert(d.get("a") == 1, "get returns the value")
     assert(d.get("z") == none, "get returns none for a missing key")
     assert(d.get("z", 42) == 42, "get returns the default for a missing key")
-    assert(d.size() == 2, "get does not modify the dict")
+    assert(d.len() == 2, "get does not modify the dict")
 
     assert(d.pop("a") == 1, "pop returns the removed value")
-    assert(!d.has("a") && d.size() == 1, "pop removes the key")
+    assert(!d.has("a") && d.len() == 1, "pop removes the key")
 
     threw = false
     try { d.pop("a") } catch (e) { threw = true }
@@ -301,3 +301,4 @@ test_multiline_comprehensions() = {
     assert(d["1"] == 2 && d["2"] == 4, "multiline dict comprehension")
 }
 test_multiline_comprehensions()
+

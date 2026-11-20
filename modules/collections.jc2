@@ -711,7 +711,7 @@ class LRU {
         if (self._size > self.capacity) {
             old = self.tail
             self._unlink(old)
-            self.index.removeKey(old.key)
+            self.index.remove(old.key)
             self._size -= 1
         }
         return self
@@ -935,3 +935,4 @@ try {
     })
 
 }
+

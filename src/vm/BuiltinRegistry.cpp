@@ -3148,134 +3148,6 @@ void BuiltinRegistry::registerControlFlow() {
         else JC2_THROW(RuntimeError, "color() expects \"on\" or \"off\".");
         return Value::none();
     }, {"state"});
-
-    // =================================================================
-    // [大一统泛型 API] add / remove / discard / clear
-    // =================================================================
-
-    reg("add", { 2, 3 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::SET)) {
-            if (args.size() != 2) JC2_THROW(RuntimeError, "add() on Set takes 2 args (set, val).");
-            auto s = static_cast<ObjSet*>(args[0].asObj());
-            s->add(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::LIST)) {
-            if (args.size() != 2) JC2_THROW(RuntimeError, "add() on List takes 2 args (list, val).");
-            auto l = static_cast<ObjList*>(args[0].asObj());
-            l->mut().push_back(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
-            if (args.size() != 3) JC2_THROW(RuntimeError, "add() on Dict/Instance takes 3 args (obj, key, val).");
-            if (args[0].isInstance()) {
-                auto inst = args[0].asInstance();
-                if (!args[1].isString()) JC2_THROW(TypeError, "Instance keys must be strings.");
-                inst->setProperty(args[1].asString(), args[2]);
-                return args[0];
-            }
-            auto d = static_cast<ObjDict*>(args[0].asObj());
-            d->set(args[1], args[2]);
-            return args[0]; // 返回原对象
-        }
-        else if (args[0].isObjType(ObjType::NAMESPACE)) {
-            if (args.size() != 3) JC2_THROW(RuntimeError, "add() on Namespace takes 3 args (obj, key, val).");
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            if (!args[1].isString()) JC2_THROW(TypeError, "Namespace keys must be strings.");
-            ns->setField(args[1].asString(), args[2]);
-            return args[0];
-        }
-        JC2_THROW(TypeError, "add() expects a Set, List, Dict, Instance, or Namespace.");
-        }, {"collection", "key_or_val", "val"});
-
-    reg("remove", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::SET)) {
-            auto s = static_cast<ObjSet*>(args[0].asObj());
-            s->remove(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::LIST)) {
-            auto l = static_cast<ObjList*>(args[0].asObj());
-            int idx = static_cast<int>(std::round(args[1].asFloat()));
-            if (idx < 0) idx += static_cast<int>(l->vec.size());
-            if (idx < 0 || idx >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "Index " + std::to_string(idx) + " out of bounds (size " + std::to_string(l->vec.size()) + ").");
-            l->mut().erase(l->mut().begin() + idx);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
-            if (args[0].isInstance()) {
-                auto inst = args[0].asInstance();
-                if (!args[1].isString()) JC2_THROW(TypeError, "Instance keys must be strings.");
-                inst->removeProperty(args[1].asString());
-                return args[0];
-            }
-            auto d = static_cast<ObjDict*>(args[0].asObj());
-            d->remove(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            if (!args[1].isString()) JC2_THROW(TypeError, "Namespace keys must be strings.");
-            ns->removeField(args[1].asString());
-            return args[0];
-        }
-        JC2_THROW(TypeError, "remove() expects a Set, List, Dict, Instance, or Namespace.");
-        }, {"collection", "val_or_key"});
-
-    reg("discard", { 2 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::SET)) {
-            auto s = static_cast<ObjSet*>(args[0].asObj());
-            s->discard(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
-            if (args[0].isInstance()) {
-                auto inst = args[0].asInstance();
-                if (args[1].isString()) {
-                    inst->discardProperty(args[1].asString());
-                }
-                return args[0];
-            }
-            auto d = static_cast<ObjDict*>(args[0].asObj());
-            d->discard(args[1]);
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            if (args[1].isString()) ns->discardField(args[1].asString());
-            return args[0];
-        }
-        JC2_THROW(TypeError, "discard() expects a Set, Dict, Instance, or Namespace.");
-        }, {"collection", "val_or_key"});
-
-    reg("clear", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isObjType(ObjType::SET)) {
-            auto s = static_cast<ObjSet*>(args[0].asObj());
-            s->clear();
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::LIST)) {
-            auto l = static_cast<ObjList*>(args[0].asObj());
-            l->clear();
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::DICT) || args[0].isInstance()) {
-            if (args[0].isInstance()) {
-                auto inst = args[0].asInstance();
-                inst->clearProperties();
-                return args[0];
-            }
-            auto d = static_cast<ObjDict*>(args[0].asObj());
-            d->clear();
-            return args[0];
-        }
-        else if (args[0].isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(args[0].asObj());
-            ns->clearFields();
-            return args[0];
-        }
-        JC2_THROW(TypeError, "clear() expects a Set, List, Dict, Instance, or Namespace.");
-        }, {"collection"});
 }
 
 // =================================================================
@@ -3316,8 +3188,6 @@ void BuiltinRegistry::registerStringFunctions() {
         JC2_THROW(TypeError, "len() expects a string, vector, matrix, dict, list, set, namespace, or integer.");
     };
     reg("len", { 1 }, [lenImpl](const std::vector<Value>& args) -> Value { return lenImpl(args[0]); }, {"x"});
-    reg("length", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
-    reg("size", builtinArity["len"], builtins["len"], builtinParamNames["len"]);
 
     // ★ .len()：给五个原生原型各补一个 0 参方法，行为与全局 len(x) 完全一致。
     // 动机（docs/OOP_MODEL_DESIGN.md §六 第 1 步）：接收者不再被隐式填进实参位之后，
@@ -3603,19 +3473,50 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     regMethod(VM::activeVM->listProto, "insert", {"idx", "val"}, insertFn);
 
-    auto removeAtFn = [expectContainer](const std::vector<Value>& args) -> Value {
+    auto eraseFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         int idx = static_cast<int>(std::round(args[0].asFloat()));
         if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
             int i = idx < 0 ? static_cast<int>(l->vec.size()) + idx : idx;
-            if (i < 0 || i >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "removeAt() index " + std::to_string(idx) + " out of range (size " + std::to_string(l->vec.size()) + ").");
+            if (i < 0 || i >= static_cast<int>(l->vec.size())) JC2_THROW(RuntimeError, "erase() index " + std::to_string(idx) + " out of range (size " + std::to_string(l->vec.size()) + ").");
             l->mut().erase(l->mut().begin() + i);
             return self;
         }
-        return expectContainer("removeAt");
+        return expectContainer("erase");
     };
-    regMethod(VM::activeVM->listProto, "removeAt", {"idx"}, removeAtFn);
+    regMethod(VM::activeVM->listProto, "erase", {"idx"}, eraseFn);
+
+    auto removeValueFn = [expectContainer](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::LIST)) return expectContainer("remove");
+        auto l = static_cast<ObjList*>(self.asObj());
+        for (size_t i = 0; i < l->vec.size(); ++i) {
+            if (Value::equals(l->vec[i], args[0])) {
+                l->mut().erase(l->mut().begin() + static_cast<std::ptrdiff_t>(i));
+                return self;
+            }
+        }
+        JC2_THROW(RuntimeError, "remove() value not found.");
+    };
+    regMethod(VM::activeVM->listProto, "remove", {"value"}, removeValueFn);
+
+    auto hasValueFn = [expectContainer](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::LIST)) return expectContainer("has");
+        auto l = static_cast<ObjList*>(self.asObj());
+        for (const auto& e : l->vec) if (Value::equals(e, args[0])) return Value(true);
+        return Value(false);
+    };
+    regMethod(VM::activeVM->listProto, "has", {"value"}, hasValueFn);
+
+    auto clearListFn = [expectContainer](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::LIST)) return expectContainer("clear");
+        static_cast<ObjList*>(self.asObj())->clear();
+        return self;
+    };
+    regMethod(VM::activeVM->listProto, "clear", {}, clearListFn);
 
     auto sliceFn = [expectContainer](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4034,11 +3935,44 @@ void BuiltinRegistry::registerDictFunctions() {
     regMethod(VM::activeVM->dictProto, "values", {}, valuesFn);
 
     auto hasKeyFn = [](const std::vector<Value>& args) -> Value {
-        return hasFieldOfValue(helpers::nativeSelfStack.back(), args[0], "hasKey");
+        return hasFieldOfValue(helpers::nativeSelfStack.back(), args[0], "has");
     };
-    regMethod(VM::activeVM->dictProto, "hasKey", {"key"}, hasKeyFn);
-    regMethod(VM::activeVM->dictProto, "hasField", {"key"}, hasKeyFn);
     regMethod(VM::activeVM->dictProto, "has", {"key"}, hasKeyFn);
+
+    auto dictAddFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            if (!args[0].isString()) JC2_THROW(TypeError, "Namespace keys must be strings.");
+            ns->setField(args[0].asString(), args[1]);
+            return self;
+        }
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            if (!args[0].isString()) JC2_THROW(TypeError, "Instance keys must be strings.");
+            inst->setProperty(args[0].asString(), args[1]);
+            return self;
+        }
+        ObjDict* d = helpers::getDictMap(self, "add");
+        d->set(args[0], args[1]);
+        return self;
+    };
+    regMethod(VM::activeVM->dictProto, "add", {"key", "value"}, dictAddFn);
+
+    auto dictClearFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            static_cast<ObjNamespace*>(self.asObj())->clearFields();
+            return self;
+        }
+        if (self.isInstance()) {
+            self.asInstance()->clearProperties();
+            return self;
+        }
+        static_cast<ObjDict*>(helpers::getDictMap(self, "clear"))->clear();
+        return self;
+    };
+    regMethod(VM::activeVM->dictProto, "clear", {}, dictClearFn);
 
     // ★ get(key[, default])：取不到时回退到默认值（默认 none），不抛错。
     auto dictGetFn = [](const std::vector<Value>& args) -> Value {
@@ -4113,29 +4047,11 @@ void BuiltinRegistry::registerDictFunctions() {
             inst->removeProperty(args[0].asString());
             return self;
         }
-        ObjDict* d = helpers::getDictMap(self, "removeKey");
+        ObjDict* d = helpers::getDictMap(self, "remove");
         d->remove(args[0]);
         return self;
     };
-    regMethod(VM::activeVM->dictProto, "removeKey", {"key"}, removeKeyFn);
-
-    auto dictSizeFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        if (self.isObjType(ObjType::NAMESPACE)) {
-            auto ns = static_cast<ObjNamespace*>(self.asObj());
-            return Value::fromInt32(static_cast<int32_t>(ns->fields.size()));
-        }
-        if (self.isInstance()) {
-            auto inst = self.asInstance();
-            int32_t count = 0;
-            inst->ownForEach([&](const std::string&, const PropertyDescriptor& v) {
-            if (!v.is_local) count++;
-        });
-            return Value::fromInt32(count);
-        }
-        ObjDict* d = helpers::getDictMap(self, "dictSize"); return Value::fromInt32(static_cast<int32_t>(d->elements.size()));
-    };
-    regMethod(VM::activeVM->dictProto, "size", {}, dictSizeFn);
+    regMethod(VM::activeVM->dictProto, "remove", {"key"}, removeKeyFn);
 
     auto dictMergeFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4693,9 +4609,6 @@ void BuiltinRegistry::registerIntrospection() {
     auto fieldsFn = [](const std::vector<Value>&) -> Value {
         return fieldsOfValue(helpers::nativeSelfStack.back(), "fields");
     };
-    auto hasFieldFn = [](const std::vector<Value>& args) -> Value {
-        return hasFieldOfValue(helpers::nativeSelfStack.back(), args[0], "hasField");
-    };
     auto fieldInfoFn = [](const std::vector<Value>& args) -> Value {
         return fieldInfoOfValue(helpers::nativeSelfStack.back(), args[0], "fieldInfo");
     };
@@ -4730,25 +4643,138 @@ void BuiltinRegistry::registerIntrospection() {
     auto staticsFn = [](const std::vector<Value>&) -> Value {
         return staticsOfValue(helpers::nativeSelfStack.back(), "statics");
     };
+    auto containerLenFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
+            auto [found, result] = invokeDunder(inst, DUNDER_LEN, {});
+            if (found) return result;
+            return Value::fromInt32(static_cast<int32_t>(inst->ownSize()));
+        }
+        if (self.isObjType(ObjType::NAMESPACE))
+            return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(self.asObj())->fields.size()));
+        if (self.isClass()) {
+            Value names = staticsOfValue(self, "len");
+            return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(names.asObj())->vec.size()));
+        }
+        JC2_THROW(TypeError, "len() expects an Instance, Namespace, or Class.");
+    };
+    auto addMemberFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!args[0].isString()) JC2_THROW(TypeError, "add() key must be a string.");
+        const std::string& key = args[0].asString();
+        if (self.isInstance()) {
+            self.asInstance()->setProperty(key, args[1]);
+            return self;
+        }
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            static_cast<ObjNamespace*>(self.asObj())->setField(key, args[1]);
+            return self;
+        }
+        if (self.isClass()) {
+            auto cls = static_cast<ObjClass*>(self.asObj());
+            if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Class.");
+            auto it = cls->properties.find(key);
+            if (it != cls->properties.end()) {
+                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot modify const property '" + key + "'.");
+                if (!it->second.is_static || it->second.is_field_decl)
+                    JC2_THROW(RuntimeError, "Cannot redefine instance member '" + key + "' as static.");
+                it->second.val = args[1];
+            } else {
+                cls->properties[key] = { args[1], false, false, false, true };
+            }
+            return self;
+        }
+        JC2_THROW(TypeError, "add() expects an Instance, Namespace, or Class.");
+    };
+    auto removeMemberImpl = [](bool silent, const char* what) {
+        return [silent, what](const std::vector<Value>& args) -> Value {
+            Value self = helpers::nativeSelfStack.back();
+            if (!args[0].isString()) {
+                if (silent) return self;
+                JC2_THROW(TypeError, std::string(what) + "() key must be a string.");
+            }
+            const std::string& key = args[0].asString();
+            if (self.isInstance()) {
+                if (silent) self.asInstance()->discardProperty(key);
+                else self.asInstance()->removeProperty(key);
+                return self;
+            }
+            if (self.isObjType(ObjType::NAMESPACE)) {
+                auto ns = static_cast<ObjNamespace*>(self.asObj());
+                if (silent) ns->discardField(key);
+                else ns->removeField(key);
+                return self;
+            }
+            if (self.isClass()) {
+                auto cls = static_cast<ObjClass*>(self.asObj());
+                if (cls->is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Class.");
+                auto it = cls->properties.find(key);
+                if (it == cls->properties.end() || !it->second.is_static || it->second.is_field_decl) {
+                    if (silent) return self;
+                    JC2_THROW(RuntimeError, "Static member '" + key + "' not found.");
+                }
+                if (it->second.is_const) JC2_THROW(RuntimeError, "Cannot delete const property '" + key + "'.");
+                cls->properties.erase(it);
+                return self;
+            }
+            JC2_THROW(TypeError, std::string(what) + "() expects an Instance, Namespace, or Class.");
+        };
+    };
+    auto removeMemberFn = removeMemberImpl(false, "remove");
+    auto discardMemberFn = removeMemberImpl(true, "discard");
+    auto clearMembersFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isInstance()) { self.asInstance()->clearProperties(); return self; }
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            static_cast<ObjNamespace*>(self.asObj())->clearFields();
+            return self;
+        }
+        JC2_THROW(TypeError, "clear() is not available on a Class.");
+    };
+    auto hasMemberFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isClass()) {
+            if (!args[0].isString()) return Value(false);
+            auto cls = static_cast<ObjClass*>(self.asObj());
+            auto it = cls->properties.find(args[0].asString());
+            return Value(it != cls->properties.end() && it->second.is_static && !it->second.is_local);
+        }
+        return hasFieldOfValue(self, args[0], "has");
+    };
 
     regMethod(VM::activeVM->instanceProto, "fields", {}, fieldsFn);
-    regMethod(VM::activeVM->instanceProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->instanceProto, "has", {"key"}, hasMemberFn);
     regMethod(VM::activeVM->instanceProto, "fieldInfo", {"key"}, fieldInfoFn);
     regMethod(VM::activeVM->instanceProto, "classDef", {}, classDefFn);
     regMethod(VM::activeVM->instanceProto, "superclass", {}, superclassFn);
     regMethod(VM::activeVM->instanceProto, "name", {}, nameFn);
+    regMethod(VM::activeVM->instanceProto, "add", {"key", "value"}, addMemberFn);
+    regMethod(VM::activeVM->instanceProto, "remove", {"key"}, removeMemberFn);
+    regMethod(VM::activeVM->instanceProto, "discard", {"key"}, discardMemberFn);
+    regMethod(VM::activeVM->instanceProto, "clear", {}, clearMembersFn);
+    regMethod(VM::activeVM->instanceProto, "len", {}, containerLenFn);
 
     regMethod(VM::activeVM->namespaceProto, "fields", {}, fieldsFn);
-    regMethod(VM::activeVM->namespaceProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->namespaceProto, "has", {"key"}, hasMemberFn);
     regMethod(VM::activeVM->namespaceProto, "fieldInfo", {"key"}, fieldInfoFn);
     regMethod(VM::activeVM->namespaceProto, "name", {}, nameFn);
+    regMethod(VM::activeVM->namespaceProto, "add", {"key", "value"}, addMemberFn);
+    regMethod(VM::activeVM->namespaceProto, "remove", {"key"}, removeMemberFn);
+    regMethod(VM::activeVM->namespaceProto, "discard", {"key"}, discardMemberFn);
+    regMethod(VM::activeVM->namespaceProto, "clear", {}, clearMembersFn);
+    regMethod(VM::activeVM->namespaceProto, "len", {}, containerLenFn);
 
     regMethod(VM::activeVM->classProto, "fields", {}, fieldsFn);
     regMethod(VM::activeVM->classProto, "statics", {}, staticsFn);
     regMethod(VM::activeVM->classProto, "parent", {}, parentFn);
-    regMethod(VM::activeVM->classProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->classProto, "has", {"key"}, hasMemberFn);
     regMethod(VM::activeVM->classProto, "fieldInfo", {"key"}, fieldInfoFn);
     regMethod(VM::activeVM->classProto, "name", {}, nameFn);
+    regMethod(VM::activeVM->classProto, "add", {"key", "value"}, addMemberFn);
+    regMethod(VM::activeVM->classProto, "remove", {"key"}, removeMemberFn);
+    regMethod(VM::activeVM->classProto, "discard", {"key"}, discardMemberFn);
+    regMethod(VM::activeVM->classProto, "len", {}, containerLenFn);
 
     regMethod(VM::activeVM->dictProto, "fields", {}, fieldsFn);
     regMethod(VM::activeVM->dictProto, "fieldInfo", {"key"}, fieldInfoFn);
@@ -6844,6 +6870,14 @@ void BuiltinRegistry::registerSetFunctions() {
     };
     regMethod(VM::activeVM->setProto, "add", {"val"}, setAddFn);
 
+    auto setHasFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isObjType(ObjType::SET)) JC2_THROW(TypeError, "has() expects a Set.");
+        auto s = static_cast<ObjSet*>(self.asObj());
+        return Value(s->keys.find(args[0]) != s->keys.end());
+    };
+    regMethod(VM::activeVM->setProto, "has", {"val"}, setHasFn);
+
     auto setRemoveFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET))
@@ -6895,10 +6929,10 @@ void BuiltinRegistry::registerSetFunctions() {
     auto setIntersectFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
         if (!self.isObjType(ObjType::SET) || !args[0].isObjType(ObjType::SET))
-            JC2_THROW(TypeError, "intersect() expects two Sets.");
+            JC2_THROW(TypeError, "intersection() expects two Sets.");
         return self & args[0];
     };
-    regMethod(VM::activeVM->setProto, "intersect", {"b"}, setIntersectFn);
+    regMethod(VM::activeVM->setProto, "intersection", {"b"}, setIntersectFn);
 
     auto setDiffFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -7534,3 +7568,4 @@ void BuiltinRegistry::registerCAS() {
 }
 
 } // namespace jc
+

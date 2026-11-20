@@ -1853,7 +1853,7 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 \jc{x.fields()} & dict 键、实例属性、namespace/enum 名称或 class 的实例属性名 \\
 \jc{C.fields()} & class 的实例属性名列表，含继承属性 \\
 \jc{C.statics()} & class 的 public static 属性名列表，含继承属性 \\
-\jc{x.hasField(name)} & public 属性存在性 \\
+\jc{x.has(name)} & public 属性存在性 \\
 \jc{x.fieldInfo(name)} & 属性描述 dict：\jc{isMethod}、\jc{isStatic}、\jc{isConst}、\jc{isAbstract}；未知属性返回 \jc{none} \\
 \jc{isinstance(obj)} & 任意 class 实例 \\
 \jc{isinstance(obj, C)} & class 或父类/组合 trait 的实例 \\
@@ -1870,7 +1870,7 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 class A { x = 1; m() = self.x }
 A().fields()          // @["m", "x"]
 A.fields()            // @["m", "x"]
-A().hasField("m")     // true
+A().has("m")     // true
 A().classDef() == A   // true
 A.name()              // "A"
 A.parent()            // none
@@ -2679,3 +2679,4 @@ namespace 与模块 & 第 11 节 & 字段导出、include、导入解析、packa
 \end{center}
 
 \end{document}
+

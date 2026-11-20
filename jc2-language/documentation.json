@@ -210,18 +210,6 @@
     "symbolics": {
       "signature": "symbolics(names)"
     },
-    "clear": {
-      "signature": "clear(collection)"
-    },
-    "add": {
-      "signature": "add(collection, val) / dict.add(key, val)"
-    },
-    "remove": {
-      "signature": "remove(collection, val_or_key)"
-    },
-    "discard": {
-      "signature": "discard(collection, val_or_key)"
-    },
     "eval": {
       "signature": "eval(expr)"
     },
@@ -485,12 +473,6 @@
     },
     "isempty": {
       "signature": "isempty(x)"
-    },
-    "length": {
-      "signature": "length(x)"
-    },
-    "size": {
-      "signature": "size(x)"
     },
     "repr": {
       "signature": "repr(x)"
@@ -993,8 +975,17 @@
     "insert": {
       "signature": "v.insert(idx, val)"
     },
-    "removeAt": {
-      "signature": "v.removeAt(idx)"
+    "erase": {
+      "signature": "v.erase(idx)"
+    },
+    "remove": {
+      "signature": "v.remove(value)"
+    },
+    "has": {
+      "signature": "v.has(value)"
+    },
+    "clear": {
+      "signature": "v.clear()"
     },
     "slice": {
       "signature": "slice([start], [end], [step]) / v.slice(start, [end])"
@@ -1222,8 +1213,14 @@
     "values": {
       "signature": "d.values()"
     },
-    "hasKey": {
-      "signature": "d.hasKey(key)"
+    "has": {
+      "signature": "d.has(key)"
+    },
+    "add": {
+      "signature": "d.add(key, value)"
+    },
+    "clear": {
+      "signature": "d.clear()"
     },
     "get": {
       "signature": "d.get(key, default = none)"
@@ -1237,8 +1234,8 @@
     "entries": {
       "signature": "d.entries()"
     },
-    "removeKey": {
-      "signature": "d.removeKey(key)"
+    "remove": {
+      "signature": "d.remove(key)"
     },
     "mapKeys": {
       "signature": "d.mapKeys(fn)"
@@ -1248,15 +1245,6 @@
     },
     "len": {
       "signature": "d.len()"
-    },
-    "size": {
-      "signature": "d.size()"
-    },
-    "has": {
-      "signature": "d.has(key)"
-    },
-    "hasField": {
-      "signature": "d.hasField(key)"
     },
     "fields": {
       "signature": "d.fields()"
@@ -1284,8 +1272,8 @@
     "union": {
       "signature": "a.union(b)"
     },
-    "intersect": {
-      "signature": "a.intersect(b)"
+    "intersection": {
+      "signature": "a.intersection(b)"
     },
     "difference": {
       "signature": "a.difference(b)"
@@ -1355,6 +1343,9 @@
     },
     "remove": {
       "signature": "S.remove(val)"
+    },
+    "has": {
+      "signature": "S.has(val)"
     },
     "discard": {
       "signature": "S.discard(val)"
@@ -1762,3 +1753,4 @@
     }
   }
 }
+

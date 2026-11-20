@@ -431,3 +431,34 @@ test_predicate_placement() = {
     assert(caught, "global isnan must be removed")
 }
 test_predicate_placement()
+
+// ── container API unification ───────────────────────────────
+test_container_api_names() = {
+    L = @[1, 2, 3, 2]
+    L.erase(1)
+    assert(L == @[1, 3, 2], "list.erase(index)")
+    L.remove(2)
+    assert(L == @[1, 3], "list.remove(value)")
+    assert(L.has(3) && !L.has(9), "list.has(value)")
+    L.clear()
+    assert(L == @[], "list.clear")
+
+    D = %{}
+    D.add("a", 1)
+    assert(D.has("a") && !D.has("b"), "dict.has(key)")
+    D.remove("a")
+    D.clear()
+    assert(D.len() == 0, "dict.clear")
+
+    S = @{1, 2}
+    assert(S.has(2) && !S.has(3), "set.has(value)")
+    assert(S.intersection(@{2, 3}) == @{2}, "set.intersection")
+
+    caught = false
+    try { eval("add(@[1], 2)") } catch (e) { caught = true }
+    assert(caught, "global add removed")
+    caught = false
+    try { eval("length(@[1])") } catch (e) { caught = true }
+    assert(caught, "global length removed")
+}
+test_container_api_names()

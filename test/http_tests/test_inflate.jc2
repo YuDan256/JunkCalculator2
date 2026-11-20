@@ -77,7 +77,7 @@ _le32ToBe(h: string) -> string = return h.substr(6, 2) + h.substr(4, 2) + h.subs
 //   - 小输入（向量文件里留了 data_hex）直接比 hex；
 //   - 大输入比长度 + sha256（crypto 模块提供，不用自己实现哈希）。
 _positiveMatches(v: any, decodedHex: string) -> bool = {
-    if (v.hasKey("data_hex")) return decodedHex == v["data_hex"]
+    if (v.has("data_hex")) return decodedHex == v["data_hex"]
     if (decodedHex.len() != 2 * v["data_len"]) return false
     if (v["data_len"] == 0) return true
     return crypto.sha256(decodedHex) == v["data_sha256"]
@@ -150,15 +150,15 @@ test_positive_vectors_roundtrip() = {
         decoded = _decode(container, v["payload"])
         assert(_positiveMatches(v, decoded),
                "[" + v["name"] + "] decompressed bytes differ from the original")
-        if (seen.hasKey(container)) {
+        if (seen.has(container)) {
             seen[container] = seen[container] + 1
         } else {
             seen[container] = 1
         }
     }
-    assert(seen.hasKey("deflate") && seen["deflate"] > 0, "deflate vectors ran")
-    assert(seen.hasKey("zlib") && seen["zlib"] > 0, "zlib vectors ran")
-    assert(seen.hasKey("gzip") && seen["gzip"] > 0, "gzip vectors ran")
+    assert(seen.has("deflate") && seen["deflate"] > 0, "deflate vectors ran")
+    assert(seen.has("zlib") && seen["zlib"] > 0, "zlib vectors ran")
+    assert(seen.has("gzip") && seen["gzip"] > 0, "gzip vectors ran")
 }
 test_positive_vectors_roundtrip()
 
@@ -315,15 +315,15 @@ test_negative_vectors_raise_inflate_error() = {
     seen = %{}
     for (v in negatives) {
         _expectError(v["name"], v["container"], v["payload"])
-        if (seen.hasKey(v["container"])) {
+        if (seen.has(v["container"])) {
             seen[v["container"]] = seen[v["container"]] + 1
         } else {
             seen[v["container"]] = 1
         }
     }
-    assert(seen.hasKey("deflate") && seen["deflate"] > 0, "deflate negatives ran")
-    assert(seen.hasKey("zlib") && seen["zlib"] > 0, "zlib negatives ran")
-    assert(seen.hasKey("gzip") && seen["gzip"] > 0, "gzip negatives ran")
+    assert(seen.has("deflate") && seen["deflate"] > 0, "deflate negatives ran")
+    assert(seen.has("zlib") && seen["zlib"] > 0, "zlib negatives ran")
+    assert(seen.has("gzip") && seen["gzip"] > 0, "gzip negatives ran")
 }
 test_negative_vectors_raise_inflate_error()
 
@@ -618,3 +618,4 @@ test_large_gunzip_roundtrip() -> any = {
     return @[first, total, total / inner]
 }
 gunzip_timing = test_large_gunzip_roundtrip()
+

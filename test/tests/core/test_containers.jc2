@@ -413,7 +413,7 @@ assert(@[1, 2].sum() == 3, "integer list sum stays int")
 assert(type(@[1, 2].sum()) == int, "integer list sum type")
 assert(@[1.0, 2.0].sum() == 3.0, "float list sum stays float")
 
-f(a, ...b; c, ...d) = a + b.sum() + c + size(d)
+f(a, ...b; c, ...d) = a + b.sum() + c + d.len()
 assert(f(c=3, a=1) == 4, "empty rest sum does not promote to float")
 assert(type(f(c=3, a=1)) == int, "empty rest result is int")
 }
@@ -458,4 +458,5 @@ test_reshape_order_flag() = {
     assert(bad, "unknown order must fail")
 }
 test_reshape_order_flag()
+
 

@@ -149,9 +149,10 @@ syntax lambda(stream) = {
     parser = LambdaParser(input)
     generated = parser.parseAll()
 
-    clear(input)
+    input.clear()
     for (local t in generated) { input.push(t) }
     stream.cursor = 0
     return stream.parse()
 }
+
 

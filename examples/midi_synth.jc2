@@ -149,7 +149,7 @@ is_note_held = (midi) => {
 }
 
 play_note = (midi) => {
-    if (sustained.has(midi)) sustained.removeKey(midi)
+    if (sustained.has(midi)) sustained.remove(midi)
     note_on(midi)
 }
 
@@ -157,7 +157,7 @@ release_note = (midi) => {
     if (sustain_box[0]) {
         sustained[midi] = true
     } else {
-        if (sustained.has(midi)) sustained.removeKey(midi)
+        if (sustained.has(midi)) sustained.remove(midi)
         note_off(midi)
     }
 }
@@ -165,7 +165,7 @@ release_note = (midi) => {
 release_sustained = () => {
     for (local midi in sustained.keys()) {
         if (!is_note_held(midi)) note_off(midi)
-        sustained.removeKey(midi)
+        sustained.remove(midi)
     }
 }
 
@@ -425,3 +425,4 @@ while (win.isOpen()) {
 
 release_all()
 close_midi()
+

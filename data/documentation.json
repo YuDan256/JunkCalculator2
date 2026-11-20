@@ -2187,7 +2187,7 @@
       "    v.push(val)         Append to end",
       "    v.prepend(val)      Insert at beginning",
       "    v.insert(idx, val)  Insert at index",
-      "    v.removeAt(idx)     Remove at index (negative wraps)",
+      "    v.erase(idx)     Remove at index (negative wraps)",
       "",
       "  Slicing (Native Syntax — works on ALL types)",
       "  ──────────────────────",
@@ -2348,7 +2348,7 @@
       "    push(L, val)            Append value to the end",
       "    prepend(L, val)         Insert value at the beginning",
       "    insert(L, idx, val)     Insert value at a specific index",
-      "    removeAt(L, idx)        Remove element at specific index",
+      "    erase(L, idx)            Remove element at specific index",
       "",
       "  Element Access (Destructive Operations — list Only)",
       "  ──────────────────────",
@@ -2531,10 +2531,10 @@
       "    discard(d, \"key\")                   Removes the key (silent if absent)",
       "    clear(d)                            Erases all entries",
       "",
-      "    len(d) / d.size()                  Number of key-value entries",
+      "    len(d)                            Number of key-value entries",
       "    type(d)                             Returns <type 'dict'> (a type object)",
-      "    d.hasKey(\"key\") / d.has(\"key\")      Returns true if the key exists",
-      "    d.removeKey(\"key\")                  Removes the key (throws error if absent)",
+      "    d.has(\"key\") / d.has(\"key\")      Returns true if the key exists",
+      "    d.remove(\"key\")                  Removes the key (throws error if absent)",
       "    d.keys()                            Returns all keys as a list",
       "    d.values()                          Returns all values as a list",
       "    d.entries()                         Returns a list of @[key, value] pairs",
@@ -2638,7 +2638,7 @@
       "  Set Algebra (returns NEW set)",
       "  ──────────────────────",
       "    a.union(b)                      a ∪ b  — all elements in either set",
-      "    a.intersect(b)                  a ∩ b  — elements in both sets",
+      "    a.intersection(b)                  a ∩ b  — elements in both sets",
       "    a.difference(b)                 a \\ b  — elements in a but not in b",
       "    a.symDiff(b)                    a △ b  — elements in exactly one set",
       "    ",
@@ -2648,7 +2648,7 @@
       "    Operator Shortcuts (and Compound Assignments)",
       "  ──────────────────────",
       "    a | b                           Union (same as union)",
-      "    a & b                           Intersection (same as intersect)",
+      "    a & b                           Intersection (same as intersection)",
       "    a - b                           Difference (same as difference)",
       "    a ^^ b                          Symmetric Difference (same as symDiff)",
       "    a * b                           Cartesian product (same as cartesian)",
@@ -3046,8 +3046,17 @@
       "    p.fields()               Public property names (data and methods), sorted",
       "    C.fields()               A class's instance property names (data and methods; inherited), sorted",
       "    C.statics()              A class's static property names (data and methods; inherited), sorted",
-      "    p.hasField(\"x\")          true if the public property exists (private ones are invisible)",
+      "    p.has(\"x\")              true if the public property exists (private ones are invisible)",
       "    p.fieldInfo(\"x\")         Property metadata dict, or none",
+      "    p.add(\"x\", 1)            Add or update a public field",
+      "    p.remove(\"x\")            Remove a public field; missing is an error",
+      "    p.discard(\"x\")           Remove a public field; missing is silent",
+      "    p.clear()                Clear public own fields",
+      "    p.len()                  Number of public own fields",
+      "    C.add(\"S\", 1)            Add or update a static member",
+      "    C.remove(\"S\")            Remove a static member; missing is an error",
+      "    C.discard(\"S\")           Remove a static member; missing is silent",
+      "    C.len()                  Number of static members",
       "    C.name()                 The class's name (\"\" for an anonymous class)",
       "",
       "  Type Predicates (see: /help type)",
@@ -4477,34 +4486,6 @@
         "[x, y, z] = symbolics(\"x y z\")"
       ]
     },
-    "clear": {
-      "signature": "clear(collection)",
-      "desc": "Removes all elements from a Set, List, or Dict.",
-      "examples": [
-        "clear(myList)"
-      ]
-    },
-    "add": {
-      "signature": "add(collection, val) / dict.add(key, val)",
-      "desc": "Adds an element to a set or list, or a key-value pair to a dict.",
-      "examples": [
-        "add(mySet, 42)"
-      ]
-    },
-    "remove": {
-      "signature": "remove(collection, val_or_key)",
-      "desc": "Removes an element from a set, an index from a list, or a key from a dict. Throws an error if not found.",
-      "examples": [
-        "remove(myDict, \"age\")"
-      ]
-    },
-    "discard": {
-      "signature": "discard(collection, val_or_key)",
-      "desc": "Removes an element from a set or a key from a dict silently (no error if not found).",
-      "examples": [
-        "discard(mySet, 99)"
-      ]
-    },
     "eval": {
       "signature": "eval(expr)",
       "desc": "Parses and evaluates a string as JC2 code.",
@@ -5128,20 +5109,6 @@
         "isempty(\"\")"
       ]
     },
-    "length": {
-      "signature": "length(x)",
-      "desc": "Alias of len(); returns the length or element count of x.",
-      "examples": [
-        "length(@[1, 2, 3])"
-      ]
-    },
-    "size": {
-      "signature": "size(x)",
-      "desc": "Alias of len(); returns the length or element count of x.",
-      "examples": [
-        "size([1, 2; 3, 4])"
-      ]
-    },
     "repr": {
       "signature": "repr(x)",
       "desc": "Returns the string representation of x, the same text as str(x).",
@@ -5367,7 +5334,8 @@
         "• Inside a named namespace body, the namespace name is a const self-binding; `A = 1` inside `namespace A` is an error, not a new member. Use a different member name.",
         "• Inside a namespace block, bare `namespace` evaluates to that namespace object itself.",
         "• `local` members are private; `const` members are exported immutable.",
-        "• Reflection: `ns.fields()`, `ns.hasField(key)`, `ns.fieldInfo(key)`, `ns.name()`.",
+        "• Reflection: `ns.fields()`, `ns.has(key)`, `ns.fieldInfo(key)`, `ns.name()`.",
+        "• Container methods: `ns.add(key, value)`, `ns.remove(key)`, `ns.discard(key)`, `ns.clear()`, `ns.len()`.",
         "",
         "See also: namespaces"
       ],
@@ -6684,11 +6652,32 @@
         "@[1, 3].insert(1, 2)"
       ]
     },
-    "removeAt": {
-      "signature": "v.removeAt(idx)",
+    "erase": {
+      "signature": "v.erase(idx)",
       "desc": "Removes the element at the specified index.",
       "examples": [
-        "@[1, 2, 3].removeAt(1)"
+        "@[1, 2, 3].erase(1)"
+      ]
+    },
+    "remove": {
+      "signature": "v.remove(value)",
+      "desc": "Removes the first element equal to value. Throws when absent.",
+      "examples": [
+        "@[1, 2, 3].remove(2)"
+      ]
+    },
+    "has": {
+      "signature": "v.has(value)",
+      "desc": "Returns true if the list contains value.",
+      "examples": [
+        "@[1, 2, 3].has(2)"
+      ]
+    },
+    "clear": {
+      "signature": "v.clear()",
+      "desc": "Removes every element from the list.",
+      "examples": [
+        "L.clear()"
       ]
     },
     "slice": {
@@ -7166,15 +7155,11 @@
         "%{a: 1, b: 2}.values()"
       ]
     },
-    "hasKey": {
-      "signature": "d.hasKey(key)",
-      "desc": "Returns true if the dictionary contains the specified key, false otherwise.",
-      "aliases": [
-        "has",
-        "hasField"
-      ],
+    "add": {
+      "signature": "d.add(key, value)",
+      "desc": "Inserts or overwrites a key-value entry.",
       "examples": [
-        "%{a: 1}.hasKey(\"a\")"
+        "%{}.add(\"a\", 1)"
       ]
     },
     "get": {
@@ -7206,11 +7191,11 @@
         "%{a: 1}.entries()"
       ]
     },
-    "removeKey": {
-      "signature": "d.removeKey(key)",
+    "remove": {
+      "signature": "d.remove(key)",
       "desc": "Removes a key from a Dictionary. Throws an error if absent.",
       "examples": [
-        "d.removeKey(\"a\")"
+        "d.remove(\"a\")"
       ]
     },
     "mapKeys": {
@@ -7231,17 +7216,16 @@
       "signature": "d.len()",
       "desc": "Returns the number of entries."
     },
-    "size": {
-      "signature": "d.size()",
-      "desc": "Returns the number of entries."
-    },
     "has": {
       "signature": "d.has(key)",
       "desc": "Returns true when key is present."
     },
-    "hasField": {
-      "signature": "d.hasField(key)",
-      "desc": "Returns true when key is present."
+    "clear": {
+      "signature": "d.clear()",
+      "desc": "Removes every entry from the dictionary.",
+      "examples": [
+        "d.clear()"
+      ]
     },
     "fields": {
       "signature": "d.fields()",
@@ -7280,11 +7264,11 @@
         "@{1, 2}.union(@{2, 3})"
       ]
     },
-    "intersect": {
-      "signature": "a.intersect(b)",
+    "intersection": {
+      "signature": "a.intersection(b)",
       "desc": "Returns a new set containing elements present in both sets.",
       "examples": [
-        "@{1, 2}.intersect(@{2, 3})"
+        "@{1, 2}.intersection(@{2, 3})"
       ]
     },
     "difference": {
@@ -7414,6 +7398,13 @@
     "remove": {
       "signature": "S.remove(val)",
       "desc": "Removes val, throwing when it is absent."
+    },
+    "has": {
+      "signature": "S.has(val)",
+      "desc": "Returns true when val is a member.",
+      "examples": [
+        "@{1, 2}.has(2)"
+      ]
     },
     "discard": {
       "signature": "S.discard(val)",
@@ -8568,3 +8559,4 @@
     }
   ]
 }
+

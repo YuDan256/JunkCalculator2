@@ -515,7 +515,7 @@ test_relation_algebra() = {
     assert(u.R.len() == 3 && u.hasPair(1, 2) && u.hasPair(3, 1), "union pairs")
     assert(u.S.len() == 3, "union of the underlying sets")
 
-    it = A.intersect(B)
+    it = A.intersection(B)
     assert(it.R.len() == 1 && it.hasPair(2, 3) && !it.hasPair(1, 2), "intersection pairs")
 
     df = A.difference(B)
@@ -594,3 +594,4 @@ test_prop_bool_eval() = {
     assert(t1.satisfiableDpll().sat == true, "DPLL still works")
 }
 test_prop_bool_eval()
+

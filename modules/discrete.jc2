@@ -707,7 +707,7 @@ class Relation {
         return r
     }
 
-    intersect(other: Relation) -> Relation = {
+    intersection(other: Relation) -> Relation = {
         r = Relation(self._unionS(other))
         for (p in self.R) { if (p in other.R) { r.R.add(p) } }
         return r
@@ -1325,7 +1325,7 @@ try {
     isFunction / isInjective / isSurjective / isBijective   Codomain is the relation's own S
     hasseDiagram()                                          Covering pairs of a partial
                                                             order, as {nodes, covers}
-    unionOf / intersect / difference / complement / restrict
+    unionOf / intersection / difference / complement / restrict
                                                             complement is taken inside S x S;
                                                             results carry the union of both S
 
@@ -1404,3 +1404,4 @@ try {
     })
 
 }
+

@@ -329,27 +329,27 @@ test_instance_introspection_globals() = {
     assert("x" in fs && "y" in fs, "public fields are listed")
     assert(!("s" in fs), "private field must not be listed")
 
-    assert(p.hasField("x"), "public field is visible")
-    assert(!p.hasField("s"), "private field is invisible")
-    assert(!p.hasField("nope"), "missing field is false")
-    assert(!p.hasField(42), "non-string key is false")
+    assert(p.has("x"), "public field is visible")
+    assert(!p.has("s"), "private field is invisible")
+    assert(!p.has("nope"), "missing field is false")
+    assert(!p.has(42), "non-string key is false")
 
     d = %{"a": 1, "b": 2}
     assert(d.fields() == d.keys(), "getFields agrees with d.keys()")
-    assert(d.hasField("a") == d.hasField("a"), "hasField agrees with d.hasField()")
+    assert(d.has("a") == d.has("a"), "hasField agrees with d.has()")
 
     // Dict 的键可以是任意可哈希值（非字符串键按原值查找，不是"拒绝"）
     d2 = %{42: "x", true: "y"}
-    assert(d2.hasField(42), "integer key is looked up as-is")
-    assert(d2.hasField(true), "boolean key is looked up as-is")
-    assert(!d2.hasField(43), "missing integer key is false")
+    assert(d2.has(42), "integer key is looked up as-is")
+    assert(d2.has(true), "boolean key is looked up as-is")
+    assert(!d2.has(43), "missing integer key is false")
     assert(d2.fields() == d2.keys(), "getFields returns dict keys of any type")
 
     import sys
     assert("buildIndex" in sys.fields(), "namespace fields are listed")
 
     assert(throws(() => (42).fields()), "getFields rejects non-containers")
-    assert(throws(() => (42).hasField("x")), "hasField rejects non-containers")
+    assert(throws(() => (42).has("x")), "hasField rejects non-containers")
 }
 test_instance_introspection_globals()
 
@@ -359,13 +359,13 @@ test_slot_const_member_is_protected() = {
         init() = %{ }
         const m() = return 1
     }
-    assert(throws(() => clear(WithConstMethod())), "clear must refuse to delete a const member")
+    assert(throws(() => WithConstMethod().clear()), "clear must refuse to delete a const member")
 
     class NoConst {
         init() = %{ }
         m() = return 1
     }
-    assert(!throws(() => clear(NoConst())), "clear works when no const member exists")
+    assert(!throws(() => NoConst().clear()), "clear works when no const member exists")
 }
 test_slot_const_member_is_protected()
 }
@@ -469,7 +469,7 @@ test_private_is_not_reflected() = {
     assert("shown" in f, "public property must be listed")
     assert(!("hidden" in f), "private property must not be listed")
     assert(!("hiddenCall" in f), "private property must not be listed")
-    assert(!r.hasField("hidden"), "private property is invisible to hasField")
+    assert(!r.has("hidden"), "private property is invisible to hasField")
     assert(throws(() => r.hidden), "private property is not readable from outside")
     assert(throws(() => r.hiddenCall()), "private property is not callable from outside")
 }
@@ -495,4 +495,6 @@ test_private_static_isolation()
 test_private_is_not_reflected()
 test_private_const_is_protected()
 }
+
+
 

@@ -98,7 +98,7 @@
 
 ## 13. 帮助文档写作规则 (Help Documentation Rules)
 *   **两类载体 (Two Carriers)**：
-    *   `data/documentation.json` —— 结构化数据，由 `HelpRouter` 从 exe 旁 `data/` 读取，`sys.help` 与 LSP 共用。顶层分区（括号内为实测条目数）：`topics`(33，值为**行数组**的散文)、`global_functions`(277)、`keywords`(36)、`matrix_methods`(6)、`list_methods`(28)、`string_methods`(14)、`dict_methods`(6)、`set_methods`(9)、`sys_methods`(26)、`math_methods`(26)、`cas_methods`(24)、`random_methods`(7)。结构化条目的字段固定为 `signature`（签名串）、`desc`（说明：字符串或字符串数组）、`examples`（代码示例数组，**不写运行结果**）、`aliases`（可选：别名数组，例如 `d.keys()` 的 `aliases` 为 `["getFields"]`）。
+    *   `data/documentation.json` —— 结构化数据，由 `HelpRouter` 从 exe 旁 `data/` 读取，`sys.help` 与 LSP 共用。顶层分区（括号内为实测条目数）：`topics`(33，值为**行数组**的散文)、`global_functions`(277)、`keywords`(36)、`matrix_methods`(6)、`list_methods`(28)、`string_methods`(14)、`dict_methods`(6)、`set_methods`(9)、`sys_methods`(26)、`math_methods`(26)、`cas_methods`(24)、`random_methods`(7)。结构化条目的字段固定为 `signature`（签名串）、`desc`（说明：字符串或字符串数组）、`examples`（代码示例数组，**不写运行结果**）、`aliases`（可选：别名数组，例如 `d.keys()` 的 `aliases` 为 `["fields"]`）。
     *   `modules/*.jc2` —— 模块自带帮助：`sys.register_help("<name>", r"DOC( … )DOC")`（散文，以 `═══ 标题 ═══` 起头）与 `register_function_help("<符号>", "<签名>", "<说明>", "<示例>")`。
 *   **语言 (Language)**：说明性文字一律**英文**；**示例内容不受此限**，可以有意使用中文（CJK 标识符、按码点计数与下标等示范），详见 §12。
 *   **版式 (Layout)**：节标题用 `═══ Title ═══`；节内分隔用 `──────────`；求值结果用 `→`（示例代码里不写结果，结果只出现在 `topics` 散文里）；交叉引用写 `see: /help <topic>`；示例块缩进 4 空格并与上文说明对齐。

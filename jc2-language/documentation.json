@@ -258,27 +258,6 @@
     "isinstance": {
       "signature": "isinstance(obj, [cls])"
     },
-    "getClass": {
-      "signature": "getClass(obj)"
-    },
-    "getParent": {
-      "signature": "getParent(cls)"
-    },
-    "getName": {
-      "signature": "getName(obj)"
-    },
-    "hasField": {
-      "signature": "hasField(obj, key)"
-    },
-    "getFieldInfo": {
-      "signature": "getFieldInfo(obj, name)"
-    },
-    "getFields": {
-      "signature": "getFields(obj)"
-    },
-    "getStatics": {
-      "signature": "getStatics(cls)"
-    },
     "freeze": {
       "signature": "freeze(obj)"
     },
@@ -1279,8 +1258,8 @@
     "hasField": {
       "signature": "d.hasField(key)"
     },
-    "getFields": {
-      "signature": "d.getFields()"
+    "fields": {
+      "signature": "d.fields()"
     },
     "map": {
       "signature": "d.map(f)"

@@ -214,7 +214,19 @@ static Value fieldInfoOfValue(const Value& self, const Value& key, const char* w
             const Value* v = inst->ownGet(name);
             return build(v ? *v : Value::none(), pf.is_static, pf.is_const, pf.is_abstract);
         }
-        JC2_THROW(TypeError, std::string(what) + "() expects an Instance or Class.");
+        if (self.isObjType(ObjType::NAMESPACE)) {
+            auto ns = static_cast<ObjNamespace*>(self.asObj());
+            auto it = ns->fields.find(name);
+            if (it == ns->fields.end()) return Value::none();
+            return build(*(it->second.upval->location), false, false, false);
+        }
+        if (self.isObjType(ObjType::DICT)) {
+            ObjDict* d = helpers::getDictMap(self, what);
+            auto it = d->keyMap.find(key);
+            if (it == d->keyMap.end()) return Value::none();
+            return build(d->elements[it->second].second, false, false, false);
+        }
+        JC2_THROW(TypeError, std::string(what) + "() expects a Dict, Instance, Namespace, or Class.");
 }
 static Value hasFieldOfValue(const Value& self, const Value& key, const char* what) {
         if (self.isObjType(ObjType::NAMESPACE)) {
@@ -3994,7 +4006,6 @@ void BuiltinRegistry::registerDictFunctions() {
         return fieldsOfValue(helpers::nativeSelfStack.back(), "keys");
     };
     regMethod(VM::activeVM->dictProto, "keys", {}, keysFn);
-    regMethod(VM::activeVM->dictProto, "getFields", {}, keysFn);
 
     auto valuesFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -4678,33 +4689,69 @@ void BuiltinRegistry::registerIntrospection() {
     reg("ishashable", { 1 }, [](const std::vector<Value>& args) -> Value {
         try { return Value(args[0].isHashable()); } catch (...) { return Value(false); }
     }, {"obj"});
-    // ★ 实例自省：实例没有原型（内建原型只覆盖容器），实例自检走全局，与 type/isinstance/
-    //   getClass/getParent 同族；与 Dict 方法 keys/getFields、hasKey/hasField 共用同一实现。
-    reg("getFields", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return fieldsOfValue(args[0], "getFields");
-    }, {"obj"});
-    reg("getStatics", { 1 }, [](const std::vector<Value>& args) -> Value {
-        return staticsOfValue(args[0], "getStatics");
-    }, {"cls"});
-    reg("hasField", { 2 }, [](const std::vector<Value>& args) -> Value {
-        return hasFieldOfValue(args[0], args[1], "hasField");
-    }, {"obj", "key"});
-    reg("getFieldInfo", { 2 }, [](const std::vector<Value>& args) -> Value {
-        return fieldInfoOfValue(args[0], args[1], "getFieldInfo");
-    }, {"obj", "name"});
-    reg("getClass", { 1 }, [](const std::vector<Value>& args) -> Value { if (!args[0].isInstance()) JC2_THROW(TypeError, "getClass() expects an instance."); return Value(args[0].asInstance()->classDef); }, {"obj"});
-    reg("getParent", { 1 }, [](const std::vector<Value>& args) -> Value { ObjClass* cls = nullptr; if (args[0].isClass()) cls=static_cast<ObjClass*>(args[0].asObj()); else if (args[0].isInstance()) cls=args[0].asInstance()->classDef; else JC2_THROW(TypeError, "getParent() expects a class or instance."); if (!cls->parent) return Value::none(); return Value(cls->parent); }, {"cls"});
-    // ★ getName：取类 / 实例所属类 / 命名空间的原始名字。匿名类为空串。
-    reg("getName", { 1 }, [](const std::vector<Value>& args) -> Value {
-        if (args[0].isClass()) return Value(static_cast<ObjClass*>(args[0].asObj())->name);
-        if (args[0].isInstance()) {
-            auto inst = args[0].asInstance();
+    // Reflection lives on the receiver prototypes, not in the global namespace.
+    auto fieldsFn = [](const std::vector<Value>&) -> Value {
+        return fieldsOfValue(helpers::nativeSelfStack.back(), "fields");
+    };
+    auto hasFieldFn = [](const std::vector<Value>& args) -> Value {
+        return hasFieldOfValue(helpers::nativeSelfStack.back(), args[0], "hasField");
+    };
+    auto fieldInfoFn = [](const std::vector<Value>& args) -> Value {
+        return fieldInfoOfValue(helpers::nativeSelfStack.back(), args[0], "fieldInfo");
+    };
+    auto nameFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (self.isClass()) return Value(static_cast<ObjClass*>(self.asObj())->name);
+        if (self.isInstance()) {
+            auto inst = self.asInstance();
             return inst->classDef ? Value(inst->classDef->name) : Value::none();
         }
-        if (args[0].isObjType(ObjType::NAMESPACE))
-            return Value(static_cast<ObjNamespace*>(args[0].asObj())->name);
-        JC2_THROW(TypeError, "getName() expects a Class, Instance, or Namespace.");
-    }, {"obj"});
+        if (self.isObjType(ObjType::NAMESPACE))
+            return Value(static_cast<ObjNamespace*>(self.asObj())->name);
+        return Value::none();
+    };
+    auto classDefFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isInstance()) JC2_THROW(TypeError, "classDef() expects an instance.");
+        return Value(self.asInstance()->classDef);
+    };
+    auto superclassFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isInstance()) JC2_THROW(TypeError, "superclass() expects an instance.");
+        ObjClass* cls = self.asInstance()->classDef;
+        return cls && cls->parent ? Value(cls->parent) : Value::none();
+    };
+    auto parentFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        if (!self.isClass()) JC2_THROW(TypeError, "parent() expects a class.");
+        ObjClass* cls = static_cast<ObjClass*>(self.asObj());
+        return cls->parent ? Value(cls->parent) : Value::none();
+    };
+    auto staticsFn = [](const std::vector<Value>&) -> Value {
+        return staticsOfValue(helpers::nativeSelfStack.back(), "statics");
+    };
+
+    regMethod(VM::activeVM->instanceProto, "fields", {}, fieldsFn);
+    regMethod(VM::activeVM->instanceProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->instanceProto, "fieldInfo", {"key"}, fieldInfoFn);
+    regMethod(VM::activeVM->instanceProto, "classDef", {}, classDefFn);
+    regMethod(VM::activeVM->instanceProto, "superclass", {}, superclassFn);
+    regMethod(VM::activeVM->instanceProto, "name", {}, nameFn);
+
+    regMethod(VM::activeVM->namespaceProto, "fields", {}, fieldsFn);
+    regMethod(VM::activeVM->namespaceProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->namespaceProto, "fieldInfo", {"key"}, fieldInfoFn);
+    regMethod(VM::activeVM->namespaceProto, "name", {}, nameFn);
+
+    regMethod(VM::activeVM->classProto, "fields", {}, fieldsFn);
+    regMethod(VM::activeVM->classProto, "statics", {}, staticsFn);
+    regMethod(VM::activeVM->classProto, "parent", {}, parentFn);
+    regMethod(VM::activeVM->classProto, "hasField", {"key"}, hasFieldFn);
+    regMethod(VM::activeVM->classProto, "fieldInfo", {"key"}, fieldInfoFn);
+    regMethod(VM::activeVM->classProto, "name", {}, nameFn);
+
+    regMethod(VM::activeVM->dictProto, "fields", {}, fieldsFn);
+    regMethod(VM::activeVM->dictProto, "fieldInfo", {"key"}, fieldInfoFn);
 }
 
 // =================================================================

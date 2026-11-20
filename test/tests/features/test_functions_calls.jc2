@@ -1058,10 +1058,10 @@ namespace A {
     local class Hidden {}
 }
 
-assert("C" in getFields(A), "class binding")
-assert("N" in getFields(A), "namespace binding")
-assert("E" in getFields(A), "enum binding")
-assert(!("Hidden" in getFields(A)), "local class is not a field")
+assert("C" in A.fields(), "class binding")
+assert("N" in A.fields(), "namespace binding")
+assert("E" in A.fields(), "enum binding")
+assert(!("Hidden" in A.fields()), "local class is not a field")
 }
 
 // ── features/test_hoist.jc2 ─────────────────────────────────────────────
@@ -1236,4 +1236,5 @@ defer_g() = { defer_events.push("G"); return 1 }
 defer_f() = { defer defer_events.push("D"); return defer_g() }
 assert(defer_f() == 1, "defer + tail call result")
 assert(defer_events == @["G", "D"], "return value is evaluated before defer")
+
 

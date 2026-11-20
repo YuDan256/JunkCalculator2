@@ -31,7 +31,7 @@ class C extends Base {
 c = C()
 
 // ── 实例属性：含继承、含方法、含 const；排除静态与私有；字母序 ──
-f = getFields(C)
+f = C.fields()
 assert(f == @["a", "baseMethod", "k", "m", "shared", "z"],
        "class instance properties: inherited included, statics and private excluded")
 assert(f == f.sorted(), "names come back sorted")
@@ -41,48 +41,55 @@ assert(!("p" in f), "private property is invisible")
 assert(!("pm" in f), "private method is invisible")
 
 // ── 静态属性：含继承、字母序 ──
-assert(getStatics(C) == @["A", "S", "T"], "statics: inherited included, sorted")
-assert(getStatics(Base) == @["S"], "base class has only its own static")
+assert(C.statics() == @["A", "S", "T"], "statics: inherited included, sorted")
+assert(Base.statics() == @["S"], "base class has only its own static")
 
 // ── 类与实例给出同一组实例属性 ──
-assert(getFields(c) == f, "an instance reports the same instance properties")
-assert(getFields(Base) == @["baseMethod", "shared"], "base class view")
+assert(c.fields() == f, "an instance reports the same instance properties")
+assert(Base.fields() == @["baseMethod", "shared"], "base class view")
 
 // ── hasField 覆盖两个域，但看不到私有 ──
-assert(hasField(C, "m"), "hasField sees methods")
-assert(hasField(C, "T"), "hasField sees statics")
-assert(!hasField(C, "p"), "hasField hides private properties")
-assert(!hasField(C, "nope"), "unknown name is false")
+assert(C.hasField("m"), "hasField sees methods")
+assert(C.hasField("T"), "hasField sees statics")
+assert(!C.hasField("p"), "hasField hides private properties")
+assert(!C.hasField("nope"), "unknown name is false")
 
 // ── 参数校验 ──
-assert(throws(() => getStatics(c)), "getStatics requires a class")
-assert(throws(() => getStatics(42)), "getStatics rejects other values")
-assert(throws(() => getFields(42)), "getFields rejects non-containers")
+assert(throws(() => c.statics()), "getStatics requires a class")
+assert(throws(() => (42).statics()), "getStatics rejects other values")
+assert(throws(() => (42).fields()), "getFields rejects non-containers")
 
 // ── 属性元信息 ──
-info = getFieldInfo(C, "a")
+info = C.fieldInfo("a")
 assert(info["isMethod"] == false && info["isStatic"] == false && info["isConst"] == false,
        "data property flags")
-assert(getFieldInfo(C, "m")["isMethod"] == true, "methods are marked")
-assert(getFieldInfo(C, "T")["isStatic"] == true, "statics are marked")
-assert(getFieldInfo(C, "k")["isConst"] == true, "const properties are marked")
-assert(getFieldInfo(C, "baseMethod")["isMethod"] == true, "inherited properties are described")
-assert(getFieldInfo(C, "p") == none, "private properties return none")
-assert(getFieldInfo(C, "nope") == none, "unknown names return none")
-assert(getFieldInfo(c, "a")["isMethod"] == false, "instances are accepted")
-assert(getFieldInfo(c, "m")["isMethod"] == true, "instance methods are marked")
-assert(throws(() => getFieldInfo(42, "x")), "getFieldInfo rejects other values")
+assert(C.fieldInfo("m")["isMethod"] == true, "methods are marked")
+assert(C.fieldInfo("T")["isStatic"] == true, "statics are marked")
+assert(C.fieldInfo("k")["isConst"] == true, "const properties are marked")
+assert(C.fieldInfo("baseMethod")["isMethod"] == true, "inherited properties are described")
+assert(C.fieldInfo("p") == none, "private properties return none")
+assert(C.fieldInfo("nope") == none, "unknown names return none")
+assert(c.fieldInfo("a")["isMethod"] == false, "instances are accepted")
+assert(c.fieldInfo("m")["isMethod"] == true, "instance methods are marked")
+assert(throws(() => (42).fieldInfo("x")), "getFieldInfo rejects other values")
 // ── 名字 ──
-assert(getName(C) == "C", "class name")
-assert(getName(C()) == "C", "instance reports its class's name")
-assert(getName(Base) == "Base", "base class name")
+assert(C.name() == "C", "class name")
+assert(C().name() == "C", "instance reports its class's name")
+assert(Base.name() == "Base", "base class name")
 Anon = class { init() = { } }
-assert(getName(Anon) == "", "anonymous class has an empty name")
+assert(Anon.name() == "", "anonymous class has an empty name")
 NS = namespace "Geo" { origin = "0,0" }
-assert(getName(NS) == "Geo", "namespace name")
+assert(NS.name() == "Geo", "namespace name")
+assert(NS.fields() == @["origin"], "namespace fields")
+assert(NS.hasField("origin"), "namespace hasField")
+assert(NS.fieldInfo("origin")["isMethod"] == false, "namespace fieldInfo")
+assert(c.classDef() == C, "instance classDef")
+assert(c.superclass() == Base, "instance superclass")
+assert(C.parent() == Base, "class parent")
+assert(Base.parent() == none, "root class parent")
 import math
-assert(getName(math) == "math", "module namespace name")
-assert(throws(() => getName(42)), "getName rejects other values")
+assert(math.name() == "math", "module namespace name")
+assert(throws(() => (42).name()), "getName rejects other values")
 }
 
 // ── core/test_type_reflection.jc2 ─────────────────────────────────────────────
@@ -213,11 +220,11 @@ class Reflected {
 
 test_getfields_lists_only_accessible() = {
     r = Reflected()
-    f = getFields(r)
+    f = r.fields()
     assert("shown" in f, "public field must be listed")
     assert(!("hidden" in f), "private method must not be listed")
     for (k in f) {
-        assert(hasField(r, k), "every listed field must be accessible: " + k)
+        assert(r.hasField(k), "every listed field must be accessible: " + k)
         assert(!k.startsWith("<"), "internal name must not be listed: " + k)
     }
 }
@@ -289,3 +296,5 @@ test_value_copy_and_index() = {
 }
 test_value_copy_and_index()
 }
+
+

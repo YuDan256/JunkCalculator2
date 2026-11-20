@@ -3041,13 +3041,14 @@
       "    type(p)                  → <type 'Point'> (class type object)",
       "    isinstance(p)            true if p is any class instance",
       "    isinstance(p, Point)     true if p is (or inherits from) Point",
-      "    getClass(p)              The class definition object",
-      "    getParent(Dog)           Parent class or none",
-      "    getFields(p)             Public property names (data and methods), sorted",
-      "    getFields(C)             A class's instance property names (data and methods; inherited), sorted",
-      "    getStatics(C)            A class's static property names (data and methods; inherited), sorted",
-      "    hasField(p, \"x\")         true if the public property exists (private ones are invisible)",
-      "    getName(C)               The class's name (\"\" for an anonymous class)",
+      "    p.classDef()             The class definition object",
+      "    p.superclass()           Parent class or none",
+      "    p.fields()               Public property names (data and methods), sorted",
+      "    C.fields()               A class's instance property names (data and methods; inherited), sorted",
+      "    C.statics()              A class's static property names (data and methods; inherited), sorted",
+      "    p.hasField(\"x\")          true if the public property exists (private ones are invisible)",
+      "    p.fieldInfo(\"x\")         Property metadata dict, or none",
+      "    C.name()                 The class's name (\"\" for an anonymous class)",
       "",
       "  Type Predicates (see: /help type)",
       "  ──────────────────────",
@@ -4590,63 +4591,6 @@
         "isinstance(p, Point)"
       ]
     },
-    "getClass": {
-      "signature": "getClass(obj)",
-      "desc": "Returns the class definition of an instance.",
-      "examples": [
-        "getClass(p)"
-      ]
-    },
-    "getParent": {
-      "signature": "getParent(cls)",
-      "desc": "Returns the parent class of a class definition.",
-      "examples": [
-        "getParent(Dog)"
-      ]
-    },
-    "getName": {
-      "signature": "getName(obj)",
-      "desc": "The name of a class, of an instance's class, or of a namespace. Returns \"\" for an anonymous class.",
-      "examples": [
-        "getName(MyClass)",
-        "getName(instance)"
-      ]
-    },
-    "hasField": {
-      "signature": "hasField(obj, key)",
-      "desc": "True if a Dict has this key (any hashable value), or an Instance, Namespace or Class has this public property name. Private properties are invisible.",
-      "examples": [
-        "hasField(%{\"a\": 1}, \"a\")",
-        "hasField(%{42: \"x\"}, 42)",
-        "hasField(instance, \"prop\")",
-        "hasField(MyClass, \"method\")"
-      ]
-    },
-    "getFieldInfo": {
-      "signature": "getFieldInfo(obj, name)",
-      "desc": "Describes a public property: returns a Dict with the keys isMethod, isStatic, isConst and isAbstract. Accepts an instance or a class; returns none when the name is unknown or private.",
-      "examples": [
-        "getFieldInfo(instance, \"prop\")",
-        "getFieldInfo(MyClass, \"method\")"
-      ]
-    },
-    "getFields": {
-      "signature": "getFields(obj)",
-      "desc": "The property names of an object, sorted alphabetically: a Dict's keys, an Instance's public properties (methods included), a Class's public instance properties (inherited ones included, statics excluded), or a Namespace's names.",
-      "examples": [
-        "getFields(%{\"a\": 1})",
-        "getFields(%{42: \"x\"})",
-        "getFields(instance)",
-        "getFields(MyClass)"
-      ]
-    },
-    "getStatics": {
-      "signature": "getStatics(cls)",
-      "desc": "The static property names of a class, sorted alphabetically. Inherited statics are included; private statics are invisible. Throws if the argument is not a class.",
-      "examples": [
-        "getStatics(MyClass)"
-      ]
-    },
     "freeze": {
       "signature": "freeze(obj)",
       "desc": "Locks a container permanently, preventing modification.",
@@ -5423,6 +5367,7 @@
         "• Inside a named namespace body, the namespace name is a const self-binding; `A = 1` inside `namespace A` is an error, not a new member. Use a different member name.",
         "• Inside a namespace block, bare `namespace` evaluates to that namespace object itself.",
         "• `local` members are private; `const` members are exported immutable.",
+        "• Reflection: `ns.fields()`, `ns.hasField(key)`, `ns.fieldInfo(key)`, `ns.name()`.",
         "",
         "See also: namespaces"
       ],
@@ -7210,9 +7155,6 @@
     "keys": {
       "signature": "d.keys()",
       "desc": "Returns a list of all keys in a dictionary.",
-      "aliases": [
-        "getFields"
-      ],
       "examples": [
         "%{a: 1, b: 2}.keys()"
       ]
@@ -7301,8 +7243,8 @@
       "signature": "d.hasField(key)",
       "desc": "Returns true when key is present."
     },
-    "getFields": {
-      "signature": "d.getFields()",
+    "fields": {
+      "signature": "d.fields()",
       "desc": "Returns the dict keys, sorted alphabetically."
     },
     "map": {

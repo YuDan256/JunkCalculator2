@@ -325,31 +325,31 @@ test_instance_introspection_globals() = {
     }
     p = P()
 
-    fs = getFields(p)
+    fs = p.fields()
     assert("x" in fs && "y" in fs, "public fields are listed")
     assert(!("s" in fs), "private field must not be listed")
 
-    assert(hasField(p, "x"), "public field is visible")
-    assert(!hasField(p, "s"), "private field is invisible")
-    assert(!hasField(p, "nope"), "missing field is false")
-    assert(!hasField(p, 42), "non-string key is false")
+    assert(p.hasField("x"), "public field is visible")
+    assert(!p.hasField("s"), "private field is invisible")
+    assert(!p.hasField("nope"), "missing field is false")
+    assert(!p.hasField(42), "non-string key is false")
 
     d = %{"a": 1, "b": 2}
-    assert(getFields(d) == d.keys(), "getFields agrees with d.keys()")
-    assert(hasField(d, "a") == d.hasField("a"), "hasField agrees with d.hasField()")
+    assert(d.fields() == d.keys(), "getFields agrees with d.keys()")
+    assert(d.hasField("a") == d.hasField("a"), "hasField agrees with d.hasField()")
 
     // Dict 的键可以是任意可哈希值（非字符串键按原值查找，不是"拒绝"）
     d2 = %{42: "x", true: "y"}
-    assert(hasField(d2, 42), "integer key is looked up as-is")
-    assert(hasField(d2, true), "boolean key is looked up as-is")
-    assert(!hasField(d2, 43), "missing integer key is false")
-    assert(getFields(d2) == d2.keys(), "getFields returns dict keys of any type")
+    assert(d2.hasField(42), "integer key is looked up as-is")
+    assert(d2.hasField(true), "boolean key is looked up as-is")
+    assert(!d2.hasField(43), "missing integer key is false")
+    assert(d2.fields() == d2.keys(), "getFields returns dict keys of any type")
 
     import sys
-    assert("buildIndex" in getFields(sys), "namespace fields are listed")
+    assert("buildIndex" in sys.fields(), "namespace fields are listed")
 
-    assert(throws(() => getFields(42)), "getFields rejects non-containers")
-    assert(throws(() => hasField(42, "x")), "hasField rejects non-containers")
+    assert(throws(() => (42).fields()), "getFields rejects non-containers")
+    assert(throws(() => (42).hasField("x")), "hasField rejects non-containers")
 }
 test_instance_introspection_globals()
 
@@ -465,11 +465,11 @@ class Reflected {
 
 test_private_is_not_reflected() = {
     r = Reflected()
-    f = getFields(r)
+    f = r.fields()
     assert("shown" in f, "public property must be listed")
     assert(!("hidden" in f), "private property must not be listed")
     assert(!("hiddenCall" in f), "private property must not be listed")
-    assert(!hasField(r, "hidden"), "private property is invisible to hasField")
+    assert(!r.hasField("hidden"), "private property is invisible to hasField")
     assert(throws(() => r.hidden), "private property is not readable from outside")
     assert(throws(() => r.hiddenCall()), "private property is not callable from outside")
 }
@@ -495,3 +495,4 @@ test_private_static_isolation()
 test_private_is_not_reflected()
 test_private_const_is_protected()
 }
+

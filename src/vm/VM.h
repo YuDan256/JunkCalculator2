@@ -469,6 +469,9 @@ public:
     ObjClass* setProto = nullptr;
     ObjClass* stringProto = nullptr;
     ObjClass* matrixProto = nullptr;
+    ObjClass* instanceProto = nullptr;
+    ObjClass* namespaceProto = nullptr;
+    ObjClass* classProto = nullptr;
     ObjClass* exceptionClass = nullptr;
 
     static inline VM* activeVM = nullptr;

@@ -1838,23 +1838,23 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 
 \subsection{反射}
 
-反射函数读取 class 与实例结构：
+反射入口读取 class、实例、namespace 与 dict 的结构：
 
 \begin{center}
 \small
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.6cm}>{\raggedright\arraybackslash}p{10.2cm}@{}}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.0cm}>{\raggedright\arraybackslash}p{9.8cm}@{}}
 \toprule
-函数 & 结果 \\
+入口 & 结果 \\
 \midrule
 \jc{type(x)} & 值的类型对象 \\
-\jc{getClass(obj)} & 实例的 class 定义 \\
-\jc{getParent(C)} & 父类或 \jc{none} \\
-\jc{getName(x)} & class、实例、trait、namespace 或 enum 的名称 \\
-\jc{getFields(x)} & dict 键、实例属性、class 实例属性或 namespace/enum 名称 \\
-\jc{getFields(C)} & class 的实例属性名列表，含继承属性 \\
-\jc{getStatics(C)} & class 的 public static 属性名列表，含继承属性 \\
-\jc{hasField(obj, name)} & public 属性存在性 \\
-\jc{getFieldInfo(obj, name)} & 属性描述 dict：\jc{isMethod}、\jc{isStatic}、\jc{isConst}、\jc{isAbstract}；未知属性返回 \jc{none} \\
+\jc{x.classDef()} & 实例的 class 定义 \\
+\jc{x.superclass()} & 实例所属 class 的父类或 \jc{none} \\
+\jc{x.name()} & class、实例、namespace 或 enum 的名称 \\
+\jc{x.fields()} & dict 键、实例属性、namespace/enum 名称或 class 的实例属性名 \\
+\jc{C.fields()} & class 的实例属性名列表，含继承属性 \\
+\jc{C.statics()} & class 的 public static 属性名列表，含继承属性 \\
+\jc{x.hasField(name)} & public 属性存在性 \\
+\jc{x.fieldInfo(name)} & 属性描述 dict：\jc{isMethod}、\jc{isStatic}、\jc{isConst}、\jc{isAbstract}；未知属性返回 \jc{none} \\
 \jc{isinstance(obj)} & 任意 class 实例 \\
 \jc{isinstance(obj, C)} & class 或父类/组合 trait 的实例 \\
 \jc{istrait(x)} & trait 定义 \\
@@ -1863,17 +1863,18 @@ trait 组合沿 \jc{with} 列表摊平；父 trait 的抽象方法可以由 clas
 \end{center}
 
 属性名列表按名称排序；\jc{local} 属性与 private static 属性由反射隐藏。
-\jc{getFields(C)} 读取 class 的实例属性表；\jc{getStatics(C)} 读取 static 属性表。
-\jc{getClass(obj)} 返回实例的 class 定义对象；\jc{getParent(C)} 沿单一父类链返回。
+\jc{C.fields()} 读取 class 的实例属性表；\jc{C.statics()} 读取 static 属性表。
+\jc{x.classDef()} 返回实例的 class 定义对象；\jc{C.parent()} 沿单一父类链返回。
 
 \begin{lstlisting}
 class A { x = 1; m() = self.x }
-getFields(A())        // @["m", "x"]
-getFields(A)          // @["m", "x"]
-hasField(A(), "m")    // true
-getClass(A()) == A    // true
-getName(A)            // "A"
-getParent(A)          // none
+A().fields()          // @["m", "x"]
+A.fields()            // @["m", "x"]
+A().hasField("m")     // true
+A().classDef() == A   // true
+A.name()              // "A"
+A.parent()            // none
+A().superclass()      // none
 \end{lstlisting}
 
 \subsection{enum}
@@ -1908,7 +1909,7 @@ type(Color)      // namespace_type
 enum namespace 固定：成员写入与新增字段产生 \jc{RuntimeError}。
 enum 可作为 dict key 或 set 元素。
 \jc{for (name in Color)} 依次产生成员名；\jc{for (@[name, value] in Color)} 产生成员名与成员值。
-\jc{getFields(Color)} 列出成员名。
+\jc{Color.fields()} 列出成员名。
 
 \section{namespace 与模块}
 

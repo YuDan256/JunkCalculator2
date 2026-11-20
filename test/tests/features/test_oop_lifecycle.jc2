@@ -110,7 +110,7 @@ class Reflected {
     local hidden = 2
 }
 r = Reflected()
-f = getFields(r)
+f = r.fields()
 assert(!("init" in f), "init is not listed")
 assert(!("finalize" in f), "finalize is not listed")
 assert(!("hidden" in f), "private property is not listed")
@@ -358,3 +358,4 @@ test_bare_annotation_error() = {
 }
 test_bare_annotation_error()
 }
+

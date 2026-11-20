@@ -2387,6 +2387,14 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 return;
             }
         }
+        if (!method && namespaceProto) {
+            auto pit = namespaceProto->properties.find(methodName);
+            if (pit != namespaceProto->properties.end() && !pit->second.is_local &&
+                pit->second.val.isFunctionClosure()) {
+                method = pit->second.val.asFunction();
+                owningClass = namespaceProto;
+            }
+        }
     } else if (obj.isClass()) {
         auto cls = static_cast<ObjClass*>(obj.asObj());
         while (cls) {
@@ -2405,6 +2413,14 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 break;
             }
             cls = cls->parent;
+        }
+        if (!method && classProto) {
+            auto pit = classProto->properties.find(methodName);
+            if (pit != classProto->properties.end() && !pit->second.is_local &&
+                pit->second.val.isFunctionClosure()) {
+                method = pit->second.val.asFunction();
+                owningClass = classProto;
+            }
         }
     } else if (obj.isInstance()) {
         auto inst = obj.asInstance();
@@ -2449,6 +2465,15 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 ic.cachedClassId = inst->classDef->classId;
                 ic.cachedMethod = method;
                 ic.cachedClass = owningClass;
+            }
+
+            if (!method && instanceProto) {
+                auto pit = instanceProto->properties.find(methodName);
+                if (pit != instanceProto->properties.end() && !pit->second.is_local &&
+                    pit->second.val.isFunctionClosure()) {
+                    method = pit->second.val.asFunction();
+                    owningClass = instanceProto;
+                }
             }
 
             if (!method) {
@@ -4060,6 +4085,9 @@ VM::VM() {
         }
         if (listProto) GcHeap::get().markObj(listProto);
         if (dictProto) GcHeap::get().markObj(dictProto);
+        if (instanceProto) GcHeap::get().markObj(instanceProto);
+        if (namespaceProto) GcHeap::get().markObj(namespaceProto);
+        if (classProto) GcHeap::get().markObj(classProto);
         if (setProto) GcHeap::get().markObj(setProto);
         if (stringProto) GcHeap::get().markObj(stringProto);
         if (matrixProto) GcHeap::get().markObj(matrixProto);
@@ -4493,6 +4521,12 @@ VM::VM() {
     stringProto->name = "String";
     matrixProto = GcHeap::get().allocate<ObjClass>();
     matrixProto->name = "Matrix";
+    instanceProto = GcHeap::get().allocate<ObjClass>();
+    instanceProto->name = "Instance";
+    namespaceProto = GcHeap::get().allocate<ObjClass>();
+    namespaceProto->name = "Namespace";
+    classProto = GcHeap::get().allocate<ObjClass>();
+    classProto->name = "Class";
 
     nativeBuiltins["__dbg_reg"] = [this](const std::vector<Value>& args) -> Value {
         if (!currentDebuggerFrame) JC2_THROW(RuntimeError, "Debugger not active.");
@@ -7422,6 +7456,21 @@ Value VM::run(int targetFrameDepth) {
                             cls = cls->parent;
                         }
                         if (!found) {
+                            auto pit = instanceProto->properties.find(field);
+                            if (pit != instanceProto->properties.end() && !pit->second.is_local) {
+                                if (pit->second.val.isFunctionClosure()) {
+                                    auto rawMethod = pit->second.val.asFunction();
+                                    ic.cachedClassId = inst->classDef->classId;
+                                    ic.cachedMethod = rawMethod;
+                                    ic.cachedClass = instanceProto;
+                                    result = Value(rawMethod);
+                                } else {
+                                    result = pit->second.val;
+                                }
+                                found = true;
+                            }
+                        }
+                        if (!found) {
                             auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                             if (getattrMethod) {
                                 try {
@@ -7466,7 +7515,13 @@ Value VM::run(int targetFrameDepth) {
                         result = *(it->second.upval->location);
                         found = true;
                     } else {
-                        strictNamespaceMissing = ns->is_package;
+                        auto pit = namespaceProto->properties.find(field);
+                        if (pit != namespaceProto->properties.end() && !pit->second.is_local) {
+                            result = pit->second.val;
+                            found = true;
+                        } else {
+                            strictNamespaceMissing = ns->is_package;
+                        }
                     }
                 } else if (!found && obj.isSlice()) {
                     Value prop = obj.asSlice()->getProperty(field);
@@ -7489,6 +7544,13 @@ Value VM::run(int targetFrameDepth) {
                             break;
                         }
                         cls = cls->parent;
+                    }
+                    if (!found && classProto) {
+                        auto pit = classProto->properties.find(field);
+                        if (pit != classProto->properties.end() && !pit->second.is_local) {
+                            result = pit->second.val;
+                            found = true;
+                        }
                     }
                 }
                 
@@ -7604,6 +7666,21 @@ Value VM::run(int targetFrameDepth) {
                                 break;
                             }
                             cls = cls->parent;
+                        }
+                        if (!found) {
+                            auto pit = instanceProto->properties.find(field);
+                            if (pit != instanceProto->properties.end() && !pit->second.is_local) {
+                                if (pit->second.val.isFunctionClosure()) {
+                                    auto rawMethod = pit->second.val.asFunction();
+                                    ic.cachedClassId = inst->classDef->classId;
+                                    ic.cachedMethod = rawMethod;
+                                    ic.cachedClass = instanceProto;
+                                    result = Value(rawMethod);
+                                } else {
+                                    result = pit->second.val;
+                                }
+                                found = true;
+                            }
                         }
                         if (!found) {
                             auto [getattrMethod, owner] = findDunder(obj, "__getattr__");

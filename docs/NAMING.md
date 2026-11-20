@@ -50,7 +50,7 @@ s.isalpha  s.isdigit ...                ← <ctype.h>
 
 ```
 转换   toArray  toList  toMatrix  toSet  toFrac
-反射   getClass  getParent
+反射   classDef  fields  statics  parent  name
 ```
 
 它们虽然是"单字 + 前缀"，但**不写成** `tomatrix` / `getclass`——那样词界消失、可读性变差，
@@ -60,7 +60,7 @@ s.isalpha  s.isdigit ...                ← <ctype.h>
 
 1. 是谓词（返回 bool 的判定）？ → `is` + **全小写**（`isempty`，不是 `isEmpty`）
 2. 与 C/C++ 标准库同名或同形？ → **从标准库**（`sqrtf`，不是 `sqrtF`）
-3. 是转换 / 反射？ → 驼峰（`toMatrix` / `getClass`）
+3. 是转换 / 反射？ → 驼峰（`toMatrix` / `classDef` / `fields`）
 4. 否则：**单字全小写、多字驼峰**
 
 ## 六、不受此规则约束的名字

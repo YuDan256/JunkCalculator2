@@ -574,6 +574,14 @@ void RegisterAllocator::allocate(IRGraph* graph) {
             }
         }
         if (hasTerminal) continue; // 包含终端指令的块，VM 会在退出时自动清空整个调用帧
+
+        // A block whose only successor is the Return block is also torn down by
+        // the return path. Clearing dead registers here only duplicates the
+        // frame-wide clear in RETURN.
+        if (bb->succs.size() == 1 && bb->succs[0]->controlNode &&
+            bb->succs[0]->controlNode->op == IROp::Return) {
+            continue;
+        }
         
         std::unordered_set<int> physLiveOut;
         std::unordered_set<int> physUsed;

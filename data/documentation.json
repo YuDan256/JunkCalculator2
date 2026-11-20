@@ -8348,6 +8348,222 @@
       ]
     }
   },
+  "instance_methods": {
+    "fields": {
+      "signature": "p.fields()",
+      "desc": "Returns the public property names of the instance, sorted.",
+      "examples": [
+        "p.fields()"
+      ]
+    },
+    "has": {
+      "signature": "p.has(key)",
+      "desc": "Returns true if the instance has a public property named key.",
+      "examples": [
+        "p.has(\"x\")"
+      ]
+    },
+    "fieldInfo": {
+      "signature": "p.fieldInfo(key)",
+      "desc": "Returns metadata for a public property, or none when it is unknown.",
+      "examples": [
+        "p.fieldInfo(\"x\")"
+      ]
+    },
+    "classDef": {
+      "signature": "p.classDef()",
+      "desc": "Returns the class definition of the instance.",
+      "examples": [
+        "p.classDef()"
+      ]
+    },
+    "superclass": {
+      "signature": "p.superclass()",
+      "desc": "Returns the parent class of the instance's class, or none.",
+      "examples": [
+        "p.superclass()"
+      ]
+    },
+    "name": {
+      "signature": "p.name()",
+      "desc": "Returns the name of the instance's class.",
+      "examples": [
+        "p.name()"
+      ]
+    },
+    "add": {
+      "signature": "p.add(key, value)",
+      "desc": "Adds or updates a public field.",
+      "examples": [
+        "p.add(\"x\", 1)"
+      ]
+    },
+    "remove": {
+      "signature": "p.remove(key)",
+      "desc": "Removes a public field; a missing field is an error.",
+      "examples": [
+        "p.remove(\"x\")"
+      ]
+    },
+    "discard": {
+      "signature": "p.discard(key)",
+      "desc": "Removes a public field when present, silently otherwise.",
+      "examples": [
+        "p.discard(\"x\")"
+      ]
+    },
+    "clear": {
+      "signature": "p.clear()",
+      "desc": "Removes all public own fields from the instance.",
+      "examples": [
+        "p.clear()"
+      ]
+    },
+    "len": {
+      "signature": "p.len()",
+      "desc": "Returns the instance's length, using __len__ when defined.",
+      "examples": [
+        "p.len()"
+      ]
+    }
+  },
+  "class_methods": {
+    "fields": {
+      "signature": "C.fields()",
+      "desc": "Returns the class's public instance property names, sorted.",
+      "examples": [
+        "C.fields()"
+      ]
+    },
+    "statics": {
+      "signature": "C.statics()",
+      "desc": "Returns the class's public static member names, sorted.",
+      "examples": [
+        "C.statics()"
+      ]
+    },
+    "parent": {
+      "signature": "C.parent()",
+      "desc": "Returns the parent class, or none.",
+      "examples": [
+        "C.parent()"
+      ]
+    },
+    "has": {
+      "signature": "C.has(key)",
+      "desc": "Returns true if the class has a public static member named key.",
+      "examples": [
+        "C.has(\"MAX\")"
+      ]
+    },
+    "fieldInfo": {
+      "signature": "C.fieldInfo(key)",
+      "desc": "Returns metadata for a public member, or none when it is unknown.",
+      "examples": [
+        "C.fieldInfo(\"x\")"
+      ]
+    },
+    "name": {
+      "signature": "C.name()",
+      "desc": "Returns the class name; an anonymous class returns an empty string.",
+      "examples": [
+        "C.name()"
+      ]
+    },
+    "add": {
+      "signature": "C.add(key, value)",
+      "desc": "Adds or updates a public static member.",
+      "examples": [
+        "C.add(\"MAX\", 10)"
+      ]
+    },
+    "remove": {
+      "signature": "C.remove(key)",
+      "desc": "Removes a public static member; a missing member is an error.",
+      "examples": [
+        "C.remove(\"MAX\")"
+      ]
+    },
+    "discard": {
+      "signature": "C.discard(key)",
+      "desc": "Removes a public static member when present, silently otherwise.",
+      "examples": [
+        "C.discard(\"MAX\")"
+      ]
+    },
+    "len": {
+      "signature": "C.len()",
+      "desc": "Returns the number of public static members.",
+      "examples": [
+        "C.len()"
+      ]
+    }
+  },
+  "namespace_methods": {
+    "fields": {
+      "signature": "ns.fields()",
+      "desc": "Returns the namespace's member names, sorted.",
+      "examples": [
+        "ns.fields()"
+      ]
+    },
+    "has": {
+      "signature": "ns.has(key)",
+      "desc": "Returns true if the namespace has a member named key.",
+      "examples": [
+        "ns.has(\"x\")"
+      ]
+    },
+    "fieldInfo": {
+      "signature": "ns.fieldInfo(key)",
+      "desc": "Returns metadata for a namespace member, or none when it is unknown.",
+      "examples": [
+        "ns.fieldInfo(\"x\")"
+      ]
+    },
+    "name": {
+      "signature": "ns.name()",
+      "desc": "Returns the namespace name.",
+      "examples": [
+        "ns.name()"
+      ]
+    },
+    "add": {
+      "signature": "ns.add(key, value)",
+      "desc": "Adds or updates a namespace member.",
+      "examples": [
+        "ns.add(\"x\", 1)"
+      ]
+    },
+    "remove": {
+      "signature": "ns.remove(key)",
+      "desc": "Removes a member; a missing member is an error.",
+      "examples": [
+        "ns.remove(\"x\")"
+      ]
+    },
+    "discard": {
+      "signature": "ns.discard(key)",
+      "desc": "Removes a member when present, silently otherwise.",
+      "examples": [
+        "ns.discard(\"x\")"
+      ]
+    },
+    "clear": {
+      "signature": "ns.clear()",
+      "desc": "Removes all members from the namespace.",
+      "examples": [
+        "ns.clear()"
+      ]
+    },
+    "len": {
+      "signature": "ns.len()",
+      "desc": "Returns the number of namespace members.",
+      "examples": [
+        "ns.len()"
+      ]
+    }
+  },
   "catalog": [
     {
       "title": "Getting Started",
@@ -8490,6 +8706,21 @@
           "title": "set",
           "ref": "topic.set",
           "auto": "set_methods"
+        },
+        {
+          "title": "instance",
+          "ref": "topic.class",
+          "auto": "instance_methods"
+        },
+        {
+          "title": "class",
+          "ref": "topic.class",
+          "auto": "class_methods"
+        },
+        {
+          "title": "namespace",
+          "ref": "topic.namespace",
+          "auto": "namespace_methods"
         },
         {
           "ref": "topic.complex"

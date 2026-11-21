@@ -136,7 +136,10 @@ bool IROptimizer::eliminateCommonSubexpressions(IRGraph* graph) {
     
     auto isPure = [](IROp op) {
         switch (op) {
-            case IROp::Is: case IROp::IsUninit:
+            // CheckInit is observable only through its throw. Two checks with
+            // the same source node and control point are therefore duplicate
+            // checks; keeping both only repeats the same test.
+            case IROp::Is: case IROp::IsUninit: case IROp::CheckInit:
                 return true;
             default: return false;
         }

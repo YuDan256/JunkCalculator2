@@ -1204,6 +1204,14 @@ test_auto_local_forward_reference()
 test_auto_local_branch_unbound() = {
     assert(eval("f(c) = { if (c) { y = 1 }; y }; f(true)") == 1,
            "assigned branch must be readable")
+    assert(eval("f(c) = { if (c) { y = 1 }; y + y }; f(true)") == 2,
+           "duplicate checked reads keep their value")
+
+    caught = false
+    try { eval("f(c) = { if (c) { y = 1 }; y + y }; f(false)") } catch (e) {
+        caught = true
+    }
+    assert(caught, "duplicate checked reads still reject unbound values")
 
     caught = false
     try { eval("f(c) = { if (c) { y = 1 }; y }; f(false)") } catch (e) {

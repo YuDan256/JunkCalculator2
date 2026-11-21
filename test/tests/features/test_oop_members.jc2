@@ -455,6 +455,20 @@ test_private_static_isolation() = {
     assert(Counter2().name() == "c2", "same-named private static does not collide")
 }
 
+// ── 3b. private static 的 none 初值不是字段声明 ──
+class NoneStatic {
+    static local X = none
+    static local const Y = none
+    getX() = class.X
+    getY() = class.Y
+}
+
+test_private_static_none_initializer() = {
+    n = NoneStatic()
+    assert(n.getX() == none, "private static X = none keeps its value")
+    assert(n.getY() == none, "private static const Y = none keeps its value")
+}
+
 // ── 4. 私有属性不出现在反射里，也不能从外部访问 ──
 class Reflected {
     local hidden = 1
@@ -492,6 +506,7 @@ test_private_const_is_protected() = {
 test_same_private_name_across_classes()
 test_inherited_private_is_lexical()
 test_private_static_isolation()
+test_private_static_none_initializer()
 test_private_is_not_reflected()
 test_private_const_is_protected()
 }

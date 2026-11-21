@@ -7853,8 +7853,8 @@ Value VM::run(int targetFrameDepth) {
                         if (pdf.is_const) JC2_THROW(RuntimeError, "Cannot modify const private static property '" + keyStr + "'.");
                         *pdv = val;
                     } else {
-                        if (val.isNone()) {
-                            // ★ local 字段声明登记（同 DEFINE_PROP 的声明分支）
+                        if (val.isUninit()) {
+                            // ★ local 实例字段声明登记；none 是合法的显式初值。
                             cls->privateMembers[keyStr] = { Value::none(), op == OpCode::DEFINE_PRIVATE_CONST, true, false, false, true };
                             break;
                         }

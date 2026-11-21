@@ -91,6 +91,7 @@ public:
                 case OpCode::BUILD_SLICE: case OpCode::MATCH_INIT:
                     if (a == ESCAPE_NORMAL_8) fetchExtra();
                     if (b == ESCAPE_NORMAL_8) fetchExtra();
+                    if (c == ESCAPE_NORMAL_8) fetchExtra();
                     break;
 
                 case OpCode::LOAD_NONE: case OpCode::LOAD_BOOL: case OpCode::ASSERT_RETURN_TYPE:

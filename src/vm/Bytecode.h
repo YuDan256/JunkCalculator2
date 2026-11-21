@@ -42,7 +42,7 @@ enum class OpCode : uint8_t {
     SET_UPVAL,      // UpValue[B] := R(A) [Ext]
     DELETE_GLOBAL,  // Delete Globals[Bx] [Ext]
     IS_UNINIT,      // R(A) := is_uninit(R(B))
-    CHECK_INIT,     // R(A) := R(B); throw if R(B) is uninit
+    CHECK_INIT,     // R(A) := R(B); throw if R(B) is uninit; C = name constant index + 1
 
     // 算术与逻辑运算 (支持 K-Bit: B 和 C 可以是寄存器或常量)
     ADD,            // R(A) := RK(B) + RK(C)
@@ -798,9 +798,19 @@ public:
                 break;
 
             case OpCode::CHECK_INIT:
+                if (a == ESCAPE_NORMAL_8) a = readExtra();
+                if (b == ESCAPE_NORMAL_8) b = readExtra();
+                if (c == ESCAPE_NORMAL_8) c = readExtra();
                 line << "R(" << a << ") " << b;
-                trailing("check_init(R(" + std::to_string(b) + "))",
-                         "R(" + std::to_string(a) + ") := checked(R(" + std::to_string(b) + "))");
+                {
+                    std::string name;
+                    if (c > 0 && static_cast<size_t>(c - 1) < constants.size() &&
+                        constants[c - 1].isString()) {
+                        name = constants[c - 1].asString();
+                    }
+                    trailing("check_init(" + (name.empty() ? "R(" + std::to_string(b) + ")" : name) + ")",
+                             "R(" + std::to_string(a) + ") := checked(R(" + std::to_string(b) + "))");
+                }
                 break;
 
             case OpCode::UNM:

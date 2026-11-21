@@ -5252,8 +5252,16 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::CHECK_INIT: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 if (getReg(b).isUninit()) {
-                    JC2_THROW(RuntimeError, "Variable is used before its assignment.");
+                    std::string name;
+                    if (c > 0 && static_cast<size_t>(c - 1) < chunk->constants.size()) {
+                        const Value& nameVal = chunk->constants[c - 1];
+                        if (nameVal.isString()) name = nameVal.asString();
+                    }
+                    if (name.empty())
+                        JC2_THROW(RuntimeError, "Variable is used before its assignment.");
+                    JC2_THROW(RuntimeError, "Variable '" + name + "' is used before its assignment.");
                 }
                 getReg(a) = getReg(b);
                 break;

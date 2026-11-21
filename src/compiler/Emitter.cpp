@@ -404,7 +404,9 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                     }
                     case IROp::CheckInit: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
-                        auto w = buildInstAB(OpCode::CHECK_INIT, node->physicalReg, b);
+                        // C = name constant index + 1 (0 means legacy/no name).
+                        uint32_t nameIdx = chunk.addConstant(Value(node->name));
+                        auto w = buildInstABC(OpCode::CHECK_INIT, node->physicalReg, b, nameIdx + 1);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

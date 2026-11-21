@@ -518,15 +518,15 @@ public:
         return static_cast<uint32_t>(callSignatures.size() - 1);
     }
 
-    void disassemble(const std::string& name, bool verbose = false, bool raw = false) const {
+    void disassemble(const std::string& name, bool verbose = false) const {
         std::cout << "=== " << name << " ===" << std::endl;
         for (int offset = 0; offset < static_cast<int>(code.size()); ) {
-            offset += 1 + disassembleInstruction(offset, verbose, raw);
+            offset += 1 + disassembleInstruction(offset, verbose);
         }
         std::cout << "==================" << std::endl;
     }
 
-    int disassembleInstruction(int offset, bool verbose = false, bool raw = false) const {
+    int disassembleInstruction(int offset, bool verbose = false) const {
         std::ostringstream line;
         std::string pendingComment;
         int extra = 0;
@@ -1168,7 +1168,7 @@ public:
             std::cout << "; " << pendingComment;
         }
         std::cout << std::endl;
-        if (raw) {
+        if (verbose) {
             for (const auto& [pos, operand] : extraWords) {
                 std::cout << std::right << std::setw(4) << std::setfill('0') << pos << "  "
                           << std::setfill(' ') << std::right << std::setw(4)

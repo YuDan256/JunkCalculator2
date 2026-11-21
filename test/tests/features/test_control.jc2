@@ -83,6 +83,23 @@ test_defer_with_macros() = {
 }
 test_defer_with_macros()
 
+// A deferred ref upvalue may alias the return register; RETURN must not
+// move that register out before defers run.
+test_defer_ref_return() = {
+    local x = 1
+    if (true) { defer ref x += 10 }
+    x *= 2
+    defer ref x += 100
+    return x
+}
+assert(test_defer_ref_return() == 22, "defer ref must see the return register")
+
+test_defer_ref_return_only() = {
+    local x = 1
+    defer ref x += 10
+    return x
+}
+assert(test_defer_ref_return_only() == 1, "defer ref runs after return value evaluation")
 test_defer_suppressed_exceptions() = {
     try {
         defer throw "Secondary Error 1"
@@ -393,4 +410,5 @@ counted() = {
 }
 assert(counted() == 1001, "if-without-else plus increment")
 }
+
 

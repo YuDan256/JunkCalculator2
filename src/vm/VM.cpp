@@ -8669,7 +8669,10 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                Value res = std::move(getReg(a));
+                // Keep the local register intact while defers run: a deferred
+                // `ref` upvalue may point at the same register as the return
+                // value, and moving it out would turn that upvalue into none.
+                Value res = getReg(a);
             
                 runDefersDownTo(frame->deferBase);
             

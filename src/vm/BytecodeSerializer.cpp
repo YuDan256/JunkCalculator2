@@ -861,8 +861,8 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
             case ObjType::DICT: {
                 auto d = static_cast<ObjDict*>(obj);
                 write8(os, d->is_frozen ? 1 : 0);
-                write32(os, static_cast<uint32_t>(d->elements.size()));
-                for (const auto& [k, v] : d->elements) {
+                write32(os, static_cast<uint32_t>(d->liveSize()));
+                for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
                     self(k, self); self(v, self);
                 }
                 break;
@@ -870,8 +870,8 @@ void BytecodeSerializer::saveJCW(const std::string& path, VM* vm) {
             case ObjType::SET: {
                 auto s = static_cast<ObjSet*>(obj);
                 write8(os, s->is_frozen ? 1 : 0);
-                write32(os, static_cast<uint32_t>(s->elements.size()));
-                for (const auto& v : s->elements) self(v, self);
+                write32(os, static_cast<uint32_t>(s->liveSize()));
+                for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& v = s->elements[_i]; self(v, self); }
                 break;
             }
             case ObjType::UPVALUE: {
@@ -1453,3 +1453,4 @@ void BytecodeSerializer::loadJCW(const std::string& path, VM* vm, bool merge, bo
 }
 
 } // namespace jc
+

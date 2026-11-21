@@ -175,7 +175,7 @@ static Value fieldsOfValue(const Value& self, const char* what) {
         ObjDict* d = helpers::getDictMap(self, what);
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        for (const auto& [k, v] : d->elements) L->vec.push_back(k);
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i]; L->vec.push_back(k); }
         return Value(L);
 }
 // ★ getFieldInfo(objOrClass, name)：公开属性的元信息，找不到或私有则返回 none。
@@ -359,7 +359,7 @@ static Value staticsOfValue(const Value& self, const char* what) {
             RecursionGuard guard(visited, d);
             if (guard.isCycle) { oss << "CYCLE"; return oss.str(); }
             std::vector<std::string> pairs;
-            for (const auto& [k, val] : d->elements) {
+            for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, val] = d->elements[_i];
                 pairs.push_back(setValueKey(k) + ":" + setValueKey(val));
             }
             std::sort(pairs.begin(), pairs.end());
@@ -372,7 +372,7 @@ static Value staticsOfValue(const Value& self, const char* what) {
             RecursionGuard guard(visited, s);
             if (guard.isCycle) { oss << "CYCLE"; return oss.str(); }
             std::vector<std::string> elems;
-            for (const auto& val : s->elements) {
+            for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& val = s->elements[_i];
                 elems.push_back(setValueKey(val));
             }
             std::sort(elems.begin(), elems.end());
@@ -2728,7 +2728,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 GcObjGuard guard(newDict);
                 Value newVal(newDict);
                 visited[d] = newVal;
-                for (const auto& [k, val] : d->elements) {
+                for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, val] = d->elements[_i];
                     Value newK = deepCopyExact(k);
                     Value newV = deepCopyExact(val);
                     newDict->keyMap[newK] = newDict->elements.size();
@@ -2744,7 +2744,7 @@ void BuiltinRegistry::registerSystemUtils() {
                 GcObjGuard guard(newSet);
                 Value newVal(newSet);
                 visited[s] = newVal;
-                for (const auto& val : s->elements) {
+                for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& val = s->elements[_i];
                     Value newV = deepCopyExact(val);
                     newSet->keys.insert(newV);
                     newSet->elements.push_back(newV);
@@ -3179,9 +3179,9 @@ void BuiltinRegistry::registerStringFunctions() {
         if (v.isString()) return Value::fromInt32(static_cast<int32_t>(v.asObjString()->charLength));
         if (v.isObjType(ObjType::REAL_MATRIX)) { const auto& m = static_cast<ObjRealMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
         if (v.isObjType(ObjType::COMPLEX_MATRIX)) { const auto& m = static_cast<ObjComplexMatrix*>(v.asObj())->mat; return Value::fromInt32(m.getRows() * m.getCols()); }
-        if (v.isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(v.asObj())->elements.size()));
+        if (v.isObjType(ObjType::DICT)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjDict*>(v.asObj())->liveSize()));
         if (v.isObjType(ObjType::LIST)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjList*>(v.asObj())->vec.size()));
-        if (v.isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(v.asObj())->elements.size()));
+        if (v.isObjType(ObjType::SET)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjSet*>(v.asObj())->liveSize()));
         if (v.isObjType(ObjType::NAMESPACE)) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjNamespace*>(v.asObj())->fields.size()));
         if (v.isBigInt()) return Value::fromInt32(static_cast<int32_t>(static_cast<ObjBigInt*>(v.asObj())->num.digitCount()));
         if (v.isInt32()) return Value::fromInt32(v.asInt32() == 0 ? 0 : static_cast<int32_t>(std::to_string(v.asInt32()).size() - (v.asInt32() < 0 ? 1 : 0)));
@@ -3711,9 +3711,15 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         if (self.isObjType(ObjType::SET)) {
             auto s = static_cast<ObjSet*>(self.asObj());
-            if (s->elements.empty()) return Value(std::string(""));
+            if (s->liveSize() == 0) return Value(std::string(""));
             std::ostringstream setOss;
-            for (size_t i = 0; i < s->elements.size(); ++i) { if (i > 0) setOss << delim; setOss << s->elements[i]; }
+            bool firstElem = true;
+            for (size_t i = 0; i < s->elements.size(); ++i) {
+                if (!s->isAlive(i)) continue;
+                if (!firstElem) setOss << delim;
+                setOss << s->elements[i];
+                firstElem = false;
+            }
             return Value(setOss.str());
         } else if (self.isObjType(ObjType::LIST)) {
             auto l = static_cast<ObjList*>(self.asObj());
@@ -3929,7 +3935,7 @@ void BuiltinRegistry::registerDictFunctions() {
         ObjDict* d = helpers::getDictMap(self, "values");
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        for (const auto& [k, v] : d->elements) L->vec.push_back(v);
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i]; L->vec.push_back(v); }
         return Value(L);
     };
     regMethod(VM::activeVM->dictProto, "values", {}, valuesFn);
@@ -4135,7 +4141,7 @@ void BuiltinRegistry::registerDictFunctions() {
         ObjDict* d = helpers::getDictMap(self, "dictPairs");
         ObjList* L = GcHeap::get().allocate<ObjList>();
         GcObjGuard guard(L);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             ObjList* pair = GcHeap::get().allocate<ObjList>();
             pair->vec.push_back(k);
             pair->vec.push_back(v);
@@ -5071,12 +5077,24 @@ void BuiltinRegistry::registerHigherOrder() {
         if (iterable.isObjType(ObjType::SET)) {
             auto s = static_cast<ObjSet*>(iterable.asObj());
             Value setAcc; size_t startIdx = 0;
-            if (!initVal.isNone()) { setAcc = initVal; }
-            else { if (s->elements.empty()) JC2_THROW(RuntimeError, "reduce() on empty."); setAcc = s->elements[0]; startIdx = 1; }
+            bool haveAcc = !initVal.isNone();
+            if (haveAcc) {
+                setAcc = initVal;
+            } else {
+                for (size_t i = 0; i < s->elements.size(); ++i) {
+                    if (!s->isAlive(i)) continue;
+                    setAcc = s->elements[i];
+                    startIdx = i + 1;
+                    haveAcc = true;
+                    break;
+                }
+                if (!haveAcc) JC2_THROW(RuntimeError, "reduce() on empty.");
+            }
             GcValueGuard setGuard(setAcc);
-            for (size_t i = startIdx; i < s->elements.size(); ++i) { 
-                jc::checkInterrupt(); 
-                setAcc = safeCallValue(f, { setAcc, s->elements[i] }); 
+            for (size_t i = startIdx; i < s->elements.size(); ++i) {
+                if (!s->isAlive(i)) continue;
+                jc::checkInterrupt();
+                setAcc = safeCallValue(f, { setAcc, s->elements[i] });
             }
             return setAcc;
         } else if (iterable.isObjType(ObjType::LIST)) {
@@ -5329,7 +5347,7 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         ObjDict* result = GcHeap::get().allocate<ObjDict>();
         GcObjGuard resultGuard(result);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
@@ -5354,7 +5372,7 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         ObjDict* result = GcHeap::get().allocate<ObjDict>();
         GcObjGuard resultGuard(result);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             result->set(k, safeCallValue(f, { v }));
         }
@@ -5371,7 +5389,7 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         ObjDict* result = GcHeap::get().allocate<ObjDict>();
         GcObjGuard resultGuard(result);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             result->set(safeCallValue(f, { k }), v);
         }
@@ -5388,7 +5406,7 @@ void BuiltinRegistry::registerHigherOrder() {
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         ObjDict* result = GcHeap::get().allocate<ObjDict>();
         GcObjGuard resultGuard(result);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
@@ -5409,7 +5427,7 @@ void BuiltinRegistry::registerHigherOrder() {
         bool first = true;
         if (!initVal.isNone()) { acc = initVal; first = false; }
         GcValueGuard guard(acc);
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
@@ -5429,7 +5447,7 @@ void BuiltinRegistry::registerHigherOrder() {
     auto dictAnyAllCore = [this, makeDictPair](const Value& argList, const Value& f, auto checkFn) -> Value {
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         bool found = false;
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
@@ -5455,7 +5473,7 @@ void BuiltinRegistry::registerHigherOrder() {
         if (!callableAcceptsArgCount(f, 1)) JC2_THROW(RuntimeError, "countIf() requires a single-parameter function.");
         ObjDict* d = static_cast<ObjDict*>(argList.asObj());
         int c = 0;
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             jc::checkInterrupt();
             Value pairVal = makeDictPair(k, v);
             GcValueGuard pairGuard(pairVal);
@@ -6636,7 +6654,7 @@ void BuiltinRegistry::registerTypeChecks() {
         if (args[0].isObjType(ObjType::LIST))
             return Value(static_cast<ObjList*>(args[0].asObj())->vec.empty());
         if (args[0].isObjType(ObjType::DICT))
-            return Value(static_cast<ObjDict*>(args[0].asObj())->elements.empty());
+            return Value(static_cast<ObjDict*>(args[0].asObj())->liveSize() == 0);
         if (args[0].isObjType(ObjType::REAL_MATRIX)) {
             const auto& m = static_cast<ObjRealMatrix*>(args[0].asObj())->mat;
             return Value(m.getRows() == 0 || m.getCols() == 0);
@@ -6650,7 +6668,7 @@ void BuiltinRegistry::registerTypeChecks() {
             return Value(m.getRows() == 0 || m.getCols() == 0);
         }
         if (args[0].isObjType(ObjType::SET))
-            return Value(static_cast<ObjSet*>(args[0].asObj())->elements.empty());
+            return Value(static_cast<ObjSet*>(args[0].asObj())->liveSize() == 0);
         return Value(false);
         }, {"x"});
 
@@ -6942,7 +6960,7 @@ void BuiltinRegistry::registerSetFunctions() {
         auto b = static_cast<ObjSet*>(args[0].asObj());
         ObjSet* result = GcHeap::get().allocate<ObjSet>();
         GcObjGuard guard(result);
-        for (const auto& val : a->elements) {
+        for (size_t _i = 0; _i < a->elements.size(); ++_i) { if (!a->isAlive(_i)) continue; const auto& val = a->elements[_i];
             if (b->keys.find(val) == b->keys.end()) {
                 result->keys.insert(val);
                 result->elements.push_back(val);
@@ -6967,7 +6985,7 @@ void BuiltinRegistry::registerSetFunctions() {
             JC2_THROW(TypeError, "issubset() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
-        for (const auto& val : a->elements) {
+        for (size_t _i = 0; _i < a->elements.size(); ++_i) { if (!a->isAlive(_i)) continue; const auto& val = a->elements[_i];
             if (b->keys.find(val) == b->keys.end()) return Value(false);
         }
         return Value(true);
@@ -6980,7 +6998,7 @@ void BuiltinRegistry::registerSetFunctions() {
             JC2_THROW(TypeError, "issuperset() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
-        for (const auto& val : b->elements) {
+        for (size_t _i = 0; _i < b->elements.size(); ++_i) { if (!b->isAlive(_i)) continue; const auto& val = b->elements[_i];
             if (a->keys.find(val) == a->keys.end()) return Value(false);
         }
         return Value(true);
@@ -6993,7 +7011,7 @@ void BuiltinRegistry::registerSetFunctions() {
             JC2_THROW(TypeError, "isdisjoint() expects two Sets.");
         auto a = static_cast<ObjSet*>(self.asObj());
         auto b = static_cast<ObjSet*>(args[0].asObj());
-        for (const auto& val : a->elements) {
+        for (size_t _i = 0; _i < a->elements.size(); ++_i) { if (!a->isAlive(_i)) continue; const auto& val = a->elements[_i];
             if (b->keys.find(val) != b->keys.end()) return Value(false);
         }
         return Value(true);
@@ -7017,14 +7035,19 @@ void BuiltinRegistry::registerSetFunctions() {
             JC2_THROW(TypeError, "powerSet() expects a Set.");
 
         auto s = static_cast<ObjSet*>(self.asObj());
-        int n = static_cast<int>(s->elements.size());
+        std::vector<Value> values;
+        values.reserve(s->liveSize());
+        for (size_t i = 0; i < s->elements.size(); ++i) {
+            if (s->isAlive(i)) values.push_back(s->elements[i]);
+        }
+        int n = static_cast<int>(values.size());
         if (n > 20)
             JC2_THROW(MathError, "Set size too large for powerset (max 20 elements).");
 
         ObjSet* result = GcHeap::get().allocate<ObjSet>();
         GcObjGuard guard(result);
         int limit = 1 << n;  // 2^n
-        const auto& raw = s->elements;
+        const auto& raw = values;
 
         for (int mask = 0; mask < limit; ++mask) {
             jc::checkInterrupt();
@@ -7568,4 +7591,5 @@ void BuiltinRegistry::registerCAS() {
 }
 
 } // namespace jc
+
 

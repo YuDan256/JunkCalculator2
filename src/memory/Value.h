@@ -116,6 +116,7 @@ namespace jc {
         struct Iterator {
             size_t second = 0;
             bool atEnd = true;
+            size_t slot = 0;
             Iterator* operator->() { return this; }
             const Iterator* operator->() const { return this; }
             bool operator==(const Iterator& other) const {
@@ -137,6 +138,7 @@ namespace jc {
         void clear();
         void reserve(size_t count);
         size_t size() const { return live_; }
+        void compactIfNeeded();
 
     private:
         ObjDict* owner_;
@@ -147,7 +149,7 @@ namespace jc {
         uint32_t tombstones_ = 0;
 
         void setIndex(const Value& key, size_t element);
-        void rehash(size_t capacity);
+        void rehash(size_t capacity, bool compact);
         void insertHash(uint64_t hash, size_t element);
         size_t slotFor(uint64_t hash) const;
         void ensureCapacity(size_t extra);
@@ -1490,6 +1492,7 @@ namespace jc {
     };
     struct ObjDict : public Obj {
         std::vector<std::pair<Value, Value>> elements;
+        std::vector<uint8_t> alive;
         DictKeyIndex keyMap;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
@@ -1498,33 +1501,32 @@ namespace jc {
         ObjDict() : keyMap(this) { type = ObjType::DICT; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Dict."); }
         void clear() override { checkModify(); clearTotal(); }
-        void clearTotal() override { elements.clear(); keyMap.clear(); }
+        void clearTotal() override { elements.clear(); alive.clear(); keyMap.clear(); }
+        size_t liveSize() const { return keyMap.size(); }
+        bool isAlive(size_t i) const { return i < alive.size() && alive[i] != 0; }
         void set(const Value& key, const Value& val) {
             checkModify();
             auto it = keyMap.find(key);
             if (it != keyMap.end()) {
                 elements[it->second].second = val;
             } else {
-                keyMap[key] = elements.size();
+                size_t idx = elements.size();
+                keyMap[key] = idx;
                 elements.push_back({key, val});
+                alive.push_back(1);
+                keyMap.compactIfNeeded();
             }
         }
         void remove(const Value& key) {
             checkModify();
             auto it = keyMap.find(key);
             if (it == keyMap.end()) errKeyNotFound(key.toRepr());
-            size_t idx = it->second;
             keyMap.erase(it);
-            elements.erase(elements.begin() + idx);
         }
         void discard(const Value& key) {
             checkModify();
             auto it = keyMap.find(key);
-            if (it != keyMap.end()) {
-                size_t idx = it->second;
-                keyMap.erase(it);
-                elements.erase(elements.begin() + idx);
-            }
+            if (it != keyMap.end()) keyMap.erase(it);
         }
     };
 
@@ -1550,7 +1552,7 @@ namespace jc {
                     GcValueGuard candidateGuard(candidate);
                     bool equal = ValueEqual{}(lookupKey, candidate);
                     if (version_ != version) break;
-                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false};
+                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false, pos};
                 }
                 pos = (pos + 1) & mask;
             }
@@ -1571,6 +1573,8 @@ namespace jc {
         uint64_t hash = static_cast<uint64_t>(ValueHasher{}(lookupKey));
         ensureCapacity(1);
         if (hashes_.size() <= element) hashes_.resize(element + 1, 0);
+        if (owner_->alive.size() <= element) owner_->alive.resize(element + 1, 0);
+        owner_->alive[element] = 1;
         hashes_[element] = hash;
         insertHash(hash, element);
         live_++;
@@ -1594,47 +1598,95 @@ namespace jc {
         }
     }
 
-    inline void DictKeyIndex::rehash(size_t capacity) {
+    inline void DictKeyIndex::rehash(size_t capacity, bool compact) {
         size_t cap = 8;
         while (cap < capacity) cap <<= 1;
-        std::vector<Bucket> next(cap);
-        for (size_t i = 0; i < hashes_.size(); ++i) {
-            uint64_t hash = hashes_[i];
-            size_t pos = static_cast<size_t>(hash) & (cap - 1);
-            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
-            next[pos] = {hash, static_cast<int32_t>(i), BucketState::Used};
+
+        if (!compact) {
+            std::vector<Bucket> next(cap);
+            for (size_t i = 0; i < owner_->elements.size(); ++i) {
+                if (!owner_->isAlive(i)) continue;
+                uint64_t hash = i < hashes_.size() ? hashes_[i] : 0;
+                size_t pos = static_cast<size_t>(hash) & (cap - 1);
+                while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+                next[pos] = {hash, static_cast<int32_t>(i), BucketState::Used};
+            }
+            buckets_.swap(next);
+            tombstones_ = 0;
+            version_++;
+            return;
         }
+
+        std::vector<std::pair<Value, Value>> compacted;
+        std::vector<uint8_t> compactedAlive;
+        std::vector<uint64_t> compactedHashes;
+        for (size_t i = 0; i < owner_->elements.size(); ++i) {
+            if (!owner_->isAlive(i)) continue;
+            compacted.push_back(owner_->elements[i]);
+            compactedAlive.push_back(1);
+            compactedHashes.push_back(i < hashes_.size() ? hashes_[i] : 0);
+        }
+
+        std::vector<Bucket> next(cap);
+        for (size_t i = 0; i < compactedHashes.size(); ++i) {
+            size_t pos = static_cast<size_t>(compactedHashes[i]) & (cap - 1);
+            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+            next[pos] = {compactedHashes[i], static_cast<int32_t>(i), BucketState::Used};
+        }
+        owner_->elements.swap(compacted);
+        owner_->alive.swap(compactedAlive);
+        hashes_.swap(compactedHashes);
         buckets_.swap(next);
         tombstones_ = 0;
         version_++;
     }
 
+    inline void DictKeyIndex::compactIfNeeded() {
+        const size_t total = owner_->elements.size();
+        if (total <= live_ + 8) return;
+        if (total > live_ * 3 / 2) rehash(live_ * 2 + 8, true);
+    }
+
     inline void DictKeyIndex::ensureCapacity(size_t extra) {
         if (buckets_.empty()) {
-            rehash(8);
+            rehash(8, false);
             return;
         }
         const size_t need = static_cast<size_t>(live_) + tombstones_ + extra;
-        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8);
+        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8, false);
     }
 
     inline void DictKeyIndex::erase(const Iterator& it) {
         if (it.atEnd) return;
         const size_t element = it.second;
-        for (auto& bucket : buckets_) {
+        bool removed = false;
+        if (it.slot < buckets_.size()) {
+            Bucket& bucket = buckets_[it.slot];
             if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
                 bucket.state = BucketState::Tomb;
                 bucket.element = -1;
                 bucket.hash = 0;
                 live_--;
                 tombstones_++;
-                break;
+                removed = true;
             }
         }
-        if (element < hashes_.size()) hashes_.erase(hashes_.begin() + element);
-        for (auto& bucket : buckets_) {
-            if (bucket.state == BucketState::Used && bucket.element > static_cast<int32_t>(element))
-                bucket.element--;
+        if (!removed) {
+            for (auto& bucket : buckets_) {
+                if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
+                    bucket.state = BucketState::Tomb;
+                    bucket.element = -1;
+                    bucket.hash = 0;
+                    live_--;
+                    tombstones_++;
+                    break;
+                }
+            }
+        }
+        if (element < owner_->alive.size()) owner_->alive[element] = 0;
+        if (element < owner_->elements.size()) {
+            owner_->elements[element].first = Value::none();
+            owner_->elements[element].second = Value::none();
         }
         version_++;
     }
@@ -1649,7 +1701,7 @@ namespace jc {
 
     inline void DictKeyIndex::reserve(size_t count) {
         if (count == 0) return;
-        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8);
+        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8, true);
     }
 
     inline DictKeyIndex::Ref& DictKeyIndex::Ref::operator=(size_t element) {
@@ -1668,6 +1720,7 @@ namespace jc {
         struct Iterator {
             size_t second = 0;
             bool atEnd = true;
+            size_t slot = 0;
             Iterator* operator->() { return this; }
             const Iterator* operator->() const { return this; }
             bool operator==(const Iterator& other) const {
@@ -1685,6 +1738,7 @@ namespace jc {
         void clear();
         void reserve(size_t count);
         size_t size() const { return live_; }
+        void compactIfNeeded();
 
     private:
         ObjSet* owner_;
@@ -1695,12 +1749,13 @@ namespace jc {
         uint32_t tombstones_ = 0;
 
         void insertHash(uint64_t hash, size_t element);
-        void rehash(size_t capacity);
+        void rehash(size_t capacity, bool compact);
         void ensureCapacity(size_t extra);
     };
 
     struct ObjSet : public Obj {
         std::vector<Value> elements;
+        std::vector<uint8_t> alive;
         SetKeyIndex keys;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
@@ -1709,38 +1764,40 @@ namespace jc {
         ObjSet() : keys(this) { type = ObjType::SET; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Set."); }
         void clear() override { checkModify(); clearTotal(); }
-        void clearTotal() override { elements.clear(); keys.clear(); }
+        void clearTotal() override { elements.clear(); alive.clear(); keys.clear(); }
+        size_t liveSize() const { return keys.size(); }
+        bool isAlive(size_t i) const { return i < alive.size() && alive[i] != 0; }
         void add(const Value& val) {
             checkModify();
             if (keys.find(val) == keys.end()) {
                 keys.insert(val);
                 elements.push_back(val);
+                alive.push_back(1);
+                keys.compactIfNeeded();
             }
         }
         void remove(const Value& val) {
             checkModify();
             auto it = keys.find(val);
             if (it == keys.end()) JC2_THROW(RuntimeError, "Element " + val.toRepr() + " not found in Set.");
-            size_t idx = it->second;
             keys.erase(it);
-            elements.erase(elements.begin() + idx);
         }
         void discard(const Value& val) {
             checkModify();
             auto it = keys.find(val);
-            if (it != keys.end()) {
-                size_t idx = it->second;
-                keys.erase(it);
-                elements.erase(elements.begin() + idx);
-            }
+            if (it != keys.end()) keys.erase(it);
         }
         Value pop() {
             checkModify();
-            if (elements.empty()) JC2_THROW(RuntimeError, "setPop() on empty Set.");
-            Value result = elements.back();
-            keys.erase(result);
-            elements.pop_back();
-            return result;
+            for (size_t i = elements.size(); i > 0; --i) {
+                size_t idx = i - 1;
+                if (!isAlive(idx)) continue;
+                Value result = elements[idx];
+                auto it = keys.find(result);
+                if (it != keys.end()) keys.erase(it);
+                return result;
+            }
+            JC2_THROW(RuntimeError, "setPop() on empty Set.");
         }
     };
 
@@ -1764,7 +1821,7 @@ namespace jc {
                     GcValueGuard candidateGuard(candidate);
                     bool equal = ValueEqual{}(lookupValue, candidate);
                     if (version_ != version) break;
-                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false};
+                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false, pos};
                 }
                 pos = (pos + 1) & mask;
             }
@@ -1780,6 +1837,8 @@ namespace jc {
         ensureCapacity(1);
         size_t element = owner_->elements.size();
         if (hashes_.size() <= element) hashes_.resize(element + 1, 0);
+        if (owner_->alive.size() <= element) owner_->alive.resize(element + 1, 0);
+        owner_->alive[element] = 1;
         hashes_[element] = hash;
         insertHash(hash, element);
         live_++;
@@ -1803,47 +1862,93 @@ namespace jc {
         }
     }
 
-    inline void SetKeyIndex::rehash(size_t capacity) {
+    inline void SetKeyIndex::rehash(size_t capacity, bool compact) {
         size_t cap = 8;
         while (cap < capacity) cap <<= 1;
-        std::vector<Bucket> next(cap);
-        for (size_t i = 0; i < hashes_.size(); ++i) {
-            size_t pos = static_cast<size_t>(hashes_[i]) & (cap - 1);
-            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
-            next[pos] = {hashes_[i], static_cast<int32_t>(i), BucketState::Used};
+
+        if (!compact) {
+            std::vector<Bucket> next(cap);
+            for (size_t i = 0; i < owner_->elements.size(); ++i) {
+                if (!owner_->isAlive(i)) continue;
+                uint64_t hash = i < hashes_.size() ? hashes_[i] : 0;
+                size_t pos = static_cast<size_t>(hash) & (cap - 1);
+                while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+                next[pos] = {hash, static_cast<int32_t>(i), BucketState::Used};
+            }
+            buckets_.swap(next);
+            tombstones_ = 0;
+            version_++;
+            return;
         }
+
+        std::vector<Value> compacted;
+        std::vector<uint8_t> compactedAlive;
+        std::vector<uint64_t> compactedHashes;
+        for (size_t i = 0; i < owner_->elements.size(); ++i) {
+            if (!owner_->isAlive(i)) continue;
+            compacted.push_back(owner_->elements[i]);
+            compactedAlive.push_back(1);
+            compactedHashes.push_back(i < hashes_.size() ? hashes_[i] : 0);
+        }
+
+        std::vector<Bucket> next(cap);
+        for (size_t i = 0; i < compactedHashes.size(); ++i) {
+            size_t pos = static_cast<size_t>(compactedHashes[i]) & (cap - 1);
+            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+            next[pos] = {compactedHashes[i], static_cast<int32_t>(i), BucketState::Used};
+        }
+        owner_->elements.swap(compacted);
+        owner_->alive.swap(compactedAlive);
+        hashes_.swap(compactedHashes);
         buckets_.swap(next);
         tombstones_ = 0;
         version_++;
     }
 
+    inline void SetKeyIndex::compactIfNeeded() {
+        const size_t total = owner_->elements.size();
+        if (total <= live_ + 8) return;
+        if (total > live_ * 3 / 2) rehash(live_ * 2 + 8, true);
+    }
+
     inline void SetKeyIndex::ensureCapacity(size_t extra) {
         if (buckets_.empty()) {
-            rehash(8);
+            rehash(8, false);
             return;
         }
         const size_t need = static_cast<size_t>(live_) + tombstones_ + extra;
-        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8);
+        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8, false);
     }
 
     inline void SetKeyIndex::erase(const Iterator& it) {
         if (it.atEnd) return;
         const size_t element = it.second;
-        for (auto& bucket : buckets_) {
+        bool removed = false;
+        if (it.slot < buckets_.size()) {
+            Bucket& bucket = buckets_[it.slot];
             if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
                 bucket.state = BucketState::Tomb;
                 bucket.element = -1;
                 bucket.hash = 0;
                 live_--;
                 tombstones_++;
-                break;
+                removed = true;
             }
         }
-        if (element < hashes_.size()) hashes_.erase(hashes_.begin() + element);
-        for (auto& bucket : buckets_) {
-            if (bucket.state == BucketState::Used && bucket.element > static_cast<int32_t>(element))
-                bucket.element--;
+        if (!removed) {
+            for (auto& bucket : buckets_) {
+                if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
+                    bucket.state = BucketState::Tomb;
+                    bucket.element = -1;
+                    bucket.hash = 0;
+                    live_--;
+                    tombstones_++;
+                    break;
+                }
+            }
         }
+        if (element < owner_->alive.size()) owner_->alive[element] = 0;
+        if (element < owner_->elements.size()) owner_->elements[element] = Value::none();
         version_++;
     }
 
@@ -1862,7 +1967,7 @@ namespace jc {
 
     inline void SetKeyIndex::reserve(size_t count) {
         if (count == 0) return;
-        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8);
+        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8, true);
     }
 
 
@@ -1934,8 +2039,8 @@ namespace jc {
                 ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
                 ObjSet* res = GcHeap::get().allocate<ObjSet>();
                 GcObjGuard guard(res);
-                for (const auto& v1 : s1->elements) {
-                    for (const auto& v2 : s2->elements) {
+                for (size_t _i = 0; _i < s1->elements.size(); ++_i) { if (!s1->isAlive(_i)) continue; const auto& v1 = s1->elements[_i];
+                    for (size_t _j = 0; _j < s2->elements.size(); ++_j) { if (!s2->isAlive(_j)) continue; const auto& v2 = s2->elements[_j];
                         ObjList* pair = GcHeap::get().allocate<ObjList>();
                         pair->vec.push_back(v1);
                         pair->vec.push_back(v2);
@@ -2285,7 +2390,7 @@ namespace jc {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
             ObjSet* res = GcHeap::get().allocate<ObjSet>();
-            for (const auto& val : s1->elements) {
+            for (size_t _i = 0; _i < s1->elements.size(); ++_i) { if (!s1->isAlive(_i)) continue; const auto& val = s1->elements[_i];
                 if (s2->keys.find(val) != s2->keys.end()) {
                     res->add(val);
                 }
@@ -2368,8 +2473,8 @@ namespace jc {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
             ObjSet* res = GcHeap::get().allocate<ObjSet>();
-            for (const auto& val : s1->elements) { res->add(val); }
-            for (const auto& val : s2->elements) { res->add(val); }
+            for (size_t _i = 0; _i < s1->elements.size(); ++_i) { if (!s1->isAlive(_i)) continue; const auto& val = s1->elements[_i]; res->add(val); }
+            for (size_t _i = 0; _i < s2->elements.size(); ++_i) { if (!s2->isAlive(_i)) continue; const auto& val = s2->elements[_i]; res->add(val); }
             return Value(res);
         }
         
@@ -2393,12 +2498,12 @@ namespace jc {
             ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
             ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
             ObjSet* res = GcHeap::get().allocate<ObjSet>();
-            for (const auto& val : s1->elements) {
+            for (size_t _i = 0; _i < s1->elements.size(); ++_i) { if (!s1->isAlive(_i)) continue; const auto& val = s1->elements[_i];
                 if (s2->keys.find(val) == s2->keys.end()) {
                     res->add(val);
                 }
             }
-            for (const auto& val : s2->elements) {
+            for (size_t _i = 0; _i < s2->elements.size(); ++_i) { if (!s2->isAlive(_i)) continue; const auto& val = s2->elements[_i];
                 if (s1->keys.find(val) == s1->keys.end()) {
                     res->add(val);
                 }
@@ -2638,7 +2743,7 @@ namespace jc {
                 if (dict->is_hashable_cached) return true;
                 RecursionGuard guard(visited, dict);
                 if (guard.isCycle) return true;
-                for (const auto& [k, v] : dict->elements) {
+                for (size_t _i = 0; _i < dict->elements.size(); ++_i) { if (!dict->isAlive(_i)) continue; const auto& [k, v] = dict->elements[_i];
                     try { if (!v.isHashable()) return false; } catch (...) { return false; }
                 }
                 dict->is_hashable_cached = true;
@@ -2650,7 +2755,7 @@ namespace jc {
                 if (set->is_hashable_cached) return true;
                 RecursionGuard guard(visited, set);
                 if (guard.isCycle) return true;
-                for (const auto& v : set->elements) {
+                for (size_t _i = 0; _i < set->elements.size(); ++_i) { if (!set->isAlive(_i)) continue; const auto& v = set->elements[_i];
                     try { if (!v.isHashable()) return false; } catch (...) { return false; }
                 }
                 set->is_hashable_cached = true;
@@ -2710,8 +2815,8 @@ namespace jc {
             case ObjType::FRACTION: return !static_cast<ObjFraction*>(obj)->frac.getNum().isZero();
             case ObjType::STRING: return !static_cast<ObjString*>(obj)->str.empty();
             case ObjType::LIST: return !static_cast<ObjList*>(obj)->vec.empty();
-            case ObjType::DICT: return !static_cast<ObjDict*>(obj)->elements.empty();
-            case ObjType::SET: return !static_cast<ObjSet*>(obj)->elements.empty();
+            case ObjType::DICT: return static_cast<ObjDict*>(obj)->liveSize() != 0;
+            case ObjType::SET: return static_cast<ObjSet*>(obj)->liveSize() != 0;
             case ObjType::SYMBOLIC: return !static_cast<ObjSym*>(obj)->sym.isZero();
             case ObjType::SYM_MATRIX: return static_cast<ObjSymMatrix*>(obj)->mat.getRows() * static_cast<ObjSymMatrix*>(obj)->mat.getCols() > 0;
             // 空矩阵为假：与 SYM_MATRIX 同口径。此前 REAL/COMPLEX 矩阵没有 case，
@@ -2879,12 +2984,12 @@ namespace jc {
                 case ObjType::DICT: {
                     auto a = static_cast<ObjDict*>(lobj);
                     auto b = static_cast<ObjDict*>(robj);
-                    if (a->elements.size() != b->elements.size()) return false;
+                    if (a->liveSize() != b->liveSize()) return false;
                     auto pair = lobj < robj ? std::make_pair((const void*)lobj, (const void*)robj) : std::make_pair((const void*)robj, (const void*)lobj);
                     if (std::find(comparingPairs.begin(), comparingPairs.end(), pair) != comparingPairs.end()) return true;
                     CompGuard guard(comparingPairs, pair);
                     bool eq = true;
-                    for (const auto& [key, val] : a->elements) {
+                    for (size_t _i = 0; _i < a->elements.size(); ++_i) { if (!a->isAlive(_i)) continue; const auto& [key, val] = a->elements[_i];
                         auto it = b->keyMap.find(key);
                         if (it == b->keyMap.end()) { eq = false; break; }
                         try { if (!equals(val, b->elements[it->second].second)) { eq = false; break; } }
@@ -2895,8 +3000,8 @@ namespace jc {
                 case ObjType::SET: {
                     auto a = static_cast<ObjSet*>(lobj);
                     auto b = static_cast<ObjSet*>(robj);
-                    if (a->elements.size() != b->elements.size()) return false;
-                    for (const auto& val : a->elements) {
+                    if (a->liveSize() != b->liveSize()) return false;
+                    for (size_t _i = 0; _i < a->elements.size(); ++_i) { if (!a->isAlive(_i)) continue; const auto& val = a->elements[_i];
                         if (b->keys.find(val) == b->keys.end()) return false;
                     }
                     return true;
@@ -3151,10 +3256,10 @@ namespace jc {
             ObjDict* d1 = static_cast<ObjDict*>(lhs.asObj());
             ObjDict* d2 = static_cast<ObjDict*>(rhs.asObj());
             ObjDict* res = GcHeap::get().allocate<ObjDict>();
-            for (const auto& [k, v] : d1->elements) {
+            for (size_t _i = 0; _i < d1->elements.size(); ++_i) { if (!d1->isAlive(_i)) continue; const auto& [k, v] = d1->elements[_i];
                 res->set(k, v);
             }
-            for (const auto& [k, v] : d2->elements) {
+            for (size_t _i = 0; _i < d2->elements.size(); ++_i) { if (!d2->isAlive(_i)) continue; const auto& [k, v] = d2->elements[_i];
                 res->set(k, v);
             }
             return Value(res);
@@ -3248,19 +3353,19 @@ namespace jc {
                 
                 if (rhs.isObjType(ObjType::SET)) {
                     ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
-                    for (const auto& [k, v] : d1->elements) {
+                    for (size_t _i = 0; _i < d1->elements.size(); ++_i) { if (!d1->isAlive(_i)) continue; const auto& [k, v] = d1->elements[_i];
                         if (s2->keys.find(k) == s2->keys.end()) res->set(k, v);
                     }
                 } else if (rhs.isObjType(ObjType::LIST)) {
                     ObjList* l2 = static_cast<ObjList*>(rhs.asObj());
                     std::unordered_set<Value, ValueHasher, ValueEqual> toRemove;
                     for (const auto& k : l2->vec) toRemove.insert(k);
-                    for (const auto& [k, v] : d1->elements) {
+                    for (size_t _i = 0; _i < d1->elements.size(); ++_i) { if (!d1->isAlive(_i)) continue; const auto& [k, v] = d1->elements[_i];
                         if (toRemove.find(k) == toRemove.end()) res->set(k, v);
                     }
                 } else if (rhs.isObjType(ObjType::DICT)) {
                     ObjDict* d2 = static_cast<ObjDict*>(rhs.asObj());
-                    for (const auto& [k, v] : d1->elements) {
+                    for (size_t _i = 0; _i < d1->elements.size(); ++_i) { if (!d1->isAlive(_i)) continue; const auto& [k, v] = d1->elements[_i];
                         if (d2->keyMap.find(k) == d2->keyMap.end()) res->set(k, v);
                     }
                 }
@@ -3334,7 +3439,7 @@ namespace jc {
                 ObjSet* s1 = static_cast<ObjSet*>(lhs.asObj());
                 ObjSet* s2 = static_cast<ObjSet*>(rhs.asObj());
                 ObjSet* res = GcHeap::get().allocate<ObjSet>();
-                for (const auto& val : s1->elements) {
+                for (size_t _i = 0; _i < s1->elements.size(); ++_i) { if (!s1->isAlive(_i)) continue; const auto& val = s1->elements[_i];
                     if (s2->keys.find(val) == s2->keys.end()) {
                         res->add(val);
                     }
@@ -3467,6 +3572,7 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
             os << "%{";
             size_t shown = 0;
             for (size_t i = 0; i < dict->elements.size(); ++i) {
+                if (!dict->isAlive(i)) continue;
                 if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }
                 if (shown > 0) os << ", ";
                 try { printNested(dict->elements[i].first); } catch (...) { os << "?"; }
@@ -3484,6 +3590,7 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
             os << "@{";
             size_t shown = 0;
             for (size_t i = 0; i < set->elements.size(); ++i) {
+                if (!set->isAlive(i)) continue;
                 if (!full && shown == kMaxPrintElements) { os << ", ..."; break; }
                 if (shown > 0) os << ", ";
                 try { printNested(set->elements[i]); } catch (...) { os << "?"; }
@@ -3794,9 +3901,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto d = static_cast<ObjDict*>(obj);
             if (!d->is_frozen) errUnhashable();
             if (d->has_cached_hash) return d->cached_hash;
-            size_t sz = d->elements.size();
+            size_t sz = d->liveSize();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x3B8E7A1F5D2C6049ULL;
-            for (const auto& [k, val] : d->elements) {
+            for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, val] = d->elements[_i];
                 size_t k_hash = ValueHasher{}(k);
                 size_t v_hash = ValueHasher{}(val);
                 size_t kv_hash = k_hash ^ (v_hash + 0x9e3779b9 + (k_hash << 6) + (k_hash >> 2));
@@ -3812,9 +3919,9 @@ inline size_t ValueHasher::operator()(const Value& v) const {
             auto s = static_cast<ObjSet*>(obj);
             if (!s->is_frozen) errUnhashable();
             if (s->has_cached_hash) return s->cached_hash;
-            size_t sz = s->elements.size();
+            size_t sz = s->liveSize();
             size_t seed = sipHash24(&sz, sizeof(size_t)) ^ 0x5C9D2E4F1A8B7063ULL;
-            for (const auto& e : s->elements) {
+            for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& e = s->elements[_i];
                 size_t h = ValueHasher{}(e);
                 h *= 0xBF58476D1CE4E5B9ULL;
                 h ^= h >> 31;

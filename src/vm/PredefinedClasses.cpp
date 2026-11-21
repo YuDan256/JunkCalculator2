@@ -195,7 +195,7 @@ void registerPredefinedClasses() {
         
         if (args.size() > 2 && args[2].isObjType(ObjType::DICT)) {
             auto props = static_cast<ObjDict*>(args[2].asObj());
-            for (const auto& [k, v] : props->elements) {
+            for (size_t _i = 0; _i < props->elements.size(); ++_i) { if (!props->isAlive(_i)) continue; const auto& [k, v] = props->elements[_i];
                 if (k.isString()) {
                     inst->properties[k.asString()] = {v, false, false};
                 }

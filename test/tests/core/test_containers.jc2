@@ -511,3 +511,24 @@ test_set_reentrant_mutation() = {
     assert(reentrant_set.has(0) && reentrant_set.has(99), "callback set writes must be visible")
 }
 test_set_reentrant_mutation()
+
+test_dict_set_remove_holes() = {
+    D = %{a: 1, b: 2, c: 3}
+    D.remove("b")
+    assert(D.len() == 2, "dict len skips removed slots")
+    assert(D.fields() == @["a", "c"], "dict fields skips removed slots")
+    assert(D.values() == @[1, 3], "dict values skips removed slots")
+    seen = @[]
+    for (k in D) { seen.push(k) }
+    assert(seen == @["a", "c"], "dict iteration skips removed slots")
+
+    S = @{1, 2, 3}
+    S.remove(2)
+    assert(S.len() == 2, "set len skips removed slots")
+    assert(S.join(",") == "1,3", "set join skips removed slots")
+    assert(S.powerSet().len() == 4, "set powerSet skips removed slots")
+    seen2 = @[]
+    for (v in S) { seen2.push(v) }
+    assert(seen2 == @[1, 3], "set iteration skips removed slots")
+}
+test_dict_set_remove_holes()

@@ -6853,7 +6853,7 @@ Value VM::run(int targetFrameDepth) {
                 if (iterable.isObjType(ObjType::DICT)) {
                     const auto* d = static_cast<ObjDict*>(iterable.asObj());
                     if (destructFlag) {
-                        for (const auto& [key, val] : d->elements) {
+                        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [key, val] = d->elements[_i];
                             ObjList* pair = GcHeap::get().allocate<ObjList>();
                             pair->vec.push_back(key);
                             pair->vec.push_back(val);
@@ -6861,7 +6861,7 @@ Value VM::run(int targetFrameDepth) {
                             elements->vec.push_back(Value(pair));
                         }
                     } else {
-                        for (const auto& [key, val] : d->elements) {
+                        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [key, val] = d->elements[_i];
                             elements->vec.push_back(key);
                         }
                     }
@@ -6907,7 +6907,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (iterable.isObjType(ObjType::SET)) {
                     const auto* s = static_cast<ObjSet*>(iterable.asObj());
-                    for (const auto& val : s->elements) {
+                    for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& val = s->elements[_i];
                         elements->vec.push_back(val);
                     }
                 } else if (iterable.isInstance()) {
@@ -7409,7 +7409,7 @@ Value VM::run(int targetFrameDepth) {
 
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
                         if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                             getReg(a) = d->elements[ic.cachedFieldIndex].second;
                             break;
@@ -7634,7 +7634,7 @@ Value VM::run(int targetFrameDepth) {
 
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
                         if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                             getReg(a) = d->elements[ic.cachedFieldIndex].second;
                             break;
@@ -7964,7 +7964,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+                    if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
                         if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                             invalidateJITOnContainerReplace(d->elements[ic.cachedFieldIndex].second, val);
                             d->elements[ic.cachedFieldIndex].second = val;
@@ -8051,7 +8051,7 @@ Value VM::run(int targetFrameDepth) {
                 getReg(a) = Value(restDict); // ★ 立即 Root 防止 GC 误杀
                 if (obj.isObjType(ObjType::DICT)) {
                     auto d = static_cast<ObjDict*>(obj.asObj());
-                    for (const auto& [k, v] : d->elements) {
+                    for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
                         if (k.isString() && excludeKeys.count(k.asString())) continue;
                         restDict->set(k, v);
                     }
@@ -9217,7 +9217,7 @@ uint64_t jc2_jit_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* chunk)
 
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
             if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                 vm->getCurrentFrame()->jitReturnSlot = d->elements[ic.cachedFieldIndex].second;
                 return d->elements[ic.cachedFieldIndex].second.as_bits;
@@ -9414,7 +9414,7 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
 
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
             if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                 vm->getCurrentFrame()->jitReturnSlot = d->elements[ic.cachedFieldIndex].second;
                 return d->elements[ic.cachedFieldIndex].second.as_bits;
@@ -9649,7 +9649,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
     if (iterable.isObjType(ObjType::DICT)) {
         const auto* d = static_cast<ObjDict*>(iterable.asObj());
         if (destructFlag) {
-            for (const auto& [key, val] : d->elements) {
+            for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [key, val] = d->elements[_i];
                 ObjList* pair = GcHeap::get().allocate<ObjList>();
                 pair->vec.push_back(key);
                 pair->vec.push_back(val);
@@ -9657,7 +9657,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
                 elements->vec.push_back(Value(pair));
             }
         } else {
-            for (const auto& [key, val] : d->elements) {
+            for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [key, val] = d->elements[_i];
                 elements->vec.push_back(key);
             }
         }
@@ -9703,7 +9703,7 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
         }
     } else if (iterable.isObjType(ObjType::SET)) {
         const auto* s = static_cast<ObjSet*>(iterable.asObj());
-        for (const auto& val : s->elements) {
+        for (size_t _i = 0; _i < s->elements.size(); ++_i) { if (!s->isAlive(_i)) continue; const auto& val = s->elements[_i];
             elements->vec.push_back(val);
         }
     } else if (iterable.isInstance()) {
@@ -10024,7 +10024,7 @@ Value VM::opIsSubset(Value a, Value b) {
     if (a.isObjType(ObjType::SET) && b.isObjType(ObjType::SET)) {
         auto sa = static_cast<ObjSet*>(a.asObj());
         auto sb = static_cast<ObjSet*>(b.asObj());
-        for (const auto& k : sa->elements) {
+        for (size_t _i = 0; _i < sa->elements.size(); ++_i) { if (!sa->isAlive(_i)) continue; const auto& k = sa->elements[_i];
             if (sb->keys.find(k) == sb->keys.end()) return Value(false);
         }
         return Value(true);
@@ -10640,7 +10640,7 @@ void jc2_jit_set_prop(uint64_t obj_bits, uint64_t val_bits, uint32_t icIdx, cons
         }
     } else if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size())) {
+        if (ic.cachedBuiltinType == BuiltinType::DICT && ic.cachedFieldIndex != -1 && ic.cachedFieldIndex < static_cast<int>(d->elements.size()) && d->isAlive(static_cast<size_t>(ic.cachedFieldIndex))) {
             if (d->elements[ic.cachedFieldIndex].first.as_bits == keyVal.as_bits) {
                 vm->invalidateJITOnContainerReplace(d->elements[ic.cachedFieldIndex].second, val);
                 d->elements[ic.cachedFieldIndex].second = val;
@@ -10725,7 +10725,7 @@ uint64_t jc2_jit_dict_rest(uint64_t obj_bits, uint64_t exclude_bits) {
     
     if (obj.isObjType(ObjType::DICT)) {
         auto d = static_cast<ObjDict*>(obj.asObj());
-        for (const auto& [k, v] : d->elements) {
+        for (size_t _i = 0; _i < d->elements.size(); ++_i) { if (!d->isAlive(_i)) continue; const auto& [k, v] = d->elements[_i];
             if (k.isString() && excludeKeys.count(k.asString())) continue;
             restDict->set(k, v);
         }
@@ -11909,3 +11909,4 @@ uint64_t jc2_jit_match_shape(uint64_t b_bits, uint32_t shapeIdx, const Chunk* ch
 }
 
 } // namespace jc
+

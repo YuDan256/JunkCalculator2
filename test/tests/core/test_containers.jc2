@@ -460,3 +460,31 @@ test_reshape_order_flag() = {
 test_reshape_order_flag()
 
 
+
+// ── dict reentrant mutation from __eq__ ───────────────────────
+reentrant_victim = %{}
+class ReentrantBomb {
+    init(id) = { self.id = id }
+    __hash__() = 42
+    __eq__(other) = {
+        for (local i in range(100)) {
+            // 42 has the same hash as this instance; inserting it would recurse
+            // through this very __eq__ by user design.
+            if (i == 42) continue
+            ref reentrant_victim
+            reentrant_victim[i] = i
+        }
+        return false
+    }
+}
+test_dict_reentrant_mutation() = {
+    ref reentrant_victim
+    reentrant_victim = %{}
+    reentrant_victim[ReentrantBomb(1)] = "first"
+    reentrant_victim[ReentrantBomb(2)] = "second"
+    assert(reentrant_victim.len() == 101, "reentrant dict writes must commit")
+    assert(reentrant_victim[0] == 0, "callback insertion must be visible")
+    assert(reentrant_victim.fields().len() == 101, "original key must survive rehash")
+}
+test_dict_reentrant_mutation()
+

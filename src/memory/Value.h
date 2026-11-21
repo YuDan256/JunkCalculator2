@@ -102,6 +102,57 @@ namespace jc {
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
 
+    // Reentrancy-safe key index for ObjDict.  Hash values are cached so rehash
+    // never calls user __hash__; lookups restart when a callback changes the
+    // table version.
+    class DictKeyIndex {
+    public:
+        enum class BucketState : uint8_t { Empty = 0, Used = 1, Tomb = 2 };
+        struct Bucket {
+            uint64_t hash = 0;
+            int32_t element = -1;
+            BucketState state = BucketState::Empty;
+        };
+        struct Iterator {
+            size_t second = 0;
+            bool atEnd = true;
+            Iterator* operator->() { return this; }
+            const Iterator* operator->() const { return this; }
+            bool operator==(const Iterator& other) const {
+                return atEnd == other.atEnd && (atEnd || second == other.second);
+            }
+            bool operator!=(const Iterator& other) const { return !(*this == other); }
+        };
+        struct Ref {
+            DictKeyIndex* index = nullptr;
+            const Value* key = nullptr;
+            Ref& operator=(size_t element);
+        };
+
+        explicit DictKeyIndex(ObjDict* owner) : owner_(owner) {}
+        Iterator find(const Value& key) const;
+        Iterator end() const { return Iterator{}; }
+        Ref operator[](const Value& key) { return Ref{this, &key}; }
+        void erase(const Iterator& it);
+        void clear();
+        void reserve(size_t count);
+        size_t size() const { return live_; }
+
+    private:
+        ObjDict* owner_;
+        std::vector<Bucket> buckets_;
+        std::vector<uint64_t> hashes_;
+        uint64_t version_ = 0;
+        uint32_t live_ = 0;
+        uint32_t tombstones_ = 0;
+
+        void setIndex(const Value& key, size_t element);
+        void rehash(size_t capacity);
+        void insertHash(uint64_t hash, size_t element);
+        size_t slotFor(uint64_t hash) const;
+        void ensureCapacity(size_t extra);
+    };
+
     struct ObjTypeDef;
     inline std::unordered_map<std::string, ObjTypeDef*> g_internedTypes;
     ObjTypeDef* internType(std::vector<std::variant<BuiltinType, ObjClass*>> types);
@@ -1439,12 +1490,12 @@ namespace jc {
     };
     struct ObjDict : public Obj {
         std::vector<std::pair<Value, Value>> elements;
-        std::unordered_map<Value, size_t, ValueHasher, ValueEqual> keyMap;
+        DictKeyIndex keyMap;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
-        ObjDict() { type = ObjType::DICT; }
+        ObjDict() : keyMap(this) { type = ObjType::DICT; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Dict."); }
         void clear() override { checkModify(); clearTotal(); }
         void clearTotal() override { elements.clear(); keyMap.clear(); }
@@ -1465,9 +1516,6 @@ namespace jc {
             size_t idx = it->second;
             keyMap.erase(it);
             elements.erase(elements.begin() + idx);
-            for (size_t i = idx; i < elements.size(); ++i) {
-                keyMap[elements[i].first] = i;
-            }
         }
         void discard(const Value& key) {
             checkModify();
@@ -1476,12 +1524,139 @@ namespace jc {
                 size_t idx = it->second;
                 keyMap.erase(it);
                 elements.erase(elements.begin() + idx);
-                for (size_t i = idx; i < elements.size(); ++i) {
-                    keyMap[elements[i].first] = i;
-                }
             }
         }
     };
+
+    inline DictKeyIndex::Iterator DictKeyIndex::find(const Value& key) const {
+        // The lookup key must survive a callback that removes its entry.
+        Value lookupKey = key;
+        GcValueGuard lookupGuard(lookupKey);
+        uint64_t hash = static_cast<uint64_t>(ValueHasher{}(lookupKey));
+
+        for (;;) {
+            if (buckets_.empty()) return Iterator{};
+            uint64_t version = version_;
+            const size_t mask = buckets_.size() - 1;
+            size_t pos = static_cast<size_t>(hash) & mask;
+
+            for (size_t probes = 0; probes < buckets_.size(); ++probes) {
+                if (version_ != version) break;
+                Bucket bucket = buckets_[pos];
+
+                if (bucket.state == BucketState::Empty) return Iterator{};
+                if (bucket.state == BucketState::Used && bucket.hash == hash) {
+                    Value candidate = owner_->elements[static_cast<size_t>(bucket.element)].first;
+                    GcValueGuard candidateGuard(candidate);
+                    bool equal = ValueEqual{}(lookupKey, candidate);
+                    if (version_ != version) break;
+                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false};
+                }
+                pos = (pos + 1) & mask;
+            }
+            if (version_ == version) return Iterator{};
+            // A callback changed the table; restart from the current version.
+        }
+    }
+
+    inline void DictKeyIndex::setIndex(const Value& key, size_t element) {
+        Value lookupKey = key;
+        GcValueGuard lookupGuard(lookupKey);
+        Iterator found = find(lookupKey);
+        if (!found.atEnd) {
+            // The key is already indexed at its current element slot.
+            return;
+        }
+
+        uint64_t hash = static_cast<uint64_t>(ValueHasher{}(lookupKey));
+        ensureCapacity(1);
+        if (hashes_.size() <= element) hashes_.resize(element + 1, 0);
+        hashes_[element] = hash;
+        insertHash(hash, element);
+        live_++;
+        version_++;
+    }
+
+    inline void DictKeyIndex::insertHash(uint64_t hash, size_t element) {
+        const size_t mask = buckets_.size() - 1;
+        size_t pos = static_cast<size_t>(hash) & mask;
+        size_t tomb = static_cast<size_t>(-1);
+        for (;;) {
+            Bucket& bucket = buckets_[pos];
+            if (bucket.state == BucketState::Empty) {
+                size_t target = tomb == static_cast<size_t>(-1) ? pos : tomb;
+                buckets_[target] = {hash, static_cast<int32_t>(element), BucketState::Used};
+                if (tomb != static_cast<size_t>(-1)) tombstones_--;
+                return;
+            }
+            if (bucket.state == BucketState::Tomb && tomb == static_cast<size_t>(-1)) tomb = pos;
+            pos = (pos + 1) & mask;
+        }
+    }
+
+    inline void DictKeyIndex::rehash(size_t capacity) {
+        size_t cap = 8;
+        while (cap < capacity) cap <<= 1;
+        std::vector<Bucket> next(cap);
+        for (size_t i = 0; i < hashes_.size(); ++i) {
+            uint64_t hash = hashes_[i];
+            size_t pos = static_cast<size_t>(hash) & (cap - 1);
+            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+            next[pos] = {hash, static_cast<int32_t>(i), BucketState::Used};
+        }
+        buckets_.swap(next);
+        tombstones_ = 0;
+        version_++;
+    }
+
+    inline void DictKeyIndex::ensureCapacity(size_t extra) {
+        if (buckets_.empty()) {
+            rehash(8);
+            return;
+        }
+        const size_t need = static_cast<size_t>(live_) + tombstones_ + extra;
+        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8);
+    }
+
+    inline void DictKeyIndex::erase(const Iterator& it) {
+        if (it.atEnd) return;
+        const size_t element = it.second;
+        for (auto& bucket : buckets_) {
+            if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
+                bucket.state = BucketState::Tomb;
+                bucket.element = -1;
+                bucket.hash = 0;
+                live_--;
+                tombstones_++;
+                break;
+            }
+        }
+        if (element < hashes_.size()) hashes_.erase(hashes_.begin() + element);
+        for (auto& bucket : buckets_) {
+            if (bucket.state == BucketState::Used && bucket.element > static_cast<int32_t>(element))
+                bucket.element--;
+        }
+        version_++;
+    }
+
+    inline void DictKeyIndex::clear() {
+        buckets_.clear();
+        hashes_.clear();
+        live_ = 0;
+        tombstones_ = 0;
+        version_++;
+    }
+
+    inline void DictKeyIndex::reserve(size_t count) {
+        if (count == 0) return;
+        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8);
+    }
+
+    inline DictKeyIndex::Ref& DictKeyIndex::Ref::operator=(size_t element) {
+        index->setIndex(*key, element);
+        return *this;
+    }
+
     struct ObjSet : public Obj {
         std::vector<Value> elements;
         std::unordered_set<Value, ValueHasher, ValueEqual> keys;

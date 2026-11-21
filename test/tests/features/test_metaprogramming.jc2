@@ -80,6 +80,14 @@ test_macro_errors() = {
         msg = str(e.message)
         assert("empty argument" in msg || "Macro expansion" in msg, "Wrong error for empty macro argument: " + msg)
     }
+
+    try {
+        eval("macro nullBomb() = {\n b = quote 1 + 2\n b.right = none\n return b\n}\n@nullBomb()\n")
+        assert(false, "Should throw when a macro clears a required AST operand")
+    } catch (e) {
+        msg = str(e.message)
+        assert("empty right operand" in msg || "Macro expansion" in msg, "Wrong error for empty macro operand: " + msg)
+    }
 }
 test_macro_errors()
 

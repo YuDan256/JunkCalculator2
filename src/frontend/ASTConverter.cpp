@@ -940,14 +940,23 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
     std::string type = getProp("type").asString();
     int line = getProp("line").isInt32() ? getProp("line").asInt32() : static_cast<int>(getProp("line").asFloat());
 
+    auto requireExpr = [&](const char* field, const Value& value) -> std::unique_ptr<Expr> {
+        auto expr = toAST(value);
+        if (!expr) {
+            JC2_THROW(RuntimeError, "Macro expansion produced an empty " + std::string(field)
+                                    + " for " + type + ".");
+        }
+        return expr;
+    };
+
     if (type == "Binary") {
-        auto left = toAST(getProp("left"));
-        auto right = toAST(getProp("right"));
+        auto left = requireExpr("left operand", getProp("left"));
+        auto right = requireExpr("right operand", getProp("right"));
         std::string opStr = getProp("op").asString();
         Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Binary>(std::move(left), op, std::move(right));
     } else if (type == "Unary") {
-        auto right = toAST(getProp("right"));
+        auto right = requireExpr("operand", getProp("right"));
         std::string opStr = getProp("op").asString();
         Token op(stringToTokenType(opStr), opStr, line);
         return std::make_unique<Unary>(op, std::move(right));

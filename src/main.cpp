@@ -434,7 +434,7 @@ jc::Value evalCode(const std::string& code, const std::string& sourceFile, bool 
     
     size_t includeDepth = vm.includeStackDepth();
     try {
-        return vm.execute(chunk, localCount);
+        return vm.execute(chunk, localCount, sourceFile);
     } catch (...) {
         vm.restoreTransientState(includeDepth);
         throw;

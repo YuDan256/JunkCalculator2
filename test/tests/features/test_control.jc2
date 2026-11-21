@@ -83,6 +83,14 @@ test_defer_with_macros() = {
 }
 test_defer_with_macros()
 
+test_script_traceback_name() = {
+    caught = false
+    try { throw "trace_name_probe" } catch (e) {
+        caught = "test_control.jc2" in e.traceback && !("in REPL" in e.traceback)
+    }
+    assert(caught, "script traceback must name the script, not REPL")
+}
+test_script_traceback_name()
 test_defer_traceback_line() = {
     deferThrower() = {
         defer { throw "defer_error" }
@@ -422,6 +430,7 @@ counted() = {
 }
 assert(counted() == 1001, "if-without-else plus increment")
 }
+
 
 
 

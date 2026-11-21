@@ -459,7 +459,7 @@ public:
         return compiledFunctions;
     }
 
-    Value execute(const Chunk& mainChunk, int localCount);
+    Value execute(const Chunk& mainChunk, int localCount, const std::string& sourceFile = "");
     void execCompileTimeImport(const std::string& name);
 
     Value makeTokenInstance(const Token& t);

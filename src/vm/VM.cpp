@@ -4715,7 +4715,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     }
 }
 
-Value VM::execute(const Chunk& mainChunk, int localCount) {
+Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sourceFile) {
     const int depth = scriptExecuteDepth++;
     struct ScriptDepthGuard {
         int& depth;
@@ -4747,7 +4747,7 @@ Value VM::execute(const Chunk& mainChunk, int localCount) {
     mainFn->arity = 0;
     mainFn->maxArity = 0;
     mainFn->callCount = 0;
-    mainFn->sourceFile.clear();
+    mainFn->sourceFile = sourceFile;
 
     CallFrame mainFrame;
     mainFrame.function = mainFn.get();

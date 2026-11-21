@@ -8244,6 +8244,9 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::RUN_DEFERS: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 int count = a;
+                // The deferred call may throw; keep this frame's source
+                // position at RUN_DEFERS instead of its previous call site.
+                frame->ip = ip;
                 while (count-- > 0) {
                     ObjClosure* closure = deferStack.back();
                     deferStack.pop_back();
@@ -8673,7 +8676,11 @@ Value VM::run(int targetFrameDepth) {
                 // `ref` upvalue may point at the same register as the return
                 // value, and moving it out would turn that upvalue into none.
                 Value res = getReg(a);
-            
+
+                // Save the current instruction before entering a deferred
+                // closure; otherwise a traceback from that closure reports
+                // return line 0 for this frame when the function made no call.
+                frame->ip = ip;
                 runDefersDownTo(frame->deferBase);
             
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {

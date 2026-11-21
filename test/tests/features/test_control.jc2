@@ -83,6 +83,18 @@ test_defer_with_macros() = {
 }
 test_defer_with_macros()
 
+test_defer_traceback_line() = {
+    deferThrower() = {
+        defer { throw "defer_error" }
+        return 1
+    }
+    caught = false
+    try { deferThrower() } catch (e) {
+        caught = !("Line 0" in e.traceback)
+    }
+    assert(caught, "defer traceback must not report line 0")
+}
+test_defer_traceback_line()
 // A deferred ref upvalue may alias the return register; RETURN must not
 // move that register out before defers run.
 test_defer_ref_return() = {
@@ -410,5 +422,6 @@ counted() = {
 }
 assert(counted() == 1001, "if-without-else plus increment")
 }
+
 
 

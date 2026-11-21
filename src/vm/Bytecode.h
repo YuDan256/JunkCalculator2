@@ -518,18 +518,19 @@ public:
         return static_cast<uint32_t>(callSignatures.size() - 1);
     }
 
-    void disassemble(const std::string& name, bool verbose = false) const {
+    void disassemble(const std::string& name, bool verbose = false, bool raw = false) const {
         std::cout << "=== " << name << " ===" << std::endl;
         for (int offset = 0; offset < static_cast<int>(code.size()); ) {
-            offset += 1 + disassembleInstruction(offset, verbose);
+            offset += 1 + disassembleInstruction(offset, verbose, raw);
         }
         std::cout << "==================" << std::endl;
     }
 
-    int disassembleInstruction(int offset, bool verbose = false) const {
+    int disassembleInstruction(int offset, bool verbose = false, bool raw = false) const {
         std::ostringstream line;
         std::string pendingComment;
         int extra = 0;
+        std::vector<std::pair<int, std::string>> extraWords;
         Instruction inst = code[offset];
         line << std::right << std::setw(4) << std::setfill('0') << offset << "  " << std::setfill(' ');
 
@@ -557,21 +558,22 @@ public:
             return v.toRepr();
         };
 
-        auto readExtra = [&]() -> int {
+        auto readExtra = [&](const std::string& operand) -> int {
             int pos = offset + 1 + extra;
             if (pos >= static_cast<int>(code.size())) return -1;
             ++extra;
+            extraWords.push_back({pos, operand});
             return GET_Ax(code[pos]);
         };
 
-        auto formatRK = [&](int rk) -> std::string {
+        auto formatRK = [&](int rk, const char* operand) -> std::string {
             if (rk == ESCAPE_KBIT_CONST) {
-                int idx = readExtra();
+                int idx = readExtra(operand);
                 if (idx < 0) return "K(?)";
                 return "K(" + std::to_string(idx) + ":" + formatConstant(idx) + ")";
             }
             if (rk == ESCAPE_KBIT_REG) {
-                int reg = readExtra();
+                int reg = readExtra(operand);
                 if (reg < 0) return "R(?)";
                 return "R(" + std::to_string(reg) + ")";
             }
@@ -602,7 +604,9 @@ public:
             case OpCode::BOR: case OpCode::BXOR: case OpCode::SHL: case OpCode::SHR:
             case OpCode::EQ: case OpCode::NEQ: case OpCode::LT: case OpCode::LE:
             case OpCode::GT: case OpCode::GE: case OpCode::CMP: case OpCode::IS: {
-                line << "R(" << a << ") " << formatRK(b) << " " << formatRK(c);
+                std::string bText = formatRK(b, "B");
+                std::string cText = formatRK(c, "C");
+                line << "R(" << a << ") " << bText << " " << cText;
                 const char* sym = "?";
                 switch (op) {
                     case OpCode::ADD: sym = "+"; break;
@@ -628,7 +632,7 @@ public:
                     case OpCode::IS: sym = "is"; break;
                     default: break;
                 }
-                trailing("", "R(" + std::to_string(a) + ") := " + formatRK(b) + " " + sym + " " + formatRK(c));
+                trailing("", "R(" + std::to_string(a) + ") := " + bText + " " + sym + " " + cText);
                 break;
             }
             
@@ -798,9 +802,9 @@ public:
                 break;
 
             case OpCode::CHECK_INIT:
-                if (a == ESCAPE_NORMAL_8) a = readExtra();
-                if (b == ESCAPE_NORMAL_8) b = readExtra();
-                if (c == ESCAPE_NORMAL_8) c = readExtra();
+                if (a == ESCAPE_NORMAL_8) a = readExtra("A");
+                if (b == ESCAPE_NORMAL_8) b = readExtra("B");
+                if (c == ESCAPE_NORMAL_8) c = readExtra("C");
                 line << "R(" << a << ") " << b;
                 {
                     std::string name;
@@ -1164,6 +1168,16 @@ public:
             std::cout << "; " << pendingComment;
         }
         std::cout << std::endl;
+        if (raw) {
+            for (const auto& [pos, operand] : extraWords) {
+                std::cout << std::right << std::setw(4) << std::setfill('0') << pos << "  "
+                          << std::setfill(' ') << std::right << std::setw(4)
+                          << (pos < static_cast<int>(lines.size()) ? lines[pos] : 0) << " "
+                          << std::left << std::setw(20) << "EXTRAARG"
+                          << GET_Ax(code[pos]) << "  ; " << operand
+                          << " operand of " << opName << "@" << offset << std::endl;
+            }
+        }
         return extra;
     }
 };

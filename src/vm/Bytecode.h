@@ -797,6 +797,12 @@ public:
                          "R(" + std::to_string(a) + ") := is_uninit(R(" + std::to_string(b) + "))");
                 break;
 
+            case OpCode::CHECK_INIT:
+                line << "R(" << a << ") " << b;
+                trailing("check_init(R(" + std::to_string(b) + "))",
+                         "R(" + std::to_string(a) + ") := checked(R(" + std::to_string(b) + "))");
+                break;
+
             case OpCode::UNM:
                 line << "R(" << a << ") " << b;
                 trailing("R(" + std::to_string(b) + ")",

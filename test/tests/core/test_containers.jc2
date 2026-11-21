@@ -488,3 +488,26 @@ test_dict_reentrant_mutation() = {
 }
 test_dict_reentrant_mutation()
 
+
+reentrant_set = @{}
+class ReentrantSetBomb {
+    init(id) = { self.id = id }
+    __hash__() = 42
+    __eq__(other) = {
+        for (local i in range(100)) {
+            if (i == 42) continue
+            ref reentrant_set
+            reentrant_set.add(i)
+        }
+        return false
+    }
+}
+test_set_reentrant_mutation() = {
+    ref reentrant_set
+    reentrant_set = @{}
+    reentrant_set.add(ReentrantSetBomb(1))
+    reentrant_set.add(ReentrantSetBomb(2))
+    assert(reentrant_set.len() == 101, "reentrant set writes must commit")
+    assert(reentrant_set.has(0) && reentrant_set.has(99), "callback set writes must be visible")
+}
+test_set_reentrant_mutation()

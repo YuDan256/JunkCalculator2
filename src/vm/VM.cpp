@@ -10024,7 +10024,7 @@ Value VM::opIsSubset(Value a, Value b) {
     if (a.isObjType(ObjType::SET) && b.isObjType(ObjType::SET)) {
         auto sa = static_cast<ObjSet*>(a.asObj());
         auto sb = static_cast<ObjSet*>(b.asObj());
-        for (const auto& k : sa->keys) {
+        for (const auto& k : sa->elements) {
             if (sb->keys.find(k) == sb->keys.end()) return Value(false);
         }
         return Value(true);

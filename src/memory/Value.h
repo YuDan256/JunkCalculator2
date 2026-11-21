@@ -1657,14 +1657,56 @@ namespace jc {
         return *this;
     }
 
+    class SetKeyIndex {
+    public:
+        enum class BucketState : uint8_t { Empty = 0, Used = 1, Tomb = 2 };
+        struct Bucket {
+            uint64_t hash = 0;
+            int32_t element = -1;
+            BucketState state = BucketState::Empty;
+        };
+        struct Iterator {
+            size_t second = 0;
+            bool atEnd = true;
+            Iterator* operator->() { return this; }
+            const Iterator* operator->() const { return this; }
+            bool operator==(const Iterator& other) const {
+                return atEnd == other.atEnd && (atEnd || second == other.second);
+            }
+            bool operator!=(const Iterator& other) const { return !(*this == other); }
+        };
+
+        explicit SetKeyIndex(ObjSet* owner) : owner_(owner) {}
+        Iterator find(const Value& value) const;
+        Iterator end() const { return Iterator{}; }
+        void insert(const Value& value);
+        void erase(const Iterator& it);
+        void erase(const Value& value);
+        void clear();
+        void reserve(size_t count);
+        size_t size() const { return live_; }
+
+    private:
+        ObjSet* owner_;
+        std::vector<Bucket> buckets_;
+        std::vector<uint64_t> hashes_;
+        uint64_t version_ = 0;
+        uint32_t live_ = 0;
+        uint32_t tombstones_ = 0;
+
+        void insertHash(uint64_t hash, size_t element);
+        void rehash(size_t capacity);
+        void ensureCapacity(size_t extra);
+    };
+
     struct ObjSet : public Obj {
         std::vector<Value> elements;
-        std::unordered_set<Value, ValueHasher, ValueEqual> keys;
+        SetKeyIndex keys;
         bool is_frozen = false;
         mutable bool is_hashable_cached = false;
         mutable bool has_cached_hash = false;
         mutable size_t cached_hash = 0;
-        ObjSet() { type = ObjType::SET; }
+        ObjSet() : keys(this) { type = ObjType::SET; }
         void checkModify() const { if (is_frozen) JC2_THROW(RuntimeError, "Cannot modify frozen Set."); }
         void clear() override { checkModify(); clearTotal(); }
         void clearTotal() override { elements.clear(); keys.clear(); }
@@ -1679,17 +1721,17 @@ namespace jc {
             checkModify();
             auto it = keys.find(val);
             if (it == keys.end()) JC2_THROW(RuntimeError, "Element " + val.toRepr() + " not found in Set.");
+            size_t idx = it->second;
             keys.erase(it);
-            auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
-            if (eIt != elements.end()) elements.erase(eIt);
+            elements.erase(elements.begin() + idx);
         }
         void discard(const Value& val) {
             checkModify();
             auto it = keys.find(val);
             if (it != keys.end()) {
+                size_t idx = it->second;
                 keys.erase(it);
-                auto eIt = std::find_if(elements.begin(), elements.end(), [&val](const Value& v) { return Value::equals(v, val); });
-                if (eIt != elements.end()) elements.erase(eIt);
+                elements.erase(elements.begin() + idx);
             }
         }
         Value pop() {
@@ -1701,6 +1743,127 @@ namespace jc {
             return result;
         }
     };
+
+    inline SetKeyIndex::Iterator SetKeyIndex::find(const Value& value) const {
+        Value lookupValue = value;
+        GcValueGuard lookupGuard(lookupValue);
+        uint64_t hash = static_cast<uint64_t>(ValueHasher{}(lookupValue));
+
+        for (;;) {
+            if (buckets_.empty()) return Iterator{};
+            uint64_t version = version_;
+            const size_t mask = buckets_.size() - 1;
+            size_t pos = static_cast<size_t>(hash) & mask;
+
+            for (size_t probes = 0; probes < buckets_.size(); ++probes) {
+                if (version_ != version) break;
+                Bucket bucket = buckets_[pos];
+                if (bucket.state == BucketState::Empty) return Iterator{};
+                if (bucket.state == BucketState::Used && bucket.hash == hash) {
+                    Value candidate = owner_->elements[static_cast<size_t>(bucket.element)];
+                    GcValueGuard candidateGuard(candidate);
+                    bool equal = ValueEqual{}(lookupValue, candidate);
+                    if (version_ != version) break;
+                    if (equal) return Iterator{static_cast<size_t>(bucket.element), false};
+                }
+                pos = (pos + 1) & mask;
+            }
+            if (version_ == version) return Iterator{};
+        }
+    }
+
+    inline void SetKeyIndex::insert(const Value& value) {
+        Value lookupValue = value;
+        GcValueGuard lookupGuard(lookupValue);
+        if (!find(lookupValue).atEnd) return;
+        uint64_t hash = static_cast<uint64_t>(ValueHasher{}(lookupValue));
+        ensureCapacity(1);
+        size_t element = owner_->elements.size();
+        if (hashes_.size() <= element) hashes_.resize(element + 1, 0);
+        hashes_[element] = hash;
+        insertHash(hash, element);
+        live_++;
+        version_++;
+    }
+
+    inline void SetKeyIndex::insertHash(uint64_t hash, size_t element) {
+        const size_t mask = buckets_.size() - 1;
+        size_t pos = static_cast<size_t>(hash) & mask;
+        size_t tomb = static_cast<size_t>(-1);
+        for (;;) {
+            Bucket& bucket = buckets_[pos];
+            if (bucket.state == BucketState::Empty) {
+                size_t target = tomb == static_cast<size_t>(-1) ? pos : tomb;
+                buckets_[target] = {hash, static_cast<int32_t>(element), BucketState::Used};
+                if (tomb != static_cast<size_t>(-1)) tombstones_--;
+                return;
+            }
+            if (bucket.state == BucketState::Tomb && tomb == static_cast<size_t>(-1)) tomb = pos;
+            pos = (pos + 1) & mask;
+        }
+    }
+
+    inline void SetKeyIndex::rehash(size_t capacity) {
+        size_t cap = 8;
+        while (cap < capacity) cap <<= 1;
+        std::vector<Bucket> next(cap);
+        for (size_t i = 0; i < hashes_.size(); ++i) {
+            size_t pos = static_cast<size_t>(hashes_[i]) & (cap - 1);
+            while (next[pos].state == BucketState::Used) pos = (pos + 1) & (cap - 1);
+            next[pos] = {hashes_[i], static_cast<int32_t>(i), BucketState::Used};
+        }
+        buckets_.swap(next);
+        tombstones_ = 0;
+        version_++;
+    }
+
+    inline void SetKeyIndex::ensureCapacity(size_t extra) {
+        if (buckets_.empty()) {
+            rehash(8);
+            return;
+        }
+        const size_t need = static_cast<size_t>(live_) + tombstones_ + extra;
+        if (need * 4 >= buckets_.size() * 3) rehash(need * 2 + 8);
+    }
+
+    inline void SetKeyIndex::erase(const Iterator& it) {
+        if (it.atEnd) return;
+        const size_t element = it.second;
+        for (auto& bucket : buckets_) {
+            if (bucket.state == BucketState::Used && bucket.element == static_cast<int32_t>(element)) {
+                bucket.state = BucketState::Tomb;
+                bucket.element = -1;
+                bucket.hash = 0;
+                live_--;
+                tombstones_++;
+                break;
+            }
+        }
+        if (element < hashes_.size()) hashes_.erase(hashes_.begin() + element);
+        for (auto& bucket : buckets_) {
+            if (bucket.state == BucketState::Used && bucket.element > static_cast<int32_t>(element))
+                bucket.element--;
+        }
+        version_++;
+    }
+
+    inline void SetKeyIndex::erase(const Value& value) {
+        auto it = find(value);
+        if (!it.atEnd) erase(it);
+    }
+
+    inline void SetKeyIndex::clear() {
+        buckets_.clear();
+        hashes_.clear();
+        live_ = 0;
+        tombstones_ = 0;
+        version_++;
+    }
+
+    inline void SetKeyIndex::reserve(size_t count) {
+        if (count == 0) return;
+        if (count * 4 >= buckets_.size() * 3) rehash(count * 2 + 8);
+    }
 
 
 

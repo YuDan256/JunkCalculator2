@@ -42,6 +42,20 @@ IRNode* IRBuilder::readVariable(const std::string& name, ResolvedSym sym) {
         if (stageIt != stagingBindingValues_.end()) return stageIt->second;
     }
 
+    // ★ class/namespace 关键字在类体初始化器（合成 <fieldinit> 中）按
+    //   父作用域捕获；Resolver 在类体里把它标成 Local，直接走 local 分支
+    //   会退化成 uninit 常量。
+    if ((name == "<class>" || name == "<namespace>") && !getLocalNode(name) && parent) {
+        int upvalIdx = resolveUpvalue(name, false);
+        if (upvalIdx >= 0) {
+            IRNode* node = graph->createValueNode(IROp::GetUpvalue);
+            node->payload1 = static_cast<uint32_t>(upvalIdx);
+            node->name = name;
+            link(node);
+            return node;
+        }
+    }
+
     // 优先检查是否是递归调用当前闭包
     // 只有当它不是当前作用域的局部变量（即没有被 shadow）时，才使用 GetCurrentClosure
     if (currentFunction && currentFunction->name == name && sym.scope != VarScope::Local && sym.scope != VarScope::State && sym.scope != VarScope::RefParam) {
@@ -4419,7 +4433,7 @@ void IRBuilder::visitClassDefExpr(ClassDefExpr* expr) {
 
     for (auto& p : expr->staticProperties) {
         bool savedPrivateAccess = allowPrivateAccess;
-        if (dynamic_cast<LambdaExpr*>(p.value.get())) allowPrivateAccess = true;
+        allowPrivateAccess = true;
         p.value->accept(*this);
         allowPrivateAccess = savedPrivateAccess;
         IRNode* valNode = lastValue;

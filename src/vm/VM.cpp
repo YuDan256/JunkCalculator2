@@ -2280,8 +2280,9 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 return;
             }
         } else if (obj.isClass()) {
-            ObjClass* owner = currentFrame->classContext.isClass() ? static_cast<ObjClass*>(currentFrame->classContext.asObj()) : nullptr;
-            if (!owner) JC2_THROW(RuntimeError, "Cannot access private method outside of class context.");
+            ObjClass* owner = currentFrame->classContext.isClass()
+                ? static_cast<ObjClass*>(currentFrame->classContext.asObj())
+                : static_cast<ObjClass*>(obj.asObj());
             
             Value* pdv = nullptr; PropFlags pdf;
             ObjClass* foundIn = nullptr;
@@ -7373,8 +7374,9 @@ Value VM::run(int targetFrameDepth) {
                     
                     JC2_THROW(RuntimeError, "Private property '" + keyVal.asString() + "' is not accessible on this receiver.");
                 } else if (obj.isClass()) {
-                    ObjClass* owner = frame->classContext.isClass() ? static_cast<ObjClass*>(frame->classContext.asObj()) : nullptr;
-                    if (!owner) errAccessPrivateOutsideClass();
+                    ObjClass* owner = frame->classContext.isClass()
+                        ? static_cast<ObjClass*>(frame->classContext.asObj())
+                        : static_cast<ObjClass*>(obj.asObj());
                     ObjClass* lexical = frame->closure ? frame->closure->owner_class : nullptr;
                     
                     Value* pdv = nullptr; PropFlags pdf;

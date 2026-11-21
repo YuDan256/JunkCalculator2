@@ -469,6 +469,28 @@ test_private_static_none_initializer() = {
     assert(n.getY() == none, "private static const Y = none keeps its value")
 }
 
+// ── 3c. 类体初始化器属于类作用域 ──
+class ClassScopeInit {
+    static local const A = 1
+    static local B = class.A
+    static local helper() = 7
+    static local C = class.helper()
+    local D = class.A
+    local E = self.D
+    getB() = class.B
+    getC() = class.C
+    getD() = self.D
+    getE() = self.E
+}
+
+test_class_initializer_private_scope() = {
+    x = ClassScopeInit()
+    assert(x.getB() == 1, "static initializer can read private static")
+    assert(x.getC() == 7, "static initializer can call private static method")
+    assert(x.getD() == 1, "instance initializer can read private static")
+    assert(x.getE() == 1, "instance initializer can read private instance")
+}
+
 // ── 4. 私有属性不出现在反射里，也不能从外部访问 ──
 class Reflected {
     local hidden = 1
@@ -507,6 +529,7 @@ test_same_private_name_across_classes()
 test_inherited_private_is_lexical()
 test_private_static_isolation()
 test_private_static_none_initializer()
+test_class_initializer_private_scope()
 test_private_is_not_reflected()
 test_private_const_is_protected()
 }

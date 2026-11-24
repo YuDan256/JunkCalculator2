@@ -434,3 +434,18 @@ assert(counted() == 1001, "if-without-else plus increment")
 
 
 
+
+// OSR must not use the next loop-carried value as the break result.
+{
+test_osr_break_value() = {
+    f(n) = {
+        k = 0
+        while (true) {
+            k += 1
+            if (k == n) break k
+        }
+    }
+    assert(f(2000) == 2000, "OSR break value")
+}
+test_osr_break_value()
+}

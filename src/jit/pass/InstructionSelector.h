@@ -217,16 +217,26 @@ private:
     std::vector<HIRNode*> topologicalSort(const std::vector<HIRNode*>& nodes) {
         std::vector<HIRNode*> sorted;
         std::unordered_set<HIRNode*> visited;
+        std::unordered_set<HIRNode*> visiting;
         std::unordered_set<HIRNode*> nodeSet(nodes.begin(), nodes.end());
 
         std::function<void(HIRNode*)> visit = [&](HIRNode* n) {
             if (visited.count(n)) return;
-            visited.insert(n);
-            for (HIRNode* input : n->inputs()) {
-                if (input && nodeSet.count(input)) {
-                    visit(input);
+            // SSA 循环的 Phi 回边会形成数据环。遇到正在访问的节点时
+            // 必须跳过该回边，否则标记过的生产者会被排到消费者之后。
+            if (visiting.count(n)) return;
+            visiting.insert(n);
+            // Phi 的值来自前驱/回边，不参与当前块的线性拓扑排序；
+            // 否则循环回边会把 phi 的消费者排到生产者之前。
+            if (n->opcode() != HIROp::Phi) {
+                for (HIRNode* input : n->inputs()) {
+                    if (input && nodeSet.count(input)) {
+                        visit(input);
+                    }
                 }
             }
+            visiting.erase(n);
+            visited.insert(n);
             sorted.push_back(n);
         };
 

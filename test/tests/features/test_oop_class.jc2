@@ -122,6 +122,28 @@ test_dunder_methods() = {
     assert(!(OrderOps(2) <= OrderOps(1)), "scheduled LE false")
     assert(OrderOps(1) >= OrderOps(1), "scheduled GE falls back to __eq__")
     assert(!(OrderOps(1) >= OrderOps(2)), "scheduled GE false")
+
+    class RecursiveAdd {
+        __add__(other) = self + other
+    }
+    caught = false
+    try {
+        RecursiveAdd() + RecursiveAdd()
+    } catch (e) {
+        caught = "stack overflow" in e.message
+    }
+    assert(caught, "recursive __add__ must hit the VM frame limit")
+
+    class RecursiveGetitem {
+        __getitem__(key) = self[0]
+    }
+    caught = false
+    try {
+        RecursiveGetitem()[0]
+    } catch (e) {
+        caught = "stack overflow" in e.message
+    }
+    assert(caught, "recursive __getitem__ must hit the VM frame limit")
 }
 test_dunder_methods()
 

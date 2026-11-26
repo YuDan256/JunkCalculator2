@@ -6770,6 +6770,8 @@ Value VM::run(int targetFrameDepth) {
                     auto [setitemMethod, owner] = findDunder(obj, DUNDER_SETITEM);
                     if (setitemMethod) {
                         args.push_back(val);
+                        if (scheduleDunderFrame(obj, setitemMethod, owner, args, -1,
+                                                ProtocolContinuation::None)) break;
                         callDunder(obj, setitemMethod, owner, args);
                         break;
                     }
@@ -8062,6 +8064,8 @@ Value VM::run(int targetFrameDepth) {
                         if (inst->ownHas(keyStr)) {if (pdesc.is_local) errModifyPrivateProp(keyStr);
                             if (pdesc.is_const) errModifyConstProp(keyStr);}
 
+                        if (scheduleDunderFrame(obj, setattrMethod, owner, {keyVal, val}, -1,
+                                                ProtocolContinuation::None)) break;
                         callDunder(obj, setattrMethod, owner, {keyVal, val});
                     } else {
                         // ★ 容器属性被替换时，失效所有 JIT 代码（INSTANCE 分支）

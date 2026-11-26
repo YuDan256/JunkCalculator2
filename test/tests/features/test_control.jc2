@@ -483,3 +483,20 @@ test_osr_double_loop_result() = {
 }
 test_osr_double_loop_result()
 }
+
+// Auto-local reads from a grouped ternary branch must use CHECK_INIT.
+{
+test_auto_local_branch_uninit() = {
+    throws(f) = {
+        try { f(); return false } catch (e) { return true }
+    }
+    f(x) = {
+        x ? (y = 1) : none
+        return y
+    }
+    assert(f(true) == 1, "assigned branch must return the bound auto-local")
+    assert(throws(() => f(false)),
+           "unassigned grouped branch must reject reading the auto-local")
+}
+test_auto_local_branch_uninit()
+}

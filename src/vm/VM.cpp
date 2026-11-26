@@ -5686,8 +5686,8 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value::fromInt32(vb.asInt32() & vc.asInt32()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITAND); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITAND); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITAND); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITAND); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb & vc;
                 break;
             }
@@ -5699,8 +5699,8 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value::fromInt32(vb.asInt32() | vc.asInt32()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITOR); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITOR); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb | vc;
                 break;
             }
@@ -5712,8 +5712,8 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value::fromInt32(vb.asInt32() ^ vc.asInt32()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITXOR); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITXOR); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITXOR); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RBITXOR); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = bitXor(vb, vc);
                 break;
             }
@@ -5733,8 +5733,8 @@ Value VM::run(int targetFrameDepth) {
                     const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x10; // Overflow
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LSHIFT); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RLSHIFT); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb << vc;
                 break;
             }
@@ -5751,8 +5751,8 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_RSHIFT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RRSHIFT); if (meth) { getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_RSHIFT); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {vc}); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_RRSHIFT); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vc, meth, owner, {vb}); break; } }
                 getReg(a) = vb >> vc;
                 break;
             }

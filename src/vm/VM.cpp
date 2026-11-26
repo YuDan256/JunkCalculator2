@@ -5007,105 +5007,51 @@ Value VM::run(int targetFrameDepth) {
 
     // Scheduled __next__ raised StopIteration: pop its frame and resume the
     // caller with an exhausted iterator marker.
-    auto popNextFrame = [&]() -> bool {
-        if (frameCount <= 0) return false;
-        CallFrame* nextFrame = &frames[frameCount - 1];
-        if (nextFrame->continuation != ProtocolContinuation::Next) return false;
-        int resumeRegister = nextFrame->continuationResumeRegister;
-        runDefersDownTo(nextFrame->deferBase);
-        while (!exceptionHandlers.empty() &&
-               exceptionHandlers.back().frameIndex >= frameCount - 1) {
-            exceptionHandlers.pop_back();
+    // Unwind to the nearest scheduled protocol frame and consume its exception.
+    // The exception may originate in a nested helper called by the dunder;
+    // only the dunder frame itself owns the protocol continuation.
+    auto popProtocolFrame = [&](ProtocolContinuation wanted) -> bool {
+        int target = -1;
+        for (int i = frameCount - 1; i >= targetFrameDepth; --i) {
+            if (frames[i].continuation == wanted) { target = i; break; }
         }
-        closeUpvalues(nextFrame->registerBase);
-        profileFrameEnd(nextFrame);
-        int clearBase = nextFrame->registerBase;
-        int clearCount = nextFrame->function->localCount + nextFrame->function->refCount;
-        for (int i = 0; i < clearCount; ++i) {
-            registers[clearBase + i] = Value::none();
+        if (target < 0) return false;
+        int resumeIp = frames[target].continuationResumeIp;
+        int resumeRegister = frames[target].continuationResumeRegister;
+        for (int i = frameCount - 1; i >= target; --i) {
+            CallFrame* f = &frames[i];
+            runDefersDownTo(f->deferBase);
+            while (!exceptionHandlers.empty() &&
+                   exceptionHandlers.back().frameIndex >= i) {
+                exceptionHandlers.pop_back();
+            }
+            closeUpvalues(f->registerBase);
+            profileFrameEnd(f);
+            int clearBase = f->registerBase;
+            int clearCount = f->function->localCount + f->function->refCount;
+            for (int k = 0; k < clearCount; ++k) {
+                registers[clearBase + k] = Value::none();
+            }
+            f->selfContext = Value::none();
+            f->classContext = Value::none();
+            f->jitReturnSlot = Value::none();
+            f->closure = nullptr;
+            f->refParamsBase = -1;
+            frameCount--;
         }
-        nextFrame->selfContext = Value::none();
-        nextFrame->classContext = Value::none();
-        nextFrame->jitReturnSlot = Value::none();
-        nextFrame->closure = nullptr;
-        nextFrame->refParamsBase = -1;
-        frameCount--;
         if (frameCount <= targetFrameDepth) return false;
         frame = &frames[frameCount - 1];
         chunk = frame->chunk;
         code = chunk->code.data();
         frameRegs = &registers[frame->registerBase];
         ip = frame->ip;
-        getReg(resumeRegister) = Value::uninit();
-        return true;
-    };
-
-    // noThrow __getitem__: any exception from the scheduled dunder becomes uninit.
-    // Scheduled __getattr__ raised: retry the property opcode with the dunder
-    // suppressed, allowing the normal "missing property" path to run.
-    auto popGetattrCatch = [&]() -> bool {
-        if (frameCount <= 0) return false;
-        CallFrame* attrFrame = &frames[frameCount - 1];
-        if (attrFrame->continuation != ProtocolContinuation::GetAttr) return false;
-        int resumeIp = attrFrame->continuationResumeIp;
-        runDefersDownTo(attrFrame->deferBase);
-        while (!exceptionHandlers.empty() &&
-               exceptionHandlers.back().frameIndex >= frameCount - 1) {
-            exceptionHandlers.pop_back();
+        if (wanted == ProtocolContinuation::GetAttr) {
+            suppressGetattrOp = resumeIp;
+            frame->ip = resumeIp;
+            ip = resumeIp;
+        } else {
+            getReg(resumeRegister) = Value::uninit();
         }
-        closeUpvalues(attrFrame->registerBase);
-        profileFrameEnd(attrFrame);
-        int clearBase = attrFrame->registerBase;
-        int clearCount = attrFrame->function->localCount + attrFrame->function->refCount;
-        for (int i = 0; i < clearCount; ++i) {
-            registers[clearBase + i] = Value::none();
-        }
-        attrFrame->selfContext = Value::none();
-        attrFrame->classContext = Value::none();
-        attrFrame->jitReturnSlot = Value::none();
-        attrFrame->closure = nullptr;
-        attrFrame->refParamsBase = -1;
-        frameCount--;
-        if (frameCount <= targetFrameDepth) return false;
-        frame = &frames[frameCount - 1];
-        chunk = frame->chunk;
-        code = chunk->code.data();
-        frameRegs = &registers[frame->registerBase];
-        frame->ip = resumeIp;
-        ip = resumeIp;
-        suppressGetattrOp = resumeIp;
-        return true;
-    };
-    auto popGetItemCatch = [&]() -> bool {
-        if (frameCount <= 0) return false;
-        CallFrame* itemFrame = &frames[frameCount - 1];
-        if (itemFrame->continuation != ProtocolContinuation::GetItemNoThrow) return false;
-        int resumeRegister = itemFrame->continuationResumeRegister;
-        runDefersDownTo(itemFrame->deferBase);
-        while (!exceptionHandlers.empty() &&
-               exceptionHandlers.back().frameIndex >= frameCount - 1) {
-            exceptionHandlers.pop_back();
-        }
-        closeUpvalues(itemFrame->registerBase);
-        profileFrameEnd(itemFrame);
-        int clearBase = itemFrame->registerBase;
-        int clearCount = itemFrame->function->localCount + itemFrame->function->refCount;
-        for (int i = 0; i < clearCount; ++i) {
-            registers[clearBase + i] = Value::none();
-        }
-        itemFrame->selfContext = Value::none();
-        itemFrame->classContext = Value::none();
-        itemFrame->jitReturnSlot = Value::none();
-        itemFrame->closure = nullptr;
-        itemFrame->refParamsBase = -1;
-        frameCount--;
-        if (frameCount <= targetFrameDepth) return false;
-        frame = &frames[frameCount - 1];
-        chunk = frame->chunk;
-        code = chunk->code.data();
-        frameRegs = &registers[frame->registerBase];
-        ip = frame->ip;
-        getReg(resumeRegister) = Value::uninit();
         return true;
     };
 
@@ -9293,9 +9239,9 @@ Value VM::run(int targetFrameDepth) {
             frameRegs = &registers[frame->registerBase];
             ip = frame->ip;
         } catch (const ValueException& ex) {
-            if (isStopIteration(ex.val) && popNextFrame()) continue;
-            if (popGetItemCatch()) continue;
-            if (popGetattrCatch()) continue;
+            if (isStopIteration(ex.val) && popProtocolFrame(ProtocolContinuation::Next)) continue;
+            if (popProtocolFrame(ProtocolContinuation::GetItemNoThrow)) continue;
+            if (popProtocolFrame(ProtocolContinuation::GetAttr)) continue;
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
@@ -9307,9 +9253,9 @@ Value VM::run(int targetFrameDepth) {
             frameRegs = &registers[frame->registerBase];
             ip = frame->ip;
         } catch (const Jc2Error& ex) {
-            if (isStopIteration(ex) && popNextFrame()) continue;
-            if (popGetItemCatch()) continue;
-            if (popGetattrCatch()) continue;
+            if (isStopIteration(ex) && popProtocolFrame(ProtocolContinuation::Next)) continue;
+            if (popProtocolFrame(ProtocolContinuation::GetItemNoThrow)) continue;
+            if (popProtocolFrame(ProtocolContinuation::GetAttr)) continue;
             frame->ip = ip;
             Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {

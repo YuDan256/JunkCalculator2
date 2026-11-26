@@ -7,6 +7,7 @@ These instructions are loaded automatically for work in this repository. Follow 
 - A question, observation, report, or request for information is **not** an implementation instruction.
 - Modify files only when the user uses an explicit imperative such as "implement", "fix", "write", "create", or "change".
 - For any code change, present the plan first and wait for explicit approval.
+- Do not make minimal patches. Make the essential change that fixes the root cause.
 - When a request is ambiguous, ask one focused question instead of guessing.
 - After a correction or revert, stop. Do not re-implement the same thing, add variants, or continue with adjacent work.
 

@@ -78,6 +78,11 @@ test_dunder_methods() = {
     }
     assert(ScheduledBool(true), "scheduled __bool__ true")
     assert(!ScheduledBool(false), "scheduled __bool__ false")
+
+    class ScheduledLen {
+        __len__() = 7
+    }
+    assert(len(ScheduledLen()) == 7, "builtin-bound __len__")
 }
 test_dunder_methods()
 

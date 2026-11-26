@@ -328,7 +328,10 @@ static Value staticsOfValue(const Value& self, const char* what) {
             return {true, result};
         }
         else if (method->isBytecode()) {
-            return {true, VM::activeVM->callVMFunction(method->compiledFnIndex, args, method, Value(inst), Value(ownerClass))};
+            // Native/builtin boundary: this is the one place where C++ code
+            // must wait for a script dunder; route it through the same
+            // Invocation frame as VM call sites.
+            return {true, VM::activeVM->callDunder(Value(inst), method, ownerClass, args)};
         }
         return {false, Value::none()};
     }

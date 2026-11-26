@@ -5937,8 +5937,8 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value(vb.asFloatRaw() < vc.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::Truthiness)) break; getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
+                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::Truthiness)) break; getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) < 0);
                     break;
@@ -6016,6 +6016,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_GT);
                     if (meth) { 
+                        if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
@@ -6035,6 +6036,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vc.isInstance()) { 
                     auto [meth, owner] = findDunder(vc, DUNDER_LT);
                     if (meth) { 
+                        if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }

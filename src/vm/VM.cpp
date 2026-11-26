@@ -6516,6 +6516,8 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     auto [getitemMethod, owner] = findDunder(obj, DUNDER_GETITEM);
                     if (getitemMethod) {
+                        if (!noThrow && scheduleDunderFrame(obj, getitemMethod, owner, args, a,
+                                                            ProtocolContinuation::None)) break;
                         try {
                             result = callDunder(obj, getitemMethod, owner, args);
                         } catch (...) {

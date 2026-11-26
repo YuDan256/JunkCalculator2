@@ -5960,6 +5960,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_LE);
                     if (meth) { 
+                        if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
@@ -5979,6 +5980,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vc.isInstance()) { 
                     auto [meth, owner] = findDunder(vc, DUNDER_GE);
                     if (meth) { 
+                        if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }
@@ -6074,6 +6076,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vb.isInstance()) { 
                     auto [meth, owner] = findDunder(vb, DUNDER_GE);
                     if (meth) { 
+                        if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
@@ -6086,6 +6089,7 @@ Value VM::run(int targetFrameDepth) {
                 if (vc.isInstance()) { 
                     auto [meth, owner] = findDunder(vc, DUNDER_LE);
                     if (meth) { 
+                        if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::Truthiness)) break;
                         getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }

@@ -6503,18 +6503,42 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
-                ObjList* list = GcHeap::get().allocate<ObjList>();
-                getReg(a) = Value(list); // ★ 立即 Root 防止 GC 误杀
                 for (int i = 0; i < c; ++i) {
                     Value v = getReg(b + i);
-                    if (v.isSpread()) {
-                        auto* sp = static_cast<ObjSpread*>(v.asObj());
-                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
-                        helpers::spreadPositional(sp->value, list->vec);
-                    } else {
-                        list->vec.push_back(v);
+                    if (!v.isSpread()) continue;
+                    auto* sp = static_cast<ObjSpread*>(v.asObj());
+                    if (sp->isKeyword || !sp->value.isInstance()) continue;
+                    auto [unpackMethod, unpackOwner] = findDunder(sp->value, "__unpack__");
+                    if (!unpackMethod || !unpackMethod->isBytecode()) continue;
+                    int depth = -1;
+                    frame->ip = ip;
+                    if (scheduleProtocolDunder(sp->value, unpackMethod, unpackOwner, {}, -1,
+                                               ProtocolContinuation::UnpackSpread,
+                                               depth, op_ip, -1, 1, 0, sp)) {
+                        frame = &frames[depth];
+                        chunk = frame->chunk;
+                        code = chunk->code.data();
+                        frameRegs = &registers[frame->registerBase];
+                        ip = frame->ip;
+                        goto build_list_suspended;
                     }
                 }
+                {
+                    ObjList* list = GcHeap::get().allocate<ObjList>();
+                    getReg(a) = Value(list); // ★ 立即 Root 防止 GC 误杀
+                    for (int i = 0; i < c; ++i) {
+                        Value v = getReg(b + i);
+                        if (v.isSpread()) {
+                            auto* sp = static_cast<ObjSpread*>(v.asObj());
+                            if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
+                            helpers::spreadPositional(sp->value, list->vec);
+                        } else {
+                            list->vec.push_back(v);
+                        }
+                    }
+                }
+                break;
+            build_list_suspended:
                 break;
             }
             case OpCode::BUILD_DICT: {
@@ -6572,20 +6596,44 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
-                ObjSet* set = GcHeap::get().allocate<ObjSet>();
-                getReg(a) = Value(set); // ★ 立即 Root 防止 GC 误杀
                 for (int i = 0; i < c; ++i) {
                     Value v = getReg(b + i);
-                    if (v.isSpread()) {
-                        auto* sp = static_cast<ObjSpread*>(v.asObj());
-                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
-                        std::vector<Value> tmp;
-                        helpers::spreadPositional(sp->value, tmp);
-                        for (auto& e : tmp) set->add(e);
-                    } else {
-                        set->add(v);
+                    if (!v.isSpread()) continue;
+                    auto* sp = static_cast<ObjSpread*>(v.asObj());
+                    if (sp->isKeyword || !sp->value.isInstance()) continue;
+                    auto [unpackMethod, unpackOwner] = findDunder(sp->value, "__unpack__");
+                    if (!unpackMethod || !unpackMethod->isBytecode()) continue;
+                    int depth = -1;
+                    frame->ip = ip;
+                    if (scheduleProtocolDunder(sp->value, unpackMethod, unpackOwner, {}, -1,
+                                               ProtocolContinuation::UnpackSpread,
+                                               depth, op_ip, -1, 1, 0, sp)) {
+                        frame = &frames[depth];
+                        chunk = frame->chunk;
+                        code = chunk->code.data();
+                        frameRegs = &registers[frame->registerBase];
+                        ip = frame->ip;
+                        goto build_set_suspended;
                     }
                 }
+                {
+                    ObjSet* set = GcHeap::get().allocate<ObjSet>();
+                    getReg(a) = Value(set); // ★ 立即 Root 防止 GC 误杀
+                    for (int i = 0; i < c; ++i) {
+                        Value v = getReg(b + i);
+                        if (v.isSpread()) {
+                            auto* sp = static_cast<ObjSpread*>(v.asObj());
+                            if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
+                            std::vector<Value> tmp;
+                            helpers::spreadPositional(sp->value, tmp);
+                            for (auto& e : tmp) set->add(e);
+                        } else {
+                            set->add(v);
+                        }
+                    }
+                }
+                break;
+            build_set_suspended:
                 break;
             }
             case OpCode::BUILD_MATRIX: {

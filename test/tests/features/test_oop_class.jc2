@@ -164,6 +164,12 @@ test_dunder_methods() = {
     assert(ScheduledCmp(1) == ScheduledCmp(1), "scheduled __cmp__ equality fallback")
     assert(ScheduledCmp(1) < ScheduledCmp(2), "scheduled __cmp__ ordering fallback")
 
+    class ScheduledUnpack {
+        __unpack__() = @[1, 2]
+    }
+    assert(@[...ScheduledUnpack()] == @[1, 2], "scheduled list __unpack__")
+    assert(@{...ScheduledUnpack()} == @{1, 2}, "scheduled set __unpack__")
+
     stopNow() = throw StopIteration()
     class NestedStopIterator {
         init() = { self.i = 0 }

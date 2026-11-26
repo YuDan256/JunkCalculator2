@@ -96,6 +96,22 @@ test_dunder_methods() = {
     values = @[]
     for (x in ScheduledIterator()) values.push(x)
     assert(values == @[1, 2, 3], "scheduled __iter__/__next__")
+
+    class ScheduledGetattr {
+        __getattr__(name) = "got:" + name
+    }
+    assert(ScheduledGetattr().foo == "got:foo", "scheduled __getattr__")
+
+    class ThrowingGetattr {
+        __getattr__(name) = throw Exception("nope")
+    }
+    caught = false
+    try {
+        ThrowingGetattr().foo
+    } catch (e) {
+        caught = "not found" in e.message
+    }
+    assert(caught, "__getattr__ failure must fall back to missing property")
 }
 test_dunder_methods()
 

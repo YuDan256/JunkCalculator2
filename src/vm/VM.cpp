@@ -4985,6 +4985,41 @@ Value VM::run(int targetFrameDepth) {
     };
 
     // noThrow __getitem__: any exception from the scheduled dunder becomes uninit.
+    // Scheduled __getattr__ raised: retry the property opcode with the dunder
+    // suppressed, allowing the normal "missing property" path to run.
+    auto popGetattrCatch = [&]() -> bool {
+        if (frameCount <= 0) return false;
+        CallFrame* attrFrame = &frames[frameCount - 1];
+        if (attrFrame->continuation != ProtocolContinuation::GetAttr) return false;
+        int resumeIp = attrFrame->continuationResumeIp;
+        runDefersDownTo(attrFrame->deferBase);
+        while (!exceptionHandlers.empty() &&
+               exceptionHandlers.back().frameIndex >= frameCount - 1) {
+            exceptionHandlers.pop_back();
+        }
+        closeUpvalues(attrFrame->registerBase);
+        profileFrameEnd(attrFrame);
+        int clearBase = attrFrame->registerBase;
+        int clearCount = attrFrame->function->localCount + attrFrame->function->refCount;
+        for (int i = 0; i < clearCount; ++i) {
+            registers[clearBase + i] = Value::none();
+        }
+        attrFrame->selfContext = Value::none();
+        attrFrame->classContext = Value::none();
+        attrFrame->jitReturnSlot = Value::none();
+        attrFrame->closure = nullptr;
+        attrFrame->refParamsBase = -1;
+        frameCount--;
+        if (frameCount <= targetFrameDepth) return false;
+        frame = &frames[frameCount - 1];
+        chunk = frame->chunk;
+        code = chunk->code.data();
+        frameRegs = &registers[frame->registerBase];
+        frame->ip = resumeIp;
+        ip = resumeIp;
+        suppressGetattrOp = resumeIp;
+        return true;
+    };
     auto popGetItemCatch = [&]() -> bool {
         if (frameCount <= 0) return false;
         CallFrame* itemFrame = &frames[frameCount - 1];
@@ -7710,13 +7745,32 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         if (!found) {
-                            auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
-                            if (getattrMethod) {
-                                try {
-                                    result = callDunder(obj, getattrMethod, owner, {Value(field)});
-                                    found = true;
-                                } catch (...) {
-                                    found = false;
+                            if (suppressGetattrOp == op_ip) {
+                                suppressGetattrOp = -1;
+                            } else {
+                                auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
+                                if (getattrMethod) {
+                                    if (getattrMethod->isBytecode()) {
+                                        int depth = -1;
+                                        frame->ip = ip;
+                                        if (scheduleProtocolDunder(obj, getattrMethod, owner,
+                                                                   {Value(field)}, a,
+                                                                   ProtocolContinuation::GetAttr,
+                                                                   depth, op_ip, -1)) {
+                                            frame = &frames[depth];
+                                            chunk = frame->chunk;
+                                            code = chunk->code.data();
+                                            frameRegs = &registers[frame->registerBase];
+                                            ip = frame->ip;
+                                            break;
+                                        }
+                                    }
+                                    try {
+                                        result = callDunder(obj, getattrMethod, owner, {Value(field)});
+                                        found = true;
+                                    } catch (...) {
+                                        found = false;
+                                    }
                                 }
                             }
                         }
@@ -7922,13 +7976,32 @@ Value VM::run(int targetFrameDepth) {
                             }
                         }
                         if (!found) {
-                            auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
-                            if (getattrMethod) {
-                                try {
-                                    result = callDunder(obj, getattrMethod, owner, {Value(field)});
-                                    found = true;
-                                } catch (...) {
-                                    found = false;
+                            if (suppressGetattrOp == op_ip) {
+                                suppressGetattrOp = -1;
+                            } else {
+                                auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
+                                if (getattrMethod) {
+                                    if (getattrMethod->isBytecode()) {
+                                        int depth = -1;
+                                        frame->ip = ip;
+                                        if (scheduleProtocolDunder(obj, getattrMethod, owner,
+                                                                   {Value(field)}, a,
+                                                                   ProtocolContinuation::GetAttr,
+                                                                   depth, op_ip, -1)) {
+                                            frame = &frames[depth];
+                                            chunk = frame->chunk;
+                                            code = chunk->code.data();
+                                            frameRegs = &registers[frame->registerBase];
+                                            ip = frame->ip;
+                                            break;
+                                        }
+                                    }
+                                    try {
+                                        result = callDunder(obj, getattrMethod, owner, {Value(field)});
+                                        found = true;
+                                    } catch (...) {
+                                        found = false;
+                                    }
                                 }
                             }
                         }
@@ -9021,6 +9094,7 @@ Value VM::run(int targetFrameDepth) {
         } catch (const ValueException& ex) {
             if (isStopIteration(ex.val) && popNextFrame()) continue;
             if (popGetItemCatch()) continue;
+            if (popGetattrCatch()) continue;
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
@@ -9034,6 +9108,7 @@ Value VM::run(int targetFrameDepth) {
         } catch (const Jc2Error& ex) {
             if (isStopIteration(ex) && popNextFrame()) continue;
             if (popGetItemCatch()) continue;
+            if (popGetattrCatch()) continue;
             frame->ip = ip;
             Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {

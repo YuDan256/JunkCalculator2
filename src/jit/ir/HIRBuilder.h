@@ -394,21 +394,51 @@ public:
         return fs;
     }
 
-    GuardNode* createGuardIsInt32(HIRNode* value, FrameStateNode* frameState) {
+    static bool isKnownInt32(HIRNode* value) {
+        if (!value) return false;
+        if (value->type() == JITType::Int32) return true;
+        if (value->opcode() == HIROp::Int32Constant) return true;
+        return value->opcode() == HIROp::BoxInt32 &&
+               !value->inputs().empty() && value->inputs()[0] &&
+               value->inputs()[0]->type() == JITType::Int32;
+    }
+
+    static bool isKnownBool(HIRNode* value) {
+        if (!value) return false;
+        if (value->type() == JITType::Bool) return true;
+        if (value->opcode() == HIROp::BoolConstant) return true;
+        return value->opcode() == HIROp::BoxBool &&
+               !value->inputs().empty() && value->inputs()[0] &&
+               value->inputs()[0]->type() == JITType::Bool;
+    }
+
+    static bool isKnownDouble(HIRNode* value) {
+        if (!value) return false;
+        if (value->type() == JITType::Double) return true;
+        if (value->opcode() == HIROp::DoubleConstant) return true;
+        return value->opcode() == HIROp::BoxDouble &&
+               !value->inputs().empty() && value->inputs()[0] &&
+               value->inputs()[0]->type() == JITType::Double;
+    }
+
+    HIRNode* createGuardIsInt32(HIRNode* value, FrameStateNode* frameState) {
+        if (isKnownInt32(value)) return currentControl_;
         auto guard = graph_->allocateNode<GuardNode>(HIROp::GuardIsInt32, currentControl_, currentEffect_, value, frameState);
         currentControl_ = guard;
         currentEffect_ = guard;
         return guard;
     }
 
-    GuardNode* createGuardIsDouble(HIRNode* value, FrameStateNode* frameState) {
+    HIRNode* createGuardIsDouble(HIRNode* value, FrameStateNode* frameState) {
+        if (isKnownDouble(value)) return currentControl_;
         auto guard = graph_->allocateNode<GuardNode>(HIROp::GuardIsDouble, currentControl_, currentEffect_, value, frameState);
         currentControl_ = guard;
         currentEffect_ = guard;
         return guard;
     }
 
-    GuardNode* createGuardIsBool(HIRNode* value, FrameStateNode* frameState) {
+    HIRNode* createGuardIsBool(HIRNode* value, FrameStateNode* frameState) {
+        if (isKnownBool(value)) return currentControl_;
         auto guard = graph_->allocateNode<GuardNode>(HIROp::GuardIsBool, currentControl_, currentEffect_, value, frameState);
         currentControl_ = guard;
         currentEffect_ = guard;
@@ -445,6 +475,11 @@ public:
 
     // --- 装箱与拆箱节点 ---
     HIRNode* createUnboxInt32(HIRNode* value, HIRNode* guard) {
+        if (value && value->type() == JITType::Int32) return value;
+        if (value && value->opcode() == HIROp::BoxInt32 && !value->inputs().empty() &&
+            value->inputs()[0] && value->inputs()[0]->type() == JITType::Int32) {
+            return value->inputs()[0];
+        }
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxInt32, JITType::Int32);
         node->addInput(guard); // Control/Effect dependency
         node->addInput(value); // Data dependency
@@ -458,6 +493,11 @@ public:
     }
 
     HIRNode* createUnboxDouble(HIRNode* value, HIRNode* guard) {
+        if (value && value->type() == JITType::Double) return value;
+        if (value && value->opcode() == HIROp::BoxDouble && !value->inputs().empty() &&
+            value->inputs()[0] && value->inputs()[0]->type() == JITType::Double) {
+            return value->inputs()[0];
+        }
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxDouble, JITType::Double);
         node->addInput(guard);
         node->addInput(value);
@@ -471,6 +511,11 @@ public:
     }
 
     HIRNode* createUnboxBool(HIRNode* value, HIRNode* guard) {
+        if (value && value->type() == JITType::Bool) return value;
+        if (value && value->opcode() == HIROp::BoxBool && !value->inputs().empty() &&
+            value->inputs()[0] && value->inputs()[0]->type() == JITType::Bool) {
+            return value->inputs()[0];
+        }
         auto node = graph_->allocateNode<HIRNode>(HIROp::UnboxBool, JITType::Bool);
         node->addInput(guard);
         node->addInput(value);

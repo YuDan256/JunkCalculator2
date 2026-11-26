@@ -4495,7 +4495,7 @@ void VM::triggerDebugger() {
     std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Breakpoint Hit ===" << jc::col(jc::Ansi::RESET) << "\n";
 }
 
-Value VM::invoke(const Invocation& invocation) {
+int VM::pushInvocationFrame(const Invocation& invocation) {
     const int fnIdx = invocation.fnIdx;
     const std::vector<Value>& args = invocation.args;
     ObjClosure* closure = invocation.closure;
@@ -4523,6 +4523,7 @@ Value VM::invoke(const Invocation& invocation) {
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
     newFrame.selfContext = explicitSelf;
+    newFrame.continuation = invocation.continuation;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4581,7 +4582,15 @@ Value VM::invoke(const Invocation& invocation) {
     
     profileFrameStart(&newFrame);
     frames[frameCount++] = newFrame;
-    
+    return frameCount - 1;
+}
+
+Value VM::invoke(const Invocation& invocation) {
+    const int fnIdx = invocation.fnIdx;
+    auto& fnDef = compiledFunctions[fnIdx];
+    const int targetDepth = pushInvocationFrame(invocation);
+    const int newBase = frames[targetDepth].registerBase;
+
     if (jitEntryPoints.count(fnIdx) && jitEntryPoints[fnIdx] != nullptr) {
         typedef uint64_t (*JitFunc)(Value*);
         JitFunc func = reinterpret_cast<JitFunc>(jitEntryPoints[fnIdx]);
@@ -4621,7 +4630,6 @@ Value VM::invoke(const Invocation& invocation) {
         }
     }
 
-    int targetDepth = frameCount - 1;
     try {
         return run(targetDepth);
     } catch (...) {
@@ -4653,6 +4661,22 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     invocation.args = args;
     invocation.sink = ReturnSink{};
     return invoke(invocation);
+}
+
+bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
+                                std::vector<Value> args, int dst,
+                                ProtocolContinuation continuation, int& outDepth) {
+    if (!method || !method->isBytecode()) return false;
+    Invocation invocation;
+    invocation.fnIdx = method->compiledFnIndex;
+    invocation.closure = method;
+    invocation.self = self;
+    invocation.ownerClass = Value(owner);
+    invocation.args = std::move(args);
+    invocation.sink = ReturnSink{ReturnSink::Kind::Register, dst};
+    invocation.continuation = continuation;
+    outDepth = pushInvocationFrame(invocation);
+    return true;
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sourceFile) {
@@ -5789,8 +5813,34 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isFloat() && vc.isFloat()) { getReg(a) = Value(vb.asFloatRaw() == vc.asFloatRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(false); break; }
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                auto scheduleEq = [&](const Value& self, ObjClosure* meth, ObjClass* owner,
+                                     const Value& other, ProtocolContinuation continuation) {
+                    int depth = -1;
+                    frame->ip = ip;
+                    if (!scheduleProtocolDunder(self, meth, owner, {other}, a, continuation, depth)) return false;
+                    frame = &frames[depth];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    return true;
+                };
+                if (vb.isInstance()) {
+                    auto [meth, owner] = findDunder(vb, DUNDER_EQ);
+                    if (meth) {
+                        if (scheduleEq(vb, meth, owner, vc, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc})));
+                        break;
+                    }
+                }
+                if (vc.isInstance()) {
+                    auto [meth, owner] = findDunder(vc, DUNDER_EQ);
+                    if (meth) {
+                        if (scheduleEq(vc, meth, owner, vb, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb})));
+                        break;
+                    }
+                }
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) == 0);
                     break;
@@ -5812,10 +5862,46 @@ Value VM::run(int targetFrameDepth) {
                 }
                 if (vb.isFloat() && vc.isFloat()) { getReg(a) = Value(vb.asFloatRaw() != vc.asFloatRaw()); break; }
                 if (vb.isInt32() && vc.isInt32()) { getReg(a) = Value(true); break; }
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_NEQ); if (meth) { getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
-                if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_EQ); if (meth) { getReg(a) = Value(!evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                auto scheduleNeq = [&](const Value& self, ObjClosure* meth, ObjClass* owner,
+                                      const Value& other, ProtocolContinuation continuation) {
+                    int depth = -1;
+                    frame->ip = ip;
+                    if (!scheduleProtocolDunder(self, meth, owner, {other}, a, continuation, depth)) return false;
+                    frame = &frames[depth];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    return true;
+                };
+                if (vb.isInstance()) {
+                    auto [meth, owner] = findDunder(vb, DUNDER_NEQ);
+                    if (meth) {
+                        if (scheduleNeq(vb, meth, owner, vc, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc})));
+                        break;
+                    }
+                    auto [eqMeth, eqOwner] = findDunder(vb, DUNDER_EQ);
+                    if (eqMeth) {
+                        if (scheduleNeq(vb, eqMeth, eqOwner, vc, ProtocolContinuation::NegatedTruthiness)) break;
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vb, eqMeth, eqOwner, {vc})));
+                        break;
+                    }
+                }
+                if (vc.isInstance()) {
+                    auto [meth, owner] = findDunder(vc, DUNDER_NEQ);
+                    if (meth) {
+                        if (scheduleNeq(vc, meth, owner, vb, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb})));
+                        break;
+                    }
+                    auto [eqMeth, eqOwner] = findDunder(vc, DUNDER_EQ);
+                    if (eqMeth) {
+                        if (scheduleNeq(vc, eqMeth, eqOwner, vb, ProtocolContinuation::NegatedTruthiness)) break;
+                        getReg(a) = Value(!evaluateTruthiness(callDunder(vc, eqMeth, eqOwner, {vb})));
+                        break;
+                    }
+                }
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) != 0);
                     break;
@@ -8684,6 +8770,13 @@ Value VM::run(int targetFrameDepth) {
                 //   必须在【两条出口】之前算好 —— 否则 run(targetFrameDepth) 的调用方（如 JIT 的
                 //   jc2_jit_invoke）会拿到 init 的原始返回值（0），而不是构造出的实例。
                 Value frameResult = isInit ? (selfCtx.isNone() ? std::move(res) : selfCtx) : std::move(res);
+                if (frame->continuation == ProtocolContinuation::Truthiness) {
+                    frameResult = Value(evaluateTruthiness(frameResult));
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::NegatedTruthiness) {
+                    frameResult = Value(!evaluateTruthiness(frameResult));
+                    frame->continuation = ProtocolContinuation::None;
+                }
                 if (frameCount <= targetFrameDepth) {
                     return frameResult;
                 }

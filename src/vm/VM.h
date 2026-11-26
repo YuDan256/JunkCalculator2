@@ -16,6 +16,12 @@
 
 namespace jc {
 
+enum class ProtocolContinuation : uint8_t {
+    None,
+    Truthiness,
+    NegatedTruthiness,
+};
+
 // ============================================================================
 // 寄存器机调用帧 (Register Window Frame)
 // ============================================================================
@@ -31,6 +37,7 @@ struct CallFrame {
     Value selfContext = Value::none();
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none(); // ★ JIT 返回值锚点，防止即时释放
+    ProtocolContinuation continuation = ProtocolContinuation::None;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -62,6 +69,7 @@ struct Invocation {
     Value ownerClass = Value::none();
     std::vector<Value> args;
     ReturnSink sink;
+    ProtocolContinuation continuation = ProtocolContinuation::None;
 };
 
 // ============================================================================
@@ -493,6 +501,10 @@ public:
 
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value explicitSelf = Value::none(), Value explicitClass = Value::none());
+    int pushInvocationFrame(const Invocation& invocation);
+    bool scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
+                                std::vector<Value> args, int dst,
+                                ProtocolContinuation continuation, int& outDepth);
     Value invoke(const Invocation& invocation);
 
     void triggerDebugger();

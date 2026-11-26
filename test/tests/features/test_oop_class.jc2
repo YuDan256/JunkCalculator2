@@ -50,6 +50,17 @@ test_dunder_methods() = {
     v2 = Vector(3, 4)
     v3 = v1 + v2
     assert(v3 == Vector(4, 6), "Dunder __add__ or __eq__ failed")
+
+    class RecursiveEq {
+        __eq__(other) = self == other
+    }
+    caught = false
+    try {
+        RecursiveEq() == RecursiveEq()
+    } catch (e) {
+        caught = "stack overflow" in e.message
+    }
+    assert(caught, "recursive __eq__ must hit the VM frame limit, not the native stack")
 }
 test_dunder_methods()
 

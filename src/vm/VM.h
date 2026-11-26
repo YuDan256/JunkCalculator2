@@ -21,6 +21,7 @@ enum class ProtocolContinuation : uint8_t {
     Truthiness,
     NegatedTruthiness,
     BoolRetry,
+    IterInit,
 };
 
 // ============================================================================
@@ -512,6 +513,7 @@ public:
                                 ProtocolContinuation continuation, int& outDepth,
                                 int resumeIp = -1, int resumeRegister = -1);
     Value invoke(const Invocation& invocation);
+    Value makeIteratorState(const Value& iterObj);
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;

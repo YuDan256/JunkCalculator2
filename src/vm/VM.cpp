@@ -4668,8 +4668,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
 bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
-                                int resumeIp, int resumeRegister) {
-    if (!method || !method->isBytecode()) return false;
+                                int resumeIp, int resumeRegister) {    if (!method || !method->isBytecode()) return false;
     Invocation invocation;
     invocation.fnIdx = method->compiledFnIndex;
     invocation.closure = method;
@@ -4682,6 +4681,23 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuationResumeRegister = resumeRegister;
     outDepth = pushInvocationFrame(invocation);
     return true;
+}
+
+Value VM::makeIteratorState(const Value& iterObj) {
+    Value rooted = iterObj;
+    GcValueGuard iterGuard(rooted);
+    ObjList* state = GcHeap::get().allocate<ObjList>();
+    GcObjGuard stateGuard(state);
+    state->vec.push_back(rooted);
+    if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
+        state->vec.push_back(Value::none());
+    } else {
+        auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
+        if (!nextMethod) JC2_THROW(RuntimeError, "Iterator missing __next__ method.");
+        state->vec.push_back(Value(nextMethod));
+        state->vec.push_back(Value(nextOwner));
+    }
+    return Value(state);
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sourceFile) {
@@ -6919,19 +6935,22 @@ Value VM::run(int targetFrameDepth) {
                 if (iterable.isInstance()) {
                     auto [method, owner] = findDunder(iterable, DUNDER_ITER);
                     if (method) {
-                        Value iterObj = callDunder(iterable, method, owner, {});
-                        GcValueGuard iterGuard(iterObj);
-                        ObjList* state = GcHeap::get().allocate<ObjList>();
-                        state->vec.push_back(iterObj);
-                        if (iterObj.isInstance() && iterObj.asInstance()->c_nativeNext) {
-                            state->vec.push_back(Value::none());
-                        } else {
-                            auto [nextMethod, nextOwner] = findDunder(iterObj, DUNDER_NEXT);
-                            if (!nextMethod) JC2_THROW(RuntimeError, "Iterator missing __next__ method.");
-                            state->vec.push_back(Value(nextMethod));
-                            state->vec.push_back(Value(nextOwner));
+                        if (method->isBytecode()) {
+                            int depth = -1;
+                            frame->ip = ip;
+                            if (scheduleProtocolDunder(iterable, method, owner, {}, -1,
+                                                       ProtocolContinuation::IterInit, depth,
+                                                       -1, a)) {
+                                frame = &frames[depth];
+                                chunk = frame->chunk;
+                                code = chunk->code.data();
+                                frameRegs = &registers[frame->registerBase];
+                                ip = frame->ip;
+                                break;
+                            }
                         }
-                        getReg(a) = Value(state);
+                        Value iterObj = callDunder(iterable, method, owner, {});
+                        getReg(a) = makeIteratorState(iterObj);
                         break;
                     }
                 }
@@ -8843,6 +8862,8 @@ Value VM::run(int targetFrameDepth) {
                 Value frameResult = isInit ? (selfCtx.isNone() ? std::move(res) : selfCtx) : std::move(res);
                 int retryIp = -1;
                 int retryRegister = -1;
+                int iterInitRegister = -1;
+                Value iterInitState;
                 if (frame->continuation == ProtocolContinuation::Truthiness) {
                     frameResult = Value(evaluateTruthiness(frameResult));
                     frame->continuation = ProtocolContinuation::None;
@@ -8853,6 +8874,10 @@ Value VM::run(int targetFrameDepth) {
                     frameResult = Value(evaluateTruthiness(frameResult));
                     retryIp = frame->continuationResumeIp;
                     retryRegister = frame->continuationResumeRegister;
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::IterInit) {
+                    iterInitRegister = frame->continuationResumeRegister;
+                    iterInitState = makeIteratorState(frameResult);
                     frame->continuation = ProtocolContinuation::None;
                 }
                 if (frameCount <= targetFrameDepth) {
@@ -8866,6 +8891,10 @@ Value VM::run(int targetFrameDepth) {
                 frameRegs = &registers[frame->registerBase];
                 ip = frame->ip;
 
+                if (iterInitRegister >= 0) {
+                    getReg(iterInitRegister) = iterInitState;
+                    break;
+                }
                 if (retryIp >= 0) {
                     getReg(retryRegister) = frameResult;
                     frame->ip = retryIp;

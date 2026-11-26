@@ -6276,7 +6276,14 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& listVal = getReg(a);
                 if (listVal.isObjType(ObjType::LIST)) {
-                    static_cast<ObjList*>(listVal.asObj())->mut().push_back(getReg(b));
+                    Value v = getReg(b);
+                    if (v.isSpread()) {
+                        auto* sp = static_cast<ObjSpread*>(v.asObj());
+                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
+                        helpers::spreadPositional(sp->value, static_cast<ObjList*>(listVal.asObj())->mut());
+                    } else {
+                        static_cast<ObjList*>(listVal.asObj())->mut().push_back(v);
+                    }
                 } else {
                     JC2_THROW(RuntimeError, "LIST_APPEND target is not a list.");
                 }
@@ -11348,7 +11355,13 @@ void jc2_jit_list_append(uint64_t list_bits, uint64_t val_bits) {
     Value listVal = Value::fromRawBits(list_bits);
     Value val = Value::fromRawBits(val_bits);
     if (listVal.isObjType(ObjType::LIST)) {
-        static_cast<ObjList*>(listVal.asObj())->mut().push_back(val);
+        if (val.isSpread()) {
+            auto* sp = static_cast<ObjSpread*>(val.asObj());
+            if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
+            helpers::spreadPositional(sp->value, static_cast<ObjList*>(listVal.asObj())->mut());
+        } else {
+            static_cast<ObjList*>(listVal.asObj())->mut().push_back(val);
+        }
     } else {
         JC2_THROW(RuntimeError, "LIST_APPEND target is not a list.");
     }

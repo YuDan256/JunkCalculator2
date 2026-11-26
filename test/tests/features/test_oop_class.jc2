@@ -150,6 +150,12 @@ test_dunder_methods() = {
     }
     assert(%{...ScheduledMapping()} == %{a: 1, b: 2},
            "scheduled __mapping__ dict spread")
+
+    class ScheduledCmp {
+        init(v) = { self.v = v }
+        __cmp__(o) = self.v - o.v
+    }
+    assert((ScheduledCmp(1) <=> ScheduledCmp(2)) == -1, "scheduled __cmp__")
 }
 test_dunder_methods()
 

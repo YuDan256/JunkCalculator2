@@ -4529,6 +4529,7 @@ int VM::pushInvocationFrame(const Invocation& invocation) {
     newFrame.continuation = invocation.continuation;
     newFrame.continuationResumeIp = invocation.continuationResumeIp;
     newFrame.continuationResumeRegister = invocation.continuationResumeRegister;
+    newFrame.continuationSign = invocation.continuationSign;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4671,7 +4672,8 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
 bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
-                                int resumeIp, int resumeRegister) {    if (!method || !method->isBytecode()) return false;
+                                int resumeIp, int resumeRegister, int sign) {
+    if (!method || !method->isBytecode()) return false;
     Invocation invocation;
     invocation.fnIdx = method->compiledFnIndex;
     invocation.closure = method;
@@ -4682,6 +4684,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuation = continuation;
     invocation.continuationResumeIp = resumeIp;
     invocation.continuationResumeRegister = resumeRegister;
+    invocation.continuationSign = sign;
     outDepth = pushInvocationFrame(invocation);
     return true;
 }
@@ -6272,6 +6275,55 @@ Value VM::run(int targetFrameDepth) {
                 Value vb = GET_RK(b); Value vc = GET_RK(c);
                 if (vb.isInt32() && vc.isInt32()) const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x01;
                 else const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
+                if (vb.isInstance()) {
+                    auto [m, owner] = findDunder(vb, DUNDER_CMP);
+                    if (m && m->isBytecode()) {
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(vb, m, owner, {vc}, a,
+                                                   ProtocolContinuation::CompareSign,
+                                                   depth, -1, -1, 1)) {
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            break;
+                        }
+                    }
+                }
+                if (vc.isInstance()) {
+                    auto [m, owner] = findDunder(vc, DUNDER_RCMP);
+                    if (m && m->isBytecode()) {
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(vc, m, owner, {vb}, a,
+                                                   ProtocolContinuation::CompareSign,
+                                                   depth, -1, -1, 1)) {
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            break;
+                        }
+                    }
+                    auto [m2, o2] = findDunder(vc, DUNDER_CMP);
+                    if (m2 && m2->isBytecode()) {
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(vc, m2, o2, {vb}, a,
+                                                   ProtocolContinuation::CompareSign,
+                                                   depth, -1, -1, -1)) {
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            break;
+                        }
+                    }
+                }
                 getReg(a) = Value(compareValues(vb, vc));
                 break;
             }
@@ -9115,6 +9167,10 @@ Value VM::run(int targetFrameDepth) {
                     retryIp = frame->continuationResumeIp;
                     retryRegister = frame->continuationResumeRegister;
                     suppressMappingOp = retryIp;
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::CompareSign) {
+                    frameResult = Value(compareResultSign(frameResult, "__cmp__") *
+                                        frame->continuationSign);
                     frame->continuation = ProtocolContinuation::None;
                 }
                 if (frameCount <= targetFrameDepth) {

@@ -2062,96 +2062,8 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         helpers::nativeClassStack.pop_back();
         return result;
     } else if (method->isBytecode()) {
-        auto& fnDef = compiledFunctions[method->compiledFnIndex];
-        CallFrame newFrame;
-        newFrame.function = fnDef.get();
-        newFrame.chunk = &fnDef->chunk;
-        newFrame.ip = 0;
-        
-        int newBase = 0;
-        if (frameCount > 0) {
-            CallFrame* currentFrame = &frames[frameCount - 1];
-            int locals = currentFrame->function ? currentFrame->function->localCount : 0;
-            int refs = currentFrame->function ? currentFrame->function->refCount : 0;
-            newBase = currentFrame->registerBase + locals + refs;
-        }
-        
-        int newTotalCount = fnDef->localCount + fnDef->refCount;
-        PendingFrameGuard pfg(this, newBase, newTotalCount);
-
-        newFrame.registerBase = newBase;
-        newFrame.returnRegister = 0;
-        newFrame.deferBase = static_cast<int>(deferStack.size());
-        newFrame.closure = method;
-        newFrame.selfContext = Value(inst);
-        newFrame.classContext = Value(ownerClass);
-        
-        int totalArgc = static_cast<int>(args.size());
-
-        if (!fnDef->restName.empty()) {
-            int fixedMax = fnDef->maxArity;
-            if (totalArgc < fnDef->arity) {
-                JC2_THROW(RuntimeError, "'" + fnDef->name + "' requires at least " + std::to_string(fnDef->arity) + " arguments.");
-            }
-            ObjList* restList = GcHeap::get().allocate<ObjList>();
-            if (totalArgc > fixedMax) {
-                int restCount = totalArgc - fixedMax;
-                restList->vec.reserve(restCount);
-                for (int j = 0; j < restCount; j++) {
-                    restList->vec.push_back(rootedArgs[fixedMax + j]);
-                }
-            }
-            
-            for (int i = 0; i < std::min(totalArgc, fixedMax); ++i) {
-                registers[newBase + i] = rootedArgs[i];
-            }
-            for (int i = totalArgc; i < fixedMax; ++i) {
-                registers[newBase + i] = Value::uninit();
-            }
-            registers[newBase + fixedMax] = Value(restList);
-        } else {
-            if (totalArgc < fnDef->arity || totalArgc > fnDef->maxArity) {
-                JC2_THROW(RuntimeError, "'" + fnDef->name + "' expects " + std::to_string(fnDef->arity) + " to " + std::to_string(fnDef->maxArity) + " arguments, got " + std::to_string(totalArgc) + ".");
-            }
-            for (int i = 0; i < totalArgc; ++i) {
-                registers[newBase + i] = rootedArgs[i];
-            }
-            for (int i = totalArgc; i < fnDef->maxArity; ++i) {
-                registers[newBase + i] = Value::uninit();
-            }
-        }
-
-        int paramSlotCount = fnDef->maxArity + (fnDef->restName.empty() ? 0 : 1) + static_cast<int>(fnDef->kwargNames.size()) + (fnDef->kwargsName.empty() ? 0 : 1);
-            for (int i = paramSlotCount; i < fnDef->localCount; ++i) {
-            registers[newBase + i] = Value::none();
-        }
-        
-        populateRefParams(newFrame, fnDef.get());
-        
-        profileFrameStart(&newFrame);
-        frames[frameCount++] = newFrame;
-        
-        int targetDepth = frameCount - 1;
-        try {
-            return run(targetDepth);
-        } catch (...) {
-            while (frameCount > targetDepth) {
-                CallFrame* f = &frames[frameCount - 1];
-                profileFrameEnd(f);
-                int clearBase = f->registerBase;
-                int clearCount = f->function->localCount + f->function->refCount;
-                for (int i = 0; i < clearCount; ++i) {
-                    registers[clearBase + i] = Value::none();
-                }
-                f->selfContext = Value::none();
-                f->classContext = Value::none();
-                f->jitReturnSlot = Value::none();
-                f->closure = nullptr;
-                f->refParamsBase = -1;
-                frameCount--;
-            }
-            throw;
-        }
+        return callVMFunction(method->compiledFnIndex, rootedArgs, method, obj,
+                              Value(ownerClass));
     }
     JC2_THROW(RuntimeError, "Dunder method is not callable.");
 }
@@ -4591,10 +4503,11 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     }
     
     int newTotalCount = fnDef->localCount + fnDef->refCount;
+    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
     PendingFrameGuard pfg(this, newBase, newTotalCount);
 
     newFrame.registerBase = newBase;
-    newFrame.returnRegister = 0;
+    newFrame.returnRegister = -1;
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
     newFrame.selfContext = explicitSelf;
@@ -4934,8 +4847,10 @@ Value VM::run(int targetFrameDepth) {
                     code = chunk->code.data(); \
                     frameRegs = &registers[frame->registerBase]; \
                     ip = frame->ip; \
-                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx; \
-                    else getReg(targetReg) = res; \
+                    if (targetReg >= 0) { \
+                        if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx; \
+                        else getReg(targetReg) = res; \
+                    } \
                     osrTriggered = true; \
                 } \
             } \
@@ -8469,8 +8384,10 @@ Value VM::run(int targetFrameDepth) {
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
                     
-                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
-                    else getReg(targetReg) = res;
+                    if (targetReg >= 0) {
+                        if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                        else getReg(targetReg) = res;
+                    }
                 } else {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
@@ -8519,8 +8436,10 @@ Value VM::run(int targetFrameDepth) {
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
                     
-                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
-                    else getReg(targetReg) = res;
+                    if (targetReg >= 0) {
+                        if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                        else getReg(targetReg) = res;
+                    }
                 } else {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
@@ -8609,8 +8528,10 @@ Value VM::run(int targetFrameDepth) {
                     code = chunk->code.data();
                     frameRegs = &registers[frame->registerBase];
                     
-                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
-                    else getReg(targetReg) = res;
+                    if (targetReg >= 0) {
+                        if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                        else getReg(targetReg) = res;
+                    }
                 } else {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
@@ -8680,8 +8601,10 @@ Value VM::run(int targetFrameDepth) {
                     //   当前帧，这里弹回上一层后若不切回 ip，会拿旧偏移在新 chunk 里跑。
                     ip = frame->ip;
 
-                    if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
-                    else getReg(targetReg) = res;
+                    if (targetReg >= 0) {
+                        if (isInit) getReg(targetReg) = selfCtx.isNone() ? res : selfCtx;
+                        else getReg(targetReg) = res;
+                    }
                 } else {
                     frame = &frames[frameCount - 1];
                     chunk = frame->chunk;
@@ -8749,7 +8672,7 @@ Value VM::run(int targetFrameDepth) {
                 frameRegs = &registers[frame->registerBase];
                 ip = frame->ip;
                 
-                getReg(targetReg) = frameResult;
+                if (targetReg >= 0) getReg(targetReg) = frameResult;
                 break;
             }
                     default:

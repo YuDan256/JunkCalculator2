@@ -7445,6 +7445,8 @@ Value VM::run(int targetFrameDepth) {
                 } else if (haystack.isInstance()) {
                     auto [method, owner] = findDunder(haystack, DUNDER_CONTAINS);
                     if (method) {
+                        if (scheduleDunderFrame(haystack, method, owner, {needle}, a,
+                                                ProtocolContinuation::Truthiness)) break;
                         found = evaluateTruthiness(callDunder(haystack, method, owner, {needle}));
                     } else {
                         auto inst = haystack.asInstance();

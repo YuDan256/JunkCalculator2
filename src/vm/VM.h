@@ -25,6 +25,7 @@ enum class ProtocolContinuation : uint8_t {
     Next,
     GetItemNoThrow,
     GetAttr,
+    OrderFallback,
 };
 
 // ============================================================================
@@ -169,6 +170,7 @@ private:
     int pendingFrameBase = -1;
     int pendingFrameCount = 0;
     int suppressGetattrOp = -1;
+    int suppressOrderLtOp = -1;
 
     struct PendingFrameGuard {
         VM* vm;

@@ -112,6 +112,16 @@ test_dunder_methods() = {
         caught = "not found" in e.message
     }
     assert(caught, "__getattr__ failure must fall back to missing property")
+
+    class OrderOps {
+        init(v) = { self.v = v }
+        __lt__(o) = self.v < o.v
+        __eq__(o) = self.v == o.v
+    }
+    assert(OrderOps(1) <= OrderOps(1), "scheduled LE falls back to __eq__")
+    assert(!(OrderOps(2) <= OrderOps(1)), "scheduled LE false")
+    assert(OrderOps(1) >= OrderOps(1), "scheduled GE falls back to __eq__")
+    assert(!(OrderOps(1) >= OrderOps(2)), "scheduled GE false")
 }
 test_dunder_methods()
 

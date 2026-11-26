@@ -4949,6 +4949,23 @@ Value VM::run(int targetFrameDepth) {
         return true;
     };
 
+    auto scheduleOrderFallback = [&](const Value& self, ObjClosure* method, ObjClass* owner,
+                                     const Value& arg, int dst, int resumeIp) {
+        int depth = -1;
+        frame->ip = ip;
+        if (!scheduleProtocolDunder(self, method, owner, {arg}, dst,
+                                    ProtocolContinuation::OrderFallback, depth,
+                                    resumeIp, -1)) {
+            return false;
+        }
+        frame = &frames[depth];
+        chunk = frame->chunk;
+        code = chunk->code.data();
+        frameRegs = &registers[frame->registerBase];
+        ip = frame->ip;
+        return true;
+    };
+
     // Scheduled __next__ raised StopIteration: pop its frame and resume the
     // caller with an exhausted iterator marker.
     auto popNextFrame = [&]() -> bool {
@@ -6092,17 +6109,23 @@ Value VM::run(int targetFrameDepth) {
                         getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); 
                         break; 
                     }
-                    auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
-                    if (methLt) {
-                        if (evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc}))) {
-                            getReg(a) = Value(true);
-                            break;
+                    if (suppressOrderLtOp == op_ip) {
+                        suppressOrderLtOp = -1;
+                    } else {
+                        auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
+                        if (methLt) {
+                            if (scheduleOrderFallback(vb, methLt, ownerLt, vc, a, op_ip)) break;
+                            if (evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc}))) {
+                                getReg(a) = Value(true);
+                                break;
+                            }
                         }
-                        auto [methEq, ownerEq] = findDunder(vb, DUNDER_EQ);
-                        if (methEq) {
-                            getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, ownerEq, {vc})));
-                            break;
-                        }
+                    }
+                    auto [methEq, ownerEq] = findDunder(vb, DUNDER_EQ);
+                    if (methEq) {
+                        if (scheduleDunderFrame(vb, methEq, ownerEq, {vc}, a, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vb, methEq, ownerEq, {vc})));
+                        break;
                     }
                 }
                 if (vc.isInstance()) { 
@@ -6112,17 +6135,23 @@ Value VM::run(int targetFrameDepth) {
                         getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); 
                         break; 
                     }
-                    auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
-                    if (methGt) {
-                        if (evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb}))) {
-                            getReg(a) = Value(true);
-                            break;
+                    if (suppressOrderLtOp == op_ip) {
+                        suppressOrderLtOp = -1;
+                    } else {
+                        auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
+                        if (methGt) {
+                            if (scheduleOrderFallback(vc, methGt, ownerGt, vb, a, op_ip)) break;
+                            if (evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb}))) {
+                                getReg(a) = Value(true);
+                                break;
+                            }
                         }
-                        auto [methEq, ownerEq] = findDunder(vc, DUNDER_EQ);
-                        if (methEq) {
-                            getReg(a) = Value(evaluateTruthiness(callDunder(vc, methEq, ownerEq, {vb})));
-                            break;
-                        }
+                    }
+                    auto [methEq, ownerEq] = findDunder(vc, DUNDER_EQ);
+                    if (methEq) {
+                        if (scheduleDunderFrame(vc, methEq, ownerEq, {vb}, a, ProtocolContinuation::Truthiness)) break;
+                        getReg(a) = Value(evaluateTruthiness(callDunder(vc, methEq, ownerEq, {vb})));
+                        break;
                     }
                 }
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
@@ -6210,6 +6239,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     auto [methLt, ownerLt] = findDunder(vb, DUNDER_LT);
                     if (methLt) {
+                        if (scheduleDunderFrame(vb, methLt, ownerLt, {vc}, a, ProtocolContinuation::NegatedTruthiness)) break;
                         getReg(a) = Value(!evaluateTruthiness(callDunder(vb, methLt, ownerLt, {vc})));
                         break;
                     }
@@ -6223,6 +6253,7 @@ Value VM::run(int targetFrameDepth) {
                     }
                     auto [methGt, ownerGt] = findDunder(vc, DUNDER_GT);
                     if (methGt) {
+                        if (scheduleDunderFrame(vc, methGt, ownerGt, {vb}, a, ProtocolContinuation::NegatedTruthiness)) break;
                         getReg(a) = Value(!evaluateTruthiness(callDunder(vc, methGt, ownerGt, {vb})));
                         break;
                     }
@@ -9050,6 +9081,15 @@ Value VM::run(int targetFrameDepth) {
                     iterInitRegister = frame->continuationResumeRegister;
                     iterInitState = makeIteratorState(frameResult);
                     frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::OrderFallback) {
+                    if (evaluateTruthiness(frameResult)) {
+                        frameResult = Value(true);
+                    } else {
+                        retryIp = frame->continuationResumeIp;
+                        retryRegister = -1;
+                        suppressOrderLtOp = retryIp;
+                    }
+                    frame->continuation = ProtocolContinuation::None;
                 }
                 if (frameCount <= targetFrameDepth) {
                     return frameResult;
@@ -9067,7 +9107,7 @@ Value VM::run(int targetFrameDepth) {
                     break;
                 }
                 if (retryIp >= 0) {
-                    getReg(retryRegister) = frameResult;
+                    if (retryRegister >= 0) getReg(retryRegister) = frameResult;
                     frame->ip = retryIp;
                     ip = retryIp;
                     break;

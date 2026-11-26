@@ -28,6 +28,7 @@ enum class ProtocolContinuation : uint8_t {
     OrderFallback,
     MappingRetry,
     CompareSign,
+    CallMappingRetry,
 };
 
 // ============================================================================
@@ -49,6 +50,7 @@ struct CallFrame {
     int continuationResumeIp = -1;
     int continuationResumeRegister = -1;
     int continuationSign = 1;
+    int continuationKwArgc = 0;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -84,6 +86,7 @@ struct Invocation {
     int continuationResumeIp = -1;
     int continuationResumeRegister = -1;
     int continuationSign = 1;
+    int continuationKwArgc = 0;
 };
 
 // ============================================================================
@@ -522,7 +525,8 @@ public:
     bool scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
-                                int resumeIp = -1, int resumeRegister = -1, int sign = 1);
+                                int resumeIp = -1, int resumeRegister = -1, int sign = 1,
+                                int retryKwArgc = 0);
     Value invoke(const Invocation& invocation);
     Value makeIteratorState(const Value& iterObj);
 

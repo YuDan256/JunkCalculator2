@@ -4530,6 +4530,7 @@ int VM::pushInvocationFrame(const Invocation& invocation) {
     newFrame.continuationResumeIp = invocation.continuationResumeIp;
     newFrame.continuationResumeRegister = invocation.continuationResumeRegister;
     newFrame.continuationSign = invocation.continuationSign;
+    newFrame.continuationKwArgc = invocation.continuationKwArgc;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4672,7 +4673,7 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
 bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
-                                int resumeIp, int resumeRegister, int sign) {
+                                int resumeIp, int resumeRegister, int sign, int retryKwArgc) {
     if (!method || !method->isBytecode()) return false;
     Invocation invocation;
     invocation.fnIdx = method->compiledFnIndex;
@@ -4685,6 +4686,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuationResumeIp = resumeIp;
     invocation.continuationResumeRegister = resumeRegister;
     invocation.continuationSign = sign;
+    invocation.continuationKwArgc = retryKwArgc;
     outDepth = pushInvocationFrame(invocation);
     return true;
 }
@@ -9043,6 +9045,36 @@ Value VM::run(int targetFrameDepth) {
                 frame->ip = ip; // 保存当前 IP
                 int prevIp = ip;
                 int kwArgc = pendingKwArgc;
+                bool mappingSuspended = false;
+                if (kwArgc > 0) {
+                    int posArgc = c - 2 * kwArgc;
+                    for (int i = 0; i < kwArgc && posArgc >= 0; ++i) {
+                        Value kwName = getReg(b + 1 + posArgc + i * 2);
+                        if (!kwName.isSpread()) continue;
+                        auto* spread = static_cast<ObjSpread*>(kwName.asObj());
+                        if (!spread->isKeyword) continue;
+                        Value kwVal = getReg(b + 1 + posArgc + i * 2 + 1);
+                        if (!kwVal.isInstance()) continue;
+                        auto [mapMethod, mapOwner] = findDunder(kwVal, "__mapping__");
+                        if (!mapMethod || !mapMethod->isBytecode()) continue;
+                        int dst = b + 1 + posArgc + i * 2 + 1;
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(kwVal, mapMethod, mapOwner, {}, dst,
+                                                   ProtocolContinuation::CallMappingRetry,
+                                                   depth, op_ip, dst, 1, kwArgc)) {
+                            pendingKwArgc = 0;
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            mappingSuspended = true;
+                            break;
+                        }
+                    }
+                }
+                if (mappingSuspended) break;
                 pendingKwArgc = 0;
                 execCall(b, c, kwArgc, a, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
@@ -9171,6 +9203,11 @@ Value VM::run(int targetFrameDepth) {
                 } else if (frame->continuation == ProtocolContinuation::CompareSign) {
                     frameResult = Value(compareResultSign(frameResult, "__cmp__") *
                                         frame->continuationSign);
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::CallMappingRetry) {
+                    retryIp = frame->continuationResumeIp;
+                    retryRegister = frame->continuationResumeRegister;
+                    pendingKwArgc = frame->continuationKwArgc;
                     frame->continuation = ProtocolContinuation::None;
                 }
                 if (frameCount <= targetFrameDepth) {

@@ -449,3 +449,24 @@ test_osr_break_value() = {
 }
 test_osr_break_value()
 }
+
+// OSR raw-int32 loop promotion must preserve results around overflow.
+{
+test_osr_int32_loop_result() = {
+    f(n) = {
+        local k = 0
+        while (k < n) k += 1
+        return k
+    }
+    assert(f(1_000_000) == 1_000_000, "OSR promoted loop result")
+
+    g(start) = {
+        local k = start
+        while (k < 2_147_483_650) k += 1
+        return k
+    }
+    assert(g(2_147_482_000) == 2_147_483_650,
+           "OSR promoted loop must deopt on int32 overflow")
+}
+test_osr_int32_loop_result()
+}

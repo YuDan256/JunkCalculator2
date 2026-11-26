@@ -20,6 +20,7 @@
 #include "../jit/pass/DeadPhiElimination.h"
 #include "../jit/pass/ConstantFolding.h"
 #include "../jit/pass/AlgebraicSimplification.h"
+#include "../jit/pass/LoopPromotion.h"
 #include "../jit/pass/CSE.h"
 #include "../jit/pass/DCE.h"
 #include "../jit/pass/GCM.h"
@@ -3813,6 +3814,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
         jit::DeadPhiElimination(hirGraph, hirBuilder).run();
         jit::ConstantFolding(hirGraph, hirBuilder).run();
         jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
+        jit::LoopPromotion(hirGraph).run();
         jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
         jit::DeadCodeElimination(hirGraph, hirBuilder).run();
         
@@ -3906,6 +3908,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     jit::DeadPhiElimination(hirGraph, hirBuilder).run();
                     jit::ConstantFolding(hirGraph, hirBuilder).run();
                     jit::AlgebraicSimplification(hirGraph, hirBuilder).run();
+                    jit::LoopPromotion(hirGraph).run();
                     jit::CommonSubexpressionElimination(hirGraph, hirBuilder).run();
                     jit::DeadCodeElimination(hirGraph, hirBuilder).run();
 
@@ -11941,4 +11944,5 @@ uint64_t jc2_jit_match_shape(uint64_t b_bits, uint32_t shapeIdx, const Chunk* ch
 }
 
 } // namespace jc
+
 

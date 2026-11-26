@@ -6668,6 +6668,23 @@ Value VM::run(int targetFrameDepth) {
                     if (v.isSpread()) {
                         auto* sp = static_cast<ObjSpread*>(v.asObj());
                         if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in list literal.");
+                        if (sp->value.isInstance()) {
+                            auto [unpackMethod, unpackOwner] = findDunder(sp->value, "__unpack__");
+                            if (unpackMethod && unpackMethod->isBytecode()) {
+                                int depth = -1;
+                                frame->ip = ip;
+                                if (scheduleProtocolDunder(sp->value, unpackMethod, unpackOwner, {},
+                                                           -1, ProtocolContinuation::UnpackSpread,
+                                                           depth, op_ip, -1, 1, 0, sp)) {
+                                    frame = &frames[depth];
+                                    chunk = frame->chunk;
+                                    code = chunk->code.data();
+                                    frameRegs = &registers[frame->registerBase];
+                                    ip = frame->ip;
+                                    break;
+                                }
+                            }
+                        }
                         helpers::spreadPositional(sp->value, static_cast<ObjList*>(listVal.asObj())->mut());
                     } else {
                         static_cast<ObjList*>(listVal.asObj())->mut().push_back(v);
@@ -6691,6 +6708,23 @@ Value VM::run(int targetFrameDepth) {
                     if (v.isSpread()) {
                         auto* sp = static_cast<ObjSpread*>(v.asObj());
                         if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
+                        if (sp->value.isInstance()) {
+                            auto [unpackMethod, unpackOwner] = findDunder(sp->value, "__unpack__");
+                            if (unpackMethod && unpackMethod->isBytecode()) {
+                                int depth = -1;
+                                frame->ip = ip;
+                                if (scheduleProtocolDunder(sp->value, unpackMethod, unpackOwner, {},
+                                                           -1, ProtocolContinuation::UnpackSpread,
+                                                           depth, op_ip, -1, 1, 0, sp)) {
+                                    frame = &frames[depth];
+                                    chunk = frame->chunk;
+                                    code = chunk->code.data();
+                                    frameRegs = &registers[frame->registerBase];
+                                    ip = frame->ip;
+                                    break;
+                                }
+                            }
+                        }
                         std::vector<Value> spreadValues;
                         helpers::spreadPositional(sp->value, spreadValues);
                         for (const auto& item : spreadValues) static_cast<ObjSet*>(setVal.asObj())->add(item);

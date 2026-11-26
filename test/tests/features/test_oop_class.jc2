@@ -161,6 +161,8 @@ test_dunder_methods() = {
         __cmp__(o) = self.v - o.v
     }
     assert((ScheduledCmp(1) <=> ScheduledCmp(2)) == -1, "scheduled __cmp__")
+    assert(ScheduledCmp(1) == ScheduledCmp(1), "scheduled __cmp__ equality fallback")
+    assert(ScheduledCmp(1) < ScheduledCmp(2), "scheduled __cmp__ ordering fallback")
 
     stopNow() = throw StopIteration()
     class NestedStopIterator {

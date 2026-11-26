@@ -31,6 +31,7 @@ enum class ProtocolContinuation : uint8_t {
     CallMappingRetry,
     InvokeGetattr,
     UnpackSpread,
+    ComparePredicate,
 };
 
 // ============================================================================
@@ -55,6 +56,7 @@ struct CallFrame {
     int continuationKwArgc = 0;
     ObjClass* continuationOwner = nullptr;
     ObjSpread* continuationSpread = nullptr;
+    int continuationCompareOp = 0;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -93,6 +95,7 @@ struct Invocation {
     int continuationKwArgc = 0;
     ObjClass* continuationOwner = nullptr;
     ObjSpread* continuationSpread = nullptr;
+    int continuationCompareOp = 0;
 };
 
 // ============================================================================
@@ -535,7 +538,7 @@ public:
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
                                 int resumeIp = -1, int resumeRegister = -1, int sign = 1,
-                                int retryKwArgc = 0, ObjSpread* spread = nullptr);
+                                int retryKwArgc = 0, ObjSpread* spread = nullptr, int compareOp = 0);
     Value invoke(const Invocation& invocation);
     Value makeIteratorState(const Value& iterObj);
 

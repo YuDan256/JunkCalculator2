@@ -4566,6 +4566,7 @@ int VM::pushInvocationFrame(const Invocation& invocation) {
     newFrame.continuationKwArgc = invocation.continuationKwArgc;
     newFrame.continuationOwner = invocation.continuationOwner;
     newFrame.continuationSpread = invocation.continuationSpread;
+    newFrame.continuationCompareOp = invocation.continuationCompareOp;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4709,7 +4710,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
                                 int resumeIp, int resumeRegister, int sign, int retryKwArgc,
-                                ObjSpread* spread) {
+                                ObjSpread* spread, int compareOp) {
     if (!method || !method->isBytecode()) return false;
     Invocation invocation;
     invocation.fnIdx = method->compiledFnIndex;
@@ -4725,6 +4726,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuationKwArgc = retryKwArgc;
     invocation.continuationOwner = owner;
     invocation.continuationSpread = spread;
+    invocation.continuationCompareOp = compareOp;
     outDepth = pushInvocationFrame(invocation);
     return true;
 }
@@ -5007,6 +5009,36 @@ Value VM::run(int targetFrameDepth) {
         frameRegs = &registers[frame->registerBase];
         ip = frame->ip;
         return true;
+    };
+
+    auto scheduleComparePredicate = [&](const Value& vb, const Value& vc, int dst, int op) {
+        auto schedule = [&](const Value& self, ObjClosure* method, ObjClass* owner,
+                            const Value& arg, int sign) {
+            int depth = -1;
+            frame->ip = ip;
+            if (!scheduleProtocolDunder(self, method, owner, {arg}, dst,
+                                        ProtocolContinuation::ComparePredicate, depth,
+                                        -1, -1, sign, 0, nullptr, op)) {
+                return false;
+            }
+            frame = &frames[depth];
+            chunk = frame->chunk;
+            code = chunk->code.data();
+            frameRegs = &registers[frame->registerBase];
+            ip = frame->ip;
+            return true;
+        };
+        if (vb.isInstance()) {
+            auto [m, owner] = findDunder(vb, DUNDER_CMP);
+            if (m && m->isBytecode() && schedule(vb, m, owner, vc, 1)) return true;
+        }
+        if (vc.isInstance()) {
+            auto [m, owner] = findDunder(vc, DUNDER_RCMP);
+            if (m && m->isBytecode() && schedule(vc, m, owner, vb, 1)) return true;
+            auto [m2, o2] = findDunder(vc, DUNDER_CMP);
+            if (m2 && m2->isBytecode() && schedule(vc, m2, o2, vb, -1)) return true;
+        }
+        return false;
     };
 
     // Scheduled __next__ raised StopIteration: pop its frame and resume the
@@ -5992,6 +6024,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                 }
+                if (scheduleComparePredicate(vb, vc, a, 0)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) == 0);
                     break;
@@ -6053,6 +6086,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                 }
+                if (scheduleComparePredicate(vb, vc, a, 1)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) != 0);
                     break;
@@ -6073,6 +6107,7 @@ Value VM::run(int targetFrameDepth) {
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
                 if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_LT); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {vc}, a, ProtocolContinuation::Truthiness)) break; getReg(a) = Value(evaluateTruthiness(callDunder(vb, meth, owner, {vc}))); break; } }
                 if (vc.isInstance()) { auto [meth, owner] = findDunder(vc, DUNDER_GT); if (meth) { if (scheduleDunderFrame(vc, meth, owner, {vb}, a, ProtocolContinuation::Truthiness)) break; getReg(a) = Value(evaluateTruthiness(callDunder(vc, meth, owner, {vb}))); break; } }
+                if (scheduleComparePredicate(vb, vc, a, 2)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) < 0);
                     break;
@@ -6143,6 +6178,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                 }
+                if (scheduleComparePredicate(vb, vc, a, 3)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) <= 0);
                     break;
@@ -6201,6 +6237,7 @@ Value VM::run(int targetFrameDepth) {
                         }
                     }
                 }
+                if (scheduleComparePredicate(vb, vc, a, 4)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) > 0);
                     break;
@@ -6247,6 +6284,7 @@ Value VM::run(int targetFrameDepth) {
                         break;
                     }
                 }
+                if (scheduleComparePredicate(vb, vc, a, 5)) break;
                 if (hasCmpProtocol(vb) || hasCmpProtocol(vc)) {
                     getReg(a) = Value(compareValues(vb, vc) >= 0);
                     break;
@@ -9213,6 +9251,19 @@ Value VM::run(int targetFrameDepth) {
                 } else if (frame->continuation == ProtocolContinuation::CompareSign) {
                     frameResult = Value(compareResultSign(frameResult, "__cmp__") *
                                         frame->continuationSign);
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::ComparePredicate) {
+                    int sign = compareResultSign(frameResult, "__cmp__") * frame->continuationSign;
+                    bool result = false;
+                    switch (frame->continuationCompareOp) {
+                        case 0: result = sign == 0; break;
+                        case 1: result = sign != 0; break;
+                        case 2: result = sign < 0; break;
+                        case 3: result = sign <= 0; break;
+                        case 4: result = sign > 0; break;
+                        case 5: result = sign >= 0; break;
+                    }
+                    frameResult = Value(result);
                     frame->continuation = ProtocolContinuation::None;
                 } else if (frame->continuation == ProtocolContinuation::CallMappingRetry) {
                     retryIp = frame->continuationResumeIp;

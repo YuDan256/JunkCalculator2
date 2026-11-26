@@ -144,6 +144,12 @@ test_dunder_methods() = {
         caught = "stack overflow" in e.message
     }
     assert(caught, "recursive __getitem__ must hit the VM frame limit")
+
+    class ScheduledMapping {
+        __mapping__() = %{a: 1, b: 2}
+    }
+    assert(%{...ScheduledMapping()} == %{a: 1, b: 2},
+           "scheduled __mapping__ dict spread")
 }
 test_dunder_methods()
 

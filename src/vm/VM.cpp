@@ -6460,9 +6460,28 @@ Value VM::run(int targetFrameDepth) {
                             if (!kwDictVal.isInstance()) JC2_THROW(TypeError, "dict spread expects a dict or an instance with __mapping__().");
                             auto [upMethod, upOwner] = findDunder(kwDictVal, "__mapping__");
                             if (!upMethod) JC2_THROW(TypeError, "dict spread expects a dict or an instance with __mapping__().");
-                            kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
-                            if (!kwDictVal.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "__mapping__() must return a dict for dict spread.");
-                            upGuard = std::make_unique<GcValueGuard>(kwDictVal);
+                            if (suppressMappingOp == op_ip) {
+                                suppressMappingOp = -1;
+                            } else {
+                                if (upMethod->isBytecode()) {
+                                    int depth = -1;
+                                    int dst = b + i * 2 + 1;
+                                    frame->ip = ip;
+                                    if (scheduleProtocolDunder(kwDictVal, upMethod, upOwner, {}, dst,
+                                                               ProtocolContinuation::MappingRetry,
+                                                               depth, op_ip, dst)) {
+                                        frame = &frames[depth];
+                                        chunk = frame->chunk;
+                                        code = chunk->code.data();
+                                        frameRegs = &registers[frame->registerBase];
+                                        ip = frame->ip;
+                                        break;
+                                    }
+                                }
+                                kwDictVal = callDunder(kwDictVal, upMethod, upOwner, {});
+                                if (!kwDictVal.isObjType(ObjType::DICT)) JC2_THROW(TypeError, "__mapping__() must return a dict for dict spread.");
+                                upGuard = std::make_unique<GcValueGuard>(kwDictVal);
+                            }
                         }
                         for (auto& [kk, vv] : static_cast<ObjDict*>(kwDictVal.asObj())->elements) {
                             dict->set(kk, vv);
@@ -9091,6 +9110,11 @@ Value VM::run(int targetFrameDepth) {
                         retryRegister = -1;
                         suppressOrderLtOp = retryIp;
                     }
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::MappingRetry) {
+                    retryIp = frame->continuationResumeIp;
+                    retryRegister = frame->continuationResumeRegister;
+                    suppressMappingOp = retryIp;
                     frame->continuation = ProtocolContinuation::None;
                 }
                 if (frameCount <= targetFrameDepth) {

@@ -3985,6 +3985,7 @@ VM::VM() {
             GcHeap::get().markValue(f.selfContext);
             GcHeap::get().markValue(f.classContext);
             GcHeap::get().markValue(f.jitReturnSlot);
+            if (f.continuationOwner) GcHeap::get().markObj(f.continuationOwner);
             if (f.closure) GcHeap::get().markObj(f.closure);
             if (f.chunk) {
                 for (auto& v : f.chunk->constants) GcHeap::get().markValue(v);
@@ -4044,6 +4045,13 @@ VM::VM() {
         for (auto& v : helpers::nativeSelfStack) GcHeap::get().markValue(v);
         for (auto& v : helpers::nativeClassStack) GcHeap::get().markValue(v);
         for (auto& v : jc::nativeTempRefs) GcHeap::get().markValue(v);
+
+        // One-shot INVOKE override survives between the __getattr__ frame return
+        // and the retried INVOKE opcode; it must be a GC root in that window.
+        if (hasOverrideInvoke) {
+            GcHeap::get().markValue(overrideInvokeValue);
+            if (overrideInvokeOwner) GcHeap::get().markObj(overrideInvokeOwner);
+        }
         
         for (auto& fn : compiledFunctions) {
             if (fn) {

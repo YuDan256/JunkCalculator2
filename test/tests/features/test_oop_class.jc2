@@ -61,6 +61,16 @@ test_dunder_methods() = {
         caught = "stack overflow" in e.message
     }
     assert(caught, "recursive __eq__ must hit the VM frame limit, not the native stack")
+
+    class ArithmeticOps {
+        init(v) = { self.v = v }
+        __mul__(o) = ArithmeticOps(self.v * o.v)
+        __div__(o) = ArithmeticOps(self.v / o.v)
+        __mod__(o) = ArithmeticOps(self.v % o.v)
+    }
+    assert((ArithmeticOps(6) * ArithmeticOps(3)).v == 18, "scheduled __mul__")
+    assert((ArithmeticOps(6) / ArithmeticOps(3)).v == 2, "scheduled __div__")
+    assert((ArithmeticOps(6) % ArithmeticOps(3)).v == 0, "scheduled __mod__")
 }
 test_dunder_methods()
 

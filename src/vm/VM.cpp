@@ -4984,6 +4984,40 @@ Value VM::run(int targetFrameDepth) {
         return true;
     };
 
+    // noThrow __getitem__: any exception from the scheduled dunder becomes uninit.
+    auto popGetItemCatch = [&]() -> bool {
+        if (frameCount <= 0) return false;
+        CallFrame* itemFrame = &frames[frameCount - 1];
+        if (itemFrame->continuation != ProtocolContinuation::GetItemNoThrow) return false;
+        int resumeRegister = itemFrame->continuationResumeRegister;
+        runDefersDownTo(itemFrame->deferBase);
+        while (!exceptionHandlers.empty() &&
+               exceptionHandlers.back().frameIndex >= frameCount - 1) {
+            exceptionHandlers.pop_back();
+        }
+        closeUpvalues(itemFrame->registerBase);
+        profileFrameEnd(itemFrame);
+        int clearBase = itemFrame->registerBase;
+        int clearCount = itemFrame->function->localCount + itemFrame->function->refCount;
+        for (int i = 0; i < clearCount; ++i) {
+            registers[clearBase + i] = Value::none();
+        }
+        itemFrame->selfContext = Value::none();
+        itemFrame->classContext = Value::none();
+        itemFrame->jitReturnSlot = Value::none();
+        itemFrame->closure = nullptr;
+        itemFrame->refParamsBase = -1;
+        frameCount--;
+        if (frameCount <= targetFrameDepth) return false;
+        frame = &frames[frameCount - 1];
+        chunk = frame->chunk;
+        code = chunk->code.data();
+        frameRegs = &registers[frame->registerBase];
+        ip = frame->ip;
+        getReg(resumeRegister) = Value::uninit();
+        return true;
+    };
+
     while (true) {
         try {
             while (true) {
@@ -6570,8 +6604,20 @@ Value VM::run(int targetFrameDepth) {
                     auto inst = obj.asInstance();
                     auto [getitemMethod, owner] = findDunder(obj, DUNDER_GETITEM);
                     if (getitemMethod) {
-                        if (!noThrow && scheduleDunderFrame(obj, getitemMethod, owner, args, a,
-                                                            ProtocolContinuation::None)) break;
+                        int depth = -1;
+                        frame->ip = ip;
+                        ProtocolContinuation continuation = noThrow
+                            ? ProtocolContinuation::GetItemNoThrow
+                            : ProtocolContinuation::None;
+                        if (scheduleProtocolDunder(obj, getitemMethod, owner, args, a,
+                                                   continuation, depth, -1, a)) {
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            break;
+                        }
                         try {
                             result = callDunder(obj, getitemMethod, owner, args);
                         } catch (...) {
@@ -8974,6 +9020,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const ValueException& ex) {
             if (isStopIteration(ex.val) && popNextFrame()) continue;
+            if (popGetItemCatch()) continue;
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
@@ -8986,6 +9033,7 @@ Value VM::run(int targetFrameDepth) {
             ip = frame->ip;
         } catch (const Jc2Error& ex) {
             if (isStopIteration(ex) && popNextFrame()) continue;
+            if (popGetItemCatch()) continue;
             frame->ip = ip;
             Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {

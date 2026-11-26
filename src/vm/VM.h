@@ -23,6 +23,7 @@ enum class ProtocolContinuation : uint8_t {
     BoolRetry,
     IterInit,
     Next,
+    GetItemNoThrow,
 };
 
 // ============================================================================

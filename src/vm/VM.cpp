@@ -6390,6 +6390,7 @@ Value VM::run(int targetFrameDepth) {
                 } else {
                     auto [d, owner] = findDunder(v, DUNDER_STR);
                     if (d) {
+                        if (scheduleDunderFrame(v, d, owner, {}, a, ProtocolContinuation::None)) break;
                         getReg(a) = callDunder(v, d, owner, {});
                     } else {
                         std::ostringstream oss;

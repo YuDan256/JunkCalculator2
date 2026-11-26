@@ -6299,7 +6299,16 @@ Value VM::run(int targetFrameDepth) {
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value& setVal = getReg(a);
                 if (setVal.isObjType(ObjType::SET)) {
-                    static_cast<ObjSet*>(setVal.asObj())->add(getReg(b));
+                    Value v = getReg(b);
+                    if (v.isSpread()) {
+                        auto* sp = static_cast<ObjSpread*>(v.asObj());
+                        if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
+                        std::vector<Value> spreadValues;
+                        helpers::spreadPositional(sp->value, spreadValues);
+                        for (const auto& item : spreadValues) static_cast<ObjSet*>(setVal.asObj())->add(item);
+                    } else {
+                        static_cast<ObjSet*>(setVal.asObj())->add(v);
+                    }
                 } else {
                     JC2_THROW(RuntimeError, "SET_APPEND target is not a set.");
                 }
@@ -11381,7 +11390,15 @@ void jc2_jit_set_append(uint64_t set_bits, uint64_t val_bits) {
     Value setVal = Value::fromRawBits(set_bits);
     Value val = Value::fromRawBits(val_bits);
     if (setVal.isObjType(ObjType::SET)) {
-        static_cast<ObjSet*>(setVal.asObj())->add(val);
+        if (val.isSpread()) {
+            auto* sp = static_cast<ObjSpread*>(val.asObj());
+            if (sp->isKeyword) JC2_THROW(TypeError, "keyword spread not allowed in set literal.");
+            std::vector<Value> spreadValues;
+            helpers::spreadPositional(sp->value, spreadValues);
+            for (const auto& item : spreadValues) static_cast<ObjSet*>(setVal.asObj())->add(item);
+        } else {
+            static_cast<ObjSet*>(setVal.asObj())->add(val);
+        }
     } else {
         JC2_THROW(RuntimeError, "SET_APPEND target is not a set.");
     }

@@ -470,3 +470,16 @@ test_osr_int32_loop_result() = {
 }
 test_osr_int32_loop_result()
 }
+
+// OSR raw-Float64 loop promotion.
+{
+test_osr_double_loop_result() = {
+    f(n) = {
+        local x = 0.0
+        while (x < n) x += 1.0
+        return x
+    }
+    assert(f(100_000.0) == 100_000.0, "OSR promoted double loop result")
+}
+test_osr_double_loop_result()
+}

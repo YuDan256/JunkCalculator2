@@ -68,20 +68,38 @@ private:
         if (loop->inputs().empty() || !loop->inputs()[0] ||
             loop->inputs()[0]->opcode() != HIROp::OSREntry) return;
         if (!entry || entry->opcode() != HIROp::LoadRegister) return;
-        if (!back || back->opcode() != HIROp::BoxInt32 || back->inputs().empty()) return;
+        if (!back || back->inputs().empty()) return;
+
+        JITType rawType;
+        HIROp boxOp;
+        HIROp guardOp;
+        HIROp unboxOp;
+        if (back->opcode() == HIROp::BoxInt32) {
+            rawType = JITType::Int32;
+            boxOp = HIROp::BoxInt32;
+            guardOp = HIROp::GuardIsInt32;
+            unboxOp = HIROp::UnboxInt32;
+        } else if (back->opcode() == HIROp::BoxDouble) {
+            rawType = JITType::Double;
+            boxOp = HIROp::BoxDouble;
+            guardOp = HIROp::GuardIsDouble;
+            unboxOp = HIROp::UnboxDouble;
+        } else {
+            return;
+        }
         for (HIRNode* use : back->uses()) if (use != phi) return;
         HIRNode* rawBack = back->inputs()[0];
-        if (!rawBack || rawBack->type() != JITType::Int32) return;
+        if (!rawBack || rawBack->type() != rawType) return;
 
         std::vector<HIRNode*> unboxes;
         std::vector<HIRNode*> guards;
         std::vector<HIRNode*> frameStates;
         std::vector<HIRNode*> returns;
         for (HIRNode* use : phi->uses()) {
-            if (use->opcode() == HIROp::UnboxInt32 && use->inputs().size() > 1 &&
+            if (use->opcode() == unboxOp && use->inputs().size() > 1 &&
                 use->inputs()[1] == phi) {
                 unboxes.push_back(use);
-            } else if (use->opcode() == HIROp::GuardIsInt32 && use->inputs().size() > 2 &&
+            } else if (use->opcode() == guardOp && use->inputs().size() > 2 &&
                        use->inputs()[2] == phi) {
                 guards.push_back(use);
             } else if (use->opcode() == HIROp::FrameState) {
@@ -125,17 +143,17 @@ private:
 
         HIRNode* entryControl = loop->inputs()[0];
         auto* entryGuard = graph_.allocateNode<GuardNode>(
-            HIROp::GuardIsInt32, entryControl, entryControl, entry, entryFS);
-        auto* entryUnbox = graph_.allocateNode<HIRNode>(HIROp::UnboxInt32, JITType::Int32);
+            guardOp, entryControl, entryControl, entry, entryFS);
+        auto* entryUnbox = graph_.allocateNode<HIRNode>(unboxOp, rawType);
         entryUnbox->addInput(entryGuard);
         entryUnbox->addInput(entry);
 
-        auto* rawPhi = graph_.allocateNode<HIRNode>(HIROp::Phi, JITType::Int32);
+        auto* rawPhi = graph_.allocateNode<HIRNode>(HIROp::Phi, rawType);
         rawPhi->addInput(loop);
         rawPhi->addInput(entryUnbox);
         rawPhi->addInput(rawBack);
 
-        auto* boxedPhi = graph_.allocateNode<HIRNode>(HIROp::BoxInt32, JITType::TaggedValue);
+        auto* boxedPhi = graph_.allocateNode<HIRNode>(boxOp, JITType::TaggedValue);
         boxedPhi->addInput(rawPhi);
 
         // Loop entry: OSREntry -> entry guard -> LoopBegin.

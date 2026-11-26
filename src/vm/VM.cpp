@@ -5775,7 +5775,7 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value(-vb.asFloatRaw()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEG); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_NEG); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = -vb;
                 break;
             }
@@ -5800,7 +5800,7 @@ Value VM::run(int targetFrameDepth) {
                     getReg(a) = Value::fromInt32(~vb.asInt32()); break;
                 }
                 const_cast<Chunk*>(chunk)->typeFeedback[op_ip] |= 0x80;
-                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITNOT); if (meth) { getReg(a) = callDunder(vb, meth, owner, {}); break; } }
+                if (vb.isInstance()) { auto [meth, owner] = findDunder(vb, DUNDER_BITNOT); if (meth) { if (scheduleDunderFrame(vb, meth, owner, {}, a, ProtocolContinuation::None)) break; getReg(a) = callDunder(vb, meth, owner, {}); break; } }
                 getReg(a) = ~vb;
                 break;
             }

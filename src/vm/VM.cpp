@@ -3986,6 +3986,7 @@ VM::VM() {
             GcHeap::get().markValue(f.classContext);
             GcHeap::get().markValue(f.jitReturnSlot);
             if (f.continuationOwner) GcHeap::get().markObj(f.continuationOwner);
+            if (f.continuationSpread) GcHeap::get().markObj(f.continuationSpread);
             if (f.closure) GcHeap::get().markObj(f.closure);
             if (f.chunk) {
                 for (auto& v : f.chunk->constants) GcHeap::get().markValue(v);
@@ -4564,6 +4565,7 @@ int VM::pushInvocationFrame(const Invocation& invocation) {
     newFrame.continuationSign = invocation.continuationSign;
     newFrame.continuationKwArgc = invocation.continuationKwArgc;
     newFrame.continuationOwner = invocation.continuationOwner;
+    newFrame.continuationSpread = invocation.continuationSpread;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4706,7 +4708,8 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
 bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
                                 ProtocolContinuation continuation, int& outDepth,
-                                int resumeIp, int resumeRegister, int sign, int retryKwArgc) {
+                                int resumeIp, int resumeRegister, int sign, int retryKwArgc,
+                                ObjSpread* spread) {
     if (!method || !method->isBytecode()) return false;
     Invocation invocation;
     invocation.fnIdx = method->compiledFnIndex;
@@ -4721,6 +4724,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuationSign = sign;
     invocation.continuationKwArgc = retryKwArgc;
     invocation.continuationOwner = owner;
+    invocation.continuationSpread = spread;
     outDepth = pushInvocationFrame(invocation);
     return true;
 }
@@ -9055,6 +9059,32 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 if (mappingSuspended) break;
+                if (kwArgc >= 0) {
+                    int posArgc = c - 2 * kwArgc;
+                    for (int i = 0; i < posArgc; ++i) {
+                        Value spreadVal = getReg(b + 1 + i);
+                        if (!spreadVal.isSpread()) continue;
+                        auto* spread = static_cast<ObjSpread*>(spreadVal.asObj());
+                        if (spread->isKeyword || !spread->value.isInstance()) continue;
+                        auto [unpackMethod, unpackOwner] = findDunder(spread->value, "__unpack__");
+                        if (!unpackMethod || !unpackMethod->isBytecode()) continue;
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(spread->value, unpackMethod, unpackOwner, {},
+                                                   -1, ProtocolContinuation::UnpackSpread,
+                                                   depth, op_ip, -1, 1, kwArgc, spread)) {
+                            pendingKwArgc = 0;
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            mappingSuspended = true;
+                            break;
+                        }
+                    }
+                }
+                if (mappingSuspended) break;
                 pendingKwArgc = 0;
                 execCall(b, c, kwArgc, a, isTailCall);
                 if (isTailCall && frame->ip == prevIp) {
@@ -9193,6 +9223,14 @@ Value VM::run(int targetFrameDepth) {
                     hasOverrideInvoke = true;
                     overrideInvokeValue = frameResult;
                     overrideInvokeOwner = frame->continuationOwner;
+                    retryIp = frame->continuationResumeIp;
+                    retryRegister = -1;
+                    pendingKwArgc = frame->continuationKwArgc;
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::UnpackSpread) {
+                    if (frame->continuationSpread) {
+                        frame->continuationSpread->value = frameResult;
+                    }
                     retryIp = frame->continuationResumeIp;
                     retryRegister = -1;
                     pendingKwArgc = frame->continuationKwArgc;

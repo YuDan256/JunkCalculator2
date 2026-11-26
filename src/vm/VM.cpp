@@ -2161,7 +2161,7 @@ void VM::execAssertType(const Value& val, const Value& typeObj, uint32_t nameIdx
     assertTypeMatches(val, typeObj, AssertContext::Variable, name);
 }
 
-void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate) {
+void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate, int opIp) {
     CallFrame* currentFrame = &frames[frameCount - 1];
     if (isTailCall) closeUpvalues(currentFrame->registerBase);
     InlineCache& ic = const_cast<InlineCache&>(currentFrame->function->chunk.inlineCaches.data()[icIdx]);
@@ -2177,6 +2177,22 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     BuiltinType objBt = BuiltinType::UNKNOWN;
 
     const std::string& methodName = keyVal.asString();
+
+    if (hasOverrideInvoke) {
+        hasOverrideInvoke = false;
+        Value fv = overrideInvokeValue;
+        ObjClass* owner = overrideInvokeOwner;
+        overrideInvokeValue = Value::none();
+        overrideInvokeOwner = nullptr;
+        if (fv.isFunctionClosure()) {
+            method = fv.asFunction();
+            owningClass = owner;
+            goto invoke_method;
+        }
+        registers[currentFrame->registerBase + a] = fv;
+        execCall(a, b, kwArgc, a, isTailCall);
+        return;
+    }
 
     if (isPrivate) {
         // 私有派发的词法定义类：闭包定义时所在类（trait 定义的 local 方法即 trait 自身）
@@ -2403,6 +2419,14 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
                 auto [getattrMethod, owner] = findDunder(obj, "__getattr__");
                 if (getattrMethod) {
                     std::vector<Value> args = { keyVal };
+                    if (opIp >= 0 && getattrMethod->isBytecode()) {
+                        int depth = -1;
+                        if (scheduleProtocolDunder(obj, getattrMethod, owner, args, -1,
+                                                   ProtocolContinuation::InvokeGetattr,
+                                                   depth, opIp, -1, 1, kwArgc)) {
+                            return;
+                        }
+                    }
                     Value fv = callDunder(obj, getattrMethod, owner, args);
                     if (fv.isFunctionClosure()) {
                         method = fv.asFunction();
@@ -4531,6 +4555,7 @@ int VM::pushInvocationFrame(const Invocation& invocation) {
     newFrame.continuationResumeRegister = invocation.continuationResumeRegister;
     newFrame.continuationSign = invocation.continuationSign;
     newFrame.continuationKwArgc = invocation.continuationKwArgc;
+    newFrame.continuationOwner = invocation.continuationOwner;
     // ★ classContext 走词法来源：调用方显式类上下文优先，否则使用闭包定义类。
     newFrame.classContext = (explicitClass.isNone() && closure && closure->owner_class)
         ? Value(closure->owner_class) : explicitClass;
@@ -4687,6 +4712,7 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     invocation.continuationResumeRegister = resumeRegister;
     invocation.continuationSign = sign;
     invocation.continuationKwArgc = retryKwArgc;
+    invocation.continuationOwner = owner;
     outDepth = pushInvocationFrame(invocation);
     return true;
 }
@@ -8831,7 +8857,7 @@ Value VM::run(int targetFrameDepth) {
                 
                 int kwArgc = pendingKwArgc;
                 pendingKwArgc = 0;
-                execInvoke(a, b, kwArgc, c, isTailCall, -1, isPrivate);
+                execInvoke(a, b, kwArgc, c, isTailCall, -1, isPrivate, op_ip);
                 
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = std::move(getReg(a));
@@ -8884,7 +8910,7 @@ Value VM::run(int targetFrameDepth) {
                 int prevIp = ip;
                 int kwArgc = pendingKwArgc;
                 pendingKwArgc = 0;
-                execInvoke(a, b, kwArgc, c, isTailCall, 1, false);
+                execInvoke(a, b, kwArgc, c, isTailCall, 1, false, op_ip);
                 if (isTailCall && frame->ip == prevIp) {
                     Value res = std::move(getReg(a));
                     while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
@@ -9207,6 +9233,14 @@ Value VM::run(int targetFrameDepth) {
                 } else if (frame->continuation == ProtocolContinuation::CallMappingRetry) {
                     retryIp = frame->continuationResumeIp;
                     retryRegister = frame->continuationResumeRegister;
+                    pendingKwArgc = frame->continuationKwArgc;
+                    frame->continuation = ProtocolContinuation::None;
+                } else if (frame->continuation == ProtocolContinuation::InvokeGetattr) {
+                    hasOverrideInvoke = true;
+                    overrideInvokeValue = frameResult;
+                    overrideInvokeOwner = frame->continuationOwner;
+                    retryIp = frame->continuationResumeIp;
+                    retryRegister = -1;
                     pendingKwArgc = frame->continuationKwArgc;
                     frame->continuation = ProtocolContinuation::None;
                 }

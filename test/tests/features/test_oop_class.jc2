@@ -102,6 +102,11 @@ test_dunder_methods() = {
     }
     assert(ScheduledGetattr().foo == "got:foo", "scheduled __getattr__")
 
+    class ScheduledMethodGetattr {
+        __getattr__(name) = (x) => x + 1
+    }
+    assert(ScheduledMethodGetattr().foo(4) == 5, "scheduled method __getattr__")
+
     class ThrowingGetattr {
         __getattr__(name) = throw Exception("nope")
     }

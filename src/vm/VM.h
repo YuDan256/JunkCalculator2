@@ -29,6 +29,7 @@ enum class ProtocolContinuation : uint8_t {
     MappingRetry,
     CompareSign,
     CallMappingRetry,
+    InvokeGetattr,
 };
 
 // ============================================================================
@@ -51,6 +52,7 @@ struct CallFrame {
     int continuationResumeRegister = -1;
     int continuationSign = 1;
     int continuationKwArgc = 0;
+    ObjClass* continuationOwner = nullptr;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -87,6 +89,7 @@ struct Invocation {
     int continuationResumeRegister = -1;
     int continuationSign = 1;
     int continuationKwArgc = 0;
+    ObjClass* continuationOwner = nullptr;
 };
 
 // ============================================================================
@@ -179,6 +182,9 @@ private:
     int suppressGetattrOp = -1;
     int suppressOrderLtOp = -1;
     int suppressMappingOp = -1;
+    bool hasOverrideInvoke = false;
+    Value overrideInvokeValue = Value::none();
+    ObjClass* overrideInvokeOwner = nullptr;
 
     struct PendingFrameGuard {
         VM* vm;
@@ -254,7 +260,7 @@ private:
 
 public:
     Value run(int targetFrameDepth = 0);
-    void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false);
+    void execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, int fbType, bool isPrivate = false, int opIp = -1);
     void execSuperInvoke(int a, int b, int kwArgc, uint32_t nameIdx, bool isTailCall);
 
     enum class AssertContext { Param, Return, Variable };

@@ -2062,8 +2062,14 @@ Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass,
         helpers::nativeClassStack.pop_back();
         return result;
     } else if (method->isBytecode()) {
-        return callVMFunction(method->compiledFnIndex, rootedArgs, method, obj,
-                              Value(ownerClass));
+        Invocation invocation;
+        invocation.fnIdx = method->compiledFnIndex;
+        invocation.closure = method;
+        invocation.self = obj;
+        invocation.ownerClass = Value(ownerClass);
+        invocation.args = rootedArgs;
+        invocation.sink = ReturnSink{};
+        return invoke(invocation);
     }
     JC2_THROW(RuntimeError, "Dunder method is not callable.");
 }
@@ -4489,7 +4495,12 @@ void VM::triggerDebugger() {
     std::cout << jc::col(jc::Ansi::BRIGHT_YELLOW) << "=== Breakpoint Hit ===" << jc::col(jc::Ansi::RESET) << "\n";
 }
 
-Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value explicitSelf, Value explicitClass) {
+Value VM::invoke(const Invocation& invocation) {
+    const int fnIdx = invocation.fnIdx;
+    const std::vector<Value>& args = invocation.args;
+    ObjClosure* closure = invocation.closure;
+    const Value explicitSelf = invocation.self;
+    const Value explicitClass = invocation.ownerClass;
     auto& fnDef = compiledFunctions[fnIdx];
     CallFrame newFrame;
     newFrame.function = fnDef.get();
@@ -4507,7 +4518,8 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
     PendingFrameGuard pfg(this, newBase, newTotalCount);
 
     newFrame.registerBase = newBase;
-    newFrame.returnRegister = -1;
+    newFrame.returnRegister = (invocation.sink.kind == ReturnSink::Kind::Register)
+                                  ? invocation.sink.registerIndex : -1;
     newFrame.deferBase = static_cast<int>(deferStack.size());
     newFrame.closure = closure;
     newFrame.selfContext = explicitSelf;
@@ -4630,6 +4642,17 @@ Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* 
         }
         throw;
     }
+}
+
+Value VM::callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure, Value explicitSelf, Value explicitClass) {
+    Invocation invocation;
+    invocation.fnIdx = fnIdx;
+    invocation.closure = closure;
+    invocation.self = explicitSelf;
+    invocation.ownerClass = explicitClass;
+    invocation.args = args;
+    invocation.sink = ReturnSink{};
+    return invoke(invocation);
 }
 
 Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sourceFile) {

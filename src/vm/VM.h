@@ -47,6 +47,23 @@ struct PendingRef {
     bool isConst = false;
 };
 
+// One explicit language-level invocation.  The return sink is either a caller
+// register (normal CALL) or a value boundary (dunder/internal invocation).
+struct ReturnSink {
+    enum class Kind { Value, Register };
+    Kind kind = Kind::Value;
+    int registerIndex = -1;
+};
+
+struct Invocation {
+    int fnIdx = -1;
+    ObjClosure* closure = nullptr;
+    Value self = Value::none();
+    Value ownerClass = Value::none();
+    std::vector<Value> args;
+    ReturnSink sink;
+};
+
 // ============================================================================
 // 寄存器虚拟机核心引擎
 // ============================================================================
@@ -476,6 +493,7 @@ public:
 
     static inline VM* activeVM = nullptr;
     Value callVMFunction(int fnIdx, const std::vector<Value>& args, ObjClosure* closure = nullptr, Value explicitSelf = Value::none(), Value explicitClass = Value::none());
+    Value invoke(const Invocation& invocation);
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;

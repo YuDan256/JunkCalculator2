@@ -20,6 +20,7 @@ enum class ProtocolContinuation : uint8_t {
     None,
     Truthiness,
     NegatedTruthiness,
+    BoolRetry,
 };
 
 // ============================================================================
@@ -38,6 +39,8 @@ struct CallFrame {
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none(); // ★ JIT 返回值锚点，防止即时释放
     ProtocolContinuation continuation = ProtocolContinuation::None;
+    int continuationResumeIp = -1;
+    int continuationResumeRegister = -1;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -70,6 +73,8 @@ struct Invocation {
     std::vector<Value> args;
     ReturnSink sink;
     ProtocolContinuation continuation = ProtocolContinuation::None;
+    int continuationResumeIp = -1;
+    int continuationResumeRegister = -1;
 };
 
 // ============================================================================
@@ -504,7 +509,8 @@ public:
     int pushInvocationFrame(const Invocation& invocation);
     bool scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass* owner,
                                 std::vector<Value> args, int dst,
-                                ProtocolContinuation continuation, int& outDepth);
+                                ProtocolContinuation continuation, int& outDepth,
+                                int resumeIp = -1, int resumeRegister = -1);
     Value invoke(const Invocation& invocation);
 
     void triggerDebugger();

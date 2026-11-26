@@ -71,6 +71,13 @@ test_dunder_methods() = {
     assert((ArithmeticOps(6) * ArithmeticOps(3)).v == 18, "scheduled __mul__")
     assert((ArithmeticOps(6) / ArithmeticOps(3)).v == 2, "scheduled __div__")
     assert((ArithmeticOps(6) % ArithmeticOps(3)).v == 0, "scheduled __mod__")
+
+    class ScheduledBool {
+        init(v) = { self.v = v }
+        __bool__() = self.v
+    }
+    assert(ScheduledBool(true), "scheduled __bool__ true")
+    assert(!ScheduledBool(false), "scheduled __bool__ false")
 }
 test_dunder_methods()
 

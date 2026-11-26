@@ -126,9 +126,12 @@ static bool isExceptionInstance(const Value& v) {
 // ★ 迭代结束信号：`__next__` 抛出的 StopIteration 被迭代协议当"到头了"吃掉，
 //   不当错误往外冒（docs/OOP_MODEL_DESIGN.md §2.1.1 / data/documentation.json 的 __next__）
 static bool isStopIteration(const Value& v) {
-    if (!v.isInstance()) return false;
     ObjClass* cls = err::StopIterationClass;
-    if (!cls) return false;
+    if (v.isClass()) {
+        auto* c = static_cast<ObjClass*>(v.asObj());
+        return c == cls || c->name == "StopIteration" || (cls && c->conformsTo(cls));
+    }
+    if (!cls || !v.isInstance()) return false;
     return v.asInstance()->classDef->conformsTo(cls);
 }
 static bool isStopIteration(const Jc2Error& e) {
@@ -4946,6 +4949,41 @@ Value VM::run(int targetFrameDepth) {
         return true;
     };
 
+    // Scheduled __next__ raised StopIteration: pop its frame and resume the
+    // caller with an exhausted iterator marker.
+    auto popNextFrame = [&]() -> bool {
+        if (frameCount <= 0) return false;
+        CallFrame* nextFrame = &frames[frameCount - 1];
+        if (nextFrame->continuation != ProtocolContinuation::Next) return false;
+        int resumeRegister = nextFrame->continuationResumeRegister;
+        runDefersDownTo(nextFrame->deferBase);
+        while (!exceptionHandlers.empty() &&
+               exceptionHandlers.back().frameIndex >= frameCount - 1) {
+            exceptionHandlers.pop_back();
+        }
+        closeUpvalues(nextFrame->registerBase);
+        profileFrameEnd(nextFrame);
+        int clearBase = nextFrame->registerBase;
+        int clearCount = nextFrame->function->localCount + nextFrame->function->refCount;
+        for (int i = 0; i < clearCount; ++i) {
+            registers[clearBase + i] = Value::none();
+        }
+        nextFrame->selfContext = Value::none();
+        nextFrame->classContext = Value::none();
+        nextFrame->jitReturnSlot = Value::none();
+        nextFrame->closure = nullptr;
+        nextFrame->refParamsBase = -1;
+        frameCount--;
+        if (frameCount <= targetFrameDepth) return false;
+        frame = &frames[frameCount - 1];
+        chunk = frame->chunk;
+        code = chunk->code.data();
+        frameRegs = &registers[frame->registerBase];
+        ip = frame->ip;
+        getReg(resumeRegister) = Value::uninit();
+        return true;
+    };
+
     while (true) {
         try {
             while (true) {
@@ -7159,6 +7197,20 @@ Value VM::run(int targetFrameDepth) {
                 } else {
                     ObjClosure* method = state->vec[1].asFunction();
                     ObjClass* owner = state->vec.size() > 2 ? static_cast<ObjClass*>(state->vec[2].asObj()) : nullptr;
+                    if (method->isBytecode()) {
+                        int depth = -1;
+                        frame->ip = ip;
+                        if (scheduleProtocolDunder(iterObj, method, owner, {}, a,
+                                                   ProtocolContinuation::Next, depth,
+                                                   -1, a)) {
+                            frame = &frames[depth];
+                            chunk = frame->chunk;
+                            code = chunk->code.data();
+                            frameRegs = &registers[frame->registerBase];
+                            ip = frame->ip;
+                            break;
+                        }
+                    }
                     // ★ `__next__` 抛 StopIteration = 迭代到头（§2.1.1）。只裹这一次调用，
                     //   循环体（拿到值之后的代码）不在 try 里，用户自己抛的 StopIteration 不会被吞。
                     bool exhausted = false;
@@ -8921,6 +8973,7 @@ Value VM::run(int targetFrameDepth) {
             frameRegs = &registers[frame->registerBase];
             ip = frame->ip;
         } catch (const ValueException& ex) {
+            if (isStopIteration(ex.val) && popNextFrame()) continue;
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);
             if (!handleExceptionUnwind(&errVal)) {
@@ -8932,6 +8985,7 @@ Value VM::run(int targetFrameDepth) {
             frameRegs = &registers[frame->registerBase];
             ip = frame->ip;
         } catch (const Jc2Error& ex) {
+            if (isStopIteration(ex) && popNextFrame()) continue;
             frame->ip = ip;
             Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
             if (!handleExceptionUnwind(&errVal)) {

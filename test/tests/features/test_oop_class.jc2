@@ -83,6 +83,19 @@ test_dunder_methods() = {
         __len__() = 7
     }
     assert(len(ScheduledLen()) == 7, "builtin-bound __len__")
+
+    class ScheduledIterator {
+        init() = { self.i = 0 }
+        __iter__() = self
+        __next__() = {
+            self.i += 1
+            if (self.i > 3) throw StopIteration()
+            return self.i
+        }
+    }
+    values = @[]
+    for (x in ScheduledIterator()) values.push(x)
+    assert(values == @[1, 2, 3], "scheduled __iter__/__next__")
 }
 test_dunder_methods()
 

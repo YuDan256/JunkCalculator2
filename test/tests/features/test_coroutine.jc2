@@ -84,4 +84,27 @@ test_coroutine_spawn() = {
     assert(await t == 7, "spawn task result")
 }
 test_coroutine_spawn()
+test_coroutine_delegate() = {
+    inner() = {
+        yield 1
+        yield 2
+        return 9
+    }
+    outer() = {
+        local x = yield ...inner()
+        return x + 1
+    }
+    o = outer()
+    assert(o.resume() == 1, "delegated first yield")
+    assert(o.resume() == 2, "delegated second yield")
+    caught = false
+    try {
+        o.resume()
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "delegation completes")
+    assert(o.result() == 10, "delegation return value")
+}
+test_coroutine_delegate()
 }

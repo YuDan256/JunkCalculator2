@@ -38,6 +38,7 @@ enum class ProtocolContinuation : uint8_t {
 // out of the shared VM window so the caller can keep running and reuse its own
 // slots while the coroutine is suspended.
 struct CoroutineState {
+    ObjCoroutine* delegate = nullptr;
     bool started = false;
     bool done = false;
     bool failed = false;

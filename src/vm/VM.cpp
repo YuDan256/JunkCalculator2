@@ -2050,6 +2050,23 @@ Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
     if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
     if (state->failed) throw ValueException(state->error);
+    if (state->delegate && !(state->hasPendingYield && !send)) {
+        try {
+            Value next = resumeCoroutine(state->delegate, send, value);
+            state->hasPendingYield = false;
+            return next;
+        } catch (const ValueException& ex) {
+            if (!isStopIteration(ex.val)) throw;
+            auto* ds = static_cast<CoroutineState*>(state->delegate->state);
+            state->registers[state->yieldRegister] = ds ? ds->result : Value::none();
+            state->delegate = nullptr;
+        } catch (const Jc2Error& ex) {
+            if (!isStopIteration(ex)) throw;
+            auto* ds = static_cast<CoroutineState*>(state->delegate->state);
+            state->registers[state->yieldRegister] = ds ? ds->result : Value::none();
+            state->delegate = nullptr;
+        }
+    }
     if (state->hasPendingYield && !send) {
         state->hasPendingYield = false;
         return state->pendingYield;
@@ -4039,6 +4056,7 @@ VM::VM() {
             auto* state = static_cast<CoroutineState*>(c->state);
             if (!state) return;
             if (state->closure) GcHeap::get().markObj(state->closure);
+            if (state->delegate) GcHeap::get().markObj(state->delegate);
             GcHeap::get().markValue(state->selfContext);
             GcHeap::get().markValue(state->classContext);
             GcHeap::get().markValue(state->jitReturnSlot);
@@ -9392,10 +9410,32 @@ Value VM::run(int targetFrameDepth) {
             case OpCode::YIELD_DELEGATE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value yielded;
+                ObjCoroutine* delegate = nullptr;
                 if (op == OpCode::YIELD_DELEGATE) {
-                    JC2_THROW(RuntimeError, "yield ... is not available yet.");
+                    Value inner = getReg(b);
+                    if (!inner.isCoroutine()) {
+                        JC2_THROW(TypeError, "yield ... expects a coroutine.");
+                    }
+                    delegate = static_cast<ObjCoroutine*>(inner.asObj());
+                    try {
+                        yielded = resumeCoroutine(delegate, false, Value::none());
+                    } catch (const ValueException& ex) {
+                        if (!isStopIteration(ex.val)) throw;
+                        auto* ds = static_cast<CoroutineState*>(delegate->state);
+                        getReg(a) = ds ? ds->result : Value::none();
+                        delegate = nullptr;
+                        break;
+                    } catch (const Jc2Error& ex) {
+                        if (!isStopIteration(ex)) throw;
+                        auto* ds = static_cast<CoroutineState*>(delegate->state);
+                        getReg(a) = ds ? ds->result : Value::none();
+                        delegate = nullptr;
+                        break;
+                    }
+                } else {
+                    yielded = getReg(b);
                 }
-                Value yielded = getReg(b);
                 if (frame->coroutineResumeFrame && resumingCoroutine) {
                     auto* state = static_cast<CoroutineState*>(resumingCoroutine->state);
                     state->function = frame->function;
@@ -9453,6 +9493,7 @@ Value VM::run(int targetFrameDepth) {
                 state->yieldRegister = a;
                 state->hasPendingYield = true;
                 state->pendingYield = yielded;
+                state->delegate = delegate;
                 int regCount = frame->function->localCount + frame->function->refCount + 64;
                 state->registers.resize(regCount);
                 for (int i = 0; i < regCount; ++i) {

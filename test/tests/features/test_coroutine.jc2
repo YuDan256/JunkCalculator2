@@ -123,4 +123,20 @@ test_coroutine_throw() = {
     assert(caught, "throw injects an error")
 }
 test_coroutine_throw()
+test_coroutine_task_lifecycle() = {
+    t = spawn {
+        return 11
+    }
+    assert(!t.done(), "new task not done")
+    t.cancel()
+    assert(t.done(), "cancelled task is done")
+    caught = false
+    try {
+        await t
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "await cancelled task raises")
+}
+test_coroutine_task_lifecycle()
 }

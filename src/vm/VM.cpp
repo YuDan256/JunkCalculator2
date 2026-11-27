@@ -9553,6 +9553,9 @@ Value VM::run(int targetFrameDepth) {
                 if (target.isTask()) {
                     auto* task = static_cast<ObjTask*>(target.asObj());
                     auto* ts = static_cast<TaskState*>(task->state);
+                    if (ts && ts->cancelled) {
+                        JC2_THROW(RuntimeError, "task was cancelled.");
+                    }
                     if (ts && ts->closure) {
                         Invocation inv;
                         inv.fnIdx = ts->closure->compiledFnIndex;

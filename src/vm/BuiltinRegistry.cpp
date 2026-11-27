@@ -3443,6 +3443,30 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     regMethod(VM::activeVM->coroutineProto, "throw", {"error"}, coroutineThrowFn);
     regMethod(VM::activeVM->coroutineProto, "close", {}, coroutineCloseFn);
+    auto taskDoneFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return Value(state && state->done);
+    };
+    auto taskResultFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return state ? state->result : Value::none();
+    };
+    auto taskCancelFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        if (state) {
+            state->cancelled = true;
+            state->done = true;
+            state->closure = nullptr;
+            state->result = Value::none();
+        }
+        return Value::none();
+    };
+    regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);
+    regMethod(VM::activeVM->taskProto, "result", {}, taskResultFn);
+    regMethod(VM::activeVM->taskProto, "cancel", {}, taskCancelFn);
     regMethod(VM::activeVM->coroutineProto, "done", {}, coroutineDoneFn);
     regMethod(VM::activeVM->coroutineProto, "result", {}, coroutineResultFn);
     regMethod(VM::activeVM->coroutineProto, "__iter__", {}, coroutineIterFn);

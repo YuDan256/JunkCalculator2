@@ -2045,6 +2045,68 @@ bool VM::evaluateTruthiness(const Value& val) {
     return val.truthy();
 }
 
+Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
+    auto* state = static_cast<CoroutineState*>(coroutine->state);
+    if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
+    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
+    if (state->failed) throw ValueException(state->error);
+    if (state->hasPendingYield && !send) {
+        state->hasPendingYield = false;
+        return state->pendingYield;
+    }
+    state->hasPendingYield = false;
+
+    int base = 0;
+    if (frameCount > 0) {
+        CallFrame* current = &frames[frameCount - 1];
+        base = current->registerBase + current->function->localCount + current->function->refCount;
+    }
+    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
+
+    CallFrame& f = frames[frameCount++];
+    f.function = state->function;
+    f.chunk = state->chunk;
+    f.ip = state->ip;
+    f.registerBase = base;
+    f.returnRegister = -1;
+    f.closure = state->closure;
+    f.refParamsBase = -1;
+    f.deferBase = static_cast<int>(deferStack.size());
+    f.selfContext = state->selfContext;
+    f.classContext = state->classContext;
+    f.jitReturnSlot = Value::none();
+    f.coroutineResumeFrame = true;
+
+    int regCount = static_cast<int>(state->registers.size());
+    for (int i = 0; i < regCount; ++i) {
+        registers[base + i] = state->registers[i];
+    }
+    if (state->started && send && state->yieldRegister >= 0) {
+        registers[base + state->yieldRegister] = value;
+    }
+    state->started = true;
+
+    resumingCoroutine = coroutine;
+    coroutineResumeDepth = frameCount - 1;
+    coroutineYielded = false;
+    Value outcome;
+    try {
+        outcome = run(coroutineResumeDepth);
+    } catch (...) {
+        resumingCoroutine = nullptr;
+        state->failed = true;
+        throw;
+    }
+    resumingCoroutine = nullptr;
+    if (coroutineYielded) {
+        coroutineYielded = false;
+        return coroutineYieldValue;
+    }
+    state->done = true;
+    state->result = outcome;
+    JC2_THROW(StopIteration, "coroutine has completed.");
+}
+
 Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args) {
     std::vector<Value> rootedArgs = args;
     std::vector<std::unique_ptr<GcValueGuard>> guards;
@@ -2304,6 +2366,8 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (objBt == BuiltinType::SET) nativeProto = setProto;
     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
     else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
+    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
+    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
 
     if (!method && nativeProto) {
         auto it = nativeProto->properties.find(methodName);
@@ -4067,6 +4131,8 @@ VM::VM() {
             GcHeap::get().markValue(v);
         }
         if (listProto) GcHeap::get().markObj(listProto);
+        if (coroutineProto) GcHeap::get().markObj(coroutineProto);
+        if (taskProto) GcHeap::get().markObj(taskProto);
         if (dictProto) GcHeap::get().markObj(dictProto);
         if (instanceProto) GcHeap::get().markObj(instanceProto);
         if (namespaceProto) GcHeap::get().markObj(namespaceProto);
@@ -4503,6 +4569,10 @@ VM::VM() {
 
     listProto = GcHeap::get().allocate<ObjClass>();
     listProto->name = "List";
+    coroutineProto = GcHeap::get().allocate<ObjClass>();
+    coroutineProto->name = "Coroutine";
+    taskProto = GcHeap::get().allocate<ObjClass>();
+    taskProto->name = "Task";
     dictProto = GcHeap::get().allocate<ObjClass>();
     dictProto->name = "Dict";
     setProto = GcHeap::get().allocate<ObjClass>();
@@ -4551,6 +4621,16 @@ VM::VM() {
         return Value(getJitEntryPoint(closure->compiledFnIndex) != nullptr);
     };
     builtinArity["__dbg_is_jitted"] = {1};
+
+    nativeBuiltins["__coroutine_resume"] = [this](const std::vector<Value>& args) -> Value {
+        if (args.empty() || !args[0].isCoroutine()) {
+            JC2_THROW(TypeError, "Expected a coroutine.");
+        }
+        bool send = args.size() > 1;
+        Value value = send ? args[1] : Value::none();
+        return resumeCoroutine(static_cast<ObjCoroutine*>(args[0].asObj()), send, value);
+    };
+    builtinArity["__coroutine_resume"] = {1, 2};
 }
 
 VM::~VM() {
@@ -7290,7 +7370,14 @@ Value VM::run(int targetFrameDepth) {
                 
                 uint8_t destructFlag = static_cast<uint8_t>(c);
                 Value iterable = getReg(b);
-                
+
+                if (iterable.isCoroutine()) {
+                    ObjList* state = GcHeap::get().allocate<ObjList>();
+                    state->vec.push_back(iterable);
+                    getReg(a) = Value(state);
+                    break;
+                }
+
                 if (iterable.isInstance()) {
                     auto [method, owner] = findDunder(iterable, DUNDER_ITER);
                     if (method) {
@@ -7437,6 +7524,19 @@ Value VM::run(int targetFrameDepth) {
                 Value& stateVal = getReg(b);
                 
                 auto state = static_cast<ObjList*>(stateVal.asObj());
+                if (!state->vec.empty() && state->vec[0].isCoroutine()) {
+                    try {
+                        getReg(a) = resumeCoroutine(
+                            static_cast<ObjCoroutine*>(state->vec[0].asObj()), false, Value::none());
+                    } catch (const ValueException& ex) {
+                        if (!isStopIteration(ex.val)) throw;
+                        getReg(a) = Value::uninit();
+                    } catch (const Jc2Error& ex) {
+                        if (!isStopIteration(ex)) throw;
+                        getReg(a) = Value::uninit();
+                    }
+                    break;
+                }
                 if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
                     Value iterTarget = state->vec[0];
                     int i = state->vec[1].asInt32();
@@ -8024,6 +8124,10 @@ Value VM::run(int targetFrameDepth) {
                     else if (objBt == BuiltinType::SET) nativeProto = setProto;
                     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
                     else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
+                    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
+                    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
+    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
+    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -8255,6 +8359,8 @@ Value VM::run(int targetFrameDepth) {
                     else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
                     else if (obj.isString()) nativeProto = stringProto;
                     else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX)) nativeProto = matrixProto;
+                    else if (obj.isCoroutine()) nativeProto = coroutineProto;
+                    else if (obj.isTask()) nativeProto = taskProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -9280,6 +9386,112 @@ Value VM::run(int targetFrameDepth) {
                     frameRegs = &registers[frame->registerBase];
                     ip = frame->ip;
                 }
+                break;
+            }
+            case OpCode::YIELD:
+            case OpCode::YIELD_DELEGATE:
+            case OpCode::AWAIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (op == OpCode::AWAIT) {
+                    JC2_THROW(RuntimeError, "await is not available yet.");
+                }
+                if (op == OpCode::YIELD_DELEGATE) {
+                    JC2_THROW(RuntimeError, "yield ... is not available yet.");
+                }
+                Value yielded = getReg(b);
+                if (frame->coroutineResumeFrame && resumingCoroutine) {
+                    auto* state = static_cast<CoroutineState*>(resumingCoroutine->state);
+                    state->function = frame->function;
+                    state->chunk = frame->chunk;
+                    state->ip = ip;
+                    state->closure = frame->closure;
+                    state->selfContext = frame->selfContext;
+                    state->classContext = frame->classContext;
+                    state->yieldRegister = a;
+                    state->hasPendingYield = false;
+                    state->pendingYield = yielded;
+                    int count = frame->function->localCount + frame->function->refCount + 64;
+                    state->registers.resize(count);
+                    for (int i = 0; i < count; ++i) {
+                        state->registers[i] = registers[frame->registerBase + i];
+                    }
+                    frame->ip = ip;
+                    closeUpvalues(frame->registerBase);
+                    while (!exceptionHandlers.empty() &&
+                           exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                        exceptionHandlers.pop_back();
+                    }
+                    int clearBase = frame->registerBase;
+                    int clearCount = frame->function->localCount + frame->function->refCount;
+                    for (int i = 0; i < clearCount; ++i) {
+                        registers[clearBase + i] = Value::none();
+                    }
+                    frame->selfContext = Value::none();
+                    frame->classContext = Value::none();
+                    frame->jitReturnSlot = Value::none();
+                    frameCount--;
+                    coroutineYieldValue = yielded;
+                    coroutineYielded = true;
+                    if (frameCount <= coroutineResumeDepth) {
+                        return yielded;
+                    }
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    break;
+                }
+                auto* state = new CoroutineState();
+                state->started = true;
+                state->function = frame->function;
+                state->chunk = frame->chunk;
+                state->ip = ip;
+                state->returnRegister = frame->returnRegister;
+                state->deferBase = frame->deferBase;
+                state->closure = frame->closure;
+                state->selfContext = frame->selfContext;
+                state->classContext = frame->classContext;
+                state->jitReturnSlot = frame->jitReturnSlot;
+                state->yieldRegister = a;
+                state->hasPendingYield = true;
+                state->pendingYield = yielded;
+                int regCount = frame->function->localCount + frame->function->refCount + 64;
+                state->registers.resize(regCount);
+                for (int i = 0; i < regCount; ++i) {
+                    state->registers[i] = registers[frame->registerBase + i];
+                }
+                auto* coroutine = GcHeap::get().allocate<ObjCoroutine>();
+                coroutine->state = state;
+
+                int targetReg = frame->returnRegister;
+                frame->ip = ip;
+                closeUpvalues(frame->registerBase);
+                while (!exceptionHandlers.empty() &&
+                       exceptionHandlers.back().frameIndex >= frameCount - 1) {
+                    exceptionHandlers.pop_back();
+                }
+                int clearBase = frame->registerBase;
+                int clearCount = frame->function->localCount + frame->function->refCount;
+                for (int i = 0; i < clearCount; ++i) {
+                    registers[clearBase + i] = Value::none();
+                }
+                frame->selfContext = Value::none();
+                frame->classContext = Value::none();
+                frame->jitReturnSlot = Value::none();
+                frameCount--;
+                if (frameCount <= targetFrameDepth) {
+                    frame = &frames[frameCount - 1];
+                    frame->jitReturnSlot = Value(coroutine);
+                    return Value(coroutine);
+                }
+                frame = &frames[frameCount - 1];
+                chunk = frame->chunk;
+                code = chunk->code.data();
+                frameRegs = &registers[frame->registerBase];
+                ip = frame->ip;
+                if (targetReg >= 0) getReg(targetReg) = Value(coroutine);
                 break;
             }
             case OpCode::RETURN: {

@@ -19,6 +19,9 @@ enum class IROp {
     // 控制流节点 (Control Flow)
     Start,
     Return,
+    Yield,
+    YieldDelegate,
+    Await,
     If,
     IfTrue,     // If 的 True 分支
     IfFalse,    // If 的 False 分支
@@ -157,6 +160,9 @@ inline std::string irOpToString(IROp op) {
         case IROp::Nop: return "Nop";
         case IROp::Start: return "Start";
         case IROp::Return: return "Return";
+        case IROp::Yield: return "Yield";
+        case IROp::YieldDelegate: return "YieldDelegate";
+        case IROp::Await: return "Await";
         case IROp::If: return "If";
         case IROp::IfTrue: return "IfTrue";
         case IROp::IfFalse: return "IfFalse";

@@ -1,0 +1,49 @@
+// ═══════════════════════════════════════════════════════════════
+// Coroutines: yield/resume/send/for-in
+// ═══════════════════════════════════════════════════════════════
+
+{
+test_coroutine_basic() = {
+    f() = {
+        local sent = yield 1
+        yield sent + 10
+        return 99
+    }
+    c = f()
+    assert(c.resume() == 1, "first yield")
+    assert(c.send(5) == 15, "send value")
+    caught = false
+    try {
+        c.resume()
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "completed coroutine must raise StopIteration")
+}
+test_coroutine_basic()
+
+test_coroutine_for() = {
+    rangeLike(n) = {
+        local i = 0
+        while (i < n) {
+            yield i
+            i += 1
+        }
+    }
+    out = @[]
+    for (x in rangeLike(3)) out.push(x)
+    assert(out == @[0, 1, 2], "for-in over coroutine")
+}
+test_coroutine_for()
+
+test_coroutine_conditional_yield() = {
+    maybe(x) = {
+        if (x) yield 1
+        return 2
+    }
+    c = maybe(true)
+    assert(c.resume() == 1, "conditional yield")
+    assert(maybe(false) == 2, "non-yielding path returns a value")
+}
+test_coroutine_conditional_yield()
+}

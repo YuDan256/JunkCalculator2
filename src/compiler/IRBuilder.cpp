@@ -2465,16 +2465,36 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     }
 }
 
-void IRBuilder::visitYieldExpr(YieldExpr*) {
-    error("Syntax Error: coroutine runtime is not available yet.");
+void IRBuilder::visitYieldExpr(YieldExpr* expr) {
+    IRNode* value = nullptr;
+    if (expr->value) {
+        expr->value->accept(*this);
+        value = lastValue;
+    } else {
+        value = graph->createConstant(Value::none());
+        link(value);
+    }
+    graph->currentLine = expr->keyword.line;
+    IRNode* node = graph->createValueNode(expr->delegate ? IROp::YieldDelegate : IROp::Yield);
+    link(node);
+    node->addData(value);
+    currentSeq = node;
+    lastValue = node;
 }
 
-void IRBuilder::visitAwaitExpr(AwaitExpr*) {
-    error("Syntax Error: coroutine runtime is not available yet.");
+void IRBuilder::visitAwaitExpr(AwaitExpr* expr) {
+    expr->value->accept(*this);
+    IRNode* value = lastValue;
+    graph->currentLine = expr->keyword.line;
+    IRNode* node = graph->createValueNode(IROp::Await);
+    link(node);
+    node->addData(value);
+    currentSeq = node;
+    lastValue = node;
 }
 
 void IRBuilder::visitSpawnExpr(SpawnExpr*) {
-    error("Syntax Error: coroutine runtime is not available yet.");
+    error("Syntax Error: spawn is not available yet.");
 }
 
 void IRBuilder::visitReturnExpr(ReturnExpr* expr) {

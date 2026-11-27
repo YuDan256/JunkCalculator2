@@ -3400,6 +3400,26 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         return expectContainer("first");
     };
+    auto coroutineResumeFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), false, Value::none());
+    };
+    auto coroutineSendFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), true, args[0]);
+    };
+    auto coroutineNextFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), false, Value::none());
+    };
+    auto coroutineIterFn = [](const std::vector<Value>&) -> Value {
+        return helpers::nativeSelfStack.back();
+    };
+    regMethod(VM::activeVM->coroutineProto, "__iter__", {}, coroutineIterFn);
+    regMethod(VM::activeVM->coroutineProto, "__next__", {}, coroutineNextFn);
+    regMethod(VM::activeVM->coroutineProto, "resume", {}, coroutineResumeFn);
+    regMethod(VM::activeVM->coroutineProto, "send", {"value"}, coroutineSendFn);
+
     regMethod(VM::activeVM->listProto, "first", {}, firstFn);
 
     auto lastFn = [expectContainer](const std::vector<Value>&) -> Value {

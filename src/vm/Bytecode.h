@@ -82,6 +82,9 @@ enum class OpCode : uint8_t {
     CALL,           // R(A) := Call(callee = R(B), args = R(B+1)...R(B+C)) [Ext A, B, C]
     TAIL_CALL,      // 尾调用 [Ext A, B, C]
     RETURN,         // return R(A)
+    YIELD,          // R(A) := resume value; suspend R(B)
+    YIELD_DELEGATE, // R(A) := resume value; delegate to coroutine R(B)
+    AWAIT,          // R(A) := task result; suspend until task R(B) completes
     CLOSURE,        // R(A) := Closure(fnIdx = Bx) [Ext]
 
     // 引用参数
@@ -226,6 +229,9 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::CALL: return "CALL";
         case OpCode::TAIL_CALL: return "TAIL_CALL";
         case OpCode::RETURN: return "RETURN";
+        case OpCode::YIELD: return "YIELD";
+        case OpCode::YIELD_DELEGATE: return "YIELD_DELEGATE";
+        case OpCode::AWAIT: return "AWAIT";
         case OpCode::CLOSURE: return "CLOSURE";
         case OpCode::GET_REF_PARAM: return "GET_REF_PARAM";
         case OpCode::SET_REF_PARAM: return "SET_REF_PARAM";

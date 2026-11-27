@@ -51,6 +51,9 @@ struct CoroutineState {
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none();
     std::vector<Value> registers;
+    int yieldRegister = 0;
+    bool hasPendingYield = false;
+    Value pendingYield = Value::none();
     Value result = Value::none();
     Value error = Value::none();
 };
@@ -90,6 +93,7 @@ struct CallFrame {
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
+    bool coroutineResumeFrame = false;
     
     std::chrono::time_point<std::chrono::steady_clock> startTime;
     double childTimeMs = 0.0;
@@ -138,6 +142,10 @@ private:
     static constexpr int MAX_FRAMES = 1024;
 
     Value* registers = nullptr;
+    ObjCoroutine* resumingCoroutine = nullptr;
+    int coroutineResumeDepth = 0;
+    Value coroutineYieldValue = Value::none();
+    bool coroutineYielded = false;
     bool shuttingDown = false;   // ★ shutdown() 期间：chunk 常量也要作为 GC 根
     CallFrame* frames = nullptr;
 
@@ -326,6 +334,7 @@ public:
     Value importModule(const std::string& name) { return execImport(name); }
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
+    Value resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。
     int compareValues(const Value& a, const Value& b);
     bool hasCmpProtocol(const Value& v);
@@ -552,6 +561,8 @@ public:
     Value makeTokenInstance(const Token& t);
 
     ObjClass* listProto = nullptr;
+    ObjClass* coroutineProto = nullptr;
+    ObjClass* taskProto = nullptr;
     ObjClass* dictProto = nullptr;
     ObjClass* setProto = nullptr;
     ObjClass* stringProto = nullptr;

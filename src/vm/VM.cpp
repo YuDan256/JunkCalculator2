@@ -2072,6 +2072,87 @@ Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
     return resumeCoroutine(coroutine, false, Value::none());
 }
 
+Value VM::resumeTask(ObjTask* task, bool send, Value value) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state) JC2_THROW(RuntimeError, "Invalid task state.");
+    if (state->failed) throw ValueException(state->error);
+    if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
+    if (state->done) JC2_THROW(RuntimeError, "task has already finished.");
+    bool initial = !state->started;
+    if (!state->started) {
+        state->started = true;
+        if (!state->closure) JC2_THROW(RuntimeError, "Task has no body.");
+        ObjClosure* closure = state->closure;
+        state->closure = nullptr;
+        Invocation inv;
+        inv.fnIdx = closure->compiledFnIndex;
+        inv.closure = closure;
+        inv.sink.kind = ReturnSink::Kind::Value;
+        try {
+            Value result = invoke(inv);
+            if (result.isCoroutine()) {
+                state->coroutine = static_cast<ObjCoroutine*>(result.asObj());
+            } else {
+                state->done = true;
+                state->result = result;
+                return result;
+            }
+        } catch (const ValueException& ex) {
+            state->failed = true;
+            state->done = true;
+            state->error = ex.val;
+            throw;
+        } catch (const Jc2Error& ex) {
+            state->failed = true;
+            state->done = true;
+            state->error = Value(ex.what());
+            throw;
+        } catch (...) {
+            state->failed = true;
+            state->done = true;
+            throw;
+        }
+    }
+    try {
+        return resumeCoroutine(state->coroutine, initial ? false : send, value);
+    } catch (const ValueException& ex) {
+        if (!isStopIteration(ex.val)) {
+            state->failed = true;
+            state->done = true;
+            state->error = ex.val;
+            throw;
+        }
+        auto* cs = static_cast<CoroutineState*>(state->coroutine->state);
+        state->done = true;
+        state->result = cs ? cs->result : Value::none();
+        state->coroutine = nullptr;
+        return state->result;
+    } catch (const Jc2Error& ex) {
+        if (!isStopIteration(ex)) {
+            state->failed = true;
+            state->done = true;
+            state->error = Value(ex.what());
+            throw;
+        }
+        auto* cs = static_cast<CoroutineState*>(state->coroutine->state);
+        state->done = true;
+        state->result = cs ? cs->result : Value::none();
+        state->coroutine = nullptr;
+        return state->result;
+    }
+}
+
+Value VM::joinTask(ObjTask* task) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state) JC2_THROW(RuntimeError, "Invalid task state.");
+    while (!state->done && !state->failed && !state->cancelled) {
+        resumeTask(task, false, Value::none());
+    }
+    if (state->failed) throw ValueException(state->error);
+    if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
+    return state->result;
+}
+
 Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
@@ -3972,8 +4053,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     // ★ 带 TAIL_CALL 的函数不参与 JIT：HIR 目前把 TAIL_CALL 当普通调用，
                     //   深尾递归会在宿主栈上递归，反而绕过了帧复用（解释器路径才是真 TCO）。
                     if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL ||
-                        op == OpCode::YIELD || op == OpCode::YIELD_DELEGATE ||
-                        op == OpCode::AWAIT || op == OpCode::SPAWN) {
+                        op == OpCode::YIELD || op == OpCode::YIELD_DELEGATE || op == OpCode::SPAWN) {
                         supported = false;
                         break;
                     }
@@ -9603,94 +9683,10 @@ Value VM::run(int targetFrameDepth) {
                 if (targetReg >= 0) getReg(targetReg) = Value(coroutine);
                 break;
             }
-            case OpCode::AWAIT: {
-                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                Value target = getReg(b);
-                if (target.isTask()) {
-                    auto* task = static_cast<ObjTask*>(target.asObj());
-                    auto* ts = static_cast<TaskState*>(task->state);
-                    if (ts && ts->cancelled) {
-                        JC2_THROW(RuntimeError, "task was cancelled.");
-                    }
-                    if (ts && ts->failed) {
-                        throw ValueException(ts->error);
-                    }
-                    if (ts && ts->done) {
-                        getReg(a) = ts->result;
-                        break;
-                    }
-                    if (ts && ts->closure) {
-                        try {
-                            Invocation inv;
-                            inv.fnIdx = ts->closure->compiledFnIndex;
-                            inv.closure = ts->closure;
-                            inv.sink.kind = ReturnSink::Kind::Value;
-                            Value result = invoke(inv);
-                            ts->closure = nullptr;
-                            if (result.isCoroutine()) {
-                                auto* inner = static_cast<ObjCoroutine*>(result.asObj());
-                                ts->coroutine = inner;
-                                auto* innerState = static_cast<CoroutineState*>(inner->state);
-                                while (innerState && !innerState->done) {
-                                    try {
-                                        resumeCoroutine(inner, false, Value::none());
-                                    } catch (const ValueException& ex) {
-                                        if (!isStopIteration(ex.val)) throw;
-                                        break;
-                                    } catch (const Jc2Error& ex) {
-                                        if (!isStopIteration(ex)) throw;
-                                        break;
-                                    }
-                                }
-                                result = innerState ? innerState->result : Value::none();
-                                ts->coroutine = nullptr;
-                            }
-                            ts->result = result;
-                            ts->done = true;
-                        } catch (const ValueException& ex) {
-                            ts->failed = true;
-                            ts->done = true;
-                            ts->error = ex.val;
-                            throw;
-                        } catch (const Jc2Error& ex) {
-                            ts->failed = true;
-                            ts->done = true;
-                            ts->error = Value(ex.what());
-                            throw;
-                        } catch (...) {
-                            ts->failed = true;
-                            ts->done = true;
-                            throw;
-                        }
-                    }
-                    getReg(a) = ts ? ts->result : Value::none();
-                    break;
-                }
-                if (!target.isCoroutine()) {
-                    JC2_THROW(TypeError, "await expects a coroutine or task.");
-                }
-                {
-                    auto* co = static_cast<ObjCoroutine*>(target.asObj());
-                    auto* state = static_cast<CoroutineState*>(co->state);
-                    while (state && !state->done) {
-                        try {
-                            resumeCoroutine(co, false, Value::none());
-                        } catch (const ValueException& ex) {
-                            if (!isStopIteration(ex.val)) throw;
-                            break;
-                        } catch (const Jc2Error& ex) {
-                            if (!isStopIteration(ex)) throw;
-                            break;
-                        }
-                    }
-                    getReg(a) = state ? state->result : Value::none();
-                }
-                break;
-            }
             case OpCode::SPAWN: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                if (c == ESCAPE_NORMAL_8) c = FETCH_EXTRA();
                 Value callee = getReg(b);
                 if (!callee.isFunctionClosure()) {
                     JC2_THROW(TypeError, "spawn expects a function.");
@@ -9698,6 +9694,10 @@ Value VM::run(int targetFrameDepth) {
                 auto* task = GcHeap::get().allocate<ObjTask>();
                 auto* state = new TaskState();
                 state->closure = callee.asFunction();
+                if (c > 0 && c < static_cast<int>(chunk->constants.size())) {
+                    Value label = chunk->constants.data()[c];
+                    if (label.isString()) state->label = label.asString();
+                }
                 task->state = state;
                 getReg(a) = Value(task);
                 break;

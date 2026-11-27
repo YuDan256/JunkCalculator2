@@ -75,7 +75,6 @@ namespace lsp {
         void visitContinueExpr(ContinueExpr*) override {}
         void visitReturnExpr(ReturnExpr* e) override;
         void visitYieldExpr(YieldExpr* e) override;
-        void visitAwaitExpr(AwaitExpr* e) override;
         void visitSpawnExpr(SpawnExpr* e) override;
         void visitIndexAccess(IndexAccess* e) override;
         void visitIndexAssign(IndexAssign* e) override;

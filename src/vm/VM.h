@@ -72,6 +72,8 @@ struct CoroutineState {
 struct TaskState {
     ObjCoroutine* coroutine = nullptr;
     ObjClosure* closure = nullptr;
+    std::string label;
+    bool started = false;
     bool done = false;
     bool failed = false;
     bool cancelled = false;
@@ -349,6 +351,8 @@ public:
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
     Value resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value);
+    Value resumeTask(ObjTask* task, bool send, Value value);
+    Value joinTask(ObjTask* task);
     Value throwCoroutine(ObjCoroutine* coroutine, Value error);
     void closeCoroutine(ObjCoroutine* coroutine);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。

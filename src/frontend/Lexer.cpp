@@ -17,7 +17,6 @@ namespace jc {
         {"continue", TokenType::CONTINUE},
         {"return",   TokenType::RETURN},
         {"yield",    TokenType::YIELD},
-        {"await",    TokenType::AWAIT},
         {"spawn",    TokenType::SPAWN},
         {"local",    TokenType::LOCAL},
         {"ref",      TokenType::REF},

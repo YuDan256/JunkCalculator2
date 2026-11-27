@@ -67,23 +67,21 @@ test_coroutine_lifecycle() = {
     assert(caught, "closed coroutine raises StopIteration")
 }
 test_coroutine_lifecycle()
-test_coroutine_await() = {
+test_coroutine_task() = {
     inner() = {
         yield 1
         return 42
     }
-    outer() = {
-        local x = await inner()
-        return x + 1
-    }
-    assert(outer() == 43, "await drives coroutine to completion")
+    job = spawn inner()
+    assert(job.resume() == 1, "task first yield")
+    assert(job.join() == 42, "task join result")
 }
-test_coroutine_await()
+test_coroutine_task()
 test_coroutine_spawn() = {
     t = spawn {
         return 7
     }
-    assert(await t == 7, "spawn task result")
+    assert(t.join() == 7, "spawn task result")
 }
 test_coroutine_spawn()
 test_coroutine_delegate() = {
@@ -147,11 +145,11 @@ test_coroutine_task_lifecycle() = {
     assert(t.done(), "cancelled task is done")
     caught = false
     try {
-        await t
+        t.join()
     } catch (e) {
         caught = true
     }
-    assert(caught, "await cancelled task raises")
+    assert(caught, "join cancelled task raises")
 }
 test_coroutine_task_lifecycle()
 test_coroutine_gc() = {
@@ -231,25 +229,25 @@ test_coroutine_jit_deopt() = {
     assert(!__dbg_is_jitted(f), "coroutine functions must deopt to interpreter")
 }
 test_coroutine_jit_deopt()
-test_coroutine_nested_await() = {
+test_coroutine_nested_join() = {
     inner() = {
         yield 1
         return 20
     }
     t = spawn {
-        local v = await inner()
-        return v + 2
+        local sub = spawn inner()
+        return sub.join() + 2
     }
-    assert(await t == 22, "nested await inside spawn")
+    assert(t.join() == 22, "nested task join inside spawn")
 }
-test_coroutine_nested_await()
+test_coroutine_nested_join()
 test_coroutine_task_failure() = {
     t = spawn {
         throw "task-boom"
     }
     firstMessage = ""
     try {
-        await t
+        t.join()
     } catch (e) {
         firstMessage = e.message
     }
@@ -258,7 +256,7 @@ test_coroutine_task_failure() = {
     assert(t.failed(), "failed task flag")
     secondMessage = ""
     try {
-        await t
+        t.join()
     } catch (e) {
         secondMessage = e.message
     }

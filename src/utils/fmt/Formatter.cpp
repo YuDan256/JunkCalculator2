@@ -253,7 +253,6 @@ public:
     void visitContinueExpr(ContinueExpr*) override {}
     void visitReturnExpr(ReturnExpr* e) override { if (e->value) e->value->accept(*this); }
     void visitYieldExpr(YieldExpr* e) override { if (e->value) e->value->accept(*this); }
-    void visitAwaitExpr(AwaitExpr* e) override { e->value->accept(*this); }
     void visitSpawnExpr(SpawnExpr* e) override { e->body->accept(*this); }
     void visitIndexAccess(IndexAccess* e) override { if (e->object) e->object->accept(*this); for (auto& idx : e->indices) if (idx) idx->accept(*this); }
     void visitIndexAssign(IndexAssign* e) override { if (e->objectExpr) e->objectExpr->accept(*this); for (auto& row : e->indexChain) for (auto& idx : row) if (idx) idx->accept(*this); if (e->value) e->value->accept(*this); if (e->typeHint) e->typeHint->accept(*this); }

@@ -163,7 +163,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Return: return "Return";
         case IROp::Yield: return "Yield";
         case IROp::YieldDelegate: return "YieldDelegate";
-        case IROp::Await: return "Await";
+
         case IROp::Spawn: return "Spawn";
         case IROp::If: return "If";
         case IROp::IfTrue: return "IfTrue";

@@ -84,7 +84,6 @@ enum class OpCode : uint8_t {
     RETURN,         // return R(A)
     YIELD,          // R(A) := resume value; suspend R(B)
     YIELD_DELEGATE, // R(A) := resume value; delegate to coroutine R(B)
-    AWAIT,          // R(A) := task result; suspend until task R(B) completes
     SPAWN,          // R(A) := Task(closure = R(B))
     CLOSURE,        // R(A) := Closure(fnIdx = Bx) [Ext]
 
@@ -232,7 +231,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::RETURN: return "RETURN";
         case OpCode::YIELD: return "YIELD";
         case OpCode::YIELD_DELEGATE: return "YIELD_DELEGATE";
-        case OpCode::AWAIT: return "AWAIT";
+
         case OpCode::SPAWN: return "SPAWN";
         case OpCode::CLOSURE: return "CLOSURE";
         case OpCode::GET_REF_PARAM: return "GET_REF_PARAM";

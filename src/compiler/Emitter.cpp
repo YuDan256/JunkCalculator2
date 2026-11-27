@@ -859,14 +859,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         break;
                     }
                     case IROp::Yield:
-                    case IROp::YieldDelegate:
-                    case IROp::Await: {
+                    case IROp::YieldDelegate: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int a = node->physicalReg;
                         if (a < 0) a = b;
-                        OpCode op = node->op == IROp::Yield ? OpCode::YIELD
-                                  : node->op == IROp::YieldDelegate ? OpCode::YIELD_DELEGATE
-                                                                    : OpCode::AWAIT;
+                        OpCode op = node->op == IROp::Yield ? OpCode::YIELD : OpCode::YIELD_DELEGATE;
                         auto w = buildInstAB(op, a, b);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
@@ -875,7 +872,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int a = node->physicalReg;
                         if (a < 0) a = b;
-                        auto w = buildInstAB(OpCode::SPAWN, a, b);
+                        int labelIdx = 0;
+                        if (!node->name.empty()) {
+                            labelIdx = chunk.addConstant(Value(node->name));
+                        }
+                        auto w = buildInstABC(OpCode::SPAWN, a, b, labelIdx, OpType::NORMAL, OpType::NORMAL);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }

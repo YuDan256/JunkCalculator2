@@ -239,7 +239,6 @@ namespace lsp {
         if (e->value) e->value->accept(*this);
     }
     void TypeChecker::visitYieldExpr(YieldExpr* e) { if (e->value) check(e->value.get()); }
-    void TypeChecker::visitAwaitExpr(AwaitExpr* e) { check(e->value.get()); }
     void TypeChecker::visitSpawnExpr(SpawnExpr* e) { check(e->body.get()); }
     void TypeChecker::visitReturnExpr(ReturnExpr* e) {
         if (e->value) e->value->accept(*this);

@@ -2482,17 +2482,6 @@ void IRBuilder::visitYieldExpr(YieldExpr* expr) {
     lastValue = node;
 }
 
-void IRBuilder::visitAwaitExpr(AwaitExpr* expr) {
-    expr->value->accept(*this);
-    IRNode* value = lastValue;
-    graph->currentLine = expr->keyword.line;
-    IRNode* node = graph->createValueNode(IROp::Await);
-    link(node);
-    node->addData(value);
-    currentSeq = node;
-    lastValue = node;
-}
-
 void IRBuilder::visitSpawnExpr(SpawnExpr* expr) {
     auto lambda = std::make_unique<LambdaExpr>(
         "spawn", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{},
@@ -2504,6 +2493,7 @@ void IRBuilder::visitSpawnExpr(SpawnExpr* expr) {
     IRNode* node = graph->createValueNode(IROp::Spawn);
     link(node);
     node->addData(closure);
+    node->name = expr->label;
     currentSeq = node;
     lastValue = node;
 }

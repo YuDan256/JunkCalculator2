@@ -638,10 +638,6 @@ void Resolver::visitYieldExpr(YieldExpr* expr) {
     if (expr->value) resolve(expr->value.get());
 }
 
-void Resolver::visitAwaitExpr(AwaitExpr* expr) {
-    resolve(expr->value.get());
-}
-
 void Resolver::visitSpawnExpr(SpawnExpr* expr) {
     beginScope(true, false);
     resolve(expr->body.get());

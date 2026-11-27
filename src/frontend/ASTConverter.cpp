@@ -319,13 +319,11 @@ public:
             {"value", val}, {"delegate", Value(expr->delegate)}
         });
     }
-    void visitAwaitExpr(AwaitExpr* expr) override {
-        expr->value->accept(*this);
-        result = makeASTNode("AwaitExpr", expr->keyword.line, {{"value", result}});
-    }
     void visitSpawnExpr(SpawnExpr* expr) override {
         expr->body->accept(*this);
-        result = makeASTNode("SpawnExpr", expr->keyword.line, {{"body", result}});
+        result = makeASTNode("SpawnExpr", expr->keyword.line, {
+            {"body", result}, {"label", Value(expr->label)}
+        });
     }
     void visitIndexAccess(IndexAccess* expr) override {
         expr->object->accept(*this); Value obj = result;
@@ -1047,10 +1045,9 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
     } else if (type == "YieldExpr") {
         return std::make_unique<YieldExpr>(Token(TokenType::YIELD, "yield", line),
             toAST(getProp("value")), getProp("delegate").truthy());
-    } else if (type == "AwaitExpr") {
-        return std::make_unique<AwaitExpr>(Token(TokenType::AWAIT, "await", line), toAST(getProp("value")));
     } else if (type == "SpawnExpr") {
-        return std::make_unique<SpawnExpr>(Token(TokenType::SPAWN, "spawn", line), toAST(getProp("body")));
+        return std::make_unique<SpawnExpr>(Token(TokenType::SPAWN, "spawn", line), toAST(getProp("body")),
+            getProp("label").isString() ? getProp("label").asString() : std::string());
     } else if (type == "IndexAccess") {
         return std::make_unique<IndexAccess>(toAST(getProp("object")), getExprList(getProp("indices")));
     } else if (type == "IndexAssign") {

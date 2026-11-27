@@ -1020,13 +1020,6 @@ namespace jc {
             return withPos(std::make_unique<YieldExpr>(yieldTok, std::move(value), delegate),
                            yieldTok.position, endPos);
         }
-        if (match({ TokenType::AWAIT })) {
-            Token awaitTok = previous();
-            auto value = unary();
-            int endPos = value->endPos;
-            return withPos(std::make_unique<AwaitExpr>(awaitTok, std::move(value)),
-                           awaitTok.position, endPos);
-        }
         if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {
             Token op = previous();
             auto right = unary();
@@ -1545,15 +1538,25 @@ namespace jc {
 
         if (match({ TokenType::SPAWN })) {
             Token spawnTok = previous();
-            if (!check(TokenType::LBRACE)) {
-                JC2_THROW(SyntaxError, "Parser Error: 'spawn' requires a block.");
+            std::string label;
+            if (check(TokenType::FSTRING)) {
+                JC2_THROW(SyntaxError, "Parser Error: spawn labels cannot be f-strings.");
             }
-            int savedYieldDepth = yieldAllowedDepth;
-            yieldAllowedDepth = 0;
-            auto body = parseBlock();
-            yieldAllowedDepth = savedYieldDepth;
+            if (check(TokenType::STRING) || check(TokenType::RSTRING)) {
+                Token labelTok = advance();
+                label = labelTok.lexeme;
+                if (label.empty()) {
+                    JC2_THROW(SyntaxError, "Parser Error: spawn label must not be empty.");
+                }
+            }
+            std::unique_ptr<Expr> body;
+            if (check(TokenType::LBRACE)) {
+                body = parseBlock();
+            } else {
+                body = call();
+            }
             int endPos = body->endPos;
-            return withPos(std::make_unique<SpawnExpr>(spawnTok, std::move(body)),
+            return withPos(std::make_unique<SpawnExpr>(spawnTok, std::move(body), std::move(label)),
                            spawnTok.position, endPos);
         }
 
@@ -1567,7 +1570,7 @@ namespace jc {
                 t == TokenType::WHILE || t == TokenType::FOR ||
                 t == TokenType::BREAK || t == TokenType::CONTINUE ||
                 t == TokenType::RETURN || t == TokenType::YIELD ||
-                t == TokenType::AWAIT || t == TokenType::SPAWN ||
+                t == TokenType::SPAWN ||
                 t == TokenType::LOCAL ||
                 t == TokenType::CONST || t == TokenType::DELETE ||
                 t == TokenType::IN || t == TokenType::IS || t == TokenType::AS ||

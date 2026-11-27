@@ -3497,6 +3497,23 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         return Value::none();
     };
+    auto taskResumeFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value value = args.empty() ? Value::none() : args[0];
+        return VM::activeVM->resumeTask(static_cast<ObjTask*>(self.asObj()), true, value);
+    };
+    auto taskJoinFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return VM::activeVM->joinTask(static_cast<ObjTask*>(self.asObj()));
+    };
+    auto taskAliveFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return Value(state && !state->done && !state->failed && !state->cancelled);
+    };
+    regMethod(VM::activeVM->taskProto, "resume", {"value"}, taskResumeFn, 1);
+    regMethod(VM::activeVM->taskProto, "join", {}, taskJoinFn);
+    regMethod(VM::activeVM->taskProto, "isAlive", {}, taskAliveFn);
     regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);
     regMethod(VM::activeVM->taskProto, "result", {}, taskResultFn);
     regMethod(VM::activeVM->taskProto, "cancel", {}, taskCancelFn);

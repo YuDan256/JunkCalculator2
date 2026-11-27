@@ -637,7 +637,9 @@ namespace jc {
                     int bodyStart = current;
                     auto savedLabels = activeLabels;
                     activeLabels.clear();
+                    yieldAllowedDepth++;
                     auto rawB = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                    yieldAllowedDepth--;
                     activeLabels = std::move(savedLabels);
                     int bodyEnd = current;
 
@@ -989,6 +991,9 @@ namespace jc {
     std::unique_ptr<Expr> Parser::unary() {
         if (match({ TokenType::YIELD })) {
             Token yieldTok = previous();
+            if (yieldAllowedDepth == 0) {
+                JC2_THROW(SyntaxError, "Parser Error: 'yield' is only allowed inside a function body.");
+            }
             bool delegate = match({ TokenType::ELLIPSIS });
             std::unique_ptr<Expr> value;
             if (!check(TokenType::NEWLINE) && !check(TokenType::SEMICOLON) &&
@@ -1530,7 +1535,10 @@ namespace jc {
             if (!check(TokenType::LBRACE)) {
                 JC2_THROW(SyntaxError, "Parser Error: 'spawn' requires a block.");
             }
+            int savedYieldDepth = yieldAllowedDepth;
+            yieldAllowedDepth = 0;
             auto body = parseBlock();
+            yieldAllowedDepth = savedYieldDepth;
             int endPos = body->endPos;
             return withPos(std::make_unique<SpawnExpr>(spawnTok, std::move(body)),
                            spawnTok.position, endPos);

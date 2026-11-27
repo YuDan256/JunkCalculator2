@@ -57,12 +57,15 @@ struct TaskFrameSnapshot {
     int yieldRegister = -1;
     Value pendingReturnValue = Value::none();
     bool hasPendingReturn = false;
+    int pendingDefers = 0;
+    bool deferRunActive = false;
 };
 
 struct TaskState {
     ObjClosure* closure = nullptr;
     std::string label;
     std::vector<TaskFrameSnapshot> frames;
+    std::vector<ObjClosure*> defers;
     bool started = false;
     bool done = false;
     bool failed = false;
@@ -96,6 +99,8 @@ struct CallFrame {
     int continuationCompareOp = 0;
     Value pendingReturnValue = Value::none();
     bool hasPendingReturn = false;
+    int pendingDefers = 0;
+    bool deferRunActive = false;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;

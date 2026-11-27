@@ -180,4 +180,31 @@ assertThrows(fn, tag) = {
 local topRes = yield "top_ping"
 assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
 
+// T9: block-scope defer can yield at block exit
+{
+    const exitLog = @[]
+    {
+        defer {
+            exitLog.push("defer_start")
+            yield "block_defer"
+            exitLog.push("defer_end")
+        }
+        exitLog.push("body")
+    }
+    exitLog.push("after_block")
+    assertEq(exitLog, @["body", "defer_start", "defer_end", "after_block"], "T9.block_defer_yield")
+}
+
+// T10: multiple defers each yield in LIFO order
+{
+    job = spawn {
+        defer { yield "d1" }
+        defer { yield "d2" }
+        return "body"
+    }
+    assertEq(job.resume(), "d2", "T10.first_defer")
+    assertEq(job.resume(), "d1", "T10.second_defer")
+    assertEq(job.resume(), "body", "T10.return_value")
+}
+
 print("ALL TASK TESTS PASSED!")

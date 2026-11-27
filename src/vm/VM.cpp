@@ -2062,6 +2062,8 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
         snap.jitReturnSlot = f->jitReturnSlot;
         snap.pendingReturnValue = f->pendingReturnValue;
         snap.hasPendingReturn = f->hasPendingReturn;
+        snap.pendingDefers = f->pendingDefers;
+        snap.deferRunActive = f->deferRunActive;
         int count = f->function->localCount + f->function->refCount + 64;
         snap.registers.resize(count);
         for (int k = 0; k < count; ++k) snap.registers[k] = registers[f->registerBase + k];
@@ -2082,6 +2084,11 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
         f->classContext = Value::none();
         f->jitReturnSlot = Value::none();
         frameCount--;
+    }
+    int taskDeferBase = frames[root].deferBase;
+    if (static_cast<size_t>(taskDeferBase) < deferStack.size()) {
+        state->defers.assign(deferStack.begin() + taskDeferBase, deferStack.end());
+        deferStack.resize(taskDeferBase);
     }
     taskYieldValue = yielded;
     taskYielded = true;
@@ -2112,6 +2119,8 @@ void VM::restoreTaskFrames(ObjTask* task) {
         f.jitReturnSlot = snap.jitReturnSlot;
         f.pendingReturnValue = snap.pendingReturnValue;
         f.hasPendingReturn = snap.hasPendingReturn;
+        f.pendingDefers = snap.pendingDefers;
+        f.deferRunActive = snap.deferRunActive;
         int count = static_cast<int>(snap.registers.size());
         for (int k = 0; k < count; ++k) registers[rootBase + k] = snap.registers[k];
         for (const auto& saved : snap.handlers) {
@@ -2128,6 +2137,8 @@ void VM::restoreTaskFrames(ObjTask* task) {
         rootBase = f.registerBase + f.function->localCount + f.function->refCount;
         frameCount++;
     }
+    for (ObjClosure* closure : state->defers) deferStack.push_back(closure);
+    state->defers.clear();
 }
 
 Value VM::resumeTask(ObjTask* task, bool send, Value value) {
@@ -2218,8 +2229,11 @@ void VM::cancelTask(ObjTask* task) {
     if (runningTask == task) {
         JC2_THROW(RuntimeError, "cannot cancel a running task from itself.");
     }
-    if (!state->frames.empty()) {
-        int deferBase = state->frames.front().deferBase;
+    int deferBase = static_cast<int>(deferStack.size());
+    for (ObjClosure* closure : state->defers) deferStack.push_back(closure);
+    state->defers.clear();
+    if (!state->frames.empty()) deferBase = state->frames.front().deferBase;
+    if (static_cast<size_t>(deferBase) < deferStack.size()) {
         cancelingTask = true;
         try {
             runDefersDownTo(deferBase);
@@ -3780,17 +3794,13 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
     if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
         auto handler = exceptionHandlers.back();
         exceptionHandlers.pop_back();
-        
         runDefersDownTo(handler.deferBase, errValPtr);
-        
         while (frameCount > handler.frameIndex + 1) {
             CallFrame* f = &frames[frameCount - 1];
             profileFrameEnd(f);
             int clearBase = f->registerBase;
             int clearCount = f->function->localCount + f->function->refCount;
-            for (int i = 0; i < clearCount; ++i) {
-                registers[clearBase + i] = Value::none();
-            }
+            for (int i = 0; i < clearCount; ++i) registers[clearBase + i] = Value::none();
             f->selfContext = Value::none();
             f->classContext = Value::none();
             f->jitReturnSlot = Value::none();
@@ -3798,24 +3808,19 @@ bool VM::handleExceptionUnwind(Value* errValPtr) {
             f->refParamsBase = -1;
             frameCount--;
         }
-        
         pendingCallRefs.clear();
         if (includeNamespaceStack.size() > handler.includeStackDepth) {
             includeNamespaceStack.resize(handler.includeStackDepth);
         }
-        
         CallFrame* frame = &frames[frameCount - 1];
         frame->ip = handler.ip;
         frame->registerBase = handler.registerBase;
-        
         closeUpvalues(frame->registerBase + frame->function->localCount);
-
         registers[frame->registerBase + handler.errReg] = *errValPtr;
         return true;
     }
     return false;
 }
-
 Value VM::wrapException(ObjClass* errorClass, const char* typeName, Value val) {
     if (isExceptionInstance(val)) {
         auto inst = val.asInstance();
@@ -3945,7 +3950,7 @@ void VM::compileForOSR(int fnIdx, int loopHeaderIp) {
     bool supported = true;
     for (Instruction inst : fnDef->chunk.code) {
         OpCode op = GET_OPCODE(inst);
-        if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER) {
+        if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::RUN_DEFERS) {
             supported = false;
             break;
         }
@@ -4040,7 +4045,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     OpCode op = GET_OPCODE(inst);
                     // ★ 带 TAIL_CALL 的函数不参与 JIT：HIR 目前把 TAIL_CALL 当普通调用，
                     //   深尾递归会在宿主栈上递归，反而绕过了帧复用（解释器路径才是真 TCO）。
-                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL ||
+                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::RUN_DEFERS || op == OpCode::TAIL_CALL ||
                         op == OpCode::YIELD || op == OpCode::SPAWN) {
                         supported = false;
                         break;
@@ -4184,6 +4189,7 @@ VM::VM() {
                 GcHeap::get().markValue(frame.jitReturnSlot);
                 for (auto& v : frame.registers) GcHeap::get().markValue(v);
             }
+            for (ObjClosure* closure : state->defers) GcHeap::get().markObj(closure);
             GcHeap::get().markValue(state->result);
             GcHeap::get().markValue(state->error);
         }
@@ -4251,10 +4257,6 @@ VM::VM() {
         
         for (auto* closure : deferStack) {
             GcHeap::get().markObj(closure);
-        }
-        
-        for (auto& [k, v] : loadedModules) {
-            GcHeap::get().markValue(v);
         }
         
         for (auto& [k, v] : builtinClosures) {
@@ -5061,9 +5063,11 @@ Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sou
 
     try {
         Value res = run(targetDepth);
-        while (taskYielded && !mainTaskState->done) {
+        if (taskYielded) {
             taskYielded = false;
-            resumeTask(mainTask, false, Value::none());
+            while (!mainTaskState->done && !mainTaskState->failed && !mainTaskState->cancelled) {
+                resumeTask(mainTask, false, Value::none());
+            }
         }
         if (mainTaskState->done) res = mainTaskState->result;
         runningTask = nullptr;
@@ -9021,15 +9025,32 @@ Value VM::run(int targetFrameDepth) {
             }
             case OpCode::RUN_DEFERS: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
-                int count = a;
-                // The deferred call may throw; keep this frame's source
-                // position at RUN_DEFERS instead of its previous call site.
-                frame->ip = ip;
-                while (count-- > 0) {
+                if (!frame->deferRunActive) {
+                    frame->pendingDefers = a;
+                    frame->deferRunActive = true;
+                }
+                if (frame->pendingDefers > 0) {
+                    if (deferStack.empty()) {
+                        JC2_THROW(RuntimeError, "defer stack underflow.");
+                    }
+                    --frame->pendingDefers;
                     ObjClosure* closure = deferStack.back();
                     deferStack.pop_back();
-                    callVMFunction(closure->compiledFnIndex, {}, closure, Value::none(), Value::none());
+                    frame->ip = op_ip;
+                    Invocation deferInv;
+                    deferInv.fnIdx = closure->compiledFnIndex;
+                    deferInv.closure = closure;
+                    deferInv.sink.kind = ReturnSink::Kind::Value;
+                    int deferDepth = pushInvocationFrame(deferInv);
+                    frames[deferDepth].returnRegister = -1;
+                    frame = &frames[deferDepth];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    break;
                 }
+                frame->deferRunActive = false;
                 break;
             }
             case OpCode::INCLUDE: {
@@ -9546,28 +9567,30 @@ Value VM::run(int targetFrameDepth) {
                     frame->pendingReturnValue = Value::none();
                 } else {
                     res = getReg(a);
-                    // Run remaining defers as explicit frames.  The owner frame
-                    // stays alive at this RETURN instruction so a defer may yield
-                    // and be resumed without unwinding the owner's C++ path.
-                    if (deferStack.size() > static_cast<size_t>(frame->deferBase)) {
-                        ObjClosure* deferClosure = deferStack.back();
-                        deferStack.pop_back();
+                }
+                // Run remaining defers as explicit frames.  The owner frame
+                // stays alive at this RETURN instruction so a defer may yield
+                // and be resumed without unwinding the owner's C++ path.
+                if (deferStack.size() > static_cast<size_t>(frame->deferBase)) {
+                    if (!frame->hasPendingReturn) {
                         frame->pendingReturnValue = res;
                         frame->hasPendingReturn = true;
-                        frame->ip = op_ip;
-                        Invocation deferInv;
-                        deferInv.fnIdx = deferClosure->compiledFnIndex;
-                        deferInv.closure = deferClosure;
-                        deferInv.sink.kind = ReturnSink::Kind::Value;
-                        int deferDepth = pushInvocationFrame(deferInv);
-                        frames[deferDepth].returnRegister = -1;
-                        frame = &frames[deferDepth];
-                        chunk = frame->chunk;
-                        code = chunk->code.data();
-                        frameRegs = &registers[frame->registerBase];
-                        ip = frame->ip;
-                        break;
                     }
+                    ObjClosure* deferClosure = deferStack.back();
+                    deferStack.pop_back();
+                    frame->ip = op_ip;
+                    Invocation deferInv;
+                    deferInv.fnIdx = deferClosure->compiledFnIndex;
+                    deferInv.closure = deferClosure;
+                    deferInv.sink.kind = ReturnSink::Kind::Value;
+                    int deferDepth = pushInvocationFrame(deferInv);
+                    frames[deferDepth].returnRegister = -1;
+                    frame = &frames[deferDepth];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    break;
                 }
                 // ★ 构造完成点：正在构造的那个 init 帧返回 ⇒ 立刻检查省略初值的成员是否已赋值
                 if (frame->checkRequiredOnReturn) {

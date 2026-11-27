@@ -115,12 +115,25 @@ test_coroutine_throw() = {
     c = f()
     assert(c.resume() == 1, "throw handle")
     caught = false
+    firstMessage = ""
     try {
         c.throw("boom")
     } catch (e) {
         caught = true
+        firstMessage = e.message
     }
     assert(caught, "throw injects an error")
+    assert(c.done(), "failed coroutine is terminal")
+    assert(c.failed(), "failed flag")
+    assert(!c.closed(), "failed is not closed")
+    secondMessage = ""
+    try {
+        c.resume()
+    } catch (e) {
+        secondMessage = e.message
+    }
+    assert(secondMessage == firstMessage, "failed coroutine rethrows original error")
+    assert(c.error() != none, "failed coroutine keeps error")
 }
 test_coroutine_throw()
 test_coroutine_task_lifecycle() = {

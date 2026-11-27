@@ -2051,18 +2051,20 @@ bool VM::evaluateTruthiness(const Value& val) {
 
 void VM::closeCoroutine(ObjCoroutine* coroutine) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
-    if (!state || state->done) return;
+    if (!state || state->done || state->failed) return;
     state->hasPendingYield = false;
     runDefersDownTo(state->deferBase);
     while (static_cast<int>(deferStack.size()) > state->deferBase) {
         deferStack.pop_back();
     }
+    state->closed = true;
     state->done = true;
 }
 
 Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
+    if (state->failed) throw ValueException(state->error);
     if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
     state->hasPendingYield = false;
     hasInjectedCoroutineError = true;
@@ -2073,8 +2075,8 @@ Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
 Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
-    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
     if (state->failed) throw ValueException(state->error);
+    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
     if (state->delegate && !(state->hasPendingYield && !send)) {
         try {
             Value next = resumeCoroutine(state->delegate, send, value);
@@ -2145,9 +2147,22 @@ Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     Value outcome;
     try {
         outcome = run(coroutineResumeDepth);
+    } catch (const ValueException& ex) {
+        resumingCoroutine = nullptr;
+        state->failed = true;
+        state->done = true;
+        state->error = ex.val;
+        throw;
+    } catch (const Jc2Error& ex) {
+        resumingCoroutine = nullptr;
+        state->failed = true;
+        state->done = true;
+        state->error = Value(ex.what());
+        throw;
     } catch (...) {
         resumingCoroutine = nullptr;
         state->failed = true;
+        state->done = true;
         throw;
     }
     resumingCoroutine = nullptr;
@@ -9598,31 +9613,56 @@ Value VM::run(int targetFrameDepth) {
                     if (ts && ts->cancelled) {
                         JC2_THROW(RuntimeError, "task was cancelled.");
                     }
+                    if (ts && ts->failed) {
+                        throw ValueException(ts->error);
+                    }
+                    if (ts && ts->done) {
+                        getReg(a) = ts->result;
+                        break;
+                    }
                     if (ts && ts->closure) {
-                        Invocation inv;
-                        inv.fnIdx = ts->closure->compiledFnIndex;
-                        inv.closure = ts->closure;
-                        inv.sink.kind = ReturnSink::Kind::Value;
-                        Value result = invoke(inv);
-                        ts->closure = nullptr;
-                        if (result.isCoroutine()) {
-                            auto* inner = static_cast<ObjCoroutine*>(result.asObj());
-                            auto* innerState = static_cast<CoroutineState*>(inner->state);
-                            while (innerState && !innerState->done) {
-                                try {
-                                    resumeCoroutine(inner, false, Value::none());
-                                } catch (const ValueException& ex) {
-                                    if (!isStopIteration(ex.val)) throw;
-                                    break;
-                                } catch (const Jc2Error& ex) {
-                                    if (!isStopIteration(ex)) throw;
-                                    break;
+                        try {
+                            Invocation inv;
+                            inv.fnIdx = ts->closure->compiledFnIndex;
+                            inv.closure = ts->closure;
+                            inv.sink.kind = ReturnSink::Kind::Value;
+                            Value result = invoke(inv);
+                            ts->closure = nullptr;
+                            if (result.isCoroutine()) {
+                                auto* inner = static_cast<ObjCoroutine*>(result.asObj());
+                                ts->coroutine = inner;
+                                auto* innerState = static_cast<CoroutineState*>(inner->state);
+                                while (innerState && !innerState->done) {
+                                    try {
+                                        resumeCoroutine(inner, false, Value::none());
+                                    } catch (const ValueException& ex) {
+                                        if (!isStopIteration(ex.val)) throw;
+                                        break;
+                                    } catch (const Jc2Error& ex) {
+                                        if (!isStopIteration(ex)) throw;
+                                        break;
+                                    }
                                 }
+                                result = innerState ? innerState->result : Value::none();
+                                ts->coroutine = nullptr;
                             }
-                            result = innerState ? innerState->result : Value::none();
+                            ts->result = result;
+                            ts->done = true;
+                        } catch (const ValueException& ex) {
+                            ts->failed = true;
+                            ts->done = true;
+                            ts->error = ex.val;
+                            throw;
+                        } catch (const Jc2Error& ex) {
+                            ts->failed = true;
+                            ts->done = true;
+                            ts->error = Value(ex.what());
+                            throw;
+                        } catch (...) {
+                            ts->failed = true;
+                            ts->done = true;
+                            throw;
                         }
-                        ts->result = result;
-                        ts->done = true;
                     }
                     getReg(a) = ts ? ts->result : Value::none();
                     break;

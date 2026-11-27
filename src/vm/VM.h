@@ -50,6 +50,7 @@ struct CoroutineState {
     bool started = false;
     bool done = false;
     bool failed = false;
+    bool closed = false;
     const CompiledFunction* function = nullptr;
     const Chunk* chunk = nullptr;
     int ip = 0;

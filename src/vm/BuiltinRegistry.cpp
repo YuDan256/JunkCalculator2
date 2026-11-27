@@ -3436,6 +3436,24 @@ void BuiltinRegistry::registerArrayFunctions() {
         Value self = helpers::nativeSelfStack.back();
         return VM::activeVM->throwCoroutine(static_cast<ObjCoroutine*>(self.asObj()), args[0]);
     };
+    auto coroutineFailedFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
+        return Value(state && state->failed);
+    };
+    auto coroutineClosedFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
+        return Value(state && state->closed);
+    };
+    auto coroutineErrorFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
+        return (state && state->failed) ? state->error : Value::none();
+    };
+    regMethod(VM::activeVM->coroutineProto, "failed", {}, coroutineFailedFn);
+    regMethod(VM::activeVM->coroutineProto, "closed", {}, coroutineClosedFn);
+    regMethod(VM::activeVM->coroutineProto, "error", {}, coroutineErrorFn);
     regMethod(VM::activeVM->coroutineProto, "throw", {"error"}, coroutineThrowFn);
     regMethod(VM::activeVM->coroutineProto, "close", {}, coroutineCloseFn);
     auto taskDoneFn = [](const std::vector<Value>&) -> Value {
@@ -3443,6 +3461,18 @@ void BuiltinRegistry::registerArrayFunctions() {
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
         return Value(state && state->done);
     };
+    auto taskFailedFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return Value(state && state->failed);
+    };
+    auto taskErrorFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return (state && state->failed) ? state->error : Value::none();
+    };
+    regMethod(VM::activeVM->taskProto, "failed", {}, taskFailedFn);
+    regMethod(VM::activeVM->taskProto, "error", {}, taskErrorFn);
     auto taskResultFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
@@ -3452,6 +3482,14 @@ void BuiltinRegistry::registerArrayFunctions() {
         Value self = helpers::nativeSelfStack.back();
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
         if (state) {
+            if (state->coroutine && !state->coroutine->state) state->coroutine = nullptr;
+            if (state->coroutine) {
+                try {
+                    VM::activeVM->throwCoroutine(state->coroutine, Value("task cancelled"));
+                } catch (...) {
+                    // cancellation is delivered at the coroutine suspension point.
+                }
+            }
             state->cancelled = true;
             state->done = true;
             state->closure = nullptr;

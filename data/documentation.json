@@ -2850,6 +2850,9 @@
       "    Without a value it evaluates to none.",
       "    yield is allowed in functions, blocks, defer, catch, and at top level.",
       "    yield itself does not run defer; scope exit, failure, and cancel do.",
+      "    A defer may yield during normal return; resume continues that defer.",
+      "    During cancellation, a defer yield does not suspend; it throws the",
+      "    cancellation error and LIFO unwinding continues.",
       "",
       "  Example",
       "  ──────────────────────",
@@ -5404,6 +5407,9 @@
         "The current body can be the implicit top-level main task.",
         "yield is allowed in functions, blocks, defer, catch, and at top level.",
         "yield itself does not run defers; scope exit, failure, and cancel do.",
+        "A defer may yield during normal return; resume continues that defer.",
+        "During cancellation, a defer yield does not suspend; it throws the",
+        "cancellation error and LIFO unwinding continues.",
         "See also: /help spawn"
       ],
       "examples": [

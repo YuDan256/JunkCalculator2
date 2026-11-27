@@ -2060,6 +2060,8 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
         snap.selfContext = f->selfContext;
         snap.classContext = f->classContext;
         snap.jitReturnSlot = f->jitReturnSlot;
+        snap.pendingReturnValue = f->pendingReturnValue;
+        snap.hasPendingReturn = f->hasPendingReturn;
         int count = f->function->localCount + f->function->refCount + 64;
         snap.registers.resize(count);
         for (int k = 0; k < count; ++k) snap.registers[k] = registers[f->registerBase + k];
@@ -2108,6 +2110,8 @@ void VM::restoreTaskFrames(ObjTask* task) {
         f.selfContext = snap.selfContext;
         f.classContext = snap.classContext;
         f.jitReturnSlot = snap.jitReturnSlot;
+        f.pendingReturnValue = snap.pendingReturnValue;
+        f.hasPendingReturn = snap.hasPendingReturn;
         int count = static_cast<int>(snap.registers.size());
         for (int k = 0; k < count; ++k) registers[rootBase + k] = snap.registers[k];
         for (const auto& saved : snap.handlers) {
@@ -2132,6 +2136,25 @@ Value VM::resumeTask(ObjTask* task, bool send, Value value) {
     if (state->failed) throw ValueException(state->error);
     if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
     if (state->done) JC2_THROW(RuntimeError, "task has already finished.");
+    (void)send;
+
+    ObjTask* previousTask = runningTask;
+    int previousRootDepth = taskRootDepth;
+    bool previousYielded = taskYielded;
+    Value previousYieldValue = taskYieldValue;
+    struct TaskContextRestore {
+        VM* vm;
+        ObjTask* task;
+        int depth;
+        bool yielded;
+        Value yieldValue;
+        ~TaskContextRestore() {
+            vm->runningTask = task;
+            vm->taskRootDepth = depth;
+            vm->taskYielded = yielded;
+            vm->taskYieldValue = yieldValue;
+        }
+    } restoreTaskContext{this, previousTask, previousRootDepth, previousYielded, previousYieldValue};
 
     taskYielded = false;
     taskYieldValue = Value::none();
@@ -2151,7 +2174,7 @@ Value VM::resumeTask(ObjTask* task, bool send, Value value) {
             outcome = run(depth);
         } else {
             restoreTaskFrames(task);
-            if (send && !state->frames.empty()) {
+            if (!state->frames.empty()) {
                 int top = static_cast<int>(state->frames.size()) - 1;
                 int yreg = state->frames[top].yieldRegister;
                 if (yreg >= 0) {
@@ -2162,27 +2185,23 @@ Value VM::resumeTask(ObjTask* task, bool send, Value value) {
             outcome = run(taskRootDepth);
         }
     } catch (const ValueException& ex) {
-        runningTask = nullptr;
         state->failed = true;
         state->done = true;
         state->error = ex.val;
         state->frames.clear();
         throw;
     } catch (const Jc2Error& ex) {
-        runningTask = nullptr;
         state->failed = true;
         state->done = true;
         state->error = Value(ex.what());
         state->frames.clear();
         throw;
     } catch (...) {
-        runningTask = nullptr;
         state->failed = true;
         state->done = true;
         state->frames.clear();
         throw;
     }
-    runningTask = nullptr;
     if (taskYielded) {
         taskYielded = false;
         return taskYieldValue;
@@ -2191,6 +2210,29 @@ Value VM::resumeTask(ObjTask* task, bool send, Value value) {
     state->result = outcome;
     state->frames.clear();
     return outcome;
+}
+
+void VM::cancelTask(ObjTask* task) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state || state->done || state->failed || state->cancelled) return;
+    if (runningTask == task) {
+        JC2_THROW(RuntimeError, "cannot cancel a running task from itself.");
+    }
+    if (!state->frames.empty()) {
+        int deferBase = state->frames.front().deferBase;
+        cancelingTask = true;
+        try {
+            runDefersDownTo(deferBase);
+        } catch (...) {
+            // Cancellation unwinding suppresses further suspension.
+        }
+        cancelingTask = false;
+    }
+    state->cancelled = true;
+    state->done = true;
+    state->closure = nullptr;
+    state->frames.clear();
+    state->result = Value::none();
 }
 
 Value VM::joinTask(ObjTask* task) {
@@ -9466,6 +9508,9 @@ Value VM::run(int targetFrameDepth) {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
                 Value yielded = getReg(b);
+                if (cancelingTask) {
+                    JC2_THROW(RuntimeError, "task cancelled during defer.");
+                }
                 if (runningTask && frameCount > taskRootDepth) {
                     frame->ip = ip;
                     suspendTask(runningTask, yielded, a);
@@ -9493,6 +9538,37 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::RETURN: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                Value res;
+                if (frame->hasPendingReturn) {
+                    res = frame->pendingReturnValue;
+                    frame->hasPendingReturn = false;
+                    frame->pendingReturnValue = Value::none();
+                } else {
+                    res = getReg(a);
+                    // Run remaining defers as explicit frames.  The owner frame
+                    // stays alive at this RETURN instruction so a defer may yield
+                    // and be resumed without unwinding the owner's C++ path.
+                    if (deferStack.size() > static_cast<size_t>(frame->deferBase)) {
+                        ObjClosure* deferClosure = deferStack.back();
+                        deferStack.pop_back();
+                        frame->pendingReturnValue = res;
+                        frame->hasPendingReturn = true;
+                        frame->ip = op_ip;
+                        Invocation deferInv;
+                        deferInv.fnIdx = deferClosure->compiledFnIndex;
+                        deferInv.closure = deferClosure;
+                        deferInv.sink.kind = ReturnSink::Kind::Value;
+                        int deferDepth = pushInvocationFrame(deferInv);
+                        frames[deferDepth].returnRegister = -1;
+                        frame = &frames[deferDepth];
+                        chunk = frame->chunk;
+                        code = chunk->code.data();
+                        frameRegs = &registers[frame->registerBase];
+                        ip = frame->ip;
+                        break;
+                    }
+                }
                 // ★ 构造完成点：正在构造的那个 init 帧返回 ⇒ 立刻检查省略初值的成员是否已赋值
                 if (frame->checkRequiredOnReturn) {
                     frame->checkRequiredOnReturn = false;
@@ -9501,17 +9577,13 @@ Value VM::run(int targetFrameDepth) {
                                                        frame->selfContext);
                     }
                 }
-                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 // Keep the local register intact while defers run: a deferred
                 // `ref` upvalue may point at the same register as the return
                 // value, and moving it out would turn that upvalue into none.
-                Value res = getReg(a);
 
-                // Save the current instruction before entering a deferred
-                // closure; otherwise a traceback from that closure reports
-                // return line 0 for this frame when the function made no call.
+                // Save the current instruction before leaving this frame; a
+                // traceback from a deferred closure reports this line.
                 frame->ip = ip;
-                runDefersDownTo(frame->deferBase);
             
                 while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= frameCount - 1) {
                     exceptionHandlers.pop_back();

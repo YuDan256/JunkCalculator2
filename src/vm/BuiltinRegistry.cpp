@@ -3423,7 +3423,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     auto taskResumeFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        Value value = args.empty() ? Value::none() : args[0];
+        Value value = (args.empty() || args[0].isUninit()) ? Value::none() : args[0];
         return VM::activeVM->resumeTask(static_cast<ObjTask*>(self.asObj()), true, value);
     };
     auto taskJoinFn = [](const std::vector<Value>&) -> Value {
@@ -3437,14 +3437,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     auto taskCancelFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
-        if (state) {
-            state->cancelled = true;
-            state->done = true;
-            state->closure = nullptr;
-            state->frames.clear();
-            state->result = Value::none();
-        }
+        VM::activeVM->cancelTask(static_cast<ObjTask*>(self.asObj()));
         return Value::none();
     };
     regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);

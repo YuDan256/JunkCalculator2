@@ -1662,6 +1662,8 @@ job.cancel()
 \begin{itemize}
   \item 正常返回、未捕获异常和取消时执行 \jc{defer}；
   \item \jc{yield} 本身不执行 \jc{defer}；
+  \item 正常作用域退出时，\jc{defer} 内可以 \jc{yield}；任务挂起，恢复后继续执行该 \jc{defer}；
+  \item 取消展开期间，\jc{defer} 内再次 \jc{yield} 不挂起，抛出取消错误，继续按 LIFO 执行剩余 \jc{defer}；
   \item 未被引用的任务不会因 GC 执行用户 \jc{defer}。
 \end{itemize}
 

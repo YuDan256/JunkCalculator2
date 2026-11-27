@@ -199,9 +199,21 @@ join 重抛
 ```text
 正常 return    -> 执行 defer
 未捕获异常     -> 执行 defer
-cancel         -> 执行 defer
+cancel         -> 按 LIFO 执行 defer
 yield          -> 不执行 defer
 ```
+
+正常作用域退出时，defer 内可以 yield；任务挂起，恢复后继续执行该 defer。
+
+取消展开期间，defer 内再次 yield 不再挂起：
+
+```text
+抛 CancelledError
+继续按 LIFO 执行剩余 defer
+最终 task 进入 CANCELLED
+```
+
+defer 内 yield 不影响已经保存的 return 值。
 
 ## 8. 示例
 

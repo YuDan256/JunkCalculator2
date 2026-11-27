@@ -55,6 +55,8 @@ struct TaskFrameSnapshot {
     std::vector<Value> registers;
     std::vector<TaskExceptionHandler> handlers;
     int yieldRegister = -1;
+    Value pendingReturnValue = Value::none();
+    bool hasPendingReturn = false;
 };
 
 struct TaskState {
@@ -92,6 +94,8 @@ struct CallFrame {
     ObjClass* continuationOwner = nullptr;
     ObjSpread* continuationSpread = nullptr;
     int continuationCompareOp = 0;
+    Value pendingReturnValue = Value::none();
+    bool hasPendingReturn = false;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -147,6 +151,7 @@ private:
     int taskRootDepth = 0;
     bool taskYielded = false;
     Value taskYieldValue = Value::none();
+    bool cancelingTask = false;
     bool shuttingDown = false;   // ★ shutdown() 期间：chunk 常量也要作为 GC 根
     CallFrame* frames = nullptr;
 
@@ -337,6 +342,7 @@ public:
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
     Value resumeTask(ObjTask* task, bool send, Value value);
     Value joinTask(ObjTask* task);
+    void cancelTask(ObjTask* task);
     void suspendTask(ObjTask* task, const Value& yielded, int yieldRegister);
     void restoreTaskFrames(ObjTask* task);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。

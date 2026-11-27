@@ -1,0 +1,183 @@
+import sys
+
+assertEq(actual, expected, tag) = {
+    if (actual != expected) {
+        throw f"[FAIL] {tag}: expected {expected}, got {actual}"
+    }
+}
+
+assertThrows(fn, tag) = {
+    local caught = false
+    try { fn() } catch (e) { caught = true }
+    if (!caught) {
+        throw f"[FAIL] {tag}: expected an exception, but succeeded"
+    }
+}
+
+// T1: lazy start, bidirectional yield/resume, label form
+{
+    local started = %{v: false}
+    echoTask(initVal) = {
+        started.v = true
+        local a = yield initVal * 10
+        local b = yield a + 5
+        local c = yield
+        return @[a, b, c]
+    }
+
+    job = spawn 'echo_worker' echoTask(3)
+    assertEq(started.v, false, "T1.lazy_pending")
+    assertEq(job.isAlive(), true, "T1.alive_pending")
+
+    assertEq(job.resume(), 30, "T1.first_yield")
+    assertEq(started.v, true, "T1.started_after_resume")
+    assertEq(job.isAlive(), true, "T1.alive_suspended")
+
+    assertEq(job.resume(100), 105, "T1.second_yield")
+    assertEq(job.resume(), none, "T1.bare_yield_out")
+    assertEq(job.resume("done"), @[100, none, "done"], "T1.final_return")
+    assertEq(job.isAlive(), false, "T1.dead_after_complete")
+}
+
+// T2: nested yield through ordinary calls; mutable data survives suspension
+{
+    mutateAcrossYield(target) = {
+        target.v += 10
+        local delta = yield "mid"
+        target.v += delta
+    }
+
+    middle(target) = {
+        mutateAcrossYield(target)
+        return target.v * 2
+    }
+
+    local box = %{v: 5}
+    job = spawn r'raw\label' {
+        return middle(box)
+    }
+
+    assertEq(job.resume(), "mid", "T2.nested_yield")
+    assertEq(box.v, 15, "T2.mutated_before_yield")
+    assertEq(job.resume(20), 70, "T2.nested_complete")
+    assertEq(box.v, 35, "T2.mutated_after_yield")
+}
+
+// T3: suspended upvalue and register-window growth
+{
+    id(x) = x
+    macro bigExpr() = {
+        local e = quote id(1)
+        for (local i in range(180)) { e = quote (id(1) + $e) }
+        return e
+    }
+
+    local holder = %{reader: none}
+    job = spawn {
+        local pinned = 42
+        holder.reader = () => pinned
+        yield "paused"
+        local sum = @bigExpr()
+        return pinned + sum
+    }
+
+    assertEq(job.resume(), "paused", "T3.before_realloc")
+    assertEq(holder.reader(), 42, "T3.upvalue_while_suspended")
+    assertEq(job.join(), 42 + 181, "T3.after_realloc_join")
+    assertEq(holder.reader(), 42, "T3.upvalue_after_task_exit")
+}
+
+// T4: yield does not run defer; cancel unwinds active blocks LIFO
+{
+    const log = @[]
+    job = spawn {
+        defer log.push("fn_defer")
+        {
+            defer log.push("inner_block_defer")
+            log.push("step1")
+            yield "hold_1"
+            log.push("step2")
+        }
+        yield "hold_2"
+        log.push("unreachable")
+    }
+
+    assertEq(job.resume(), "hold_1", "T4.hold_1")
+    assertEq(log, @["step1"], "T4.yield_must_not_run_defer")
+
+    assertEq(job.resume(), "hold_2", "T4.hold_2")
+    assertEq(log, @["step1", "step2", "inner_block_defer"], "T4.block_exit_ran_defer")
+
+    job.cancel()
+    assertEq(job.isAlive(), false, "T4.cancelled_not_alive")
+    assertEq(log, @["step1", "step2", "inner_block_defer", "fn_defer"], "T4.cancel_unwound_defer")
+    assertThrows(() => job.join(), "T4.join_cancelled_throws")
+}
+
+// T5: yield in catch; uncaught failure is rethrown by join
+{
+    jobCatch = spawn {
+        try {
+            throw "boom"
+        } catch (e) {
+            local fixed = yield e.message
+            return f"recovered:{fixed}"
+        }
+    }
+    assertEq(jobCatch.resume(), "boom", "T5.yield_in_catch")
+    assertEq(jobCatch.resume("ok"), "recovered:ok", "T5.resume_from_catch")
+
+    jobFail = spawn {
+        yield "before_crash"
+        throw "fatal_err"
+    }
+    assertEq(jobFail.resume(), "before_crash", "T5.before_crash")
+    assertThrows(() => jobFail.join(), "T5.join_rethrows_uncaught")
+    assertEq(jobFail.isAlive(), false, "T5.failed_not_alive")
+}
+
+// T6: yield inside defer; cancel defer yield does not suspend again
+{
+    jobNormal = spawn {
+        defer { yield "from_defer" }
+        return "final_val"
+    }
+    assertEq(jobNormal.resume(), "from_defer", "T6a.yield_inside_normal_defer")
+    assertEq(jobNormal.join(), "final_val", "T6a.finish_after_defer_yield")
+
+    const cLog = @[]
+    jobCancelYield = spawn {
+        defer {
+            cLog.push("enter_defer")
+            yield "illegal_suspend_during_cancel"
+            cLog.push("after_defer_yield")
+        }
+        yield "parked"
+    }
+    assertEq(jobCancelYield.resume(), "parked", "T6b.parked")
+    jobCancelYield.cancel()
+    assertEq(jobCancelYield.isAlive(), false, "T6b.must_not_stay_alive_after_cancel")
+}
+
+// T7: task cannot resume or join itself while running
+{
+    local selfRef = none
+    selfRef = spawn {
+        assertThrows(() => selfRef.resume(), "T7.self_resume_must_throw")
+        assertThrows(() => selfRef.join(), "T7.self_join_must_throw")
+        return "survived"
+    }
+    assertEq(selfRef.join(), "survived", "T7.self_reentry_guarded")
+}
+
+// T8: invalid labels are rejected at compile time; top-level yield resumes none
+{
+    assertThrows(() => sys.compileCode("spawn '' { return 1 }"), "T8.empty_label")
+    assertThrows(() => sys.compileCode("x = 'a'; spawn x { return 1 }"), "T8.var_label")
+    assertThrows(() => sys.compileCode("spawn f'job_{1}' { return 1 }"), "T8.fstring_label")
+}
+
+local topRes = yield "top_ping"
+assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
+
+print("ALL TASK TESTS PASSED!")

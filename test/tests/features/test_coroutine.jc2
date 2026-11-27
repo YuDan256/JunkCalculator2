@@ -241,4 +241,27 @@ test_coroutine_nested_await() = {
     assert(await t == 22, "nested await inside spawn")
 }
 test_coroutine_nested_await()
+test_coroutine_task_failure() = {
+    t = spawn {
+        throw "task-boom"
+    }
+    firstMessage = ""
+    try {
+        await t
+    } catch (e) {
+        firstMessage = e.message
+    }
+    assert(firstMessage != "", "task failure propagates")
+    assert(t.done(), "failed task is terminal")
+    assert(t.failed(), "failed task flag")
+    secondMessage = ""
+    try {
+        await t
+    } catch (e) {
+        secondMessage = e.message
+    }
+    assert(secondMessage == firstMessage, "failed task rethrows original error")
+    assert(t.error() != none, "failed task keeps error")
+}
+test_coroutine_task_failure()
 }

@@ -3679,6 +3679,9 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
                 os << "}>";
             break;
         }
+        case ObjType::COROUTINE: os << "<coroutine>"; break;
+        case ObjType::TASK: os << "<task>"; break;
+        default: os << "<object>"; break;
     }
 }
 

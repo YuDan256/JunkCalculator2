@@ -216,4 +216,16 @@ test_coroutine_jit_deopt() = {
     assert(!__dbg_is_jitted(f), "coroutine functions must deopt to interpreter")
 }
 test_coroutine_jit_deopt()
+test_coroutine_nested_await() = {
+    inner() = {
+        yield 1
+        return 20
+    }
+    t = spawn {
+        local v = await inner()
+        return v + 2
+    }
+    assert(await t == 22, "nested await inside spawn")
+}
+test_coroutine_nested_await()
 }

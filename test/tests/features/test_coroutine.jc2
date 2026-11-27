@@ -205,4 +205,15 @@ test_coroutine_try_across_yield() = {
     assert(c.result() == "caught", "catch block runs after resume")
 }
 test_coroutine_try_across_yield()
+test_coroutine_jit_deopt() = {
+    f() = { yield 1 }
+    local i = 0
+    while (i < 1100) {
+        c = f()
+        c.close()
+        i += 1
+    }
+    assert(!__dbg_is_jitted(f), "coroutine functions must deopt to interpreter")
+}
+test_coroutine_jit_deopt()
 }

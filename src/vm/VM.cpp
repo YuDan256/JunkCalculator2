@@ -772,6 +772,8 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                         else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                         else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                        else if (v.isCoroutine()) vbt = BuiltinType::COROUTINE;
+                        else if (v.isTask()) vbt = BuiltinType::TASK;
                         newTypes.push_back(vbt);
                     }
                     Value res(internType(std::move(newTypes)));
@@ -1394,6 +1396,8 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                     else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                     else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
+                    else if (v.isCoroutine()) vbt = BuiltinType::COROUTINE;
+                    else if (v.isTask()) vbt = BuiltinType::TASK;
                     newTypes.push_back(vbt);
                 }
                 registers[currentFrame->registerBase + dstReg] = Value(internType(std::move(newTypes)));

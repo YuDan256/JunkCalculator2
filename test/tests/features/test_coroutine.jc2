@@ -177,8 +177,10 @@ test_coroutine_type_values() = {
     f() = { yield 1 }
     c = f()
     assert(type(c) == coroutine, "coroutine builtin type")
+    assert(str(c) == "<coroutine>", "coroutine representation")
     t = spawn { return 1 }
     assert(type(t) == task, "task builtin type")
+    assert(str(t) == "<task>", "task representation")
 }
 test_coroutine_type_values()
 test_coroutine_try_across_yield() = {

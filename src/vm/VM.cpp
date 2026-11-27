@@ -2045,6 +2045,17 @@ bool VM::evaluateTruthiness(const Value& val) {
     return val.truthy();
 }
 
+void VM::closeCoroutine(ObjCoroutine* coroutine) {
+    auto* state = static_cast<CoroutineState*>(coroutine->state);
+    if (!state || state->done) return;
+    state->hasPendingYield = false;
+    runDefersDownTo(state->deferBase);
+    while (static_cast<int>(deferStack.size()) > state->deferBase) {
+        deferStack.pop_back();
+    }
+    state->done = true;
+}
+
 Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
@@ -3930,7 +3941,9 @@ void VM::profileFrameStart(CallFrame* frame) {
                     OpCode op = GET_OPCODE(inst);
                     // ★ 带 TAIL_CALL 的函数不参与 JIT：HIR 目前把 TAIL_CALL 当普通调用，
                     //   深尾递归会在宿主栈上递归，反而绕过了帧复用（解释器路径才是真 TCO）。
-                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL) {
+                    if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL ||
+                        op == OpCode::YIELD || op == OpCode::YIELD_DELEGATE ||
+                        op == OpCode::AWAIT || op == OpCode::SPAWN) {
                         supported = false;
                         break;
                     }

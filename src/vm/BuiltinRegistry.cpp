@@ -3417,12 +3417,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     };
     auto coroutineCloseFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
-        auto* c = static_cast<ObjCoroutine*>(self.asObj());
-        auto* state = static_cast<CoroutineState*>(c->state);
-        if (state) {
-            state->hasPendingYield = false;
-            state->done = true;
-        }
+        VM::activeVM->closeCoroutine(static_cast<ObjCoroutine*>(self.asObj()));
         return Value::none();
     };
     auto coroutineDoneFn = [](const std::vector<Value>&) -> Value {

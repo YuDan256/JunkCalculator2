@@ -160,4 +160,17 @@ test_coroutine_gc() = {
     assert(c.result() == 25, "gc preserves suspended registers")
 }
 test_coroutine_gc()
+test_coroutine_close_defer() = {
+    events = @[]
+    f() = {
+        defer events.push("defer")
+        yield 1
+        events.push("body")
+    }
+    c = f()
+    assert(c.resume() == 1, "close defer first value")
+    c.close()
+    assert(events == @["defer"], "close runs defer without resuming body")
+}
+test_coroutine_close_defer()
 }

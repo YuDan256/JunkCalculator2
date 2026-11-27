@@ -638,8 +638,20 @@ namespace jc {
                     auto savedLabels = activeLabels;
                     activeLabels.clear();
                     yieldAllowedDepth++;
+                    functionYieldCounts.push_back(0);
                     auto rawB = check(TokenType::LBRACE) ? parseBlock() : assignment();
+                    int bodyYieldCount = functionYieldCounts.back();
+                    functionYieldCounts.pop_back();
                     yieldAllowedDepth--;
+                    if (bodyYieldCount > 0) {
+                        bool hasRefParam = false;
+                        for (bool r : paramIsRef) hasRefParam = hasRefParam || r;
+                        for (bool r : kwargIsRef) hasRefParam = hasRefParam || r;
+                        if (hasRefParam) {
+                            JC2_THROW(SyntaxError,
+                                "Parser Error: a function with ref parameters cannot yield.");
+                        }
+                    }
                     activeLabels = std::move(savedLabels);
                     int bodyEnd = current;
 
@@ -994,6 +1006,7 @@ namespace jc {
             if (yieldAllowedDepth == 0) {
                 JC2_THROW(SyntaxError, "Parser Error: 'yield' is only allowed inside a function body.");
             }
+            if (!functionYieldCounts.empty()) functionYieldCounts.back()++;
             bool delegate = match({ TokenType::ELLIPSIS });
             std::unique_ptr<Expr> value;
             if (!check(TokenType::NEWLINE) && !check(TokenType::SEMICOLON) &&

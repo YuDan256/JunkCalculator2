@@ -35,6 +35,7 @@ namespace jc {
         std::string sourceFile;
         int quoteDepth = 0;
         int yieldAllowedDepth = 0;
+        std::vector<int> functionYieldCounts;
         std::vector<std::string> activeLabels;
 
     public:

@@ -2493,8 +2493,19 @@ void IRBuilder::visitAwaitExpr(AwaitExpr* expr) {
     lastValue = node;
 }
 
-void IRBuilder::visitSpawnExpr(SpawnExpr*) {
-    error("Syntax Error: spawn is not available yet.");
+void IRBuilder::visitSpawnExpr(SpawnExpr* expr) {
+    auto lambda = std::make_unique<LambdaExpr>(
+        "spawn", std::vector<Token>{}, std::vector<bool>{}, std::vector<bool>{},
+        std::vector<std::shared_ptr<Expr>>{}, "", std::vector<std::shared_ptr<Expr>>{},
+        nullptr, "", std::shared_ptr<Expr>(expr->body.release()));
+    lambda->accept(*this);
+    IRNode* closure = lastValue;
+    graph->currentLine = expr->keyword.line;
+    IRNode* node = graph->createValueNode(IROp::Spawn);
+    link(node);
+    node->addData(closure);
+    currentSeq = node;
+    lastValue = node;
 }
 
 void IRBuilder::visitReturnExpr(ReturnExpr* expr) {

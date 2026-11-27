@@ -3415,6 +3415,31 @@ void BuiltinRegistry::registerArrayFunctions() {
     auto coroutineIterFn = [](const std::vector<Value>&) -> Value {
         return helpers::nativeSelfStack.back();
     };
+    auto coroutineCloseFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* c = static_cast<ObjCoroutine*>(self.asObj());
+        auto* state = static_cast<CoroutineState*>(c->state);
+        if (state) {
+            state->hasPendingYield = false;
+            state->done = true;
+        }
+        return Value::none();
+    };
+    auto coroutineDoneFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* c = static_cast<ObjCoroutine*>(self.asObj());
+        auto* state = static_cast<CoroutineState*>(c->state);
+        return Value(state && state->done);
+    };
+    auto coroutineResultFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* c = static_cast<ObjCoroutine*>(self.asObj());
+        auto* state = static_cast<CoroutineState*>(c->state);
+        return state ? state->result : Value::none();
+    };
+    regMethod(VM::activeVM->coroutineProto, "close", {}, coroutineCloseFn);
+    regMethod(VM::activeVM->coroutineProto, "done", {}, coroutineDoneFn);
+    regMethod(VM::activeVM->coroutineProto, "result", {}, coroutineResultFn);
     regMethod(VM::activeVM->coroutineProto, "__iter__", {}, coroutineIterFn);
     regMethod(VM::activeVM->coroutineProto, "__next__", {}, coroutineNextFn);
     regMethod(VM::activeVM->coroutineProto, "resume", {}, coroutineResumeFn);

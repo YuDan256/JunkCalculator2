@@ -9389,13 +9389,9 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::YIELD:
-            case OpCode::YIELD_DELEGATE:
-            case OpCode::AWAIT: {
+            case OpCode::YIELD_DELEGATE: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                if (op == OpCode::AWAIT) {
-                    JC2_THROW(RuntimeError, "await is not available yet.");
-                }
                 if (op == OpCode::YIELD_DELEGATE) {
                     JC2_THROW(RuntimeError, "yield ... is not available yet.");
                 }
@@ -9464,7 +9460,6 @@ Value VM::run(int targetFrameDepth) {
                 }
                 auto* coroutine = GcHeap::get().allocate<ObjCoroutine>();
                 coroutine->state = state;
-
                 int targetReg = frame->returnRegister;
                 frame->ip = ip;
                 closeUpvalues(frame->registerBase);
@@ -9492,6 +9487,77 @@ Value VM::run(int targetFrameDepth) {
                 frameRegs = &registers[frame->registerBase];
                 ip = frame->ip;
                 if (targetReg >= 0) getReg(targetReg) = Value(coroutine);
+                break;
+            }
+            case OpCode::AWAIT: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value target = getReg(b);
+                if (target.isTask()) {
+                    auto* task = static_cast<ObjTask*>(target.asObj());
+                    auto* ts = static_cast<TaskState*>(task->state);
+                    if (ts && ts->closure) {
+                        Invocation inv;
+                        inv.fnIdx = ts->closure->compiledFnIndex;
+                        inv.closure = ts->closure;
+                        inv.sink.kind = ReturnSink::Kind::Value;
+                        Value result = invoke(inv);
+                        ts->closure = nullptr;
+                        if (result.isCoroutine()) {
+                            auto* inner = static_cast<ObjCoroutine*>(result.asObj());
+                            auto* innerState = static_cast<CoroutineState*>(inner->state);
+                            while (innerState && !innerState->done) {
+                                try {
+                                    resumeCoroutine(inner, false, Value::none());
+                                } catch (const ValueException& ex) {
+                                    if (!isStopIteration(ex.val)) throw;
+                                    break;
+                                } catch (const Jc2Error& ex) {
+                                    if (!isStopIteration(ex)) throw;
+                                    break;
+                                }
+                            }
+                            result = innerState ? innerState->result : Value::none();
+                        }
+                        ts->result = result;
+                        ts->done = true;
+                    }
+                    getReg(a) = ts ? ts->result : Value::none();
+                    break;
+                }
+                if (!target.isCoroutine()) {
+                    JC2_THROW(TypeError, "await expects a coroutine or task.");
+                }
+                {
+                    auto* co = static_cast<ObjCoroutine*>(target.asObj());
+                    auto* state = static_cast<CoroutineState*>(co->state);
+                    while (state && !state->done) {
+                        try {
+                            resumeCoroutine(co, false, Value::none());
+                        } catch (const ValueException& ex) {
+                            if (!isStopIteration(ex.val)) throw;
+                            break;
+                        } catch (const Jc2Error& ex) {
+                            if (!isStopIteration(ex)) throw;
+                            break;
+                        }
+                    }
+                    getReg(a) = state ? state->result : Value::none();
+                }
+                break;
+            }
+            case OpCode::SPAWN: {
+                if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
+                if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
+                Value callee = getReg(b);
+                if (!callee.isFunctionClosure()) {
+                    JC2_THROW(TypeError, "spawn expects a function.");
+                }
+                auto* task = GcHeap::get().allocate<ObjTask>();
+                auto* state = new TaskState();
+                state->closure = callee.asFunction();
+                task->state = state;
+                getReg(a) = Value(task);
                 break;
             }
             case OpCode::RETURN: {

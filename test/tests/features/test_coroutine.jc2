@@ -46,4 +46,42 @@ test_coroutine_conditional_yield() = {
     assert(maybe(false) == 2, "non-yielding path returns a value")
 }
 test_coroutine_conditional_yield()
+test_coroutine_lifecycle() = {
+    f() = {
+        yield 1
+        yield 2
+    }
+    c = f()
+    assert(!c.done(), "new coroutine is not done")
+    assert(c.resume() == 1, "first value")
+    c.close()
+    assert(c.done(), "close marks done")
+    caught = false
+    try {
+        c.resume()
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "closed coroutine raises StopIteration")
+}
+test_coroutine_lifecycle()
+test_coroutine_await() = {
+    inner() = {
+        yield 1
+        return 42
+    }
+    outer() = {
+        local x = await inner()
+        return x + 1
+    }
+    assert(outer() == 43, "await drives coroutine to completion")
+}
+test_coroutine_await()
+test_coroutine_spawn() = {
+    t = spawn {
+        return 7
+    }
+    assert(await t == 7, "spawn task result")
+}
+test_coroutine_spawn()
 }

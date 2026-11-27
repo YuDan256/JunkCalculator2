@@ -871,6 +871,14 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
+                    case IROp::Spawn: {
+                        int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
+                        int a = node->physicalReg;
+                        if (a < 0) a = b;
+                        auto w = buildInstAB(OpCode::SPAWN, a, b);
+                        inst.words.insert(inst.words.end(), w.begin(), w.end());
+                        break;
+                    }
                     case IROp::Return: {
                         if (node->dataInputs[0]->op == IROp::Constant && node->dataInputs[0]->physicalReg == -1) {
                             int idx = chunk.addConstant(node->dataInputs[0]->constVal);

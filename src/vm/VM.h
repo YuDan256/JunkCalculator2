@@ -60,6 +60,7 @@ struct CoroutineState {
 
 struct TaskState {
     ObjCoroutine* coroutine = nullptr;
+    ObjClosure* closure = nullptr;
     bool done = false;
     bool failed = false;
     bool cancelled = false;

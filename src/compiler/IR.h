@@ -22,6 +22,7 @@ enum class IROp {
     Yield,
     YieldDelegate,
     Await,
+    Spawn,
     If,
     IfTrue,     // If 的 True 分支
     IfFalse,    // If 的 False 分支
@@ -163,6 +164,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Yield: return "Yield";
         case IROp::YieldDelegate: return "YieldDelegate";
         case IROp::Await: return "Await";
+        case IROp::Spawn: return "Spawn";
         case IROp::If: return "If";
         case IROp::IfTrue: return "IfTrue";
         case IROp::IfFalse: return "IfFalse";

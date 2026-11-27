@@ -56,6 +56,8 @@ test_coroutine_lifecycle() = {
     assert(c.resume() == 1, "first value")
     c.close()
     assert(c.done(), "close marks done")
+    assert(c.closed(), "close sets closed")
+    assert(!c.failed(), "close is not failure")
     caught = false
     try {
         c.resume()

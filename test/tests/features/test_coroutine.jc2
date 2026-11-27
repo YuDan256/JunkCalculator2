@@ -141,6 +141,21 @@ test_task_gc() = {
     sys.gc()
     sys.gc()
     assert(job.resume(5) == 25, "gc preserves suspended frames")
+
+    inner() = {
+        local p = @[1, 2]
+        yield p[0]
+        return p[1]
+    }
+    outer() = {
+        local x = inner()
+        return x + 1
+    }
+    nested = spawn outer()
+    assert(nested.resume() == 1, "gc nested first value")
+    sys.gc()
+    sys.gc()
+    assert(nested.resume(5) == 3, "gc preserves nested frame stack")
 }
 test_task_gc()
 

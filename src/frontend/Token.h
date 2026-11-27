@@ -48,6 +48,7 @@ namespace jc {
         IF, ELSE, WHILE, FOR, IN, IS, AS,
         BREAK, CONTINUE,
         RETURN,
+        YIELD, AWAIT, SPAWN,
         LOCAL, REF, STATE,
         CONST,
         STATIC,              // ★ 新增
@@ -189,6 +190,9 @@ namespace jc {
         case TokenType::BREAK:         return "BREAK";            // ★
         case TokenType::CONTINUE:      return "CONTINUE";         // ★
         case TokenType::RETURN:        return "RETURN";           // ★
+        case TokenType::YIELD:         return "YIELD";
+        case TokenType::AWAIT:         return "AWAIT";
+        case TokenType::SPAWN:         return "SPAWN";
         case TokenType::MATCH:         return "MATCH";
         case TokenType::MACRO:         return "MACRO";
         case TokenType::SYNTAX:        return "SYNTAX";
@@ -294,6 +298,9 @@ namespace jc {
         if (s == "BREAK") return TokenType::BREAK;
         if (s == "CONTINUE") return TokenType::CONTINUE;
         if (s == "RETURN") return TokenType::RETURN;
+        if (s == "YIELD") return TokenType::YIELD;
+        if (s == "AWAIT") return TokenType::AWAIT;
+        if (s == "SPAWN") return TokenType::SPAWN;
         if (s == "MATCH") return TokenType::MATCH;
         if (s == "MACRO") return TokenType::MACRO;
         if (s == "SYNTAX") return TokenType::SYNTAX;

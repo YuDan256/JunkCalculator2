@@ -634,6 +634,20 @@ void Resolver::visitReturnExpr(ReturnExpr* expr) {
     if (expr->value) resolve(expr->value.get());
 }
 
+void Resolver::visitYieldExpr(YieldExpr* expr) {
+    if (expr->value) resolve(expr->value.get());
+}
+
+void Resolver::visitAwaitExpr(AwaitExpr* expr) {
+    resolve(expr->value.get());
+}
+
+void Resolver::visitSpawnExpr(SpawnExpr* expr) {
+    beginScope(true, false);
+    resolve(expr->body.get());
+    endScope();
+}
+
 void Resolver::visitIndexAccess(IndexAccess* expr) {
     resolve(expr->object.get());
     for (auto& idx : expr->indices) resolve(idx.get());

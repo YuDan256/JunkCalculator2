@@ -987,6 +987,28 @@ namespace jc {
     }
 
     std::unique_ptr<Expr> Parser::unary() {
+        if (match({ TokenType::YIELD })) {
+            Token yieldTok = previous();
+            bool delegate = match({ TokenType::ELLIPSIS });
+            std::unique_ptr<Expr> value;
+            if (!check(TokenType::NEWLINE) && !check(TokenType::SEMICOLON) &&
+                !check(TokenType::RBRACE) && !check(TokenType::END_OF_FILE) &&
+                !check(TokenType::COMMA) && !check(TokenType::RPAREN) &&
+                !check(TokenType::RBRACKET)) {
+                value = delegate ? unary() : assignment();
+            }
+            int endPos = value ? value->endPos
+                               : yieldTok.position + static_cast<int>(yieldTok.lexeme.length());
+            return withPos(std::make_unique<YieldExpr>(yieldTok, std::move(value), delegate),
+                           yieldTok.position, endPos);
+        }
+        if (match({ TokenType::AWAIT })) {
+            Token awaitTok = previous();
+            auto value = unary();
+            int endPos = value->endPos;
+            return withPos(std::make_unique<AwaitExpr>(awaitTok, std::move(value)),
+                           awaitTok.position, endPos);
+        }
         if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {
             Token op = previous();
             auto right = unary();
@@ -1503,6 +1525,17 @@ namespace jc {
             JC2_THROW(LexerError, "" + previous().lexeme);
         }
 
+        if (match({ TokenType::SPAWN })) {
+            Token spawnTok = previous();
+            if (!check(TokenType::LBRACE)) {
+                JC2_THROW(SyntaxError, "Parser Error: 'spawn' requires a block.");
+            }
+            auto body = parseBlock();
+            int endPos = body->endPos;
+            return withPos(std::make_unique<SpawnExpr>(spawnTok, std::move(body)),
+                           spawnTok.position, endPos);
+        }
+
         // Function definitions are primary expressions too. The lookahead in
         // functionBinding() distinguishes f(x) from f(x) = body.
         if (auto fn = functionBinding(false, false, false, false)) return fn;
@@ -1512,7 +1545,9 @@ namespace jc {
             return t == TokenType::IF || t == TokenType::ELSE ||
                 t == TokenType::WHILE || t == TokenType::FOR ||
                 t == TokenType::BREAK || t == TokenType::CONTINUE ||
-                t == TokenType::RETURN || t == TokenType::LOCAL ||
+                t == TokenType::RETURN || t == TokenType::YIELD ||
+                t == TokenType::AWAIT || t == TokenType::SPAWN ||
+                t == TokenType::LOCAL ||
                 t == TokenType::CONST || t == TokenType::DELETE ||
                 t == TokenType::IN || t == TokenType::IS || t == TokenType::AS ||
                 t == TokenType::THROW || t == TokenType::TRY ||  // ★

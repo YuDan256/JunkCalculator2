@@ -347,6 +347,9 @@ namespace lsp {
     void TypeInferrer::visitBreakExpr(BreakExpr* e) {
         if (e->value) inferExpr(e->value.get());
     }
+    void TypeInferrer::visitYieldExpr(YieldExpr* e) { if (e->value) infer(e->value.get()); }
+    void TypeInferrer::visitAwaitExpr(AwaitExpr* e) { infer(e->value.get()); }
+    void TypeInferrer::visitSpawnExpr(SpawnExpr* e) { infer(e->body.get()); }
     void TypeInferrer::visitReturnExpr(ReturnExpr* e) {
         if (e->value) e->value->accept(*this);
     }

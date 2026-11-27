@@ -2465,6 +2465,18 @@ void IRBuilder::visitIfExpr(IfExpr* expr) {
     }
 }
 
+void IRBuilder::visitYieldExpr(YieldExpr*) {
+    error("Syntax Error: coroutine runtime is not available yet.");
+}
+
+void IRBuilder::visitAwaitExpr(AwaitExpr*) {
+    error("Syntax Error: coroutine runtime is not available yet.");
+}
+
+void IRBuilder::visitSpawnExpr(SpawnExpr*) {
+    error("Syntax Error: coroutine runtime is not available yet.");
+}
+
 void IRBuilder::visitReturnExpr(ReturnExpr* expr) {
     IRNode* retVal = nullptr;
     if (expr->value) {

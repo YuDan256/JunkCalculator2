@@ -535,6 +535,9 @@ void NameResolver::visitImportExpr(ImportExpr* e) { handleImport(e); }
         if (e->body) e->body->accept(*this);
         leaveScope();
     }
+    void NameResolver::visitYieldExpr(YieldExpr* e) { if (e->value) resolve(e->value.get()); }
+    void NameResolver::visitAwaitExpr(AwaitExpr* e) { resolve(e->value.get()); }
+    void NameResolver::visitSpawnExpr(SpawnExpr* e) { resolve(e->body.get()); }
     void NameResolver::visitReturnExpr(ReturnExpr* e) {
         if (e->value) e->value->accept(*this);
     }

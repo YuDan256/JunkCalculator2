@@ -200,6 +200,9 @@ public:
     void visitBreakExpr(BreakExpr* expr) override;
     void visitContinueExpr(ContinueExpr* expr) override;
     void visitReturnExpr(ReturnExpr* expr) override;
+    void visitYieldExpr(YieldExpr* expr) override;
+    void visitAwaitExpr(AwaitExpr* expr) override;
+    void visitSpawnExpr(SpawnExpr* expr) override;
     void visitIndexAccess(IndexAccess* expr) override;
     void visitIndexAssign(IndexAssign* expr) override;
     void visitLocalDecl(LocalDecl* expr) override;

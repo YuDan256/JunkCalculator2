@@ -82,6 +82,9 @@ namespace jc {
     struct BreakExpr;      // ★ 新增
     struct ContinueExpr;   // ★ 新增
     struct ReturnExpr;
+    struct YieldExpr;
+    struct AwaitExpr;
+    struct SpawnExpr;
     struct LocalDecl;        // ★ 新增
     struct RefDecl;
     struct StateDecl;        // ★ 新增
@@ -230,6 +233,9 @@ struct IncludeExpr;
         virtual void visitBreakExpr(BreakExpr* expr) = 0;
         virtual void visitContinueExpr(ContinueExpr* expr) = 0;
         virtual void visitReturnExpr(ReturnExpr* expr) = 0;
+        virtual void visitYieldExpr(YieldExpr* expr) = 0;
+        virtual void visitAwaitExpr(AwaitExpr* expr) = 0;
+        virtual void visitSpawnExpr(SpawnExpr* expr) = 0;
         virtual void visitIndexAccess(IndexAccess* expr) = 0;
         virtual void visitIndexAssign(IndexAssign* expr) = 0;
         virtual void visitLocalDecl(LocalDecl* expr) = 0;
@@ -471,6 +477,31 @@ struct IncludeExpr;
             : keyword(std::move(keyword)), value(std::move(value)) {
         }
         void accept(ExprVisitor& visitor) override { visitor.visitReturnExpr(this); }
+    };
+
+    struct YieldExpr : public Expr {
+        Token keyword;
+        std::unique_ptr<Expr> value; // nullptr for bare yield
+        bool delegate = false;       // yield ...inner
+        YieldExpr(Token keyword, std::unique_ptr<Expr> value, bool delegate = false)
+            : keyword(std::move(keyword)), value(std::move(value)), delegate(delegate) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitYieldExpr(this); }
+    };
+
+    struct AwaitExpr : public Expr {
+        Token keyword;
+        std::unique_ptr<Expr> value;
+        AwaitExpr(Token keyword, std::unique_ptr<Expr> value)
+            : keyword(std::move(keyword)), value(std::move(value)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitAwaitExpr(this); }
+    };
+
+    struct SpawnExpr : public Expr {
+        Token keyword;
+        std::unique_ptr<Expr> body;
+        SpawnExpr(Token keyword, std::unique_ptr<Expr> body)
+            : keyword(std::move(keyword)), body(std::move(body)) {}
+        void accept(ExprVisitor& visitor) override { visitor.visitSpawnExpr(this); }
     };
 
     struct RefDecl : public Expr {

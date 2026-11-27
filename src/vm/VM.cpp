@@ -5174,8 +5174,25 @@ Value VM::execute(const Chunk& mainChunk, int localCount, const std::string& sou
     profileFrameStart(&mainFrame);
     frames[frameCount++] = mainFrame;
 
+    auto* mainTask = GcHeap::get().allocate<ObjTask>();
+    auto* mainTaskState = new TaskState();
+    mainTaskState->started = true;
+    mainTaskState->label = "<script>";
+    mainTask->state = mainTaskState;
+    GcObjGuard mainTaskGuard(mainTask);
+    runningTask = mainTask;
+    taskRootDepth = targetDepth;
+    taskYielded = false;
+    taskYieldValue = Value::none();
+
     try {
         Value res = run(targetDepth);
+        while (taskYielded && !mainTaskState->done) {
+            taskYielded = false;
+            resumeTask(mainTask, false, Value::none());
+        }
+        if (mainTaskState->done) res = mainTaskState->result;
+        runningTask = nullptr;
         frames[frameCount].selfContext = Value::none();
         frames[frameCount].classContext = Value::none();
         frames[frameCount].jitReturnSlot = Value::none();

@@ -1003,9 +1003,6 @@ namespace jc {
     std::unique_ptr<Expr> Parser::unary() {
         if (match({ TokenType::YIELD })) {
             Token yieldTok = previous();
-            if (yieldAllowedDepth == 0) {
-                JC2_THROW(SyntaxError, "Parser Error: 'yield' is only allowed inside a function body.");
-            }
             if (!functionYieldCounts.empty()) functionYieldCounts.back()++;
             bool delegate = match({ TokenType::ELLIPSIS });
             std::unique_ptr<Expr> value;

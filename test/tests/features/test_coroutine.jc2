@@ -1,28 +1,23 @@
 // ═══════════════════════════════════════════════════════════════
-// Coroutines: yield/resume/send/for-in
+// Coroutines: spawn/yield execution bodies
 // ═══════════════════════════════════════════════════════════════
 
 {
-test_coroutine_basic() = {
+test_task_basic() = {
     f() = {
         local sent = yield 1
         yield sent + 10
         return 99
     }
-    c = f()
-    assert(c.resume() == 1, "first yield")
-    assert(c.send(5) == 15, "send value")
-    caught = false
-    try {
-        c.resume()
-    } catch (e) {
-        caught = true
-    }
-    assert(caught, "completed coroutine must raise StopIteration")
+    job = spawn f()
+    assert(job.resume() == 1, "first yield")
+    assert(job.resume(5) == 15, "resume send value")
+    assert(job.join() == 99, "join result")
+    assert(!job.isAlive(), "finished task is not alive")
 }
-test_coroutine_basic()
+test_task_basic()
 
-test_coroutine_for() = {
+test_task_for() = {
     rangeLike(n) = {
         local i = 0
         while (i < n) {
@@ -30,119 +25,39 @@ test_coroutine_for() = {
             i += 1
         }
     }
+    job = spawn rangeLike(3)
     out = @[]
-    for (x in rangeLike(3)) out.push(x)
-    assert(out == @[0, 1, 2], "for-in over coroutine")
+    while (job.isAlive()) {
+        local v = job.resume()
+        if (job.isAlive()) out.push(v)
+    }
+    assert(out == @[0, 1, 2], "manual iteration over task yields")
 }
-test_coroutine_for()
+test_task_for()
 
-test_coroutine_conditional_yield() = {
+test_task_conditional_yield() = {
     maybe(x) = {
         if (x) yield 1
         return 2
     }
-    c = maybe(true)
-    assert(c.resume() == 1, "conditional yield")
-    assert(maybe(false) == 2, "non-yielding path returns a value")
+    job = spawn maybe(true)
+    assert(job.resume() == 1, "conditional yield")
+    assert(job.join() == 2, "conditional join")
+
+    direct = spawn maybe(false)
+    assert(direct.join() == 2, "non-yielding task result")
 }
-test_coroutine_conditional_yield()
-test_coroutine_lifecycle() = {
-    f() = {
+test_task_conditional_yield()
+
+test_task_cancel() = {
+    t = spawn {
         yield 1
         yield 2
     }
-    c = f()
-    assert(!c.done(), "new coroutine is not done")
-    assert(c.resume() == 1, "first value")
-    c.close()
-    assert(c.done(), "close marks done")
-    assert(c.closed(), "close sets closed")
-    assert(!c.failed(), "close is not failure")
-    caught = false
-    try {
-        c.resume()
-    } catch (e) {
-        caught = true
-    }
-    assert(caught, "closed coroutine raises StopIteration")
-}
-test_coroutine_lifecycle()
-test_coroutine_task() = {
-    inner() = {
-        yield 1
-        return 42
-    }
-    job = spawn inner()
-    assert(job.resume() == 1, "task first yield")
-    assert(job.join() == 42, "task join result")
-}
-test_coroutine_task()
-test_coroutine_spawn() = {
-    t = spawn {
-        return 7
-    }
-    assert(t.join() == 7, "spawn task result")
-}
-test_coroutine_spawn()
-test_coroutine_delegate() = {
-    inner() = {
-        yield 1
-        yield 2
-        return 9
-    }
-    outer() = {
-        local x = yield ...inner()
-        return x + 1
-    }
-    o = outer()
-    assert(o.resume() == 1, "delegated first yield")
-    assert(o.resume() == 2, "delegated second yield")
-    caught = false
-    try {
-        o.resume()
-    } catch (e) {
-        caught = true
-    }
-    assert(caught, "delegation completes")
-    assert(o.result() == 10, "delegation return value")
-}
-test_coroutine_delegate()
-test_coroutine_throw() = {
-    f() = {
-        yield 1
-        return 2
-    }
-    c = f()
-    assert(c.resume() == 1, "throw handle")
-    caught = false
-    firstMessage = ""
-    try {
-        c.throw("boom")
-    } catch (e) {
-        caught = true
-        firstMessage = e.message
-    }
-    assert(caught, "throw injects an error")
-    assert(c.done(), "failed coroutine is terminal")
-    assert(c.failed(), "failed flag")
-    assert(!c.closed(), "failed is not closed")
-    secondMessage = ""
-    try {
-        c.resume()
-    } catch (e) {
-        secondMessage = e.message
-    }
-    assert(secondMessage == firstMessage, "failed coroutine rethrows original error")
-    assert(c.error() != none, "failed coroutine keeps error")
-}
-test_coroutine_throw()
-test_coroutine_task_lifecycle() = {
-    t = spawn {
-        return 11
-    }
-    assert(!t.done(), "new task not done")
+    assert(t.isAlive(), "new task alive")
+    assert(t.resume() == 1, "cancel first yield")
     t.cancel()
-    assert(t.done(), "cancelled task is done")
+    assert(!t.isAlive(), "cancelled task not alive")
     caught = false
     try {
         t.join()
@@ -151,85 +66,31 @@ test_coroutine_task_lifecycle() = {
     }
     assert(caught, "join cancelled task raises")
 }
-test_coroutine_task_lifecycle()
-test_coroutine_gc() = {
-    import sys
-    f() = {
-        local payload = @[10, 20, 30]
-        local sent = yield payload[0]
-        return payload[1] + sent
+test_task_cancel()
+
+test_task_spawn_block() = {
+    t = spawn {
+        return 7
     }
-    c = f()
-    assert(c.resume() == 10, "gc stress first value")
-    sys.gc()
-    sys.gc()
-    caught = false
-    try {
-        c.send(5)
-    } catch (e) {
-        caught = true
-    }
-    assert(caught, "gc stress completion")
-    assert(c.result() == 25, "gc preserves suspended registers")
+    assert(t.join() == 7, "spawn block result")
 }
-test_coroutine_gc()
-test_coroutine_close_defer() = {
-    events = @[]
-    f() = {
-        defer events.push("defer")
+test_task_spawn_block()
+
+test_task_nested_body() = {
+    inner() = {
         yield 1
-        events.push("body")
     }
-    c = f()
-    assert(c.resume() == 1, "close defer first value")
-    c.close()
-    assert(events == @["defer"], "close runs defer without resuming body")
-}
-test_coroutine_close_defer()
-test_coroutine_type_values() = {
-    f() = { yield 1 }
-    c = f()
-    assert(type(c) == coroutine, "coroutine builtin type")
-    assert(str(c) == "<coroutine>", "coroutine representation")
-    t = spawn { return 1 }
-    assert(type(t) == task, "task builtin type")
-    assert(str(t) == "<task>", "task representation")
-}
-test_coroutine_type_values()
-test_coroutine_try_across_yield() = {
-    f() = {
-        try {
-            yield 1
-            yield 2
-        } catch (e) {
-            return "caught"
-        }
-        return "no"
+    outer() = {
+        inner()
+        return 2
     }
-    c = f()
-    assert(c.resume() == 1, "try across yield first")
-    caught = false
-    try {
-        c.throw("x")
-    } catch (e) {
-        caught = true
-    }
-    assert(caught, "throw completes the coroutine")
-    assert(c.result() == "caught", "catch block runs after resume")
+    job = spawn outer()
+    assert(job.resume() == 1, "nested yield suspends whole body")
+    assert(job.join() == 2, "nested body resumes")
 }
-test_coroutine_try_across_yield()
-test_coroutine_jit_deopt() = {
-    f() = { yield 1 }
-    local i = 0
-    while (i < 1100) {
-        c = f()
-        c.close()
-        i += 1
-    }
-    assert(!__dbg_is_jitted(f), "coroutine functions must deopt to interpreter")
-}
-test_coroutine_jit_deopt()
-test_coroutine_nested_join() = {
+test_task_nested_body()
+
+test_task_nested_join() = {
     inner() = {
         yield 1
         return 20
@@ -238,13 +99,16 @@ test_coroutine_nested_join() = {
         local sub = spawn inner()
         return sub.join() + 2
     }
-    assert(t.join() == 22, "nested task join inside spawn")
+    assert(t.join() == 22, "nested task join")
 }
-test_coroutine_nested_join()
-test_coroutine_task_failure() = {
+test_task_nested_join()
+
+test_task_failure() = {
     t = spawn {
+        yield 1
         throw "task-boom"
     }
+    assert(t.resume() == 1, "failure first yield")
     firstMessage = ""
     try {
         t.join()
@@ -263,5 +127,38 @@ test_coroutine_task_failure() = {
     assert(secondMessage == firstMessage, "failed task rethrows original error")
     assert(t.error() != none, "failed task keeps error")
 }
-test_coroutine_task_failure()
+test_task_failure()
+
+test_task_gc() = {
+    import sys
+    f() = {
+        local payload = @[10, 20, 30]
+        local sent = yield payload[0]
+        return payload[1] + sent
+    }
+    job = spawn f()
+    assert(job.resume() == 10, "gc stress first value")
+    sys.gc()
+    sys.gc()
+    assert(job.resume(5) == 25, "gc preserves suspended frames")
+}
+test_task_gc()
+
+test_task_type_values() = {
+    t = spawn { return 1 }
+    assert(type(t) == task, "task builtin type")
+    assert(str(t) == "<task>", "task representation")
+}
+test_task_type_values()
+
+test_task_jit_deopt() = {
+    f() = { yield 1 }
+    local i = 0
+    while (i < 1100) {
+        f()
+        i += 1
+    }
+    assert(!__dbg_is_jitted(f), "task functions must deopt to interpreter")
+}
+test_task_jit_deopt()
 }

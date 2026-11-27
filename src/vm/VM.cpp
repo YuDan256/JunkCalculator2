@@ -2126,6 +2126,17 @@ Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     if (state->started && send && state->yieldRegister >= 0) {
         registers[base + state->yieldRegister] = value;
     }
+    for (const auto& saved : state->handlers) {
+        ExceptionHandler h;
+        h.frameIndex = frameCount - 1;
+        h.ip = saved.ip;
+        h.registerBase = base;
+        h.errReg = saved.errReg;
+        h.deferBase = saved.deferBase;
+        h.silent = saved.silent;
+        h.includeStackDepth = saved.includeStackDepth;
+        exceptionHandlers.push_back(h);
+    }
     state->started = true;
 
     resumingCoroutine = coroutine;
@@ -9487,6 +9498,12 @@ Value VM::run(int targetFrameDepth) {
                     for (int i = 0; i < count; ++i) {
                         state->registers[i] = registers[frame->registerBase + i];
                     }
+                    state->handlers.clear();
+                    for (const auto& h : exceptionHandlers) {
+                        if (h.frameIndex == frameCount - 1) {
+                            state->handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
+                        }
+                    }
                     frame->ip = ip;
                     closeUpvalues(frame->registerBase);
                     while (!exceptionHandlers.empty() &&
@@ -9533,6 +9550,12 @@ Value VM::run(int targetFrameDepth) {
                 state->registers.resize(regCount);
                 for (int i = 0; i < regCount; ++i) {
                     state->registers[i] = registers[frame->registerBase + i];
+                }
+                state->handlers.clear();
+                for (const auto& h : exceptionHandlers) {
+                    if (h.frameIndex == frameCount - 1) {
+                        state->handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
+                    }
                 }
                 auto* coroutine = GcHeap::get().allocate<ObjCoroutine>();
                 coroutine->state = state;

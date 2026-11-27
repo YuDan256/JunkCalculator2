@@ -181,4 +181,26 @@ test_coroutine_type_values() = {
     assert(type(t) == task, "task builtin type")
 }
 test_coroutine_type_values()
+test_coroutine_try_across_yield() = {
+    f() = {
+        try {
+            yield 1
+            yield 2
+        } catch (e) {
+            return "caught"
+        }
+        return "no"
+    }
+    c = f()
+    assert(c.resume() == 1, "try across yield first")
+    caught = false
+    try {
+        c.throw("x")
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "throw completes the coroutine")
+    assert(c.result() == "caught", "catch block runs after resume")
+}
+test_coroutine_try_across_yield()
 }

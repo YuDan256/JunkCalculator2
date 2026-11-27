@@ -34,6 +34,14 @@ enum class ProtocolContinuation : uint8_t {
     ComparePredicate,
 };
 
+struct CoroutineExceptionHandler {
+    int ip = 0;
+    int errReg = 0;
+    int deferBase = 0;
+    bool silent = false;
+    size_t includeStackDepth = 0;
+};
+
 // Snapshot of a suspended bytecode activation. Coroutine registers are copied
 // out of the shared VM window so the caller can keep running and reuse its own
 // slots while the coroutine is suspended.
@@ -52,6 +60,7 @@ struct CoroutineState {
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none();
     std::vector<Value> registers;
+    std::vector<CoroutineExceptionHandler> handlers;
     int yieldRegister = 0;
     bool hasPendingYield = false;
     Value pendingYield = Value::none();

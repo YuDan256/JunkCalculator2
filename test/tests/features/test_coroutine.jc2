@@ -139,4 +139,25 @@ test_coroutine_task_lifecycle() = {
     assert(caught, "await cancelled task raises")
 }
 test_coroutine_task_lifecycle()
+test_coroutine_gc() = {
+    import sys
+    f() = {
+        local payload = @[10, 20, 30]
+        local sent = yield payload[0]
+        return payload[1] + sent
+    }
+    c = f()
+    assert(c.resume() == 10, "gc stress first value")
+    sys.gc()
+    sys.gc()
+    caught = false
+    try {
+        c.send(5)
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "gc stress completion")
+    assert(c.result() == 25, "gc preserves suspended registers")
+}
+test_coroutine_gc()
 }

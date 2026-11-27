@@ -4869,16 +4869,6 @@ VM::VM() {
         return Value(getJitEntryPoint(closure->compiledFnIndex) != nullptr);
     };
     builtinArity["__dbg_is_jitted"] = {1};
-
-    nativeBuiltins["__coroutine_resume"] = [this](const std::vector<Value>& args) -> Value {
-        if (args.empty() || !args[0].isCoroutine()) {
-            JC2_THROW(TypeError, "Expected a coroutine.");
-        }
-        bool send = args.size() > 1;
-        Value value = send ? args[1] : Value::none();
-        return resumeCoroutine(static_cast<ObjCoroutine*>(args[0].asObj()), send, value);
-    };
-    builtinArity["__coroutine_resume"] = {1, 2};
 }
 
 VM::~VM() {

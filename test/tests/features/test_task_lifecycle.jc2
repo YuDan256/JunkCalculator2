@@ -207,4 +207,24 @@ assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
     assertEq(job.resume(), "body", "T10.return_value")
 }
 
+// T11: cancel while the task is suspended inside defer
+{
+    const cancelLog = @[]
+    job = spawn {
+        defer {
+            cancelLog.push("defer_start")
+            yield "defer_pause"
+            cancelLog.push("defer_end")
+        }
+        yield "body"
+    }
+    assertEq(job.resume(), "body", "T11.body")
+    assertEq(job.resume(), "defer_pause", "T11.defer_pause")
+    assertEq(cancelLog, @["defer_start"], "T11.defer_started")
+    job.cancel()
+    assertEq(job.isAlive(), false, "T11.cancelled")
+    assertEq(cancelLog, @["defer_start"], "T11.cancel_does_not_resume_defer")
+    assertThrows(() => job.join(), "T11.join_cancelled")
+}
+
 print("ALL TASK TESTS PASSED!")

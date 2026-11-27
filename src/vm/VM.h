@@ -69,10 +69,26 @@ struct CoroutineState {
     Value error = Value::none();
 };
 
+struct TaskFrameSnapshot {
+    const CompiledFunction* function = nullptr;
+    const Chunk* chunk = nullptr;
+    int ip = 0;
+    int returnRegister = -1;
+    int deferBase = 0;
+    ObjClosure* closure = nullptr;
+    Value selfContext = Value::none();
+    Value classContext = Value::none();
+    Value jitReturnSlot = Value::none();
+    std::vector<Value> registers;
+    std::vector<CoroutineExceptionHandler> handlers;
+    int yieldRegister = -1;
+};
+
 struct TaskState {
     ObjCoroutine* coroutine = nullptr;
     ObjClosure* closure = nullptr;
     std::string label;
+    std::vector<TaskFrameSnapshot> frames;
     bool started = false;
     bool done = false;
     bool failed = false;
@@ -157,6 +173,10 @@ private:
 
     Value* registers = nullptr;
     ObjCoroutine* resumingCoroutine = nullptr;
+    ObjTask* runningTask = nullptr;
+    int taskRootDepth = 0;
+    bool taskYielded = false;
+    Value taskYieldValue = Value::none();
     int coroutineResumeDepth = 0;
     Value coroutineYieldValue = Value::none();
     bool coroutineYielded = false;
@@ -353,6 +373,8 @@ public:
     Value resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value);
     Value resumeTask(ObjTask* task, bool send, Value value);
     Value joinTask(ObjTask* task);
+    void suspendTask(ObjTask* task, const Value& yielded, int yieldRegister);
+    void restoreTaskFrames(ObjTask* task);
     Value throwCoroutine(ObjCoroutine* coroutine, Value error);
     void closeCoroutine(ObjCoroutine* coroutine);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。

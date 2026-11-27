@@ -2072,74 +2072,162 @@ Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
     return resumeCoroutine(coroutine, false, Value::none());
 }
 
+void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state) return;
+    int root = taskRootDepth;
+    int rootBase = frames[root].registerBase;
+    state->frames.clear();
+    for (int i = root; i < frameCount; ++i) {
+        CallFrame* f = &frames[i];
+        TaskFrameSnapshot snap;
+        snap.function = f->function;
+        snap.chunk = f->chunk;
+        snap.ip = f->ip;
+        snap.returnRegister = f->returnRegister;
+        snap.deferBase = f->deferBase;
+        snap.closure = f->closure;
+        snap.selfContext = f->selfContext;
+        snap.classContext = f->classContext;
+        snap.jitReturnSlot = f->jitReturnSlot;
+        int count = f->function->localCount + f->function->refCount + 64;
+        snap.registers.resize(count);
+        for (int k = 0; k < count; ++k) {
+            snap.registers[k] = registers[f->registerBase + k];
+        }
+        for (const auto& h : exceptionHandlers) {
+            if (h.frameIndex == i) {
+                snap.handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
+            }
+        }
+        snap.yieldRegister = (i == frameCount - 1) ? yieldRegister : -1;
+        state->frames.push_back(std::move(snap));
+    }
+    closeUpvalues(rootBase);
+    for (int i = frameCount - 1; i >= root; --i) {
+        CallFrame* f = &frames[i];
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= i) {
+            exceptionHandlers.pop_back();
+        }
+        int clearBase = f->registerBase;
+        int clearCount = f->function->localCount + f->function->refCount;
+        for (int k = 0; k < clearCount; ++k) registers[clearBase + k] = Value::none();
+        f->selfContext = Value::none();
+        f->classContext = Value::none();
+        f->jitReturnSlot = Value::none();
+        frameCount--;
+    }
+    taskYieldValue = yielded;
+    taskYielded = true;
+}
+
+void VM::restoreTaskFrames(ObjTask* task) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state) return;
+    int rootBase = 0;
+    if (frameCount > 0) {
+        CallFrame* current = &frames[frameCount - 1];
+        rootBase = current->registerBase + current->function->localCount + current->function->refCount;
+    }
+    taskRootDepth = frameCount;
+    for (auto& snap : state->frames) {
+        if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
+        CallFrame& f = frames[frameCount];
+        f.function = snap.function;
+        f.chunk = snap.chunk;
+        f.ip = snap.ip;
+        f.registerBase = rootBase;
+        f.returnRegister = snap.returnRegister;
+        f.closure = snap.closure;
+        f.refParamsBase = -1;
+        f.deferBase = snap.deferBase;
+        f.selfContext = snap.selfContext;
+        f.classContext = snap.classContext;
+        f.jitReturnSlot = snap.jitReturnSlot;
+        f.coroutineResumeFrame = false;
+        int count = static_cast<int>(snap.registers.size());
+        for (int k = 0; k < count; ++k) registers[rootBase + k] = snap.registers[k];
+        for (const auto& saved : snap.handlers) {
+            ExceptionHandler h;
+            h.frameIndex = frameCount;
+            h.ip = saved.ip;
+            h.registerBase = rootBase;
+            h.errReg = saved.errReg;
+            h.deferBase = saved.deferBase;
+            h.silent = saved.silent;
+            h.includeStackDepth = saved.includeStackDepth;
+            exceptionHandlers.push_back(h);
+        }
+        rootBase = f.registerBase + f.function->localCount + f.function->refCount;
+        frameCount++;
+    }
+}
+
 Value VM::resumeTask(ObjTask* task, bool send, Value value) {
     auto* state = static_cast<TaskState*>(task->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid task state.");
     if (state->failed) throw ValueException(state->error);
     if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
     if (state->done) JC2_THROW(RuntimeError, "task has already finished.");
-    bool initial = !state->started;
-    if (!state->started) {
-        state->started = true;
-        if (!state->closure) JC2_THROW(RuntimeError, "Task has no body.");
-        ObjClosure* closure = state->closure;
-        state->closure = nullptr;
-        Invocation inv;
-        inv.fnIdx = closure->compiledFnIndex;
-        inv.closure = closure;
-        inv.sink.kind = ReturnSink::Kind::Value;
-        try {
-            Value result = invoke(inv);
-            if (result.isCoroutine()) {
-                state->coroutine = static_cast<ObjCoroutine*>(result.asObj());
-            } else {
-                state->done = true;
-                state->result = result;
-                return result;
-            }
-        } catch (const ValueException& ex) {
-            state->failed = true;
-            state->done = true;
-            state->error = ex.val;
-            throw;
-        } catch (const Jc2Error& ex) {
-            state->failed = true;
-            state->done = true;
-            state->error = Value(ex.what());
-            throw;
-        } catch (...) {
-            state->failed = true;
-            state->done = true;
-            throw;
-        }
-    }
+
+    taskYielded = false;
+    taskYieldValue = Value::none();
+    runningTask = task;
+    Value outcome;
     try {
-        return resumeCoroutine(state->coroutine, initial ? false : send, value);
+        if (!state->started) {
+            state->started = true;
+            if (!state->closure) JC2_THROW(RuntimeError, "Task has no body.");
+            Invocation inv;
+            inv.fnIdx = state->closure->compiledFnIndex;
+            inv.closure = state->closure;
+            inv.sink.kind = ReturnSink::Kind::Value;
+            state->closure = nullptr;
+            int depth = pushInvocationFrame(inv);
+            taskRootDepth = depth;
+            outcome = run(depth);
+        } else {
+            restoreTaskFrames(task);
+            if (send && !state->frames.empty()) {
+                int top = static_cast<int>(state->frames.size()) - 1;
+                int yreg = state->frames[top].yieldRegister;
+                if (yreg >= 0) {
+                    CallFrame* f = &frames[frameCount - 1];
+                    registers[f->registerBase + yreg] = value;
+                }
+            }
+            outcome = run(taskRootDepth);
+        }
     } catch (const ValueException& ex) {
-        if (!isStopIteration(ex.val)) {
-            state->failed = true;
-            state->done = true;
-            state->error = ex.val;
-            throw;
-        }
-        auto* cs = static_cast<CoroutineState*>(state->coroutine->state);
+        runningTask = nullptr;
+        state->failed = true;
         state->done = true;
-        state->result = cs ? cs->result : Value::none();
-        state->coroutine = nullptr;
-        return state->result;
+        state->error = ex.val;
+        state->frames.clear();
+        throw;
     } catch (const Jc2Error& ex) {
-        if (!isStopIteration(ex)) {
-            state->failed = true;
-            state->done = true;
-            state->error = Value(ex.what());
-            throw;
-        }
-        auto* cs = static_cast<CoroutineState*>(state->coroutine->state);
+        runningTask = nullptr;
+        state->failed = true;
         state->done = true;
-        state->result = cs ? cs->result : Value::none();
-        state->coroutine = nullptr;
-        return state->result;
+        state->error = Value(ex.what());
+        state->frames.clear();
+        throw;
+    } catch (...) {
+        runningTask = nullptr;
+        state->failed = true;
+        state->done = true;
+        state->frames.clear();
+        throw;
     }
+    runningTask = nullptr;
+    if (taskYielded) {
+        taskYielded = false;
+        return taskYieldValue;
+    }
+    state->done = true;
+    state->result = outcome;
+    state->frames.clear();
+    return outcome;
 }
 
 Value VM::joinTask(ObjTask* task) {
@@ -2152,7 +2240,6 @@ Value VM::joinTask(ObjTask* task) {
     if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
     return state->result;
 }
-
 Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
@@ -4201,6 +4288,14 @@ VM::VM() {
             auto* state = static_cast<TaskState*>(t->state);
             if (!state) return;
             if (state->coroutine) GcHeap::get().markObj(state->coroutine);
+            if (state->closure) GcHeap::get().markObj(state->closure);
+            for (auto& frame : state->frames) {
+                if (frame.closure) GcHeap::get().markObj(frame.closure);
+                GcHeap::get().markValue(frame.selfContext);
+                GcHeap::get().markValue(frame.classContext);
+                GcHeap::get().markValue(frame.jitReturnSlot);
+                for (auto& v : frame.registers) GcHeap::get().markValue(v);
+            }
             GcHeap::get().markValue(state->result);
             GcHeap::get().markValue(state->error);
         }
@@ -9576,6 +9671,11 @@ Value VM::run(int targetFrameDepth) {
                     }
                 } else {
                     yielded = getReg(b);
+                }
+                if (runningTask && frameCount > taskRootDepth) {
+                    frame->ip = ip;
+                    suspendTask(runningTask, yielded, a);
+                    return yielded;
                 }
                 if (frame->coroutineResumeFrame && resumingCoroutine) {
                     auto* state = static_cast<CoroutineState*>(resumingCoroutine->state);

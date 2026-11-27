@@ -29,6 +29,7 @@
       "    type        First-class types, type algebra, reflection, type predicates",
       "    sys         RNG, prime engine, workspace, scripting, colors",
       "    control     if/else, while, for, for-in, match, break/continue/return",
+      "    task        Tasks: spawn, yield, task handles",
       "    match       Pattern matching, deep destructuring, type guards",
       "    scope       auto-local, global, const, delete, ref, closures",
       "    string      String functions, indexing, slicing, escape sequences",
@@ -48,6 +49,7 @@
       "  Language Keywords (type \"/help <keyword>\")",
       "  ────────────────────────────────────────────────────────────────────",
       "    if  else  while  for  in  is  as  break  continue  return  match  defer",
+      "    spawn  yield",
       "    class  trait  with  extends  super  self  namespace  enum  ref  state  const  local  static  delete",
       "    try  catch  throw  import  include  true  false  none  macro  syntax  quote",
       "",
@@ -2796,6 +2798,81 @@
       "    or set element, and you can iterate over it:",
       "      for (@[name, val] in State) { print(name, val) }"
     ],
+    "task": [
+      "═══ Tasks: spawn / yield ═══",
+      "",
+      "  Execution Model",
+      "  ──────────────────────",
+      "    An ordinary call f() runs synchronously in the current execution body.",
+      "    spawn creates a new task execution body and returns a task handle.",
+      "    yield suspends the WHOLE current execution body, not just the current",
+      "    function. Nested calls therefore suspend together.",
+      "    The top-level script is an implicit main task; top-level yield is legal",
+      "    and is resumed by the scheduler with none.",
+      "",
+      "  spawn Syntax",
+      "  ──────────────────────",
+      "    spawn call",
+      "    spawn label call",
+      "    spawn { body }",
+      "    spawn label { body }",
+      "",
+      "    label is an optional non-empty STRING or RSTRING literal.",
+      "    It is debug metadata only: no variable, no scope entry, no shadowing.",
+      "    f-strings, variables, and empty strings are rejected.",
+      "",
+      "    job = spawn fetch(url)",
+      "    job = spawn 'fetcher' fetch(url)",
+      "    job = spawn { return 1 }",
+      "    worker = spawn r'worker\\io' { ... }",
+      "",
+      "    A task is lazy: the body starts on the first resume() or join().",
+      "",
+      "  Task Handle",
+      "  ──────────────────────",
+      "    job.resume(value)   Continue; value becomes the previous yield result.",
+      "                        Returns the yielded value, or the final result if",
+      "                        the task completes during this call.",
+      "    job.join()          Drive to completion and return the final result.",
+      "                        Rethrows an uncaught task error or cancellation.",
+      "    job.cancel()        Request cancellation; a suspended task becomes",
+      "                        CANCELLED and join() raises.",
+      "    job.isAlive()       true while PENDING, RUNNING, or SUSPENDED.",
+      "",
+      "  yield",
+      "  ──────────────────────",
+      "    yield",
+      "    yield expression",
+      "    local x = yield expression",
+      "",
+      "    yield expression hands expression to the resumer.",
+      "    After resume(value), the yield expression evaluates to value.",
+      "    Without a value it evaluates to none.",
+      "    yield is allowed in functions, blocks, defer, catch, and at top level.",
+      "    yield itself does not run defer; scope exit, failure, and cancel do.",
+      "",
+      "  Example",
+      "  ──────────────────────",
+      "    inner() = {",
+      "        yield 1",
+      "    }",
+      "",
+      "    outer() = {",
+      "        inner()",
+      "        return 2",
+      "    }",
+      "",
+      "    job = spawn outer()",
+      "    job.resume()    // 1",
+      "    job.join()      // 2",
+      "",
+      "  Failure and Cancellation",
+      "  ──────────────────────",
+      "    An uncaught error moves the task to FAILED; join() rethrows the",
+      "    original error. A cancelled task raises when joined.",
+      "",
+      "  See also: /help spawn, /help yield, /help control"
+    ],
     "class": [
       "═══ Classes, instances, Inheritance & Operator Overloading ═══",
       "",
@@ -5293,6 +5370,46 @@
       "examples": [
         "f(x) = { if (x < 0) return -x; return x }",
         "g() = { print(\"done\"); return }"
+      ]
+    },
+    "spawn": {
+      "signature": "spawn [label] call  |  spawn [label] { body }",
+      "desc": [
+        "Creates a new task execution body and returns a task handle.",
+        "A task is lazy: its body starts on the first resume() or join().",
+        "label is an optional non-empty STRING or RSTRING literal. It is debug",
+        "metadata only; it does not create a variable or enter scope.",
+        "f-strings, variables, and empty strings are rejected as labels.",
+        "Handle methods: resume(value), join(), cancel(), isAlive().",
+        "yield inside any nested call suspends the whole task body.",
+        "See also: /help yield"
+      ],
+      "examples": [
+        "job = spawn fetch(url)",
+        "job = spawn 'fetcher' fetch(url)",
+        "job = spawn { return 1 }",
+        "job = spawn 'worker' { yield 1; return 2 }",
+        "job.resume()",
+        "job.join()",
+        "job.cancel()",
+        "job.isAlive()"
+      ]
+    },
+    "yield": {
+      "signature": "yield [expression]",
+      "desc": [
+        "Suspends the current task execution body and yields a value.",
+        "yield expression yields expression; after resume(value), the yield",
+        "expression evaluates to value. Without a value it evaluates to none.",
+        "The current body can be the implicit top-level main task.",
+        "yield is allowed in functions, blocks, defer, catch, and at top level.",
+        "yield itself does not run defers; scope exit, failure, and cancel do.",
+        "See also: /help spawn"
+      ],
+      "examples": [
+        "yield 1",
+        "local x = yield value",
+        "job = spawn { local x = yield 1; return x + 1 }"
       ]
     },
     "match": {
@@ -8585,6 +8702,9 @@
         },
         {
           "ref": "topic.control"
+        },
+        {
+          "ref": "topic.task"
         },
         {
           "ref": "topic.error"

@@ -223,6 +223,7 @@ import `1`
 
 \begin{lstlisting}
 if else while for in is as break continue return
+spawn yield
 local ref state const static delete throw try catch import include
 match macro syntax quote defer
 class trait with extends namespace enum super self
@@ -1559,6 +1560,110 @@ p(2)            // 6
 q = add(_, _, _)
 q(1, 2, 3)      // 6
 \end{lstlisting}
+
+\section{任务与 yield}
+\label{sec:tasks}
+
+\subsection{执行体模型}
+
+普通函数调用在当前执行体内同步执行。只有 \jc{spawn} 创建新的执行体。
+\jc{yield} 挂起的是当前执行体，而不是当前函数。
+
+\begin{lstlisting}
+inner() = {
+    yield 1
+}
+
+outer() = {
+    inner()
+    return 2
+}
+
+job = spawn outer()
+job.resume()    // 1
+job.join()      // 2
+\end{lstlisting}
+
+顶层脚本是一个隐式主执行体，顶层 \jc{yield} 合法；调度器以 \jc{none}
+恢复主执行体。
+
+\subsection{spawn}
+
+\begin{lstlisting}
+spawn call
+spawn label call
+spawn { body }
+spawn label { body }
+\end{lstlisting}
+
+\jc{label} 只接受普通字符串或 r 字符串，并且必须非空：
+
+\begin{lstlisting}
+job = spawn fetch(url)
+job = spawn 'fetcher' fetch(url)
+worker = spawn r'worker\io' { ... }
+\end{lstlisting}
+
+标签是句柄的调试元数据，不创建变量、不进入作用域、不参与遮蔽。
+f-string、变量和空字符串不能作为标签。
+
+\jc{spawn} 返回 \jc{task} 值。任务在创建时处于 PENDING 状态；第一次
+\jc{resume} 或 \jc{join} 才开始执行。
+
+\subsection{task 句柄}
+
+\begin{lstlisting}
+job.resume(value)
+job.join()
+job.cancel()
+job.isAlive()
+\end{lstlisting}
+
+\begin{itemize}
+  \item \jc{resume(value)}：恢复执行体；\jc{value} 成为上次 \jc{yield}
+        表达式的结果；返回本次产出的值；如果本次推进完成，返回最终结果。
+  \item \jc{join()}：推进到完成并返回最终结果；未捕获异常在此重抛。
+  \item \jc{cancel()}：请求取消；已暂停的任务进入 CANCELLED。
+  \item \jc{isAlive()}：PENDING、RUNNING、SUSPENDED 为真。
+\end{itemize}
+
+任务失败后进入 FAILED 终态，\jc{join()} 重抛原始异常；再次 \jc{join()}
+仍重抛同一异常。
+
+\subsection{yield}
+
+\begin{lstlisting}
+yield
+yield expression
+local x = yield expression
+\end{lstlisting}
+
+\jc{yield expression} 把 \jc{expression} 交给恢复方；恢复时，
+\jc{yield} 表达式的结果是 \jc{resume(value)} 传入的值，没有传值时是
+\jc{none}。\jc{yield} 可以在普通函数、块、\jc{defer}、\jc{catch} 和顶层
+出现。
+
+任务语法不包含 \jc{await}、\jc{async} 或 \jc{yield} 委托形式。
+
+\subsection{取消与 defer}
+
+\begin{lstlisting}
+work() = {
+    defer print("cleanup")
+    yield 1
+    yield 2
+}
+
+job = spawn work()
+job.resume()
+job.cancel()
+\end{lstlisting}
+
+\begin{itemize}
+  \item 正常返回、未捕获异常和取消时执行 \jc{defer}；
+  \item \jc{yield} 本身不执行 \jc{defer}；
+  \item 未被引用的任务不会因 GC 执行用户 \jc{defer}。
+\end{itemize}
 
 \section{模式与解构}
 \label{sec:patterns}

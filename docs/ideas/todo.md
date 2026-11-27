@@ -1,8 +1,23 @@
-# Dunder 显式帧与编译器遗留 TODO
+# 编译器 / VM TODO
 
-> 基线：`9cd4216`。工作区干净。解释器与 `--jit` 测试通过。
+> 基线：`917bbff5`。工作区干净。解释器与 `--jit` 测试通过。
 >
-> 本文替代更早的 `7a9cd95` 基线清单；旧行号已变化。只记录可核验的代码位置。
+> 本文是完整待办，不只包含 dunder 显式帧。旧 `7a9cd95` 清单的行号已变化，
+> 只记录可核验的代码位置。
+>
+> 包含：
+>
+> ```text
+> P0 dunder 显式帧剩余部分
+> P1 for-in 重复 IS_UNINIT
+> P1 ListPattern 元组脱糖
+> P2 合成索引 double -> int
+> P2 state 叶子重复检查
+> P3 private static / trait private static
+> P3 初始化器无限定名
+> P3 state / static 合并
+> P3 缺失测试
+> ```
 
 ## 已完成
 

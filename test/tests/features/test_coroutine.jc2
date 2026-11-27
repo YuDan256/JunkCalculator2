@@ -107,4 +107,20 @@ test_coroutine_delegate() = {
     assert(o.result() == 10, "delegation return value")
 }
 test_coroutine_delegate()
+test_coroutine_throw() = {
+    f() = {
+        yield 1
+        return 2
+    }
+    c = f()
+    assert(c.resume() == 1, "throw handle")
+    caught = false
+    try {
+        c.throw("boom")
+    } catch (e) {
+        caught = true
+    }
+    assert(caught, "throw injects an error")
+}
+test_coroutine_throw()
 }

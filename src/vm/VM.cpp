@@ -2045,6 +2045,16 @@ bool VM::evaluateTruthiness(const Value& val) {
     return val.truthy();
 }
 
+Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
+    auto* state = static_cast<CoroutineState*>(coroutine->state);
+    if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
+    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
+    state->hasPendingYield = false;
+    hasInjectedCoroutineError = true;
+    injectedCoroutineError = error;
+    return resumeCoroutine(coroutine, false, Value::none());
+}
+
 Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
     auto* state = static_cast<CoroutineState*>(coroutine->state);
     if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
@@ -5224,6 +5234,12 @@ Value VM::run(int targetFrameDepth) {
     while (true) {
         try {
             while (true) {
+                if (hasInjectedCoroutineError) {
+                    hasInjectedCoroutineError = false;
+                    Value err = injectedCoroutineError;
+                    injectedCoroutineError = Value::none();
+                    throw ValueException(err);
+                }
                 int currentLine = (ip < static_cast<int>(chunk->lines.size())) ? chunk->lines[ip] : 0;
                 if (currentLine != prevLine) {
                     prevLine = currentLine;

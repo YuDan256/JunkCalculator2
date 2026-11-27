@@ -148,6 +148,8 @@ private:
     int coroutineResumeDepth = 0;
     Value coroutineYieldValue = Value::none();
     bool coroutineYielded = false;
+    bool hasInjectedCoroutineError = false;
+    Value injectedCoroutineError = Value::none();
     bool shuttingDown = false;   // ★ shutdown() 期间：chunk 常量也要作为 GC 根
     CallFrame* frames = nullptr;
 
@@ -337,6 +339,7 @@ public:
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
     Value resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value);
+    Value throwCoroutine(ObjCoroutine* coroutine, Value error);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。
     int compareValues(const Value& a, const Value& b);
     bool hasCmpProtocol(const Value& v);

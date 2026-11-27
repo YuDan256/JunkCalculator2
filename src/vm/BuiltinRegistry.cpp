@@ -3437,6 +3437,11 @@ void BuiltinRegistry::registerArrayFunctions() {
         auto* state = static_cast<CoroutineState*>(c->state);
         return state ? state->result : Value::none();
     };
+    auto coroutineThrowFn = [](const std::vector<Value>& args) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        return VM::activeVM->throwCoroutine(static_cast<ObjCoroutine*>(self.asObj()), args[0]);
+    };
+    regMethod(VM::activeVM->coroutineProto, "throw", {"error"}, coroutineThrowFn);
     regMethod(VM::activeVM->coroutineProto, "close", {}, coroutineCloseFn);
     regMethod(VM::activeVM->coroutineProto, "done", {}, coroutineDoneFn);
     regMethod(VM::activeVM->coroutineProto, "result", {}, coroutineResultFn);

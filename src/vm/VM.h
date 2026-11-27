@@ -34,6 +34,36 @@ enum class ProtocolContinuation : uint8_t {
     ComparePredicate,
 };
 
+// Snapshot of a suspended bytecode activation. Coroutine registers are copied
+// out of the shared VM window so the caller can keep running and reuse its own
+// slots while the coroutine is suspended.
+struct CoroutineState {
+    bool started = false;
+    bool done = false;
+    bool failed = false;
+    const CompiledFunction* function = nullptr;
+    const Chunk* chunk = nullptr;
+    int ip = 0;
+    int returnRegister = 0;
+    int deferBase = 0;
+    ObjClosure* closure = nullptr;
+    Value selfContext = Value::none();
+    Value classContext = Value::none();
+    Value jitReturnSlot = Value::none();
+    std::vector<Value> registers;
+    Value result = Value::none();
+    Value error = Value::none();
+};
+
+struct TaskState {
+    ObjCoroutine* coroutine = nullptr;
+    bool done = false;
+    bool failed = false;
+    bool cancelled = false;
+    Value result = Value::none();
+    Value error = Value::none();
+};
+
 // ============================================================================
 // 寄存器机调用帧 (Register Window Frame)
 // ============================================================================

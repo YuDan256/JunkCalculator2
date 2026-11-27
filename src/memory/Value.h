@@ -98,6 +98,8 @@ namespace jc {
     struct NamespaceField;
     struct ObjTypeDef;
     struct ObjSlice;
+    struct ObjCoroutine;
+    struct ObjTask;
 
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
     ObjString* internString(const std::string& str);
@@ -422,6 +424,8 @@ namespace jc {
         bool isType() const { return isObjType(ObjType::TYPE_DEF); }
         bool isSlice() const { return isObjType(ObjType::SLICE); }
         bool isSpread() const { return isObjType(ObjType::SPREAD); }
+        bool isCoroutine() const { return isObjType(ObjType::COROUTINE); }
+        bool isTask() const { return isObjType(ObjType::TASK); }
 
         SymExpr asSymbolic() const;
 
@@ -1263,6 +1267,20 @@ namespace jc {
         bool isKeyword = false; // true = 关键字解包
         ObjSpread() { type = ObjType::SPREAD; }
         void clear() override { value = Value::none(); }
+    };
+
+    // Native coroutine/task payloads live in src/vm/Coroutine.cpp; Value.h only
+    // carries the GC-visible shell so ObjType dispatch stays in the memory layer.
+    struct ObjCoroutine : public Obj {
+        void* state = nullptr;
+        ObjCoroutine() { type = ObjType::COROUTINE; }
+        void clear() override;
+    };
+
+    struct ObjTask : public Obj {
+        void* state = nullptr;
+        ObjTask() { type = ObjType::TASK; }
+        void clear() override;
     };
 
     struct ObjSlice : public Obj {
@@ -3194,6 +3212,9 @@ namespace jc {
             case ObjType::UPVALUE: return "upvalue";
             case ObjType::TYPE_DEF: return "type";
             case ObjType::SLICE: return "slice";
+            case ObjType::SPREAD: return "spread";
+            case ObjType::COROUTINE: return "coroutine";
+            case ObjType::TASK: return "task";
         }
         return "unknown";
     }
@@ -4104,6 +4125,7 @@ inline void GcHeap::markObj(Obj* obj) {
         }
         default: break;
     }
+    if (markExtraCallback) markExtraCallback(obj);
 }
 
 inline void GcHeap::markValue(const Value& val) {

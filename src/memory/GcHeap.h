@@ -18,7 +18,7 @@ namespace jc {
         REAL_MATRIX, COMPLEX_MATRIX, SYM_MATRIX,
         LIST, DICT, SET,
         CLOSURE, CLASS, INSTANCE, SUPER_PROXY, SYMBOLIC, NAMESPACE,
-        UPVALUE, TYPE_DEF, SLICE, SPREAD
+        UPVALUE, TYPE_DEF, SLICE, SPREAD, COROUTINE, TASK
     };
 
     enum class BuiltinType : int8_t {
@@ -53,6 +53,7 @@ namespace jc {
         }
 
         std::function<void()> markCallback;
+        std::function<void(Obj*)> markExtraCallback;
         std::function<void()> sweepCallback;
         std::function<bool(Obj*)> hasFinalizerCallback;
         std::function<void(Obj*)> executeFinalizerCallback;

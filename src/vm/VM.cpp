@@ -38,6 +38,16 @@
 #include <fstream>
 
 namespace jc {
+
+void ObjCoroutine::clear() {
+    delete static_cast<CoroutineState*>(state);
+    state = nullptr;
+}
+
+void ObjTask::clear() {
+    delete static_cast<TaskState*>(state);
+    state = nullptr;
+}
     inline std::filesystem::path to_path(const std::string& utf8_str) {
         return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
     }
@@ -3959,6 +3969,28 @@ VM::VM() {
     frames = new CallFrame[MAX_FRAMES];
     globalsDataPtr = globals.data();
     
+    GcHeap::get().markExtraCallback = [](Obj* obj) {
+        if (obj->type == ObjType::COROUTINE) {
+            auto* c = static_cast<ObjCoroutine*>(obj);
+            auto* state = static_cast<CoroutineState*>(c->state);
+            if (!state) return;
+            if (state->closure) GcHeap::get().markObj(state->closure);
+            GcHeap::get().markValue(state->selfContext);
+            GcHeap::get().markValue(state->classContext);
+            GcHeap::get().markValue(state->jitReturnSlot);
+            for (auto& v : state->registers) GcHeap::get().markValue(v);
+            GcHeap::get().markValue(state->result);
+            GcHeap::get().markValue(state->error);
+        } else if (obj->type == ObjType::TASK) {
+            auto* t = static_cast<ObjTask*>(obj);
+            auto* state = static_cast<TaskState*>(t->state);
+            if (!state) return;
+            if (state->coroutine) GcHeap::get().markObj(state->coroutine);
+            GcHeap::get().markValue(state->result);
+            GcHeap::get().markValue(state->error);
+        }
+    };
+
     GcHeap::get().markCallback = [this]() {
         // 每轮 GC 重建 finalize 查找缓存（见 VM.h 的 finalizerClassCache 注释）
         finalizerClassCache.clear();

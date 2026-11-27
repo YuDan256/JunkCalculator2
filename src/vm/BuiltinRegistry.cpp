@@ -4915,6 +4915,8 @@ void BuiltinRegistry::registerFormatType() {
             else if (v.isFunctionClosure()) bt = BuiltinType::FUNC;
             else if (v.isObjType(ObjType::NAMESPACE)) bt = BuiltinType::NAMESPACE;
             else if (v.isObjType(ObjType::SLICE)) bt = BuiltinType::SLICE;
+            else if (v.isCoroutine() || v.typeName() == "coroutine") bt = BuiltinType::COROUTINE;
+            else if (v.isTask() || v.typeName() == "task") bt = BuiltinType::TASK;
             newTypes.push_back(bt);
         }
         return Value(internType(std::move(newTypes)));
@@ -6448,6 +6450,8 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("namespace_type", VM::activeVM->getBuiltinValue("namespace_type"));
             VM::activeVM->setGlobal("type", VM::activeVM->getBuiltinValue("type"));
             VM::activeVM->setGlobal("slice", VM::activeVM->getBuiltinValue("slice"));
+            VM::activeVM->setGlobal("coroutine", VM::activeVM->getBuiltinValue("coroutine"));
+            VM::activeVM->setGlobal("task", VM::activeVM->getBuiltinValue("task"));
         }
         return Value::none();
         }, {});

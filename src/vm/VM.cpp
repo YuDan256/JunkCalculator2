@@ -4289,6 +4289,8 @@ VM::VM() {
     builtinValues["namespace_type"] = makeType(BuiltinType::NAMESPACE);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
     builtinValues["slice"] = makeType(BuiltinType::SLICE);
+    builtinValues["coroutine"] = makeType(BuiltinType::COROUTINE);
+    builtinValues["task"] = makeType(BuiltinType::TASK);
 
     // ===== 可调用类型的转换回调（call/invoke 直接调用，不再查同名函数）=====
     {

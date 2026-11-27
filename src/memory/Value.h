@@ -848,6 +848,8 @@ namespace jc {
                         case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
                         case BuiltinType::TYPE_DEF: res += "type"; break;
                         case BuiltinType::SLICE: res += "slice"; break;
+                        case BuiltinType::COROUTINE: res += "coroutine"; break;
+                        case BuiltinType::TASK: res += "task"; break;
                         default: res += "unknown"; break;
                     }
                 } else {

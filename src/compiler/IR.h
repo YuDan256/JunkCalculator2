@@ -20,7 +20,6 @@ enum class IROp {
     Start,
     Return,
     Yield,
-    YieldDelegate,
     Await,
     Spawn,
     If,
@@ -162,7 +161,7 @@ inline std::string irOpToString(IROp op) {
         case IROp::Start: return "Start";
         case IROp::Return: return "Return";
         case IROp::Yield: return "Yield";
-        case IROp::YieldDelegate: return "YieldDelegate";
+
 
         case IROp::Spawn: return "Spawn";
         case IROp::If: return "If";

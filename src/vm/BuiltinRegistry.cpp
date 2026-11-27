@@ -3400,62 +3400,7 @@ void BuiltinRegistry::registerArrayFunctions() {
         }
         return expectContainer("first");
     };
-    auto coroutineResumeFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), false, Value::none());
-    };
-    auto coroutineSendFn = [](const std::vector<Value>& args) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), true, args[0]);
-    };
-    auto coroutineNextFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        return VM::activeVM->resumeCoroutine(static_cast<ObjCoroutine*>(self.asObj()), false, Value::none());
-    };
-    auto coroutineIterFn = [](const std::vector<Value>&) -> Value {
-        return helpers::nativeSelfStack.back();
-    };
-    auto coroutineCloseFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        VM::activeVM->closeCoroutine(static_cast<ObjCoroutine*>(self.asObj()));
-        return Value::none();
-    };
-    auto coroutineDoneFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* c = static_cast<ObjCoroutine*>(self.asObj());
-        auto* state = static_cast<CoroutineState*>(c->state);
-        return Value(state && state->done);
-    };
-    auto coroutineResultFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* c = static_cast<ObjCoroutine*>(self.asObj());
-        auto* state = static_cast<CoroutineState*>(c->state);
-        return state ? state->result : Value::none();
-    };
-    auto coroutineThrowFn = [](const std::vector<Value>& args) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        return VM::activeVM->throwCoroutine(static_cast<ObjCoroutine*>(self.asObj()), args[0]);
-    };
-    auto coroutineFailedFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
-        return Value(state && state->failed);
-    };
-    auto coroutineClosedFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
-        return Value(state && state->closed);
-    };
-    auto coroutineErrorFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* state = static_cast<CoroutineState*>(static_cast<ObjCoroutine*>(self.asObj())->state);
-        return (state && state->failed) ? state->error : Value::none();
-    };
-    regMethod(VM::activeVM->coroutineProto, "failed", {}, coroutineFailedFn);
-    regMethod(VM::activeVM->coroutineProto, "closed", {}, coroutineClosedFn);
-    regMethod(VM::activeVM->coroutineProto, "error", {}, coroutineErrorFn);
-    regMethod(VM::activeVM->coroutineProto, "throw", {"error"}, coroutineThrowFn);
-    regMethod(VM::activeVM->coroutineProto, "close", {}, coroutineCloseFn);
+
     auto taskDoneFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
@@ -3471,31 +3416,10 @@ void BuiltinRegistry::registerArrayFunctions() {
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
         return (state && state->failed) ? state->error : Value::none();
     };
-    regMethod(VM::activeVM->taskProto, "failed", {}, taskFailedFn);
-    regMethod(VM::activeVM->taskProto, "error", {}, taskErrorFn);
     auto taskResultFn = [](const std::vector<Value>&) -> Value {
         Value self = helpers::nativeSelfStack.back();
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
         return state ? state->result : Value::none();
-    };
-    auto taskCancelFn = [](const std::vector<Value>&) -> Value {
-        Value self = helpers::nativeSelfStack.back();
-        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
-        if (state) {
-            if (state->coroutine && !state->coroutine->state) state->coroutine = nullptr;
-            if (state->coroutine) {
-                try {
-                    VM::activeVM->throwCoroutine(state->coroutine, Value("task cancelled"));
-                } catch (...) {
-                    // cancellation is delivered at the coroutine suspension point.
-                }
-            }
-            state->cancelled = true;
-            state->done = true;
-            state->closure = nullptr;
-            state->result = Value::none();
-        }
-        return Value::none();
     };
     auto taskResumeFn = [](const std::vector<Value>& args) -> Value {
         Value self = helpers::nativeSelfStack.back();
@@ -3511,18 +3435,26 @@ void BuiltinRegistry::registerArrayFunctions() {
         auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
         return Value(state && !state->done && !state->failed && !state->cancelled);
     };
+    auto taskCancelFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        if (state) {
+            state->cancelled = true;
+            state->done = true;
+            state->closure = nullptr;
+            state->frames.clear();
+            state->result = Value::none();
+        }
+        return Value::none();
+    };
+    regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);
+    regMethod(VM::activeVM->taskProto, "failed", {}, taskFailedFn);
+    regMethod(VM::activeVM->taskProto, "error", {}, taskErrorFn);
+    regMethod(VM::activeVM->taskProto, "result", {}, taskResultFn);
     regMethod(VM::activeVM->taskProto, "resume", {"value"}, taskResumeFn, 1);
     regMethod(VM::activeVM->taskProto, "join", {}, taskJoinFn);
     regMethod(VM::activeVM->taskProto, "isAlive", {}, taskAliveFn);
-    regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);
-    regMethod(VM::activeVM->taskProto, "result", {}, taskResultFn);
     regMethod(VM::activeVM->taskProto, "cancel", {}, taskCancelFn);
-    regMethod(VM::activeVM->coroutineProto, "done", {}, coroutineDoneFn);
-    regMethod(VM::activeVM->coroutineProto, "result", {}, coroutineResultFn);
-    regMethod(VM::activeVM->coroutineProto, "__iter__", {}, coroutineIterFn);
-    regMethod(VM::activeVM->coroutineProto, "__next__", {}, coroutineNextFn);
-    regMethod(VM::activeVM->coroutineProto, "resume", {}, coroutineResumeFn);
-    regMethod(VM::activeVM->coroutineProto, "send", {"value"}, coroutineSendFn);
 
     regMethod(VM::activeVM->listProto, "first", {}, firstFn);
 
@@ -4970,7 +4902,6 @@ void BuiltinRegistry::registerFormatType() {
             else if (v.isFunctionClosure()) bt = BuiltinType::FUNC;
             else if (v.isObjType(ObjType::NAMESPACE)) bt = BuiltinType::NAMESPACE;
             else if (v.isObjType(ObjType::SLICE)) bt = BuiltinType::SLICE;
-            else if (v.isCoroutine() || v.typeName() == "coroutine") bt = BuiltinType::COROUTINE;
             else if (v.isTask() || v.typeName() == "task") bt = BuiltinType::TASK;
             newTypes.push_back(bt);
         }
@@ -6505,7 +6436,6 @@ void BuiltinRegistry::registerSystemShell() {
             VM::activeVM->setGlobal("namespace_type", VM::activeVM->getBuiltinValue("namespace_type"));
             VM::activeVM->setGlobal("type", VM::activeVM->getBuiltinValue("type"));
             VM::activeVM->setGlobal("slice", VM::activeVM->getBuiltinValue("slice"));
-            VM::activeVM->setGlobal("coroutine", VM::activeVM->getBuiltinValue("coroutine"));
             VM::activeVM->setGlobal("task", VM::activeVM->getBuiltinValue("task"));
         }
         return Value::none();

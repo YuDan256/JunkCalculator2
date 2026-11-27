@@ -316,7 +316,7 @@ public:
         Value val = Value::none();
         if (expr->value) { expr->value->accept(*this); val = result; }
         result = makeASTNode("YieldExpr", expr->keyword.line, {
-            {"value", val}, {"delegate", Value(expr->delegate)}
+            {"value", val}
         });
     }
     void visitSpawnExpr(SpawnExpr* expr) override {
@@ -1044,7 +1044,7 @@ std::unique_ptr<Expr> JC2_to_AST(const Value& val, MacroExpandFunc expander, int
         return std::make_unique<ReturnExpr>(Token(TokenType::RETURN, "return", line), toAST(getProp("value")));
     } else if (type == "YieldExpr") {
         return std::make_unique<YieldExpr>(Token(TokenType::YIELD, "yield", line),
-            toAST(getProp("value")), getProp("delegate").truthy());
+            toAST(getProp("value")));
     } else if (type == "SpawnExpr") {
         return std::make_unique<SpawnExpr>(Token(TokenType::SPAWN, "spawn", line), toAST(getProp("body")),
             getProp("label").isString() ? getProp("label").asString() : std::string());

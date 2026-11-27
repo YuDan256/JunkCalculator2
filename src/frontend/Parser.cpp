@@ -1004,17 +1004,19 @@ namespace jc {
         if (match({ TokenType::YIELD })) {
             Token yieldTok = previous();
             if (!functionYieldCounts.empty()) functionYieldCounts.back()++;
-            bool delegate = match({ TokenType::ELLIPSIS });
+            if (check(TokenType::ELLIPSIS)) {
+                JC2_THROW(SyntaxError, "Parser Error: '...' is not valid after 'yield'.");
+            }
             std::unique_ptr<Expr> value;
             if (!check(TokenType::NEWLINE) && !check(TokenType::SEMICOLON) &&
                 !check(TokenType::RBRACE) && !check(TokenType::END_OF_FILE) &&
                 !check(TokenType::COMMA) && !check(TokenType::RPAREN) &&
                 !check(TokenType::RBRACKET)) {
-                value = delegate ? unary() : assignment();
+                value = assignment();
             }
             int endPos = value ? value->endPos
                                : yieldTok.position + static_cast<int>(yieldTok.lexeme.length());
-            return withPos(std::make_unique<YieldExpr>(yieldTok, std::move(value), delegate),
+            return withPos(std::make_unique<YieldExpr>(yieldTok, std::move(value)),
                            yieldTok.position, endPos);
         }
         if (match({ TokenType::PLUS, TokenType::MINUS, TokenType::BANG , TokenType::TILDE, TokenType::ELLIPSIS })) {

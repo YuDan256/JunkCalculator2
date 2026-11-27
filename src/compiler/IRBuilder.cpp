@@ -2475,7 +2475,7 @@ void IRBuilder::visitYieldExpr(YieldExpr* expr) {
         link(value);
     }
     graph->currentLine = expr->keyword.line;
-    IRNode* node = graph->createValueNode(expr->delegate ? IROp::YieldDelegate : IROp::Yield);
+    IRNode* node = graph->createValueNode(IROp::Yield);
     link(node);
     node->addData(value);
     currentSeq = node;

@@ -16,7 +16,6 @@ yield
 ```text
 await
 async
-coroutine
 thread
 ```
 
@@ -101,14 +100,12 @@ spawn '' fetch(url)
 ```text
 yield
 yield 表达式
-yield ...表达式
 ```
 
 ```jc2
 yield
 yield 1
 local x = yield 1
-yield ...inner
 ```
 
 ```text
@@ -117,10 +114,6 @@ yield expr
     恢复时，yield 表达式得到 resume(value) 的 value
     没有传值时得到 none
 
-yield ...inner
-    转发 inner 的产出
-    转发 resume 值
-    inner 完成后表达式得到 inner 的 return 值
 ```
 
 `yield` 可以出现在：

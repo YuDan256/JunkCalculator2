@@ -18,7 +18,7 @@ namespace jc {
         REAL_MATRIX, COMPLEX_MATRIX, SYM_MATRIX,
         LIST, DICT, SET,
         CLOSURE, CLASS, INSTANCE, SUPER_PROXY, SYMBOLIC, NAMESPACE,
-        UPVALUE, TYPE_DEF, SLICE, SPREAD, COROUTINE, TASK
+        UPVALUE, TYPE_DEF, SLICE, SPREAD, TASK
     };
 
     enum class BuiltinType : int8_t {
@@ -26,7 +26,7 @@ namespace jc {
         ANY, INT, FLOAT, STRING, BOOL, NONE_TYPE,
         LIST, DICT, SET, FRACTION, COMPLEX, SYMBOLIC,
         REALMAT, COMPLEXMAT, SYMMAT, FUNC, CLASS, INSTANCE, NAMESPACE,
-        CUSTOM_CLASS, TYPE_DEF, SLICE, COROUTINE, TASK
+        CUSTOM_CLASS, TYPE_DEF, SLICE, TASK
     };
 
     struct ObjSlice;
@@ -153,7 +153,7 @@ namespace jc {
                                    curr->type == ObjType::CLASS || curr->type == ObjType::INSTANCE || 
                                    curr->type == ObjType::SUPER_PROXY || curr->type == ObjType::NAMESPACE || 
                                    curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF ||
-                                   curr->type == ObjType::COROUTINE || curr->type == ObjType::TASK;
+                                   curr->type == ObjType::TASK;
                 
                 // ★ 核心修复：对于非容器类型（如 BigInt, Matrix, Symbolic 等），它们绝不可能产生循环引用。
                 // 因此，只要 refCount > 0，就说明 C++ 栈上或某处有 Value 正在持有它，绝对不能回收！
@@ -186,7 +186,7 @@ namespace jc {
                     curr->type == ObjType::INSTANCE || curr->type == ObjType::NAMESPACE || 
                     curr->type == ObjType::UPVALUE || curr->type == ObjType::TYPE_DEF ||
                     curr->type == ObjType::CLASS ||
-                    curr->type == ObjType::COROUTINE || curr->type == ObjType::TASK) {
+                    curr->type == ObjType::TASK) {
                     curr->clearTotal();
                 }
                 curr = curr->next;

@@ -480,9 +480,8 @@ struct IncludeExpr;
     struct YieldExpr : public Expr {
         Token keyword;
         std::unique_ptr<Expr> value; // nullptr for bare yield
-        bool delegate = false;       // yield ...inner
-        YieldExpr(Token keyword, std::unique_ptr<Expr> value, bool delegate = false)
-            : keyword(std::move(keyword)), value(std::move(value)), delegate(delegate) {}
+        YieldExpr(Token keyword, std::unique_ptr<Expr> value)
+            : keyword(std::move(keyword)), value(std::move(value)) {}
         void accept(ExprVisitor& visitor) override { visitor.visitYieldExpr(this); }
     };
 

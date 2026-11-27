@@ -34,39 +34,12 @@ enum class ProtocolContinuation : uint8_t {
     ComparePredicate,
 };
 
-struct CoroutineExceptionHandler {
+struct TaskExceptionHandler {
     int ip = 0;
     int errReg = 0;
     int deferBase = 0;
     bool silent = false;
     size_t includeStackDepth = 0;
-};
-
-// Snapshot of a suspended bytecode activation. Coroutine registers are copied
-// out of the shared VM window so the caller can keep running and reuse its own
-// slots while the coroutine is suspended.
-struct CoroutineState {
-    ObjCoroutine* delegate = nullptr;
-    bool started = false;
-    bool done = false;
-    bool failed = false;
-    bool closed = false;
-    const CompiledFunction* function = nullptr;
-    const Chunk* chunk = nullptr;
-    int ip = 0;
-    int returnRegister = 0;
-    int deferBase = 0;
-    ObjClosure* closure = nullptr;
-    Value selfContext = Value::none();
-    Value classContext = Value::none();
-    Value jitReturnSlot = Value::none();
-    std::vector<Value> registers;
-    std::vector<CoroutineExceptionHandler> handlers;
-    int yieldRegister = 0;
-    bool hasPendingYield = false;
-    Value pendingYield = Value::none();
-    Value result = Value::none();
-    Value error = Value::none();
 };
 
 struct TaskFrameSnapshot {
@@ -80,12 +53,11 @@ struct TaskFrameSnapshot {
     Value classContext = Value::none();
     Value jitReturnSlot = Value::none();
     std::vector<Value> registers;
-    std::vector<CoroutineExceptionHandler> handlers;
+    std::vector<TaskExceptionHandler> handlers;
     int yieldRegister = -1;
 };
 
 struct TaskState {
-    ObjCoroutine* coroutine = nullptr;
     ObjClosure* closure = nullptr;
     std::string label;
     std::vector<TaskFrameSnapshot> frames;
@@ -123,7 +95,6 @@ struct CallFrame {
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
-    bool coroutineResumeFrame = false;
     
     std::chrono::time_point<std::chrono::steady_clock> startTime;
     double childTimeMs = 0.0;
@@ -172,16 +143,10 @@ private:
     static constexpr int MAX_FRAMES = 1024;
 
     Value* registers = nullptr;
-    ObjCoroutine* resumingCoroutine = nullptr;
     ObjTask* runningTask = nullptr;
     int taskRootDepth = 0;
     bool taskYielded = false;
     Value taskYieldValue = Value::none();
-    int coroutineResumeDepth = 0;
-    Value coroutineYieldValue = Value::none();
-    bool coroutineYielded = false;
-    bool hasInjectedCoroutineError = false;
-    Value injectedCoroutineError = Value::none();
     bool shuttingDown = false;   // ★ shutdown() 期间：chunk 常量也要作为 GC 根
     CallFrame* frames = nullptr;
 
@@ -370,13 +335,10 @@ public:
     Value importModule(const std::string& name) { return execImport(name); }
     std::pair<ObjClosure*, ObjClass*> findDunder(const Value& val, const std::string& name);
     Value callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args);
-    Value resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value);
     Value resumeTask(ObjTask* task, bool send, Value value);
     Value joinTask(ObjTask* task);
     void suspendTask(ObjTask* task, const Value& yielded, int yieldRegister);
     void restoreTaskFrames(ObjTask* task);
-    Value throwCoroutine(ObjCoroutine* coroutine, Value error);
-    void closeCoroutine(ObjCoroutine* coroutine);
     // ★ 三向比较：__cmp__ / __rcmp__ 优先，内建可排序类型兜底；返回 -1/0/1。
     int compareValues(const Value& a, const Value& b);
     bool hasCmpProtocol(const Value& v);
@@ -603,7 +565,6 @@ public:
     Value makeTokenInstance(const Token& t);
 
     ObjClass* listProto = nullptr;
-    ObjClass* coroutineProto = nullptr;
     ObjClass* taskProto = nullptr;
     ObjClass* dictProto = nullptr;
     ObjClass* setProto = nullptr;

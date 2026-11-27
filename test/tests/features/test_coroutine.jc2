@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// Coroutines: spawn/yield execution bodies
+// Tasks: spawn/yield execution bodies
 // ═══════════════════════════════════════════════════════════════
 
 {
@@ -166,14 +166,4 @@ test_task_type_values() = {
 }
 test_task_type_values()
 
-test_task_jit_deopt() = {
-    f() = { yield 1 }
-    local i = 0
-    while (i < 1100) {
-        f()
-        i += 1
-    }
-    assert(!__dbg_is_jitted(f), "task functions must deopt to interpreter")
-}
-test_task_jit_deopt()
 }

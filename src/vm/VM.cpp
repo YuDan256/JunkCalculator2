@@ -39,11 +39,6 @@
 
 namespace jc {
 
-void ObjCoroutine::clear() {
-    delete static_cast<CoroutineState*>(state);
-    state = nullptr;
-}
-
 void ObjTask::clear() {
     delete static_cast<TaskState*>(state);
     state = nullptr;
@@ -772,7 +767,6 @@ uint64_t jc2_jit_call_helper(uint64_t callee_bits, Value* current_regs, uint64_t
                         else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                         else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                         else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                        else if (v.isCoroutine()) vbt = BuiltinType::COROUTINE;
                         else if (v.isTask()) vbt = BuiltinType::TASK;
                         newTypes.push_back(vbt);
                     }
@@ -1396,7 +1390,6 @@ void VM::execCall(int calleeReg, int argc, int kwArgc, int dstReg, bool isTailCa
                     else if (v.isFunctionClosure()) vbt = BuiltinType::FUNC;
                     else if (v.isObjType(ObjType::NAMESPACE)) vbt = BuiltinType::NAMESPACE;
                     else if (v.isObjType(ObjType::SLICE)) vbt = BuiltinType::SLICE;
-                    else if (v.isCoroutine()) vbt = BuiltinType::COROUTINE;
                     else if (v.isTask()) vbt = BuiltinType::TASK;
                     newTypes.push_back(vbt);
                 }
@@ -2049,29 +2042,6 @@ bool VM::evaluateTruthiness(const Value& val) {
     return val.truthy();
 }
 
-void VM::closeCoroutine(ObjCoroutine* coroutine) {
-    auto* state = static_cast<CoroutineState*>(coroutine->state);
-    if (!state || state->done || state->failed) return;
-    state->hasPendingYield = false;
-    runDefersDownTo(state->deferBase);
-    while (static_cast<int>(deferStack.size()) > state->deferBase) {
-        deferStack.pop_back();
-    }
-    state->closed = true;
-    state->done = true;
-}
-
-Value VM::throwCoroutine(ObjCoroutine* coroutine, Value error) {
-    auto* state = static_cast<CoroutineState*>(coroutine->state);
-    if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
-    if (state->failed) throw ValueException(state->error);
-    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
-    state->hasPendingYield = false;
-    hasInjectedCoroutineError = true;
-    injectedCoroutineError = error;
-    return resumeCoroutine(coroutine, false, Value::none());
-}
-
 void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
     auto* state = static_cast<TaskState*>(task->state);
     if (!state) return;
@@ -2092,13 +2062,9 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
         snap.jitReturnSlot = f->jitReturnSlot;
         int count = f->function->localCount + f->function->refCount + 64;
         snap.registers.resize(count);
-        for (int k = 0; k < count; ++k) {
-            snap.registers[k] = registers[f->registerBase + k];
-        }
+        for (int k = 0; k < count; ++k) snap.registers[k] = registers[f->registerBase + k];
         for (const auto& h : exceptionHandlers) {
-            if (h.frameIndex == i) {
-                snap.handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
-            }
+            if (h.frameIndex == i) snap.handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
         }
         snap.yieldRegister = (i == frameCount - 1) ? yieldRegister : -1;
         state->frames.push_back(std::move(snap));
@@ -2106,9 +2072,7 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
     closeUpvalues(rootBase);
     for (int i = frameCount - 1; i >= root; --i) {
         CallFrame* f = &frames[i];
-        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= i) {
-            exceptionHandlers.pop_back();
-        }
+        while (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= i) exceptionHandlers.pop_back();
         int clearBase = f->registerBase;
         int clearCount = f->function->localCount + f->function->refCount;
         for (int k = 0; k < clearCount; ++k) registers[clearBase + k] = Value::none();
@@ -2144,7 +2108,6 @@ void VM::restoreTaskFrames(ObjTask* task) {
         f.selfContext = snap.selfContext;
         f.classContext = snap.classContext;
         f.jitReturnSlot = snap.jitReturnSlot;
-        f.coroutineResumeFrame = false;
         int count = static_cast<int>(snap.registers.size());
         for (int k = 0; k < count; ++k) registers[rootBase + k] = snap.registers[k];
         for (const auto& saved : snap.handlers) {
@@ -2240,109 +2203,6 @@ Value VM::joinTask(ObjTask* task) {
     if (state->cancelled) JC2_THROW(RuntimeError, "task was cancelled.");
     return state->result;
 }
-Value VM::resumeCoroutine(ObjCoroutine* coroutine, bool send, Value value) {
-    auto* state = static_cast<CoroutineState*>(coroutine->state);
-    if (!state) JC2_THROW(RuntimeError, "Invalid coroutine state.");
-    if (state->failed) throw ValueException(state->error);
-    if (state->done) JC2_THROW(StopIteration, "coroutine has completed.");
-    if (state->delegate && !(state->hasPendingYield && !send)) {
-        try {
-            Value next = resumeCoroutine(state->delegate, send, value);
-            state->hasPendingYield = false;
-            return next;
-        } catch (const ValueException& ex) {
-            if (!isStopIteration(ex.val)) throw;
-            auto* ds = static_cast<CoroutineState*>(state->delegate->state);
-            state->registers[state->yieldRegister] = ds ? ds->result : Value::none();
-            state->delegate = nullptr;
-        } catch (const Jc2Error& ex) {
-            if (!isStopIteration(ex)) throw;
-            auto* ds = static_cast<CoroutineState*>(state->delegate->state);
-            state->registers[state->yieldRegister] = ds ? ds->result : Value::none();
-            state->delegate = nullptr;
-        }
-    }
-    if (state->hasPendingYield && !send) {
-        state->hasPendingYield = false;
-        return state->pendingYield;
-    }
-    state->hasPendingYield = false;
-
-    int base = 0;
-    if (frameCount > 0) {
-        CallFrame* current = &frames[frameCount - 1];
-        base = current->registerBase + current->function->localCount + current->function->refCount;
-    }
-    if (frameCount >= MAX_FRAMES) errCallFrameOverflow();
-
-    CallFrame& f = frames[frameCount++];
-    f.function = state->function;
-    f.chunk = state->chunk;
-    f.ip = state->ip;
-    f.registerBase = base;
-    f.returnRegister = -1;
-    f.closure = state->closure;
-    f.refParamsBase = -1;
-    f.deferBase = static_cast<int>(deferStack.size());
-    f.selfContext = state->selfContext;
-    f.classContext = state->classContext;
-    f.jitReturnSlot = Value::none();
-    f.coroutineResumeFrame = true;
-
-    int regCount = static_cast<int>(state->registers.size());
-    for (int i = 0; i < regCount; ++i) {
-        registers[base + i] = state->registers[i];
-    }
-    if (state->started && send && state->yieldRegister >= 0) {
-        registers[base + state->yieldRegister] = value;
-    }
-    for (const auto& saved : state->handlers) {
-        ExceptionHandler h;
-        h.frameIndex = frameCount - 1;
-        h.ip = saved.ip;
-        h.registerBase = base;
-        h.errReg = saved.errReg;
-        h.deferBase = saved.deferBase;
-        h.silent = saved.silent;
-        h.includeStackDepth = saved.includeStackDepth;
-        exceptionHandlers.push_back(h);
-    }
-    state->started = true;
-
-    resumingCoroutine = coroutine;
-    coroutineResumeDepth = frameCount - 1;
-    coroutineYielded = false;
-    Value outcome;
-    try {
-        outcome = run(coroutineResumeDepth);
-    } catch (const ValueException& ex) {
-        resumingCoroutine = nullptr;
-        state->failed = true;
-        state->done = true;
-        state->error = ex.val;
-        throw;
-    } catch (const Jc2Error& ex) {
-        resumingCoroutine = nullptr;
-        state->failed = true;
-        state->done = true;
-        state->error = Value(ex.what());
-        throw;
-    } catch (...) {
-        resumingCoroutine = nullptr;
-        state->failed = true;
-        state->done = true;
-        throw;
-    }
-    resumingCoroutine = nullptr;
-    if (coroutineYielded) {
-        coroutineYielded = false;
-        return coroutineYieldValue;
-    }
-    state->done = true;
-    state->result = outcome;
-    JC2_THROW(StopIteration, "coroutine has completed.");
-}
-
 Value VM::callDunder(const Value& obj, ObjClosure* method, ObjClass* ownerClass, const std::vector<Value>& args) {
     std::vector<Value> rootedArgs = args;
     std::vector<std::unique_ptr<GcValueGuard>> guards;
@@ -2602,8 +2462,7 @@ void VM::execInvoke(int a, int b, int kwArgc, uint32_t icIdx, bool isTailCall, i
     else if (objBt == BuiltinType::SET) nativeProto = setProto;
     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
     else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
-    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
-    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
+        if (!nativeProto && obj.isTask()) nativeProto = taskProto;
 
     if (!method && nativeProto) {
         auto it = nativeProto->properties.find(methodName);
@@ -4140,7 +3999,7 @@ void VM::profileFrameStart(CallFrame* frame) {
                     // ★ 带 TAIL_CALL 的函数不参与 JIT：HIR 目前把 TAIL_CALL 当普通调用，
                     //   深尾递归会在宿主栈上递归，反而绕过了帧复用（解释器路径才是真 TCO）。
                     if (op == OpCode::TRY_BEGIN || op == OpCode::DEFER || op == OpCode::TAIL_CALL ||
-                        op == OpCode::YIELD || op == OpCode::YIELD_DELEGATE || op == OpCode::SPAWN) {
+                        op == OpCode::YIELD || op == OpCode::SPAWN) {
                         supported = false;
                         break;
                     }
@@ -4271,23 +4130,10 @@ VM::VM() {
     globalsDataPtr = globals.data();
     
     GcHeap::get().markExtraCallback = [](Obj* obj) {
-        if (obj->type == ObjType::COROUTINE) {
-            auto* c = static_cast<ObjCoroutine*>(obj);
-            auto* state = static_cast<CoroutineState*>(c->state);
-            if (!state) return;
-            if (state->closure) GcHeap::get().markObj(state->closure);
-            if (state->delegate) GcHeap::get().markObj(state->delegate);
-            GcHeap::get().markValue(state->selfContext);
-            GcHeap::get().markValue(state->classContext);
-            GcHeap::get().markValue(state->jitReturnSlot);
-            for (auto& v : state->registers) GcHeap::get().markValue(v);
-            GcHeap::get().markValue(state->result);
-            GcHeap::get().markValue(state->error);
-        } else if (obj->type == ObjType::TASK) {
+        if (obj->type == ObjType::TASK) {
             auto* t = static_cast<ObjTask*>(obj);
             auto* state = static_cast<TaskState*>(t->state);
             if (!state) return;
-            if (state->coroutine) GcHeap::get().markObj(state->coroutine);
             if (state->closure) GcHeap::get().markObj(state->closure);
             for (auto& frame : state->frames) {
                 if (frame.closure) GcHeap::get().markObj(frame.closure);
@@ -4377,7 +4223,6 @@ VM::VM() {
             GcHeap::get().markValue(v);
         }
         if (listProto) GcHeap::get().markObj(listProto);
-        if (coroutineProto) GcHeap::get().markObj(coroutineProto);
         if (taskProto) GcHeap::get().markObj(taskProto);
         if (dictProto) GcHeap::get().markObj(dictProto);
         if (instanceProto) GcHeap::get().markObj(instanceProto);
@@ -4494,7 +4339,6 @@ VM::VM() {
     builtinValues["namespace_type"] = makeType(BuiltinType::NAMESPACE);
     builtinValues["type"] = makeType(BuiltinType::TYPE_DEF);
     builtinValues["slice"] = makeType(BuiltinType::SLICE);
-    builtinValues["coroutine"] = makeType(BuiltinType::COROUTINE);
     builtinValues["task"] = makeType(BuiltinType::TASK);
 
     // ===== 可调用类型的转换回调（call/invoke 直接调用，不再查同名函数）=====
@@ -4817,8 +4661,6 @@ VM::VM() {
 
     listProto = GcHeap::get().allocate<ObjClass>();
     listProto->name = "List";
-    coroutineProto = GcHeap::get().allocate<ObjClass>();
-    coroutineProto->name = "Coroutine";
     taskProto = GcHeap::get().allocate<ObjClass>();
     taskProto->name = "Task";
     dictProto = GcHeap::get().allocate<ObjClass>();
@@ -5461,12 +5303,6 @@ Value VM::run(int targetFrameDepth) {
     while (true) {
         try {
             while (true) {
-                if (hasInjectedCoroutineError) {
-                    hasInjectedCoroutineError = false;
-                    Value err = injectedCoroutineError;
-                    injectedCoroutineError = Value::none();
-                    throw ValueException(err);
-                }
                 int currentLine = (ip < static_cast<int>(chunk->lines.size())) ? chunk->lines[ip] : 0;
                 if (currentLine != prevLine) {
                     prevLine = currentLine;
@@ -7632,13 +7468,6 @@ Value VM::run(int targetFrameDepth) {
                 uint8_t destructFlag = static_cast<uint8_t>(c);
                 Value iterable = getReg(b);
 
-                if (iterable.isCoroutine()) {
-                    ObjList* state = GcHeap::get().allocate<ObjList>();
-                    state->vec.push_back(iterable);
-                    getReg(a) = Value(state);
-                    break;
-                }
-
                 if (iterable.isInstance()) {
                     auto [method, owner] = findDunder(iterable, DUNDER_ITER);
                     if (method) {
@@ -7785,19 +7614,6 @@ Value VM::run(int targetFrameDepth) {
                 Value& stateVal = getReg(b);
                 
                 auto state = static_cast<ObjList*>(stateVal.asObj());
-                if (!state->vec.empty() && state->vec[0].isCoroutine()) {
-                    try {
-                        getReg(a) = resumeCoroutine(
-                            static_cast<ObjCoroutine*>(state->vec[0].asObj()), false, Value::none());
-                    } catch (const ValueException& ex) {
-                        if (!isStopIteration(ex.val)) throw;
-                        getReg(a) = Value::uninit();
-                    } catch (const Jc2Error& ex) {
-                        if (!isStopIteration(ex)) throw;
-                        getReg(a) = Value::uninit();
-                    }
-                    break;
-                }
                 if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
                     Value iterTarget = state->vec[0];
                     int i = state->vec[1].asInt32();
@@ -8385,10 +8201,8 @@ Value VM::run(int targetFrameDepth) {
                     else if (objBt == BuiltinType::SET) nativeProto = setProto;
                     else if (objBt == BuiltinType::STRING) nativeProto = stringProto;
                     else if (objBt == BuiltinType::REALMAT || objBt == BuiltinType::COMPLEXMAT || objBt == BuiltinType::SYMMAT) nativeProto = matrixProto;
-                    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
-                    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
-    if (!nativeProto && obj.isCoroutine()) nativeProto = coroutineProto;
-    if (!nativeProto && obj.isTask()) nativeProto = taskProto;
+                                        if (!nativeProto && obj.isTask()) nativeProto = taskProto;
+        if (!nativeProto && obj.isTask()) nativeProto = taskProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -8620,8 +8434,7 @@ Value VM::run(int targetFrameDepth) {
                     else if (obj.isObjType(ObjType::SET)) nativeProto = setProto;
                     else if (obj.isString()) nativeProto = stringProto;
                     else if (obj.isObjType(ObjType::REAL_MATRIX) || obj.isObjType(ObjType::COMPLEX_MATRIX)) nativeProto = matrixProto;
-                    else if (obj.isCoroutine()) nativeProto = coroutineProto;
-                    else if (obj.isTask()) nativeProto = taskProto;
+                                        else if (obj.isTask()) nativeProto = taskProto;
 
                     if (nativeProto) {
                         auto it = nativeProto->properties.find(field);
@@ -9649,146 +9462,16 @@ Value VM::run(int targetFrameDepth) {
                 }
                 break;
             }
-            case OpCode::YIELD:
-            case OpCode::YIELD_DELEGATE: {
+            case OpCode::YIELD: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 if (b == ESCAPE_NORMAL_8) b = FETCH_EXTRA();
-                Value yielded;
-                ObjCoroutine* delegate = nullptr;
-                if (op == OpCode::YIELD_DELEGATE) {
-                    Value inner = getReg(b);
-                    if (!inner.isCoroutine()) {
-                        JC2_THROW(TypeError, "yield ... expects a coroutine.");
-                    }
-                    delegate = static_cast<ObjCoroutine*>(inner.asObj());
-                    try {
-                        yielded = resumeCoroutine(delegate, false, Value::none());
-                    } catch (const ValueException& ex) {
-                        if (!isStopIteration(ex.val)) throw;
-                        auto* ds = static_cast<CoroutineState*>(delegate->state);
-                        getReg(a) = ds ? ds->result : Value::none();
-                        delegate = nullptr;
-                        break;
-                    } catch (const Jc2Error& ex) {
-                        if (!isStopIteration(ex)) throw;
-                        auto* ds = static_cast<CoroutineState*>(delegate->state);
-                        getReg(a) = ds ? ds->result : Value::none();
-                        delegate = nullptr;
-                        break;
-                    }
-                } else {
-                    yielded = getReg(b);
-                }
+                Value yielded = getReg(b);
                 if (runningTask && frameCount > taskRootDepth) {
                     frame->ip = ip;
                     suspendTask(runningTask, yielded, a);
                     return yielded;
                 }
-                if (frame->coroutineResumeFrame && resumingCoroutine) {
-                    auto* state = static_cast<CoroutineState*>(resumingCoroutine->state);
-                    state->function = frame->function;
-                    state->chunk = frame->chunk;
-                    state->ip = ip;
-                    state->closure = frame->closure;
-                    state->selfContext = frame->selfContext;
-                    state->classContext = frame->classContext;
-                    state->yieldRegister = a;
-                    state->hasPendingYield = false;
-                    state->pendingYield = yielded;
-                    int count = frame->function->localCount + frame->function->refCount + 64;
-                    state->registers.resize(count);
-                    for (int i = 0; i < count; ++i) {
-                        state->registers[i] = registers[frame->registerBase + i];
-                    }
-                    state->handlers.clear();
-                    for (const auto& h : exceptionHandlers) {
-                        if (h.frameIndex == frameCount - 1) {
-                            state->handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
-                        }
-                    }
-                    frame->ip = ip;
-                    closeUpvalues(frame->registerBase);
-                    while (!exceptionHandlers.empty() &&
-                           exceptionHandlers.back().frameIndex >= frameCount - 1) {
-                        exceptionHandlers.pop_back();
-                    }
-                    int clearBase = frame->registerBase;
-                    int clearCount = frame->function->localCount + frame->function->refCount;
-                    for (int i = 0; i < clearCount; ++i) {
-                        registers[clearBase + i] = Value::none();
-                    }
-                    frame->selfContext = Value::none();
-                    frame->classContext = Value::none();
-                    frame->jitReturnSlot = Value::none();
-                    frameCount--;
-                    coroutineYieldValue = yielded;
-                    coroutineYielded = true;
-                    if (frameCount <= coroutineResumeDepth) {
-                        return yielded;
-                    }
-                    frame = &frames[frameCount - 1];
-                    chunk = frame->chunk;
-                    code = chunk->code.data();
-                    frameRegs = &registers[frame->registerBase];
-                    ip = frame->ip;
-                    break;
-                }
-                auto* state = new CoroutineState();
-                state->started = true;
-                state->function = frame->function;
-                state->chunk = frame->chunk;
-                state->ip = ip;
-                state->returnRegister = frame->returnRegister;
-                state->deferBase = frame->deferBase;
-                state->closure = frame->closure;
-                state->selfContext = frame->selfContext;
-                state->classContext = frame->classContext;
-                state->jitReturnSlot = frame->jitReturnSlot;
-                state->yieldRegister = a;
-                state->hasPendingYield = true;
-                state->pendingYield = yielded;
-                state->delegate = delegate;
-                int regCount = frame->function->localCount + frame->function->refCount + 64;
-                state->registers.resize(regCount);
-                for (int i = 0; i < regCount; ++i) {
-                    state->registers[i] = registers[frame->registerBase + i];
-                }
-                state->handlers.clear();
-                for (const auto& h : exceptionHandlers) {
-                    if (h.frameIndex == frameCount - 1) {
-                        state->handlers.push_back({h.ip, h.errReg, h.deferBase, h.silent, h.includeStackDepth});
-                    }
-                }
-                auto* coroutine = GcHeap::get().allocate<ObjCoroutine>();
-                coroutine->state = state;
-                int targetReg = frame->returnRegister;
-                frame->ip = ip;
-                closeUpvalues(frame->registerBase);
-                while (!exceptionHandlers.empty() &&
-                       exceptionHandlers.back().frameIndex >= frameCount - 1) {
-                    exceptionHandlers.pop_back();
-                }
-                int clearBase = frame->registerBase;
-                int clearCount = frame->function->localCount + frame->function->refCount;
-                for (int i = 0; i < clearCount; ++i) {
-                    registers[clearBase + i] = Value::none();
-                }
-                frame->selfContext = Value::none();
-                frame->classContext = Value::none();
-                frame->jitReturnSlot = Value::none();
-                frameCount--;
-                if (frameCount <= targetFrameDepth) {
-                    frame = &frames[frameCount - 1];
-                    frame->jitReturnSlot = Value(coroutine);
-                    return Value(coroutine);
-                }
-                frame = &frames[frameCount - 1];
-                chunk = frame->chunk;
-                code = chunk->code.data();
-                frameRegs = &registers[frame->registerBase];
-                ip = frame->ip;
-                if (targetReg >= 0) getReg(targetReg) = Value(coroutine);
-                break;
+                JC2_THROW(RuntimeError, "yield outside an execution body.");
             }
             case OpCode::SPAWN: {
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();

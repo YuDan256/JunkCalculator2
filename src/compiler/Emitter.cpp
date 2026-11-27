@@ -858,12 +858,11 @@ int Emitter::emit(IRGraph* graph, Chunk& chunk) {
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;
                     }
-                    case IROp::Yield:
-                    case IROp::YieldDelegate: {
+                    case IROp::Yield: {
                         int b = ensureReg(node->dataInputs[0], inst.words, chunk, 124);
                         int a = node->physicalReg;
                         if (a < 0) a = b;
-                        OpCode op = node->op == IROp::Yield ? OpCode::YIELD : OpCode::YIELD_DELEGATE;
+                        OpCode op = OpCode::YIELD;
                         auto w = buildInstAB(op, a, b);
                         inst.words.insert(inst.words.end(), w.begin(), w.end());
                         break;

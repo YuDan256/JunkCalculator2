@@ -98,7 +98,6 @@ namespace jc {
     struct NamespaceField;
     struct ObjTypeDef;
     struct ObjSlice;
-    struct ObjCoroutine;
     struct ObjTask;
 
     inline std::unordered_map<std::string, ObjString*> g_internedStrings;
@@ -424,7 +423,6 @@ namespace jc {
         bool isType() const { return isObjType(ObjType::TYPE_DEF); }
         bool isSlice() const { return isObjType(ObjType::SLICE); }
         bool isSpread() const { return isObjType(ObjType::SPREAD); }
-        bool isCoroutine() const { return isObjType(ObjType::COROUTINE); }
         bool isTask() const { return isObjType(ObjType::TASK); }
 
         SymExpr asSymbolic() const;
@@ -848,7 +846,6 @@ namespace jc {
                         case BuiltinType::CUSTOM_CLASS: res += "custom_class"; break;
                         case BuiltinType::TYPE_DEF: res += "type"; break;
                         case BuiltinType::SLICE: res += "slice"; break;
-                        case BuiltinType::COROUTINE: res += "coroutine"; break;
                         case BuiltinType::TASK: res += "task"; break;
                         default: res += "unknown"; break;
                     }
@@ -1271,14 +1268,8 @@ namespace jc {
         void clear() override { value = Value::none(); }
     };
 
-    // Native coroutine/task payloads live in src/vm/Coroutine.cpp; Value.h only
-    // carries the GC-visible shell so ObjType dispatch stays in the memory layer.
-    struct ObjCoroutine : public Obj {
-        void* state = nullptr;
-        ObjCoroutine() { type = ObjType::COROUTINE; }
-        void clear() override;
-    };
-
+    // Native task payload lives in src/vm/VM.cpp; Value.h only carries the
+    // GC-visible shell so ObjType dispatch stays in the memory layer.
     struct ObjTask : public Obj {
         void* state = nullptr;
         ObjTask() { type = ObjType::TASK; }
@@ -3215,7 +3206,6 @@ namespace jc {
             case ObjType::TYPE_DEF: return "type";
             case ObjType::SLICE: return "slice";
             case ObjType::SPREAD: return "spread";
-            case ObjType::COROUTINE: return "coroutine";
             case ObjType::TASK: return "task";
         }
         return "unknown";
@@ -3679,7 +3669,6 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
                 os << "}>";
             break;
         }
-        case ObjType::COROUTINE: os << "<coroutine>"; break;
         case ObjType::TASK: os << "<task>"; break;
         default: os << "<object>"; break;
     }

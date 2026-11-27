@@ -83,7 +83,6 @@ enum class OpCode : uint8_t {
     TAIL_CALL,      // 尾调用 [Ext A, B, C]
     RETURN,         // return R(A)
     YIELD,          // R(A) := resume value; suspend R(B)
-    YIELD_DELEGATE, // R(A) := resume value; delegate to coroutine R(B)
     SPAWN,          // R(A) := Task(closure = R(B))
     CLOSURE,        // R(A) := Closure(fnIdx = Bx) [Ext]
 
@@ -230,7 +229,7 @@ inline std::string opCodeToString(OpCode op) {
         case OpCode::TAIL_CALL: return "TAIL_CALL";
         case OpCode::RETURN: return "RETURN";
         case OpCode::YIELD: return "YIELD";
-        case OpCode::YIELD_DELEGATE: return "YIELD_DELEGATE";
+
 
         case OpCode::SPAWN: return "SPAWN";
         case OpCode::CLOSURE: return "CLOSURE";

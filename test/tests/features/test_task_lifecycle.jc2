@@ -289,4 +289,14 @@ assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
     assertEq(count, 0, "T15.cancelled_stops_quietly")
 }
 
+// T16: task name reads the debug label only
+{
+    named = spawn 'calc' { return 1 }
+    anonymous = spawn { return 2 }
+    raw = spawn r'raw\name' { return 3 }
+    assertEq(named.name(), "calc", "T16.named")
+    assertEq(anonymous.name(), "", "T16.anonymous")
+    assertEq(raw.name(), "raw\\name", "T16.raw")
+}
+
 print("ALL TASK TESTS PASSED!")

@@ -2850,6 +2850,7 @@
       "    job.cancel()        Request cancellation; a suspended task becomes",
       "                        CANCELLED and join() raises.",
       "    job.isAlive()       true while PENDING, RUNNING, or SUSPENDED.",
+      "    job.name()          Debug label; empty string when unnamed.",
       "",
       "  yield",
       "  ──────────────────────",
@@ -5397,7 +5398,7 @@
         "label is an optional non-empty STRING or RSTRING literal. It is debug",
         "metadata only; it does not create a variable or enter scope.",
         "f-strings, variables, and empty strings are rejected as labels.",
-        "Handle methods: resume(value), join(), cancel(), isAlive().",
+        "Handle methods: resume(value), join(), cancel(), isAlive(), name().",
         "yield inside any nested call suspends the whole task body.",
         "See also: /help yield"
       ],

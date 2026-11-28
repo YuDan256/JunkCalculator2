@@ -1617,6 +1617,7 @@ job.resume(value)
 job.join()
 job.cancel()
 job.isAlive()
+job.name()
 \end{lstlisting}
 
 \begin{itemize}
@@ -1625,6 +1626,8 @@ job.isAlive()
   \item \jc{join()}：推进到完成并返回最终结果；未捕获异常在此重抛。
   \item \jc{cancel()}：请求取消；已暂停的任务进入 CANCELLED。
   \item \jc{isAlive()}：PENDING、RUNNING、SUSPENDED 为真。
+  \item \jc{name()}：返回 spawn 标签；无标签返回空字符串。标签只读，
+        不进入作用域。
 \end{itemize}
 
 任务显示为 \jc{<task (STATE)>}；有标签时为

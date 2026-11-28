@@ -3440,6 +3440,11 @@ void BuiltinRegistry::registerArrayFunctions() {
         VM::activeVM->cancelTask(static_cast<ObjTask*>(self.asObj()));
         return Value::none();
     };
+    auto taskNameFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        auto* state = static_cast<TaskState*>(static_cast<ObjTask*>(self.asObj())->state);
+        return Value(state ? state->label : std::string{});
+    };
     auto taskIterFn = [](const std::vector<Value>&) -> Value {
         return helpers::nativeSelfStack.back();
     };
@@ -3460,6 +3465,7 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->taskProto, "join", {}, taskJoinFn);
     regMethod(VM::activeVM->taskProto, "isAlive", {}, taskAliveFn);
     regMethod(VM::activeVM->taskProto, "cancel", {}, taskCancelFn);
+    regMethod(VM::activeVM->taskProto, "name", {}, taskNameFn);
     regMethod(VM::activeVM->taskProto, "__iter__", {}, taskIterFn);
     regMethod(VM::activeVM->taskProto, "__next__", {}, taskNextFn);
 

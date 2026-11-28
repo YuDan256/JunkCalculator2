@@ -146,6 +146,7 @@ job.resume(value)
 job.join()
 job.cancel()
 job.isAlive()
+job.name()
 ```
 
 ### resume
@@ -181,6 +182,14 @@ DONE/FAILED/CANCELLED -> 无操作
 ```text
 PENDING / RUNNING / SUSPENDED -> true
 DONE / FAILED / CANCELLED     -> false
+```
+
+### name
+
+```text
+返回 spawn 标签
+无标签返回 ""
+标签只读，不进入作用域
 ```
 
 ### 显示与迭代

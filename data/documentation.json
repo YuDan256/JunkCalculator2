@@ -2851,6 +2851,8 @@
       "    yield is allowed in functions, blocks, defer, catch, and at top level.",
       "    yield itself does not run defer; scope exit, failure, and cancel do.",
       "    A defer may yield during normal return; resume continues that defer.",
+      "    During exception unwinding a defer may also yield; after it finishes",
+      "    the catch handler resumes. If uncaught, defers run before FAILED.",
       "    During cancellation, a defer yield does not suspend; it throws the",
       "    cancellation error and LIFO unwinding continues.",
       "",
@@ -5408,6 +5410,8 @@
         "yield is allowed in functions, blocks, defer, catch, and at top level.",
         "yield itself does not run defers; scope exit, failure, and cancel do.",
         "A defer may yield during normal return; resume continues that defer.",
+        "During exception unwinding a defer may also yield; after it finishes",
+        "the catch handler resumes. If uncaught, defers run before FAILED.",
         "During cancellation, a defer yield does not suspend; it throws the",
         "cancellation error and LIFO unwinding continues.",
         "See also: /help spawn"

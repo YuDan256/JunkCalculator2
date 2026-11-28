@@ -205,6 +205,9 @@ yield          -> 不执行 defer
 
 正常作用域退出时，defer 内可以 yield；任务挂起，恢复后继续执行该 defer。
 
+异常展开时，defer 内也可以 yield；defer 完成后继续恢复 catch handler。
+未捕获异常时，先执行 yielding defer，再让 task 进入 FAILED。
+
 取消展开期间，defer 内再次 yield 不再挂起：
 
 ```text

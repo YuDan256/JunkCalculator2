@@ -2064,6 +2064,8 @@ void VM::suspendTask(ObjTask* task, const Value& yielded, int yieldRegister) {
         snap.hasPendingReturn = f->hasPendingReturn;
         snap.pendingDefers = f->pendingDefers;
         snap.deferRunActive = f->deferRunActive;
+        snap.exceptionDeferFrame = f->exceptionDeferFrame;
+        snap.failureDeferFrame = f->failureDeferFrame;
         int count = f->function->localCount + f->function->refCount + 64;
         snap.registers.resize(count);
         for (int k = 0; k < count; ++k) snap.registers[k] = registers[f->registerBase + k];
@@ -2121,6 +2123,8 @@ void VM::restoreTaskFrames(ObjTask* task) {
         f.hasPendingReturn = snap.hasPendingReturn;
         f.pendingDefers = snap.pendingDefers;
         f.deferRunActive = snap.deferRunActive;
+        f.exceptionDeferFrame = snap.exceptionDeferFrame;
+        f.failureDeferFrame = snap.failureDeferFrame;
         int count = static_cast<int>(snap.registers.size());
         for (int k = 0; k < count; ++k) registers[rootBase + k] = snap.registers[k];
         for (const auto& saved : snap.handlers) {
@@ -3790,33 +3794,113 @@ bool jc::silentUnwindActive() {
     return VM::activeVM && VM::activeVM->canSilentUnwind();
 }
 
+bool VM::scheduleTaskFailureDefer(const Value& error) {
+    if (!runningTask || taskFailureActive || pendingExceptionUnwind.active) return false;
+    if (frameCount <= taskRootDepth) return false;
+    if (deferStack.size() <= static_cast<size_t>(frames[taskRootDepth].deferBase)) return false;
+    taskFailureActive = true;
+    taskFailureError = error;
+    return continueTaskFailureDefer();
+}
+
+bool VM::continueTaskFailureDefer() {
+    if (!runningTask || !taskFailureActive) return false;
+    int base = frames[taskRootDepth].deferBase;
+    if (deferStack.size() <= static_cast<size_t>(base)) {
+        taskFailureActive = false;
+        Value err = taskFailureError;
+        taskFailureError = Value::none();
+        throw ValueException(err);
+    }
+    ObjClosure* closure = deferStack.back();
+    deferStack.pop_back();
+    Invocation inv;
+    inv.fnIdx = closure->compiledFnIndex;
+    inv.closure = closure;
+    inv.sink.kind = ReturnSink::Kind::Value;
+    int depth = pushInvocationFrame(inv);
+    frames[depth].returnRegister = -1;
+    frames[depth].failureDeferFrame = true;
+    return true;
+}
+
+bool VM::scheduleExceptionDefer() {
+    if (!pendingExceptionUnwind.active) return false;
+    const ExceptionHandler& h = pendingExceptionUnwind.handler;
+    if (deferStack.size() <= static_cast<size_t>(h.deferBase)) return false;
+    ObjClosure* closure = deferStack.back();
+    deferStack.pop_back();
+    Invocation inv;
+    inv.fnIdx = closure->compiledFnIndex;
+    inv.closure = closure;
+    inv.sink.kind = ReturnSink::Kind::Value;
+    int depth = pushInvocationFrame(inv);
+    frames[depth].returnRegister = -1;
+    frames[depth].exceptionDeferFrame = true;
+    return true;
+}
+
+void VM::finishExceptionUnwind() {
+    if (!pendingExceptionUnwind.active) return;
+    ExceptionHandler handler = pendingExceptionUnwind.handler;
+    Value err = pendingExceptionUnwind.error;
+    pendingExceptionUnwind.active = false;
+    pendingExceptionUnwind.error = Value::none();
+    while (frameCount > handler.frameIndex + 1) {
+        CallFrame* f = &frames[frameCount - 1];
+        profileFrameEnd(f);
+        int clearBase = f->registerBase;
+        int clearCount = f->function->localCount + f->function->refCount;
+        for (int i = 0; i < clearCount; ++i) registers[clearBase + i] = Value::none();
+        f->selfContext = Value::none();
+        f->classContext = Value::none();
+        f->jitReturnSlot = Value::none();
+        f->closure = nullptr;
+        f->refParamsBase = -1;
+        frameCount--;
+    }
+    pendingCallRefs.clear();
+    if (includeNamespaceStack.size() > handler.includeStackDepth) {
+        includeNamespaceStack.resize(handler.includeStackDepth);
+    }
+    CallFrame* frame = &frames[frameCount - 1];
+    frame->ip = handler.ip;
+    frame->registerBase = handler.registerBase;
+    closeUpvalues(frame->registerBase + frame->function->localCount);
+    registers[frame->registerBase + handler.errReg] = err;
+}
+
+bool VM::suppressDeferException(const Value& error) {
+    if (!pendingExceptionUnwind.active) return false;
+    int target = -1;
+    for (int i = frameCount - 1; i >= 0; --i) {
+        if (frames[i].exceptionDeferFrame) { target = i; break; }
+    }
+    if (target < 0) return false;
+    Value wrapped = wrapException(nullptr, "Exception", error);
+    auto inst = pendingExceptionUnwind.error.asInstance();
+    auto thrown = wrapped.asInstance();
+    if (inst && thrown && inst->ownHas("suppressed")) {
+        Value listVal = *inst->ownGetMut("suppressed");
+        if (listVal.isObjType(ObjType::LIST)) {
+            static_cast<ObjList*>(listVal.asObj())->vec.push_back(wrapped);
+        }
+    }
+    frameCount = target;
+    if (scheduleExceptionDefer()) return true;
+    finishExceptionUnwind();
+    return true;
+}
+
 bool VM::handleExceptionUnwind(Value* errValPtr) {
     if (!exceptionHandlers.empty() && exceptionHandlers.back().frameIndex >= currentTargetFrameDepth) {
         auto handler = exceptionHandlers.back();
         exceptionHandlers.pop_back();
-        runDefersDownTo(handler.deferBase, errValPtr);
-        while (frameCount > handler.frameIndex + 1) {
-            CallFrame* f = &frames[frameCount - 1];
-            profileFrameEnd(f);
-            int clearBase = f->registerBase;
-            int clearCount = f->function->localCount + f->function->refCount;
-            for (int i = 0; i < clearCount; ++i) registers[clearBase + i] = Value::none();
-            f->selfContext = Value::none();
-            f->classContext = Value::none();
-            f->jitReturnSlot = Value::none();
-            f->closure = nullptr;
-            f->refParamsBase = -1;
-            frameCount--;
-        }
-        pendingCallRefs.clear();
-        if (includeNamespaceStack.size() > handler.includeStackDepth) {
-            includeNamespaceStack.resize(handler.includeStackDepth);
-        }
-        CallFrame* frame = &frames[frameCount - 1];
-        frame->ip = handler.ip;
-        frame->registerBase = handler.registerBase;
-        closeUpvalues(frame->registerBase + frame->function->localCount);
-        registers[frame->registerBase + handler.errReg] = *errValPtr;
+        pendingExceptionUnwind.active = true;
+        pendingExceptionUnwind.error = *errValPtr;
+        pendingExceptionUnwind.handler = handler;
+        if (scheduleExceptionDefer()) return true;
+        finishExceptionUnwind();
         return true;
     }
     return false;
@@ -4258,6 +4342,10 @@ VM::VM() {
         for (auto* closure : deferStack) {
             GcHeap::get().markObj(closure);
         }
+        if (pendingExceptionUnwind.active) {
+            GcHeap::get().markValue(pendingExceptionUnwind.error);
+        }
+        if (taskFailureActive) GcHeap::get().markValue(taskFailureError);
         
         for (auto& [k, v] : builtinClosures) {
             GcHeap::get().markValue(v);
@@ -9559,6 +9647,35 @@ Value VM::run(int targetFrameDepth) {
                 break;
             }
             case OpCode::RETURN: {
+                if (frame->exceptionDeferFrame) {
+                    frameCount--;
+                    if (scheduleExceptionDefer()) {
+                        frame = &frames[frameCount - 1];
+                        chunk = frame->chunk;
+                        code = chunk->code.data();
+                        frameRegs = &registers[frame->registerBase];
+                        ip = frame->ip;
+                        break;
+                    }
+                    finishExceptionUnwind();
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    break;
+                }
+                if (frame->failureDeferFrame) {
+                    frameCount--;
+                    if (continueTaskFailureDefer()) {
+                        frame = &frames[frameCount - 1];
+                        chunk = frame->chunk;
+                        code = chunk->code.data();
+                        frameRegs = &registers[frame->registerBase];
+                        ip = frame->ip;
+                        break;
+                    }
+                }
                 if (a == ESCAPE_NORMAL_8) a = FETCH_EXTRA();
                 Value res;
                 if (frame->hasPendingReturn) {
@@ -9752,7 +9869,23 @@ Value VM::run(int targetFrameDepth) {
             if (popProtocolFrame(ProtocolContinuation::GetAttr)) continue;
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", ex.val);
+            if (suppressDeferException(errVal)) {
+                frame = &frames[frameCount - 1];
+                chunk = frame->chunk;
+                code = chunk->code.data();
+                frameRegs = &registers[frame->registerBase];
+                ip = frame->ip;
+                continue;
+            }
             if (!handleExceptionUnwind(&errVal)) {
+                if (scheduleTaskFailureDefer(errVal)) {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    continue;
+                }
                 throw ValueException(errVal);
             }
             frame = &frames[frameCount - 1];
@@ -9766,7 +9899,23 @@ Value VM::run(int targetFrameDepth) {
             if (popProtocolFrame(ProtocolContinuation::GetAttr)) continue;
             frame->ip = ip;
             Value errVal = wrapException(ex.errorClass, ex.typeName, Value(ex.message));
+            if (suppressDeferException(errVal)) {
+                frame = &frames[frameCount - 1];
+                chunk = frame->chunk;
+                code = chunk->code.data();
+                frameRegs = &registers[frame->registerBase];
+                ip = frame->ip;
+                continue;
+            }
             if (!handleExceptionUnwind(&errVal)) {
+                if (scheduleTaskFailureDefer(errVal)) {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    continue;
+                }
                 throw ValueException(errVal);
             }
             frame = &frames[frameCount - 1];
@@ -9778,6 +9927,14 @@ Value VM::run(int targetFrameDepth) {
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", Value(ex.what()));
             if (!handleExceptionUnwind(&errVal)) {
+                if (scheduleTaskFailureDefer(errVal)) {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    continue;
+                }
                 throw ValueException(errVal);
             }
             frame = &frames[frameCount - 1];
@@ -9789,6 +9946,14 @@ Value VM::run(int targetFrameDepth) {
             frame->ip = ip;
             Value errVal = wrapException(nullptr, "Exception", Value("Unknown VM Error"));
             if (!handleExceptionUnwind(&errVal)) {
+                if (scheduleTaskFailureDefer(errVal)) {
+                    frame = &frames[frameCount - 1];
+                    chunk = frame->chunk;
+                    code = chunk->code.data();
+                    frameRegs = &registers[frame->registerBase];
+                    ip = frame->ip;
+                    continue;
+                }
                 throw ValueException(errVal);
             }
             frame = &frames[frameCount - 1];

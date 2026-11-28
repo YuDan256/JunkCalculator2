@@ -227,4 +227,30 @@ assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
     assertThrows(() => job.join(), "T11.join_cancelled")
 }
 
+// T12: defer may yield while unwinding into a catch handler
+{
+    work() = {
+        try {
+            defer { yield "handler_defer" }
+            throw "boom"
+        } catch (e) {
+            return "caught:" + e.message
+        }
+    }
+    job = spawn work()
+    assertEq(job.resume(), "handler_defer", "T12.handler_defer_yield")
+    assertEq(job.join(), "caught:boom", "T12.handler_resumed")
+}
+
+// T13: uncaught exception runs yielding defers before failing
+{
+    job = spawn {
+        defer { yield "failure_defer" }
+        throw "boom"
+    }
+    assertEq(job.resume(), "failure_defer", "T13.failure_defer_yield")
+    assertThrows(() => job.join(), "T13.join_rethrows")
+    assertEq(job.isAlive(), false, "T13.failed_not_alive")
+}
+
 print("ALL TASK TESTS PASSED!")

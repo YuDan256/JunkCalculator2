@@ -59,6 +59,8 @@ struct TaskFrameSnapshot {
     bool hasPendingReturn = false;
     int pendingDefers = 0;
     bool deferRunActive = false;
+    bool exceptionDeferFrame = false;
+    bool failureDeferFrame = false;
 };
 
 struct TaskState {
@@ -101,6 +103,8 @@ struct CallFrame {
     bool hasPendingReturn = false;
     int pendingDefers = 0;
     bool deferRunActive = false;
+    bool exceptionDeferFrame = false;
+    bool failureDeferFrame = false;
     // ★ 该帧是「以 init 身份执行的构造帧」：返回即构造完成，需做省略初值成员的存在性检查。
     //   用帧上的布尔标记（帧是 GC 根），不额外持有 Value —— 见闸门 45。
     bool checkRequiredOnReturn = false;
@@ -227,6 +231,19 @@ private:
         size_t includeStackDepth = 0;
     };
     std::vector<ExceptionHandler> exceptionHandlers;
+    struct PendingExceptionUnwind {
+        bool active = false;
+        Value error = Value::none();
+        ExceptionHandler handler;
+    };
+    PendingExceptionUnwind pendingExceptionUnwind;
+    bool taskFailureActive = false;
+    Value taskFailureError = Value::none();
+    bool scheduleTaskFailureDefer(const Value& error);
+    bool continueTaskFailureDefer();
+    bool scheduleExceptionDefer();
+    void finishExceptionUnwind();
+    bool suppressDeferException(const Value& error);
     std::unordered_set<std::string> loadingPackages;
     std::vector<ObjNamespace*> includeNamespaceStack;
 

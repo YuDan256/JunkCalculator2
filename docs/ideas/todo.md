@@ -1,6 +1,6 @@
 # 编译器 / VM TODO
 
-> 基线：`917bbff5`。工作区干净。解释器与 `--jit` 测试通过。
+> 基线：`a788dc77`。工作区干净。解释器与 `--jit` 测试通过。
 >
 > 本文是完整待办，不只包含 dunder 显式帧。旧 `7a9cd95` 清单的行号已变化，
 > 只记录可核验的代码位置。
@@ -29,6 +29,8 @@ dict/set O(1) 删除
 sys.disasm EXTRAARG 修复/verbose 合并
 空 AST 操作数崩溃
 Token 帮助修正
+for-in / comprehension 重复 IS_UNINIT
+合成索引 double -> int
 ```
 
 VM 操作码协议主路径已改为显式帧：
@@ -187,29 +189,11 @@ PredefinedClasses __str__
 
 # P1：for-in 重复 IS_UNINIT
 
-状态：未核验当前反汇编。
-
-目标：
+状态：**已完成**（`1610da3f`）。
 
 ```text
-0011 IS_UNINIT R1
-0012 JMP_TRUE end
-0013 IS_UNINIT R1   // 删除
-0014 ...
-```
-
-范围：
-
-```text
-for-in
-list comprehension
-```
-
-验收：
-
-```text
-反汇编无相邻重复 IS_UNINIT
-解释器和 JIT 测试通过
+for-in / comprehension 的 buildPatternMatch 不再重复发射 IS_UNINIT。
+反汇编只剩循环守卫的一位 IS_UNINIT。
 ```
 
 ---
@@ -253,22 +237,12 @@ const/ref/state 写入规则
 
 # P2：合成索引 double -> int
 
-状态：未做。
-
-范围：
+状态：**已完成**（`a788dc77`）。
 
 ```text
-IRBuilder 的 ListPattern / MatrixPattern / rest 合成索引
+ListPattern / MatrixPattern / rest 的合成索引已改为 int。
+反汇编显示 0 / 1 / -1。
 ```
-
-目标：
-
-```text
-LOADK ... ; 0
-LOADK ... ; 1
-```
-
-而不是 `0.0` / `1.0`。
 
 ---
 

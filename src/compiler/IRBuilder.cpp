@@ -404,7 +404,7 @@ int IRBuilder::resolveUpvalue(const std::string& name, bool isCapturedState) {
     return -1;
 }
 
-void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment) {
+void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMerge, ScopeModifier globalMod, bool globalConst, bool isAssignment, bool skipUninitGuard) {
     auto assignVar = [&](const std::string& name, IRNode* vNode, ResolvedSym sym, ScopeModifier mod, bool isConst) {
         if (!allowInternalNames && isReservedInternalName(name)) error("Compile Error: Illegal use of reserved internal name '" + name + "'.");
         if (stagingPatternBindings_) {
@@ -609,21 +609,23 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         return;
     }
     if (auto* vp = dynamic_cast<VariablePattern*>(pat)) {
-        IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
-        link(isUninit);
-        isUninit->addData(valNode);
-        
-        IRNode* ifNode = createCFGNode(IROp::If);
-        link(ifNode);
-        ifNode->addData(isUninit);
-        
-        IRNode* ifTrue = createCFGNode(IROp::IfTrue);
-        ifTrue->setControl(ifNode);
-        failMerge->addData(ifTrue);
-        
-        IRNode* ifFalse = createCFGNode(IROp::IfFalse);
-        ifFalse->setControl(ifNode);
-        currentSeq = ifFalse;
+        if (!skipUninitGuard) {
+            IRNode* isUninit = graph->createValueNode(IROp::IsUninit);
+            link(isUninit);
+            isUninit->addData(valNode);
+            
+            IRNode* ifNode = createCFGNode(IROp::If);
+            link(ifNode);
+            ifNode->addData(isUninit);
+            
+            IRNode* ifTrue = createCFGNode(IROp::IfTrue);
+            ifTrue->setControl(ifNode);
+            failMerge->addData(ifTrue);
+            
+            IRNode* ifFalse = createCFGNode(IROp::IfFalse);
+            ifFalse->setControl(ifNode);
+            currentSeq = ifFalse;
+        }
 
         if (vp->name.lexeme != "_") {
             auto it = patternSymbols->find(pat);
@@ -1406,7 +1408,7 @@ void IRBuilder::buildCompClause(CompExprBase* expr, size_t clauseIdx, IRNode* ac
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = createCFGNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true, true);
     
     auto envBeforeCond = envStack;
     IRNode* condFailMerge = createCFGNode(IROp::Merge);
@@ -3980,7 +3982,7 @@ void IRBuilder::visitForInExpr(ForInExpr* expr) {
     auto envBeforeBody = envStack;
     IRNode* failMerge = createCFGNode(IROp::Merge);
     ScopeModifier mod = expr->isLocal ? ScopeModifier::Local : ScopeModifier::None;
-    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst, true);
+    buildPatternMatch(expr->pattern.get(), nextNode, failMerge, mod, expr->isConst, true, true);
     
     expr->body->accept(*this);
     
@@ -5504,7 +5506,7 @@ void IRBuilder::buildSetCompClause(SetCompExpr* expr, size_t clauseIdx, IRNode* 
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = createCFGNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true, true);
     
     auto envBeforeCond = envStack;
     IRNode* condFailMerge = createCFGNode(IROp::Merge);
@@ -5642,7 +5644,7 @@ void IRBuilder::buildDictCompClause(DictCompExpr* expr, size_t clauseIdx, IRNode
     
     auto envBeforePattern = envStack;
     IRNode* failMerge = createCFGNode(IROp::Merge);
-    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true);
+    buildPatternMatch(clause.pattern.get(), nextNode, failMerge, ScopeModifier::Local, false, true, true);
     
     auto envBeforeCond = envStack;
     IRNode* condFailMerge = createCFGNode(IROp::Merge);

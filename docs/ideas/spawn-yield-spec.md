@@ -183,6 +183,25 @@ PENDING / RUNNING / SUSPENDED -> true
 DONE / FAILED / CANCELLED     -> false
 ```
 
+### 显示与迭代
+
+```text
+<task (PENDING)>
+<task 'calc' (SUSPENDED)>
+<task 'calc' (DONE)>
+```
+
+标签只用于显示。`task` 可直接用于 `for-in`：
+
+```jc2
+for (step in spawn hanoi(3)) {
+    print(step)
+}
+```
+
+每轮调用 `resume(none)`，产出 `yield` 值；`return` 值不进入循环；
+`FAILED` 重抛，`CANCELLED` 安静结束。
+
 ## 6. 失败
 
 ```text

@@ -1274,6 +1274,7 @@ namespace jc {
         void* state = nullptr;
         ObjTask() { type = ObjType::TASK; }
         void clear() override;
+        std::string describe() const;
     };
 
     struct ObjSlice : public Obj {
@@ -3669,7 +3670,7 @@ inline void printValue(std::ostream& os, const Value& val, bool full, std::vecto
                 os << "}>";
             break;
         }
-        case ObjType::TASK: os << "<task>"; break;
+        case ObjType::TASK: os << static_cast<ObjTask*>(obj)->describe(); break;
         default: os << "<object>"; break;
     }
 }

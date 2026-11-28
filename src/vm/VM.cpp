@@ -43,6 +43,31 @@ void ObjTask::clear() {
     delete static_cast<TaskState*>(state);
     state = nullptr;
 }
+
+std::string ObjTask::describe() const {
+    auto* s = static_cast<TaskState*>(state);
+    if (!s) return "<task (INVALID)>";
+    const char* status = "PENDING";
+    if (s->cancelled) status = "CANCELLED";
+    else if (s->failed) status = "FAILED";
+    else if (s->done) status = "DONE";
+    else if (s->running) status = "RUNNING";
+    else if (s->started) status = "SUSPENDED";
+
+    std::string out = "<task";
+    if (!s->label.empty()) {
+        out += " '";
+        for (char ch : s->label) {
+            if (ch == '\\' || ch == '\'') out += '\\';
+            out += ch;
+        }
+        out += "'";
+    }
+    out += " (";
+    out += status;
+    out += ")>";
+    return out;
+}
     inline std::filesystem::path to_path(const std::string& utf8_str) {
         return std::filesystem::path(reinterpret_cast<const char8_t*>(utf8_str.c_str()));
     }
@@ -2174,6 +2199,11 @@ Value VM::resumeTask(ObjTask* task, bool send, Value value) {
     taskYielded = false;
     taskYieldValue = Value::none();
     runningTask = task;
+    state->running = true;
+    struct RunningReset {
+        TaskState* state;
+        ~RunningReset() { if (state) state->running = false; }
+    } runningReset{state};
     Value outcome;
     try {
         if (!state->started) {
@@ -5055,6 +5085,23 @@ bool VM::scheduleProtocolDunder(const Value& self, ObjClosure* method, ObjClass*
     return true;
 }
 
+Value VM::taskIteratorInit(ObjTask* task) {
+    ObjList* state = GcHeap::get().allocate<ObjList>();
+    state->vec.push_back(Value(task));
+    return Value(state);
+}
+
+Value VM::taskIteratorNext(ObjTask* task) {
+    auto* state = static_cast<TaskState*>(task->state);
+    if (!state) JC2_THROW(RuntimeError, "Invalid task state.");
+    if (state->failed) throw ValueException(state->error);
+    if (state->done || state->cancelled) return Value::uninit();
+    Value out = resumeTask(task, false, Value::none());
+    if (state->failed) throw ValueException(state->error);
+    if (state->done || state->cancelled) return Value::uninit();
+    return out;
+}
+
 Value VM::makeIteratorState(const Value& iterObj) {
     Value rooted = iterObj;
     GcValueGuard iterGuard(rooted);
@@ -7625,6 +7672,11 @@ Value VM::run(int targetFrameDepth) {
                     }
                 }
                 
+                if (iterable.isTask()) {
+                    getReg(a) = taskIteratorInit(static_cast<ObjTask*>(iterable.asObj()));
+                    break;
+                }
+
                 if (iterable.isObjType(ObjType::LIST)) {
                     // Snapshot at loop entry: appending inside the loop must
                     // not extend the iteration.
@@ -7748,6 +7800,10 @@ Value VM::run(int targetFrameDepth) {
                 Value& stateVal = getReg(b);
                 
                 auto state = static_cast<ObjList*>(stateVal.asObj());
+                if (!state->vec.empty() && state->vec[0].isTask()) {
+                    getReg(a) = taskIteratorNext(static_cast<ObjTask*>(state->vec[0].asObj()));
+                    break;
+                }
                 if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
                     Value iterTarget = state->vec[0];
                     int i = state->vec[1].asInt32();
@@ -10772,6 +10828,9 @@ uint64_t jc2_jit_try_get_prop(uint64_t obj_bits, uint32_t icIdx, const Chunk* ch
 // opIterInit / opIterNext 辅助方法 + ITER_INIT / ITER_NEXT / ASSERT_PARAM_TYPE 的 callout
 // ============================================================================
 Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
+    if (iterable.isTask()) {
+        return taskIteratorInit(static_cast<ObjTask*>(iterable.asObj()));
+    }
     if (iterable.isInstance()) {
         auto [method, owner] = findDunder(iterable, DUNDER_ITER);
         if (method) {
@@ -10907,6 +10966,9 @@ Value VM::opIterInit(Value iterable, uint8_t destructFlag) {
 
 Value VM::opIterNext(Value stateVal) {
     auto state = static_cast<ObjList*>(stateVal.asObj());
+    if (!state->vec.empty() && state->vec[0].isTask()) {
+        return taskIteratorNext(static_cast<ObjTask*>(state->vec[0].asObj()));
+    }
     if (state->vec.size() >= 2 && state->vec[1].isInt32()) {
         Value iterTarget = state->vec[0];
         int i = state->vec[1].asInt32();

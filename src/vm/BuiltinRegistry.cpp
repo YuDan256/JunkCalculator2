@@ -3440,6 +3440,18 @@ void BuiltinRegistry::registerArrayFunctions() {
         VM::activeVM->cancelTask(static_cast<ObjTask*>(self.asObj()));
         return Value::none();
     };
+    auto taskIterFn = [](const std::vector<Value>&) -> Value {
+        return helpers::nativeSelfStack.back();
+    };
+    auto taskNextFn = [](const std::vector<Value>&) -> Value {
+        Value self = helpers::nativeSelfStack.back();
+        Value next = VM::activeVM->taskIteratorNext(static_cast<ObjTask*>(self.asObj()));
+        if (next.isUninit()) {
+            throw ValueException(VM::activeVM->wrapException(
+                err::StopIterationClass, "StopIteration", Value("")));
+        }
+        return next;
+    };
     regMethod(VM::activeVM->taskProto, "done", {}, taskDoneFn);
     regMethod(VM::activeVM->taskProto, "failed", {}, taskFailedFn);
     regMethod(VM::activeVM->taskProto, "error", {}, taskErrorFn);
@@ -3448,6 +3460,8 @@ void BuiltinRegistry::registerArrayFunctions() {
     regMethod(VM::activeVM->taskProto, "join", {}, taskJoinFn);
     regMethod(VM::activeVM->taskProto, "isAlive", {}, taskAliveFn);
     regMethod(VM::activeVM->taskProto, "cancel", {}, taskCancelFn);
+    regMethod(VM::activeVM->taskProto, "__iter__", {}, taskIterFn);
+    regMethod(VM::activeVM->taskProto, "__next__", {}, taskNextFn);
 
     regMethod(VM::activeVM->listProto, "first", {}, firstFn);
 

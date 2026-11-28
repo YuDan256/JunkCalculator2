@@ -69,6 +69,7 @@ struct TaskState {
     std::vector<TaskFrameSnapshot> frames;
     std::vector<ObjClosure*> defers;
     bool started = false;
+    bool running = false;
     bool done = false;
     bool failed = false;
     bool cancelled = false;
@@ -613,6 +614,8 @@ public:
                                 int retryKwArgc = 0, ObjSpread* spread = nullptr, int compareOp = 0);
     Value invoke(const Invocation& invocation);
     Value makeIteratorState(const Value& iterObj);
+    Value taskIteratorInit(ObjTask* task);
+    Value taskIteratorNext(ObjTask* task);
 
     void triggerDebugger();
     CallFrame* currentDebuggerFrame = nullptr;

@@ -253,4 +253,40 @@ assertEq(topRes, none, "T8.top_level_yield_resumed_with_none")
     assertEq(job.isAlive(), false, "T13.failed_not_alive")
 }
 
+// T14: task display includes label and lifecycle state
+{
+    pendingJob = spawn 'calc' { return 1 }
+    assertEq(str(pendingJob), "<task 'calc' (PENDING)>", "T14.pending")
+    assertEq(pendingJob.resume(), 1, "T14.resume")
+    assertEq(str(pendingJob), "<task 'calc' (DONE)>", "T14.done")
+
+    failJob = spawn { throw "boom" }
+    assertThrows(() => failJob.join(), "T14.fail_join")
+    assertEq(str(failJob), "<task (FAILED)>", "T14.failed")
+
+    cancelJob = spawn { yield 1 }
+    cancelJob.cancel()
+    assertEq(str(cancelJob), "<task (CANCELLED)>", "T14.cancelled")
+}
+
+// T15: for-in drives a task and discards the final return value
+{
+    steps() = { yield none; yield 2; return 99 }
+    job = spawn 'steps' steps()
+    const seen = @[]
+    for (step in job) { seen.push(step) }
+    assertEq(seen, @[none, 2], "T15.yield_values")
+    assertEq(job.join(), 99, "T15.return_after_loop")
+
+    failed = spawn { yield 1; throw "iter_boom" }
+    assertThrows(() => { for (x in failed) {} }, "T15.failure_propagates")
+
+    cancelled = spawn { yield 1; yield 2 }
+    cancelled.resume()
+    cancelled.cancel()
+    local count = 0
+    for (x in cancelled) { count += 1 }
+    assertEq(count, 0, "T15.cancelled_stops_quietly")
+}
+
 print("ALL TASK TESTS PASSED!")

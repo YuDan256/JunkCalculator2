@@ -162,7 +162,7 @@ test_task_gc()
 test_task_type_values() = {
     t = spawn { return 1 }
     assert(type(t) == task, "task builtin type")
-    assert(str(t) == "<task>", "task representation")
+    assert(str(t) == "<task (PENDING)>", "task representation")
 }
 test_task_type_values()
 

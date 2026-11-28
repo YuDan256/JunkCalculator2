@@ -1627,6 +1627,13 @@ job.isAlive()
   \item \jc{isAlive()}：PENDING、RUNNING、SUSPENDED 为真。
 \end{itemize}
 
+任务显示为 \jc{<task (STATE)>}；有标签时为
+\jc{<task 'label' (STATE)>}。
+
+任务可直接用于 \jc{for-in}：每次迭代调用 \jc{resume(none)}，产出
+\jc{yield} 值；最终 \jc{return} 值不进入循环；FAILED 重抛，
+CANCELLED 安静结束。
+
 任务失败后进入 FAILED 终态，\jc{join()} 重抛原始异常；再次 \jc{join()}
 仍重抛同一异常。
 

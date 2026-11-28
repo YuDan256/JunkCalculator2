@@ -890,11 +890,11 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
         for (size_t i = 0; i < lp->elements.size(); ++i) {
             if (static_cast<int>(i) == restIndex) {
                 auto* restPat = static_cast<RestPattern*>(lp->elements[i].get());
-                IRNode* startNode = graph->createConstant(Value(static_cast<double>(i)));
+                IRNode* startNode = graph->createConstant(Value(static_cast<int>(i)));
                 link(startNode);
                 
                 int tailCount = static_cast<int>(lp->elements.size()) - 1 - static_cast<int>(i);
-                IRNode* endNode = tailCount > 0 ? graph->createConstant(Value(static_cast<double>(-tailCount))) : graph->createConstant(Value::none());
+                IRNode* endNode = tailCount > 0 ? graph->createConstant(Value(static_cast<int>(-tailCount))) : graph->createConstant(Value::none());
                 link(endNode);
                 
                 IRNode* stepNode = graph->createConstant(Value::none());
@@ -945,9 +945,9 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
             IRNode* idxNode = nullptr;
             if (restIndex != -1 && static_cast<int>(i) > restIndex) {
                 int offsetFromEnd = static_cast<int>(lp->elements.size()) - static_cast<int>(i);
-                idxNode = graph->createConstant(Value(static_cast<double>(-offsetFromEnd)));
+                idxNode = graph->createConstant(Value(static_cast<int>(-offsetFromEnd)));
             } else {
-                idxNode = graph->createConstant(Value(static_cast<double>(i)));
+                idxNode = graph->createConstant(Value(static_cast<int>(i)));
             }
             link(idxNode);
             
@@ -964,7 +964,7 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
         if (lp->rest) {
             auto* restPat = lp->rest.get();
-            IRNode* startNode = graph->createConstant(Value(static_cast<double>(lp->elements.size())));
+            IRNode* startNode = graph->createConstant(Value(static_cast<int>(lp->elements.size())));
             link(startNode);
             
             IRNode* endNode = graph->createConstant(Value::none());
@@ -1092,17 +1092,17 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     // Handle rest column
                     auto* restPat = static_cast<RestPattern*>(mp->rows[i][j].get());
                     if (restPat->name.lexeme != "_") {
-                        IRNode* rStartNode = graph->createConstant(Value(static_cast<double>(i)));
+                        IRNode* rStartNode = graph->createConstant(Value(static_cast<int>(i)));
                         link(rStartNode);
-                        IRNode* rEndNode = graph->createConstant(Value(static_cast<double>(i + 1)));
+                        IRNode* rEndNode = graph->createConstant(Value(static_cast<int>(i + 1)));
                         link(rEndNode);
                         IRNode* rStepNode = graph->createConstant(Value::none());
                         link(rStepNode);
 
-                        IRNode* cStartNode = graph->createConstant(Value(static_cast<double>(j)));
+                        IRNode* cStartNode = graph->createConstant(Value(static_cast<int>(j)));
                         link(cStartNode);
                         int tailCount = static_cast<int>(mp->rows[i].size()) - 1 - static_cast<int>(j);
-                        IRNode* cEndNode = tailCount > 0 ? graph->createConstant(Value(static_cast<double>(-tailCount))) : graph->createConstant(Value::none());
+                        IRNode* cEndNode = tailCount > 0 ? graph->createConstant(Value(static_cast<int>(-tailCount))) : graph->createConstant(Value::none());
                         link(cEndNode);
                         IRNode* cStepNode = graph->createConstant(Value::none());
                         link(cStepNode);
@@ -1147,15 +1147,15 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
                     continue;
                 }
 
-                IRNode* rIdxNode = graph->createConstant(Value(static_cast<double>(i)));
+                IRNode* rIdxNode = graph->createConstant(Value(static_cast<int>(i)));
                 link(rIdxNode);
 
                 IRNode* cIdxNode = nullptr;
                 if (rowRestColIndex != -1 && static_cast<int>(j) > rowRestColIndex) {
                     int offsetFromEnd = static_cast<int>(mp->rows[i].size()) - static_cast<int>(j);
-                    cIdxNode = graph->createConstant(Value(static_cast<double>(-offsetFromEnd)));
+                    cIdxNode = graph->createConstant(Value(static_cast<int>(-offsetFromEnd)));
                 } else {
-                    cIdxNode = graph->createConstant(Value(static_cast<double>(j)));
+                    cIdxNode = graph->createConstant(Value(static_cast<int>(j)));
                 }
                 link(cIdxNode);
 
@@ -1174,14 +1174,14 @@ void IRBuilder::buildPatternMatch(Pattern* pat, IRNode* valNode, IRNode* failMer
 
         if (hasRestRow && mp->restRow->name.lexeme != "_") {
             auto* restPat = mp->restRow.get();
-            IRNode* rStartNode = graph->createConstant(Value(static_cast<double>(mp->rows.size())));
+            IRNode* rStartNode = graph->createConstant(Value(static_cast<int>(mp->rows.size())));
             link(rStartNode);
             IRNode* rEndNode = graph->createConstant(Value::none());
             link(rEndNode);
             IRNode* rStepNode = graph->createConstant(Value::none());
             link(rStepNode);
 
-            IRNode* cStartNode = graph->createConstant(Value(0.0));
+            IRNode* cStartNode = graph->createConstant(Value(0));
             link(cStartNode);
             IRNode* cEndNode = graph->createConstant(Value::none());
             link(cEndNode);
